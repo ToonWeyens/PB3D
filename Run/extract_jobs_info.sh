@@ -1,5 +1,11 @@
 #!/bin/bash
 # Extracts the Eigenvalues of jobs for an input array
+# Can be run with either 1 or 3 arguments:
+#   1: [RUN FOLDER]
+#   3: [RUN FOLDER] [ARRAY INPUT] [OUTPUT FILE]
+# where for 1 input argument the array input has to be in the run folder and the output file will be
+# produced there.
+
 # run this function as "[[ $# -ne A ]] && err_arg A"
 err_arg() { 
     [[ $# -ge 1 ]] && nr_args_req=$1 || nr_args_req=some
@@ -7,12 +13,26 @@ err_arg() {
     exit 1
 }
 
-[[ $# -ne 3 ]] && echo "usage: $0 [ARRAY INPUT] [RUN FOLDER] [OUTPUT FILE]"
-[[ $# -ne 3 ]] && err_arg 3
+case $# in
+    1)  # [RUN FOLDER]
+        run_folder=${1%/}
+        array_input=$run_folder/array_input
+        output_file=$run_folder/EV.dat
+    ;;
+    3)  # [RUN FOLDER] [ARRAY INPUT] [OUTPUT FILE]
+        run_folder=${1%/}
+        array_input=$2
+        output_file=$3
+    ;;
+    *)
+        echo "usage: $0 [RUN FOLDER] [ARRAY INPUT] [OUTPUT FILE]"
+        echo "or"
+        echo "usage: $0 [RUN FOLDER]"
+        echo "       where [RUN FOLDER] contains 'array_input' and output is 'EV.dat'"
+        exit 1
+    ;;
+esac
 
-array_input=$1
-run_folder=${2%/}
-output_file=$3
 echo "Extracting Eigenvalue information from '$run_folder', which should correspond to '$array_input'"
 echo
 echo "The output is saved to '$output_file'"
@@ -89,3 +109,5 @@ for (( i=1; i<=$n_inputs; i++ )); do
     echo $output_string >> $output_file
     echo
 done
+
+cat $output_file

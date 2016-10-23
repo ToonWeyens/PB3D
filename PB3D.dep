@@ -431,6 +431,7 @@ HELENA_ops.o : \
     MPI_utilities.o \
     grid_utilities.o \
     HELENA_vars.o \
+    input_utilities.o \
 
 num_utilities.o : \
     num_vars.o \

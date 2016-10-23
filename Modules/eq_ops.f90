@@ -16,12 +16,13 @@ module eq_ops
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
         &print_output_eq, flux_q_plot
 #if ldebug
-    public debug_calc_derived_q
+    public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_derived_q = .false.                                   ! plot debug information for calc_derived_q
+    logical :: debug_write_flux_q_in_file_for_VMEC = .false.                    ! plot debug information for write_flux_q_in_file_for_VMEC
 #endif
     
     ! interfaces
@@ -356,12 +357,15 @@ contains
         integer function write_flux_q_in_file_for_VMEC() result(ierr)
             use eq_vars, only: pres_0
             use grid_vars, only: n_r_eq
-            use grid_utilities, only: setup_interp_data, apply_disc
+            use grid_utilities, only: setup_interp_data, apply_disc, nufft
             use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
             use num_vars, only: eq_name, HEL_pert_file_i, HEL_export_file_i
+#if ldebug
+            use grid_utilities, only: setup_deriv_data, apply_disc
+#endif
             
             character(*), parameter :: rout_name = &
                 &'write_flux_q_in_file_for_VMEC'
@@ -378,6 +382,9 @@ contains
             integer :: istat                                                    ! status
             integer :: plot_dim(2)                                              ! plot dimensions
             integer :: rec_min_m                                                ! recommended minimum of poloidal modes
+            integer :: pert_type                                                ! type of perturbation prescription
+            integer :: lim_r(2)                                                 ! limits in r range for plot
+            integer :: r_prop                                                   ! r at which to use proportionality factor
             integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
@@ -386,6 +393,7 @@ contains
             character(len=1) :: loc_data_char                                   ! first data character
             character(len=2) :: plus                                            ! "+ " or ""
             character(len=8) :: flux_name(2)                                    ! "poloidal" or "toroidal"
+            character(len=6) :: path_prefix = '../../'                          ! prefix of path
             character(len=max_str_ln) :: pert_file_name                         ! name of perturbation file
             character(len=max_str_ln) :: err_msg                                ! error message
             character(len=max_str_ln) :: file_name                              ! name of file
@@ -395,6 +403,7 @@ contains
             real(dp) :: delta_loc(2)                                            ! local delta
             real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
             real(dp) :: norm_B_H(2)                                             ! normalization for R and Z Fourier modes
+            real(dp) :: mult_fac                                                ! global multiplication factor
             real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
             real(dp), allocatable :: delta_copy(:,:,:)                          ! copy of m_pert, for sorting
             real(dp), allocatable :: BH_0(:,:)                                  ! R and Z at unperturbed bounday
@@ -405,10 +414,15 @@ contains
             real(dp), allocatable :: B_F_loc(:,:)                               ! Local B_F
             real(dp), allocatable :: u_norm(:,:)                                ! normalized unit vector
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
+            real(dp), allocatable :: prop_B_tor(:,:,:)                          ! proportionality between delta B_tor and delta_norm
+            real(dp), allocatable :: prop_B_tor_F_loc(:,:)                      ! local fourier coefficients of prop_B_tor
             logical :: zero_N_pert = .false.                                    ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
-            logical :: pert_from_file                                           ! perturbation read from file
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
+#if ldebug
+            real(dp), allocatable :: BH_0_ALT(:)                                ! theta derivative of R and Z
+            type(disc_type) :: deriv_data                                       ! data for derivatives in theta
+#endif
             
             ! initialize ierr
             ierr = 0
@@ -428,48 +442,114 @@ contains
             pert_eq = get_log(.false.)
             
             if (pert_eq) then
-                call writo('Prescribe the perturbation through a file?')
+                call writo('How do you want to prescribe the perturbation?')
+                call lvl_ud(1)
+                call writo('1: through a file')
                 call lvl_ud(1)
                 call writo('It should provide N M delta_cos delta_sin in four &
                     &columns')
                 call writo('Rows starting with "#" are ignored')
                 call lvl_ud(-1)
+                call writo('2: automatically deduced from toroidal magnetic &
+                    &perturbation')
+                call writo('3: manually')
+                call lvl_ud(-1)
+                pert_type = get_int(lim_lo=1,lim_hi=3)
                 
-                pert_from_file = get_log(.false.)
-                
-                if (pert_from_file) then
-                    ! user input
-                    call writo('File name?')
-                    read(*,*) pert_file_name
-                    
-                    ! open
-                    open(HEL_pert_file_i,FILE=trim(pert_file_name),&
-                        &IOSTAT=ierr,STATUS='old')
-                    err_msg = 'Could not open file '//trim(pert_file_name)
-                    CHCKERR(err_msg)
-                    call writo('Parsing "'//trim(pert_file_name)//'"')
-                    
-                    ! get number of lines
-                    istat = 0
-                    tot_nr_pert = 0
-                    do while (istat.eq.0)
-                        ! read first character of data
-                        read(HEL_pert_file_i,*,IOSTAT=istat) loc_data_char
-                        if (istat.eq.0 .and. loc_data_char.ne.'#') then         ! exclude comment lines
-                            tot_nr_pert = tot_nr_pert + 1
+                select case (pert_type)
+                    case (1)                                                    ! from file
+                        ! user input
+                        call writo('File name?')
+                        read(*,*) pert_file_name
+                        
+                        ! open
+                        err_msg = 'Could not open file '//trim(pert_file_name)
+                        do kd = 0,2
+                            call writo('Trying "'//path_prefix(1:kd*3)//&
+                                &trim(pert_file_name)//'"')
+                            open(HEL_pert_file_i,FILE=path_prefix(1:kd*3)//&
+                                &trim(pert_file_name),IOSTAT=ierr,STATUS='old')
+                            if (ierr.eq.0) then
+                                call lvl_ud(1)
+                                call writo("Success")
+                                call lvl_ud(-1)
+                                exit
+                            end if
+                        end do
+                        CHCKERR(err_msg)
+                        call writo('Parsing "'//trim(pert_file_name)//'"')
+                        
+                        ! get number of lines
+                        istat = 0
+                        tot_nr_pert = 0
+                        do while (istat.eq.0)
+                            ! read first character of data
+                            read(HEL_pert_file_i,*,IOSTAT=istat) loc_data_char
+                            if (istat.eq.0 .and. loc_data_char.ne.'#') then     ! exclude comment lines
+                                tot_nr_pert = tot_nr_pert + 1
+                            end if
+                        end do
+                        rewind(HEL_pert_file_i)
+                        loc_data_char = '#'
+                        
+                        ! set error message
+                        err_msg = 'Could not read file '//trim(pert_file_name)
+                    case (2)                                                    ! automatically
+                        call writo('toroidal modulation mode number?')
+                        n_loc = get_int()
+                        
+                        call writo('normal range for which to plot toroidal &
+                            &ripple proportionality?')
+                        lim_r(1) = get_int(lim_lo=1,lim_hi=n_r_eq,ind=.true.)
+                        lim_r(2) = get_int(lim_lo=lim_r(1),lim_hi=n_r_eq,&
+                            &ind=.true.)
+                        
+                        ! calculate the proportionality factors
+                        call calc_prop_B_tor(lim_r,prop_B_tor)
+                        
+                        if (lim_r(1).eq.lim_r(2)) then
+                            r_prop = lim_r(1)
+                        else
+                            call writo('which normal position to use?')
+                            r_prop = get_int(lim_lo=lim_r(1),lim_hi=lim_r(2),&
+                                &ind=.true.)
                         end if
-                    end do
-                    rewind(HEL_pert_file_i)
-                    loc_data_char = '#'
-                    
-                    ! set error message
-                    err_msg = 'Could not read file '//trim(pert_file_name)
-                else
-                    ! user input
-                    call writo('Prescribe interactively')
-                    call writo('How many different combinations of toroidal &
-                        &and poloidal mode numbers (N,M)?')
-                    tot_nr_pert = get_int(lim_lo=1)
+                        
+                        ! NUFFT for chosen value
+                        ierr = nufft(prop_B_tor(:,r_prop-lim_r(1)+1,2),&
+                            &prop_B_tor(:,r_prop-lim_r(1)+1,1),&
+                            &prop_B_tor_F_loc)
+                        CHCKERR('')
+                        
+                        ! rescale to 1cm
+                        prop_B_tor_F_loc = prop_B_tor_F_loc/max(&
+                            &sum(prop_B_tor_F_loc(:,1)),&
+                            &sum(prop_B_tor_F_loc(:,2)))/100
+                        
+                        tot_nr_pert = 1 + 2*size(prop_B_tor_F_loc,1) - 2
+                    case (3)                                                    ! manually
+                        ! user input
+                        call writo('Prescribe interactively')
+                        call writo('How many different combinations of &
+                            &toroidal and poloidal mode numbers (N,M)?')
+                        tot_nr_pert = get_int(lim_lo=1)
+                end select
+                
+                ! ask for global multiplication factor
+                if (pert_type.eq.1 .or. pert_type.eq.2) then
+                    call writo('Globally multiply with some factor?')
+                    call lvl_ud(1)
+                    call writo('Now: maximum deformation: 1m')
+                    call writo('     minor radius: '//&
+                        &trim(r2strt((maxval(R_H)-minval(R_H))/2))//'m')
+                    call writo('     major radius: '//&
+                        &trim(r2strt((maxval(R_H)+minval(R_H))/2))//'m')
+                    call lvl_ud(-1)
+                    if (get_log(.false.)) then
+                        mult_fac = get_real()
+                    else
+                        mult_fac = 1._dp
+                    end if
                 end if
                 
                 ! set up n, m and delta  (use maximum possible size, possibly +1
@@ -481,40 +561,47 @@ contains
                 nr_n = 0
                 nr_m = 0
                 do jd = 1,tot_nr_pert
-                    if (pert_from_file) then
-                        do while (loc_data_char.eq.'#')
-                            ! read first character of data
-                            read(HEL_pert_file_i,*,IOSTAT=ierr) loc_data_char
-                            CHCKERR(err_msg)
-                            if (loc_data_char.ne.'#') then                      ! exclude comment lines
-                                backspace(UNIT=HEL_pert_file_i)                 ! go back one line
+                    select case (pert_type)
+                        case (1)                                                ! from file
+                            do while (loc_data_char.eq.'#')
+                                ! read first character of data
                                 read(HEL_pert_file_i,*,IOSTAT=ierr) &
-                                    &n_loc, m_loc, delta_loc
+                                    &loc_data_char
                                 CHCKERR(err_msg)
-                            end if
-                        end do
-                        loc_data_char = '#'
-                    else
-                        call writo('For mode '//trim(i2str(jd))//'/'//&
-                            &trim(i2str(tot_nr_pert))//':')
-                        call lvl_ud(1)
-                        
-                        ! input
-                        call writo('Toroidal mode number N?')
-                        n_loc = get_int()
-                        call writo('Poloidal mode number M?')
-                        m_loc = get_int()
-                        call writo('Perturbation strength ~ cos('//&
-                            &trim(i2str(m_loc))//' theta - '//&
-                            &trim(i2str(n_loc))//' zeta)?')
-                        delta_loc(1) = get_real()
-                        call writo('Perturbation strength ~ sin('//&
-                            &trim(i2str(m_loc))//' theta - '//&
-                            &trim(i2str(n_loc))//' zeta)?')
-                        delta_loc(2) = get_real()
-                        
-                        call lvl_ud(-1)
-                    end if
+                                if (loc_data_char.ne.'#') then                  ! exclude comment lines
+                                    backspace(UNIT=HEL_pert_file_i)             ! go back one line
+                                    read(HEL_pert_file_i,*,IOSTAT=ierr) &
+                                        &n_loc, m_loc, delta_loc
+                                    CHCKERR(err_msg)
+                                    delta_loc = delta_loc*mult_fac
+                                end if
+                            end do
+                            loc_data_char = '#'
+                        case (2)                                                ! automatically
+                            m_loc = jd/2
+                            if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
+                            delta_loc = prop_B_tor_F_loc(jd/2+1,:)*mult_fac
+                        case (3)                                                ! manually
+                            call writo('For mode '//trim(i2str(jd))//'/'//&
+                                &trim(i2str(tot_nr_pert))//':')
+                            call lvl_ud(1)
+                            
+                            ! input
+                            call writo('Toroidal mode number N?')
+                            n_loc = get_int()
+                            call writo('Poloidal mode number M?')
+                            m_loc = get_int()
+                            call writo('Perturbation strength ~ cos('//&
+                                &trim(i2str(m_loc))//' theta - '//&
+                                &trim(i2str(n_loc))//' zeta)?')
+                            delta_loc(1) = get_real()
+                            call writo('Perturbation strength ~ sin('//&
+                                &trim(i2str(m_loc))//' theta - '//&
+                                &trim(i2str(n_loc))//' zeta)?')
+                            delta_loc(2) = get_real()
+                            
+                            call lvl_ud(-1)
+                    end select
                     
                     ! has N = 0 been prescribed?
                     if (n_loc.eq.0) zero_N_pert = .true.
@@ -540,7 +627,7 @@ contains
                     delta(n_id,nr_m(n_id),:) = delta_loc                        ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
                 
-                if (pert_from_file) close(HEL_pert_file_i)
+                if (pert_type.eq.1) close(HEL_pert_file_i)
             else
                 nr_n = 0
             end if
@@ -562,7 +649,7 @@ contains
                 call lvl_ud(1)
                 do id = 1,2
                     call writo('number of '//flux_name(id)//' points?')
-                    plot_dim(id) = get_int(lim_lo=3)
+                    plot_dim(id) = get_int(lim_lo=2)
                     call writo('lower limit of '//flux_name(id)//&
                         &' range [pi]?')
                     plot_lims(1,id) = get_real()
@@ -654,6 +741,7 @@ contains
             else
                 BH_0(:,1) = R_H(1:n_B-1,n_r_eq)
                 BH_0(:,2) = Z_H(1:n_B-1,n_r_eq)
+                theta(:,2) = chi_H(1:n_B-1)
             end if
             theta(:,1) = atan2(BH_0(:,2),BH_0(:,1)-R_H(1,1))
             where(theta(:,1).lt.0._dp) theta(:,1) = theta(:,1)+2*pi
@@ -725,11 +813,48 @@ contains
                             &B_F_loc(id+1,2)*cos(id*theta(:,2)) - &
                             &B_F_loc(id+1,1)*sin(id*theta(:,2)))
                     end do
+                    
+#if ldebug
+                    if (debug_write_flux_q_in_file_for_VMEC) then
+                        allocate(BH_0_ALT(size(BH_0,1)))
+                        
+                        call writo('Comparing R or Z with reconstruction &
+                            &through Fourier coefficients')
+                        BH_0_ALT = 0._dp
+                        do id = 0,size(B_F_loc,1)-1
+                            BH_0_ALT = BH_0_ALT + &
+                                &B_F_loc(id+1,1)*cos(id*theta(:,2)) + &
+                                &B_F_loc(id+1,2)*sin(id*theta(:,2))
+                        end do
+                        call print_ex_2D(['orig BH','alt BH '],'',&
+                            &reshape([BH_0(:,kd),BH_0_ALT],[size(BH_0,1),2]),x=&
+                            &reshape([theta(:,2),theta(:,2)],[size(BH_0,1),2]))
+                        
+                        call writo('Comparing derivative')
+                        ierr = setup_deriv_data(theta(:,2),deriv_data,1,1)
+                        CHCKERR('')
+                        ierr = apply_disc(BH_0(:,kd),deriv_data,BH_0_ALT)
+                        CHCKERR('')
+                        call deriv_data%dealloc()
+                        call print_ex_2D(['orig BH','alt BH '],'',&
+                            &reshape([BH_deriv(:,kd),BH_0_ALT],&
+                            &[size(BH_deriv,1),2]),x=&
+                            &reshape([theta(:,2),theta(:,2)],&
+                            &[size(BH_deriv,1),2]))
+                        
+                        deallocate(BH_0_ALT)
+                    end if
+#endif
                 end do
-                u_norm(:,1) = sqrt(BH_deriv(:,1)**2 + BH_deriv(:,2)**2)
-                u_norm(:,2) = -BH_deriv(:,1)/u_norm(:,1)
-                u_norm(:,1) = BH_deriv(:,2)/u_norm(:,1)
+                u_norm(:,2) = sqrt(BH_deriv(:,1)**2 + BH_deriv(:,2)**2)
+                u_norm(:,1) = BH_deriv(:,2)/u_norm(:,2)
+                u_norm(:,2) = -BH_deriv(:,1)/u_norm(:,2)
                 deallocate(BH_deriv)
+                !!!call print_ex_2D(['test_normal'],'',&
+                    !!!&transpose(reshape([BH_0(:,2)-u_norm(:,2)*0.1,BH_0(:,2),&
+                    !!!&BH_0(:,2)+u_norm(:,2)*0.1],[size(BH_0,1),3])),x=&
+                    !!!&transpose(reshape([BH_0(:,1)-u_norm(:,1)*0.1,BH_0(:,1),&
+                    !!!&BH_0(:,1)+u_norm(:,1)*0.1],[size(BH_0,1),3])))
             end if
             
             ! loop  over all  toroidal  modes N  and  include the  corresponding
@@ -941,14 +1066,18 @@ contains
             ! user output
             file_name = "input."//trim(eq_name)
             if (pert_eq) then
-                do jd = jd_min,nr_n
-                    file_name = trim(file_name)//'_N'//&
-                        &trim(i2str(n_pert(jd)))
-                    do id = 1,nr_m(jd)
-                        file_name = trim(file_name)//'M'//&
-                            &trim(i2str(m_pert(jd,id)))
+                if (pert_type.eq.1 .or. pert_type.eq.3) then
+                    do jd = jd_min,nr_n
+                        file_name = trim(file_name)//'_N'//&
+                            &trim(i2str(n_pert(jd)))
+                        do id = 1,nr_m(jd)
+                            file_name = trim(file_name)//'M'//&
+                                &trim(i2str(m_pert(jd,id)))
+                        end do
                     end do
-                end do
+                else
+                    file_name = trim(file_name)//'_REALISTIC'
+                end if
             end if
             call writo('Generate VMEC input file "'//trim(file_name)//'"')
             call writo('This can be used for VMEC porting')
@@ -1104,100 +1233,30 @@ contains
                     end do
                 end do
             end do
+            
+            ! print cross-section (R,Z)
+            call print_ex_2D(['cross_section_'//trim(plot_name)],&
+                &'cross_section_'//trim(plot_name),XYZ_plot(:,:,3),&
+                &x=XYZ_plot(:,:,1),draw=.false.)
+            call draw_ex(['cross_section_'//trim(plot_name)],&
+                &'cross_section_'//trim(plot_name),plot_dim(2),1,.false.)
+            call print_ex_2D(['cross_section_'//trim(plot_name)//'_inv'],&
+                &'cross_section_'//trim(plot_name)//'_inv',&
+                &transpose(XYZ_plot(:,:,3)),x=transpose(XYZ_plot(:,:,1)),&
+                &draw=.false.)
+            call draw_ex(['cross_section_'//trim(plot_name)//'_inv'],&
+                &'cross_section_'//trim(plot_name)//'_inv',plot_dim(1),1,&
+                &.false.)
+            
+            ! convert to X, Y, Z
             XYZ_plot(:,:,2) = XYZ_plot(:,:,1)*sin(ang_plot(:,:,2))
             XYZ_plot(:,:,1) = XYZ_plot(:,:,1)*cos(ang_plot(:,:,2))
             
             ! print
             call print_ex_3D('plasma boundary',trim(plot_name),XYZ_plot(:,:,3),&
-                &x=XYZ_plot(:,:,1),y=XYZ_plot(:,:,2))
+                &x=XYZ_plot(:,:,1),y=XYZ_plot(:,:,2),draw=.false.)
+            call draw_ex(['plasma boundary'],trim(plot_name),1,2,.true.)
         end subroutine plot_boundary
-        
-        ! calculates the cosine and sine mode numbers of a function defined on a
-        ! non-regular grid.
-        ! If a plot name is provided, the modes are plotted.
-        ! Note that  the fundamental interval is  assumed to be 0..2pi  but that
-        ! there should be no overlap between the first and last point.
-        integer function nufft(x,f,f_F,plot_name) result(ierr)
-            use grid_utilities, only: setup_interp_data, apply_disc
-            
-            character(*), parameter :: rout_name = 'nufft'
-            
-            ! input / output
-            real(dp), intent(in) :: x(:)                                        ! coordinate values
-            real(dp), intent(in) :: f(:)                                        ! function values
-            real(dp), intent(inout), allocatable :: f_F(:,:)                    ! Fourier modes for cos and sin
-            character(len=*), intent(in), optional :: plot_name                 ! name of possible plot
-            
-            ! local variables
-            integer :: m_F                                                      ! nr. of modes
-            integer :: n_x                                                      ! nr. of points
-            integer :: interp_ord = 4                                           ! order of interpolation
-            integer :: id                                                       ! counter
-            real(dp), allocatable :: work(:)                                    ! work array
-            real(dp), allocatable :: f_loc(:)                                   ! local copy of f
-            type(disc_type) :: trigon_interp_data                               ! data for non-equidistant sampling fourier coefficients
-            character(len=max_str_ln) :: plot_title(2)                          ! name of plot
-            logical :: print_log = .false.                                      ! print log plot as well
-            
-            ! tests
-            if (size(x).ne.size(f)) then
-                ierr = 1
-                CHCKERR('x and f must have same size')
-            end if
-            
-            ! set local f and interpolate
-            n_x = size(x)
-            allocate(f_loc(n_x))
-            ierr = setup_interp_data([x,2*pi],[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
-                &trigon_interp_data,interp_ord)
-            ierr = apply_disc([f,f(1)],trigon_interp_data,f_loc)
-            CHCKERR('')
-            call trigon_interp_data%dealloc()
-            
-            !!do id = 1,n_x
-                !!f_loc(id) = -4._dp+&
-                    !!&3*cos((id-1._dp)/n_x*2*pi*1)+&
-                    !!&0.5*cos((id-1._dp)/n_x*2*pi*100)+&
-                    !!&1.5*cos((id-1._dp)/n_x*2*pi*101)+&
-                    !!&4*sin((id-1._dp)/n_x*2*pi*1)+&
-                    !!&2*sin((id-1._dp)/n_x*2*pi*50)+&
-                    !!&4.5*sin((id-1._dp)/n_x*2*pi*55)
-            !!end do
-            
-            ! set up variables for fft
-            m_F = (n_x-1)/2                                                     ! nr. of modes
-            allocate(work(3*n_x+15))                                            ! from fftpack manual
-            
-            ! calculate fft
-            call dffti(n_x,work)
-            call dfftf(n_x,f_loc,work)
-            deallocate(work)
-            
-            ! rescale
-            f_loc(:) = f_loc(:)*2/n_x
-            f_loc(1) = f_loc(1)/2
-            
-            ! separate cos and sine
-            if (allocated(f_F)) deallocate(f_F)
-            allocate(f_F(m_F+1,2))
-            f_F(1,1) = f_loc(1)
-            f_F(1,2) = 0._dp
-            f_F(2:m_F+1,1) = f_loc(2:2*m_F:2)
-            f_F(2:m_F+1,2) = -f_loc(3:2*m_F+1:2)                                ! routine returns - sine factors
-            
-            ! output in plot if requested
-            if (present(plot_name)) then
-                plot_title = ['cos','sin']
-                call print_ex_2D(plot_title,plot_name,f_F)
-                call draw_ex(plot_title,plot_name,2,1,.false.)
-                if (print_log) then
-                    plot_title = ['cos [log]','sin [log]']
-                    call print_ex_2D(plot_title,trim(plot_name)//'_log',&
-                        &log10(abs(f_F)))
-                    call draw_ex(plot_title,trim(plot_name)//'_log',2,1,.false.)
-                end if
-            end if
-        end function nufft
         
         ! print the mode numbers
         integer function print_mode_numbers(file_i,B,n_pert) result(ierr)
@@ -1242,6 +1301,89 @@ contains
                 CHCKERR('Failed to write')
             end do
         end function print_mode_numbers
+        
+        !  calculate   the   proportionality   between   toroidal   ripple   and
+        ! perturbation
+        subroutine calc_prop_B_tor(lim_r,prop_B_tor)
+            use HELENA_vars, only: h_H_11, nchi, chi_H, ias, flux_p_H
+            use grid_vars, only: n_r_eq
+            
+            ! input / output
+            integer, intent(in) :: lim_r(2)                                     ! limits in r range for plot
+            real(dp), intent(inout), allocatable :: prop_B_tor(:,:,:)           ! proportionality between delta B_tor and delta_norm
+            
+            ! local variables
+            integer :: nchi_2pi                                                 ! nr. of poloidal points in entire interval 0..2pi
+            integer :: id, kd                                                   ! counters
+            character(len=max_str_ln) :: file_name                              ! name of plot file
+            
+            if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
+                nchi_2pi = nchi*2-2                                             ! -2 because of overlapping points at 0, pi
+            else                                                                ! asymmetric (so nchi is aumented by one)
+                nchi_2pi  = nchi-1                                              ! -1 because of overlapping points at 0
+            end if
+            allocate(prop_B_tor(nchi_2pi,lim_r(2)-lim_r(1)+1,3))
+            
+            call writo('Fourier coefficients at normal positions')
+            call lvl_ud(1)
+            do kd = lim_r(1),lim_r(2)
+                ! set up prop_B_tor, chi and normal coordinate
+                if (ias.eq.0) then                                              ! symmetric
+                    prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
+                        &sqrt(h_H_11(:,kd))*q_saf_E_full(kd,1)/&
+                        &q_saf_E_full(kd,0)
+                    prop_B_tor(1:nchi,kd-lim_r(1)+1,2) = chi_H
+                    do id = 1,nchi-2
+                        prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
+                            &sqrt(h_H_11(nchi-id,kd))*q_saf_E_full(kd,1)/&
+                            &q_saf_E_full(kd,0)
+                        prop_B_tor(nchi+id,kd-lim_r(1)+1,2) = &
+                            &2*pi-chi_H(nchi-id)
+                    end do
+                else
+                    prop_B_tor(:,kd-lim_r(1)+1,1) = &
+                        &sqrt(h_H_11(1:nchi_2pi-1,kd))*q_saf_E_full(kd,1)/&
+                        &q_saf_E_full(kd,0)
+                    prop_B_tor(:,kd-lim_r(1)+1,2) = chi_H(1:nchi_2pi-1)
+                end if
+                prop_B_tor(:,kd-lim_r(1)+1,3) = &
+                    &flux_p_H(kd)/flux_p_H(n_r_eq)
+            end do
+            call lvl_ud(-1)
+            
+            call writo('D1B |nabla psi|: ')
+            call lvl_ud(1)
+            file_name = 'prop_B_tor_2D'
+            call print_ex_2D([trim(file_name)],trim(file_name),&
+                &transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
+                &shape(transpose(prop_B_tor(:,:,1))))),&
+                &x=transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2))-2*pi,&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
+                &shape(transpose(prop_B_tor(:,:,2))))),&
+                &draw=.false.)
+            call draw_ex([trim(file_name)],trim(file_name),&
+                &size(prop_B_tor,2),1,.false.)
+            file_name = 'prop_B_tor_3D'
+            call print_ex_3D(trim(file_name),trim(file_name),&
+                &transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
+                &shape(transpose(prop_B_tor(:,:,1))))),&
+                &x=transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2))-2*pi,&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
+                &shape(transpose(prop_B_tor(:,:,2))))),&
+                &y=transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,3)),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,3))],&
+                &shape(transpose(prop_B_tor(:,:,3))))),&
+                &draw=.false.)
+            call draw_ex([trim(file_name)],trim(file_name),1,2,.false.)
+            call lvl_ud(-1)
+        end subroutine calc_prop_B_tor
     end function calc_eq_1
     integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
         use num_vars, only: eq_style
@@ -1377,7 +1519,7 @@ contains
                 if (ltest) then
                     call writo('Test consistency of metric factors?')
                     if(get_log(.false.,ind=.true.)) then
-                        ierr = test_metrics_H(grid_eq%n(3))
+                        ierr = test_metrics_H()
                         CHCKERR('')
                         call pause_prog(ind=.true.)
                     end if

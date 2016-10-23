@@ -127,7 +127,7 @@ contains
         ! write to output file
         write(file_i,'(1X,A)',IOSTAT=istat) &
             &'# '//trim(merge_strings(var_names))//':'
-        write_format='('//trim(i2str(2*nplt))//'ES23.16)'
+        write_format="("//trim(i2str(nplt*2))//"(ES23.16,' '))"
         do ipnt = 1,npnt
             write(file_i,FMT=trim(write_format),IOSTAT=istat) &
                 &(x_fin(ipnt,iplt), iplt = 1,nplt), &
@@ -280,7 +280,7 @@ contains
         ! write to output file
         write(file_i,'(A)',IOSTAT=istat) &
             &'# '//trim(merge_strings(var_names))//':'
-        write_format='('//trim(i2str(3*nplt))//'ES23.16)'
+        write_format="("//trim(i2str(nplt*3))//"(ES23.16,' '))"
         do ipntx = 1,npntx
             do ipnty = 1,npnty
                 write(file_i,FMT=trim(write_format),IOSTAT=istat) &
@@ -519,8 +519,9 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) 'set grid'
             write(cmd_i,"(A)",IOSTAT=istat) 'set border 4095 front linetype -1 &
                 &linewidth 1.0'
-            write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt'
-            if (.not.plot_on_screen) then
+            if (plot_on_screen) then
+                write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt'
+            else
                 write(cmd_i,"(A)",IOSTAT=istat) 'set terminal pdf size '//&
                     &trim(i2str(plot_size(1)))//','//trim(i2str(plot_size(2)))
                 write(cmd_i,"(A)",IOSTAT=istat) 'set output "'//&
@@ -548,33 +549,48 @@ contains
                 case (1)                                                        ! 2D
                     write(cmd_i,"(A)",IOSTAT=istat) 'plot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
-                            &'/'//trim(data_name_loc)//'.dat" using '//&
-                            &trim(i2str(iplt))//':'//&
+                        write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
+                            &' "'//trim(data_dir)//'/'//trim(data_name_loc)//&
+                            &'.dat" using '//trim(i2str(iplt))//':'//&
                             &trim(i2str(nplt+iplt))//' title "'//&
                             &trim(var_names_loc(iplt))//'" '//&
-                            &trim(loc_draw_op())//', \'
+                            &trim(loc_draw_op())
+                        if (iplt.eq.nplt) then
+                            write(cmd_i,"(A)",IOSTAT=istat) ''
+                        else
+                            write(cmd_i,"(A)",IOSTAT=istat) ', \'
+                        end if
                     end do
                 case (2)                                                        ! 3D
                     write(cmd_i,"(A)",IOSTAT=istat) 'splot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
-                            &'/'//trim(data_name_loc)//&
+                        write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
+                            &' "'//trim(data_dir)//'/'//trim(data_name_loc)//&
                             &'.dat" using '//trim(i2str(iplt))//':'//&
                             &trim(i2str(nplt+iplt))//':'//&
                             &trim(i2str(2*nplt+iplt))//' title "'//&
                             &trim(var_names_loc(iplt))//&
-                            &'" '//trim(loc_draw_op())//', \'
+                            &'" '//trim(loc_draw_op())
+                        if (iplt.eq.nplt) then
+                            write(cmd_i,"(A)",IOSTAT=istat) ''
+                        else
+                            write(cmd_i,"(A)",IOSTAT=istat) ', \'
+                        end if
                     end do
                 case (3)                                                        ! 2D slices in 3D
                     write(cmd_i,"(A)",IOSTAT=istat) 'splot \'
                     do iplt = 1,nplt
-                        write(cmd_i,"(A)",IOSTAT=istat) ' "'//trim(data_dir)//&
-                            &'/'//trim(data_name_loc)//'.dat" using ('//&
-                            &trim(i2str(iplt))//'):'//trim(i2str(iplt))//&
-                            &':'//trim(i2str(nplt+iplt))//' title "'//&
-                            &trim(var_names_loc(iplt))//'" '//&
-                            &trim(loc_draw_op())//', \'
+                        write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
+                            &' "'//trim(data_dir)//'/'//trim(data_name_loc)//&
+                            &'.dat" using ('//trim(i2str(iplt))//'):'//&
+                            &trim(i2str(iplt))//':'//trim(i2str(nplt+iplt))//&
+                            &' title "'//trim(var_names_loc(iplt))//'" '//&
+                            &trim(loc_draw_op())
+                        if (iplt.eq.nplt) then
+                            write(cmd_i,"(A)",IOSTAT=istat) ''
+                        else
+                            write(cmd_i,"(A)",IOSTAT=istat) ', \'
+                        end if
                     end do
                 case default
                     call writo('No draw_dim associated with '//&

@@ -221,10 +221,13 @@ contains
         CHCKERR('')
         call norm_deriv_data%dealloc()
         
-        !!!! To plot the cross-section
-        !!!call print_ex_2D('cross_section','cross_section',Z_H,x=R_H,draw=.false.)
-        !!!call draw_ex('cross_section','cross_section','cross_section',n_r_in,1,&
-            !!!&.false.)
+        !!! To plot the cross-section
+        !!call print_ex_2D(['cross_section'],'cross_section',Z_H,x=R_H,&
+            !!&draw=.false.)
+        !!call draw_ex(['cross_section'],'cross_section',n_r_in,1,.false.)
+        !!call print_ex_2D(['cross_section_inv'],'cross_section_inv',&
+            !!&transpose(Z_H),x=transpose(R_H),draw=.false.)
+        !!call draw_ex(['cross_section_inv'],'cross_section_inv',nchi,1,.false.)
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
@@ -1105,15 +1108,14 @@ contains
     !   |nabla phi|^2           = 1/R^2
     ! with jac = dZ/dpsi dR/dchi - dR/dpsi dZ/dchi
     ! Also, test whether the pressure balance is satisfied.
-    integer function test_metrics_H(n_r) result(ierr)
+    integer function test_metrics_H() result(ierr)
         use num_vars, only: rank, norm_disc_prec_eq
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use grid_utilities, only: setup_deriv_data, apply_disc, nufft
         use output_ops, only: plot_diff_HDF5
+        use input_utilities, only: get_int
+        use grid_vars, only: n_r_eq
         
         character(*), parameter :: rout_name = 'test_metrics_H'
-        
-        ! input / output
-        integer, intent(inout) :: n_r                                           ! nr. of normal points in equilibrium grid
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -1141,9 +1143,9 @@ contains
             
             ! calculate  the  auxiliary quantities  Zchi,  zpsi,  Rchi and  Rpsi
             ! containing the derivatives as well as jac
-            allocate(Rchi(nchi,n_r),Rpsi(nchi,n_r))
-            allocate(Zchi(nchi,n_r),Zpsi(nchi,n_r))
-            allocate(jac(nchi,n_r))
+            allocate(Rchi(nchi,n_r_eq),Rpsi(nchi,n_r_eq))
+            allocate(Zchi(nchi,n_r_eq),Zpsi(nchi,n_r_eq))
+            allocate(jac(nchi,n_r_eq))
             
             ! calculate derivatives
             ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data,1,&
@@ -1164,8 +1166,8 @@ contains
             jac = Zchi*Rpsi - Zpsi*Rchi 
             
             ! calculate Jacobian differently
-            allocate(jac_alt(nchi,n_r))
-            do kd = 1,n_r
+            allocate(jac_alt(nchi,n_r_eq))
+            do kd = 1,n_r_eq
                 jac_alt(:,kd) = qs_H(kd)/(h_H_33(:,kd)*RBphi_H(kd))
             end do
             
@@ -1175,15 +1177,16 @@ contains
             description = 'Testing whether the HELENA Jacobian is consistent.'
             
             ! plot difference
-            call plot_diff_HDF5(reshape(R_H(:,r_min:n_r)*jac(:,r_min:n_r),&
-                &[nchi,1,n_r-r_min+1]),reshape(jac_alt(:,r_min:n_r),&
-                &[nchi,1,n_r-r_min+1]),file_name,description=description,&
+            call plot_diff_HDF5(&
+                &reshape(R_H(:,r_min:n_r_eq)*jac(:,r_min:n_r_eq),&
+                &[nchi,1,n_r_eq-r_min+1]),reshape(jac_alt(:,r_min:n_r_eq),&
+                &[nchi,1,n_r_eq-r_min+1]),file_name,description=description,&
                 &output_message=.true.)
             
             ! calculate the metric factors directly
-            allocate(h_H_11_alt(nchi,1,n_r))
-            allocate(h_H_12_alt(nchi,1,n_r))
-            allocate(h_H_33_alt(nchi,1,n_r))
+            allocate(h_H_11_alt(nchi,1,n_r_eq))
+            allocate(h_H_12_alt(nchi,1,n_r_eq))
+            allocate(h_H_33_alt(nchi,1,n_r_eq))
             
             h_H_11_alt(:,1,:) = 1._dp/(jac**2) * (Zchi**2 + Rchi**2)
             h_H_12_alt(:,1,:) = -1._dp/(jac**2) * (Zchi*Zpsi + Rchi*Rpsi)
@@ -1196,8 +1199,8 @@ contains
                 &consistent.'
             
             ! plot difference
-            call plot_diff_HDF5(h_H_11_alt(:,:,r_min:n_r),&
-                &reshape(h_H_11(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+            call plot_diff_HDF5(h_H_11_alt(:,:,r_min:n_r_eq),&
+                &reshape(h_H_11(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
             
             ! output h_H_12
@@ -1207,8 +1210,8 @@ contains
                 &consistent.'
             
             ! plot difference
-            call plot_diff_HDF5(h_H_12_alt(:,:,r_min:n_r),&
-                &reshape(h_H_12(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+            call plot_diff_HDF5(h_H_12_alt(:,:,r_min:n_r_eq),&
+                &reshape(h_H_12(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
             
             ! output h_H_33
@@ -1218,8 +1221,8 @@ contains
                 &consistent.'
             
             ! plot difference
-            call plot_diff_HDF5(h_H_33_alt(:,:,r_min:n_r),&
-                &reshape(h_H_33(:,r_min:n_r),[nchi,1,n_r-r_min+1]),&
+            call plot_diff_HDF5(h_H_33_alt(:,:,r_min:n_r_eq),&
+                &reshape(h_H_33(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
                 &file_name,description=description,output_message=.true.)
             
             ! user output
@@ -1235,7 +1238,7 @@ contains
             !   2: D1 p ,
             !   3: D1 (q/F h_11) ,
             !   4: D2 (q/F h_12) .
-            allocate(tempvar(nchi,1,n_r,4))
+            allocate(tempvar(nchi,1,n_r_eq,4))
             ierr = apply_disc(RBphi_H,norm_deriv_data,tempvar(1,1,:,1))
             CHCKERR('')
             ierr = apply_disc(pres_H,norm_deriv_data,tempvar(1,1,:,2))
@@ -1246,7 +1249,7 @@ contains
                     &tempvar(id,1,:,3))
                 CHCKERR('')
             end do
-            do kd = 1,n_r
+            do kd = 1,n_r_eq
                 ierr = apply_disc(qs_H(kd)/RBphi_H(kd)*h_H_12(:,kd),&
                     &ang_deriv_data,tempvar(:,1,kd,4))
                 CHCKERR('')
@@ -1254,7 +1257,7 @@ contains
             
             ! calculate pressure  balance in tempvar(1)
             !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
-            do kd = 1,n_r
+            do kd = 1,n_r_eq
                 tempvar(:,1,kd,1) = -RBphi_H(kd)*h_H_33(:,kd)/qs_H(kd) * &
                     &(tempvar(:,1,kd,1)*qs_H(kd) + tempvar(:,1,kd,3) + &
                     &tempvar(:,1,kd,4))

@@ -581,3 +581,11 @@ CHANGELOG
       - "--minim_output" is set by the run script by default. Remove it in "run_PB3D.sh" if you don't want this.
       - stellinstall is now configured for 1. XPS-L501X, 2. ITER.
       - Updated run scripts and bundled everything into 'run.sh'.
+
+1.40: - Fixed bug in output routines where no spaces were left in output data files.
+      - Fixed bug in run script variable substitution where min_r_sol was replaced instead of n_r_sol.
+      - Add global multiplication factor to HELENA modification and export.
+      - Changed the run script slightly.
+      - NUFFT now happens in "grid_utilities".
+      - The routine HELENA export now also plots the approximate proportionality constant between the toroidal field ripple and the plasma displacement, as well as the corresponding Fourier series.
+      - HELENA export now also is able to automatically use this for the edge modification shape.

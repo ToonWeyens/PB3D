@@ -402,7 +402,8 @@ contains
                     jump_to_sol = .true.
                 case (10)                                                       ! export HELENA
                     if (eq_style.eq.2) then
-                        call writo('option export_HEL chosen')
+                        call writo('option export_HEL chosen: Exporting to &
+                            &VMEC')
                         export_HEL = .true.
                     else
                         call writo('Can only use export_HEL with HELENA',&

@@ -14,7 +14,7 @@ module grid_utilities
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
         &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc, calc_n_par_X_rich
+        &setup_interp_data, apply_disc, calc_n_par_X_rich, nufft
 #if ldebug
     public debug_calc_int_vol, debug_setup_interp_data
 #endif
@@ -2060,4 +2060,89 @@ contains
             end if
         end if
     end function calc_n_par_X_rich
+    
+    ! calculates the  cosine and sine  mode numbers of  a function defined  on a
+    ! non-regular grid.
+    ! If a plot name is provided, the modes are plotted.
+    ! Note that the fundamental interval is  assumed to be 0..2pi but that there
+    ! should be no overlap between the first and last point.
+    integer function nufft(x,f,f_F,plot_name) result(ierr)
+        character(*), parameter :: rout_name = 'nufft'
+        
+        ! input / output
+        real(dp), intent(in) :: x(:)                                            ! coordinate values
+        real(dp), intent(in) :: f(:)                                            ! function values
+        real(dp), intent(inout), allocatable :: f_F(:,:)                        ! Fourier modes for cos and sin
+        character(len=*), intent(in), optional :: plot_name                     ! name of possible plot
+        
+        ! local variables
+        integer :: m_F                                                          ! nr. of modes
+        integer :: n_x                                                          ! nr. of points
+        integer :: interp_ord = 4                                               ! order of interpolation
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: work(:)                                        ! work array
+        real(dp), allocatable :: f_loc(:)                                       ! local copy of f
+        type(disc_type) :: trigon_interp_data                                   ! data for non-equidistant sampling fourier coefficients
+        character(len=max_str_ln) :: plot_title(2)                              ! name of plot
+        logical :: print_log = .false.                                          ! print log plot as well
+        
+        ! tests
+        if (size(x).ne.size(f)) then
+            ierr = 1
+            CHCKERR('x and f must have same size')
+        end if
+        
+        ! set local f and interpolate
+        n_x = size(x)
+        allocate(f_loc(n_x))
+        ierr = setup_interp_data([x,2*pi],[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
+            &trigon_interp_data,interp_ord)
+        ierr = apply_disc([f,f(1)],trigon_interp_data,f_loc)
+        CHCKERR('')
+        call trigon_interp_data%dealloc()
+        
+        !!do id = 1,n_x
+            !!f_loc(id) = -4._dp+&
+                !!&3*cos((id-1._dp)/n_x*2*pi*1)+&
+                !!&0.5*cos((id-1._dp)/n_x*2*pi*100)+&
+                !!&1.5*cos((id-1._dp)/n_x*2*pi*101)+&
+                !!&4*sin((id-1._dp)/n_x*2*pi*1)+&
+                !!&2*sin((id-1._dp)/n_x*2*pi*50)+&
+                !!&4.5*sin((id-1._dp)/n_x*2*pi*55)
+        !!end do
+        
+        ! set up variables for fft
+        m_F = (n_x-1)/2                                                         ! nr. of modes
+        allocate(work(3*n_x+15))                                                ! from fftpack manual
+        
+        ! calculate fft
+        call dffti(n_x,work)
+        call dfftf(n_x,f_loc,work)
+        deallocate(work)
+        
+        ! rescale
+        f_loc(:) = f_loc(:)*2/n_x
+        f_loc(1) = f_loc(1)/2
+        
+        ! separate cos and sine
+        if (allocated(f_F)) deallocate(f_F)
+        allocate(f_F(m_F+1,2))
+        f_F(1,1) = f_loc(1)
+        f_F(1,2) = 0._dp
+        f_F(2:m_F+1,1) = f_loc(2:2*m_F:2)
+        f_F(2:m_F+1,2) = -f_loc(3:2*m_F+1:2)                                    ! routine returns - sine factors
+        
+        ! output in plot if requested
+        if (present(plot_name)) then
+            plot_title = ['cos','sin']
+            call print_ex_2D(plot_title,plot_name,f_F,draw=.false.)
+            call draw_ex(plot_title,plot_name,2,1,.false.)
+            if (print_log) then
+                plot_title = ['cos [log]','sin [log]']
+                call print_ex_2D(plot_title,trim(plot_name)//'_log',&
+                    &log10(abs(f_F)),draw=.false.)
+                call draw_ex(plot_title,trim(plot_name)//'_log',2,1,.false.)
+            end if
+        end if
+    end function nufft
 end module grid_utilities

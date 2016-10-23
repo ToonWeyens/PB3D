@@ -11,6 +11,7 @@
     POST_style              = 1
     slab_plots              = .false.
     ex_plot_style           = 2
+    PB3D_rich_lvl           = 2
 /
     PB3D_rich_lvl           = 1
     min_zeta_plot           = 0.0

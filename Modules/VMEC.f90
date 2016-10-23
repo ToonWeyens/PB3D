@@ -253,6 +253,16 @@ contains
             CHCKERR('')
         end do
         
+        !!! to check decay of modes
+        !!call print_ex_2D(['B_V_c'],'',log10(abs(B_V_c)))
+        !!call print_ex_2D(['B_V_s'],'',log10(abs(B_V_s)))
+        !!call print_ex_2D(['R_V_c'],'',log10(abs(R_V_c(:,:,0))))
+        !!call print_ex_2D(['R_V_s'],'',log10(abs(R_V_s(:,:,0))))
+        !!call print_ex_2D(['Z_V_c'],'',log10(abs(Z_V_c(:,:,0))))
+        !!call print_ex_2D(['Z_V_s'],'',log10(abs(Z_V_s(:,:,0))))
+        !!call print_ex_2D(['L_V_c'],'',log10(abs(L_V_c(:,:,0))))
+        !!call print_ex_2D(['L_V_s'],'',log10(abs(L_V_s(:,:,0))))
+        
         ! deallocate helper variables
         deallocate(B_V_sub_c_M,B_V_sub_s_M)
         deallocate(B_V_c_H,B_V_s_H)

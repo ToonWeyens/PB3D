@@ -36,11 +36,14 @@ main() {
 
     # Set parameters: input_name, eq_name
     set_input $1
+    
+    # set base
+    base=$(pwd)
 
     # loop over all inputs
     # (from http://www.cyberciti.biz/faq/unix-linux-iterate-over-a-variable-range-of-numbers-in-bash/)
     for (( input_i=1; input_i<=$n_inputs; input_i++ )); do
-        # setup output name and base directory
+        # setup output name
         case $prog_ID in
             1)  # PB3D
                 set_output $(date +"%Y-%m-%d-%H-%M-%S")
@@ -50,37 +53,31 @@ main() {
             ;;
         esac
         
-        # set base
-        base=$(pwd)
-        
         # set variables
-        # Note  about input_full_loc:  The  input file  is potentially  modified
-        # before use. On a server, the  modified copy is therefore copied to the
-        # output folder on the input node (the current node), so that the PBS or
-        # SLURM run script  can then copy it  from there to the  local folder on
-        # the computational node. After finishing the simulations, everything is
-        # then copied to the input node.
-        # When running  on a normal computer,  the modified copy is  left in the
-        # folder from which this script is  called, where it is afterwards moved
-        # from by the run script.
+        # Note  about difference  between out_full  and out_full_loc:  The input
+        # file  is potentially  modified before  use. This  happens in  the base
+        # folder. Afterwards, the run directory  is created on the local system,
+        # and this  modified input file is  copied there. On a  normal computer,
+        # this is also  where the simulations are done. On  server, however, the
+        # actual  computation happens  in  another folder  on the  computational
+        # node, and afterwards everything is copied back to the local node
         case $machine_ID in
             1)  # XPS-L501X
                 nr_procs=$2                                                     # take nr_procs from input
                 out_full=$base/$out                                             # use subdirectory
-                input_full_loc=$base/$input_name"_loc"                          # full local path of input file before starting simulations
             ;;
             2)  # ITER
                 n_nodes=1                                                       # use one node
-                n_cores=4                                                       # 4 cores per node
+                n_cores=8                                                       # 8 cores per node
                 nr_procs=$(( n_cores < $2 ? n_cores : $2 ))                     # take nr_procs from input, limited by number of cores
                 memory_factor=2                                                 # safety factor for requesting memory (needs to be integer)
-                max_tot_mem=16000                                               # every core has 4GB, using 4
+                max_tot_mem=30000                                               # every core has 4GB, using 8, with some margin
                 mem_unit='mb'                                                   # MB
                 out_full=/tmp/$out                                              # use temporary directory in local node
-                out_full_loc=$base/$out                                         # afterwards copy to this directory
-                input_full_loc=$out_full_loc/$input_name                        # full local path of input file before starting simulations
             ;;
         esac
+        
+        out_full_loc=$base/$out                                                 # afterwards copy to this directory
         
         # save other options
         other_opts=${@:3}
@@ -89,9 +86,18 @@ main() {
         echo -e "work directory:    $out_full/"
         echo -e ""
         
+        # create local directory
+        mkdir -p $out_full_loc || {
+            # failure
+            echo "ERROR: unable to create directory $out_full_loc/"
+            echo "Do you have the correct permissions?"
+            echo ""
+            exit 1
+        }
+        
         # possibly modify copy of input file
-        cp $input_name $input_name"_loc"
-        modify_input_file $input_name"_loc"
+        cp $input_name $out_full_loc/$input_name
+        modify_input_file $out_full_loc/$input_name
         
         # set up local simulation script
         create_loc_script
@@ -111,29 +117,13 @@ main() {
             echo -e "    setting up part 1"
             setup_pbs_script_1
             
-            # create directory for output and errors
-            mkdir -p $out_full_loc || {
-                # failure
-                echo "ERROR: unable to create directory $out_full_loc/"
-                echo "Do you have the correct permissions?"
-                echo ""
-                exit 1
-            }
-            
-            # move input file
-            mv $input_name"_loc" $input_full_loc
-            
-            # set up second part of pbs script
-            echo -e "    setting up part 2"
-            setup_pbs_script_2
-            
             # add local execution script to pbs script
             echo -e "    including '${prog_name}_loc.sh'"
             cat $prog_name"_loc.sh" >> $prog_name".pbs"
             
             # set up last part of pbs script
-            echo -e "    setting up part 3"
-            setup_pbs_script_3
+            echo -e "    setting up part 2"
+            setup_pbs_script_2
             
             # mv pbs script to output
             mv $prog_name".pbs" $out_full_loc/
@@ -145,6 +135,9 @@ main() {
             
             # submit
             qsub $out_full_loc/$prog_name."pbs"
+            
+            # write detailed job information
+            qstat -f $(qselect -u weyenst | tail -n 1) > $out_full_loc/qstat
         else
             # user output
             echo -e "Running the script"
@@ -157,6 +150,9 @@ main() {
         # remove files
         rm $base/$prog_name"_loc.sh"
     done
+    
+    # possibly copy input modification array to base
+    [[ $use_input_mods = true ]] && cp $base/$input_mod_file $base/$out_base/array_input
     
     # finish
     echo -e "Finished"
@@ -241,6 +237,8 @@ display_usage() {
         1)  # PB3D
             echo -e "    CASE:       1 cbm18a"
             echo -e "                2 cbm18a_HELENA"
+            echo -e "                3 cbm18a_small"
+            echo -e "                4 cbm18a_small_HELENA"
             echo -e ""
             echo -e "               11 cbm18a_ripple_1"
             echo -e "               12 cbm18a_ripple_2"
@@ -271,11 +269,34 @@ display_usage() {
             echo -e "               54 Hmode_ped0.6_HELENA"
             echo -e "               55 Hmode_ped0.5"
             echo -e "               56 Hmode_ped0.5_HELENA"
+            echo -e "               57 Hmode_ped0.4"
+            echo -e "               58 Hmode_ped0.4_HELENA"
+            echo -e "               59 Hmode_ped0.3"
+            echo -e "               60 Hmode_ped0.3_HELENA"
             echo -e ""
-            echo -e "               61 Hmode_ped1.0_ripple16_0.5"
-            echo -e "               62 Hmode_ped1.0_ripple16_1.0"
-            echo -e "               63 Hmode_ped1.0_ripple16_1.5"
-            echo -e "               64 Hmode_ped1.0_ripple16_2.0"
+            echo -e "               61 Hmode_ped1.5_0.91"
+            echo -e "               62 Hmode_ped1.5_0.91_HELENA"
+            echo -e "               63 Hmode_ped1.5_0.92"
+            echo -e "               64 Hmode_ped1.5_0.92_HELENA"
+            echo -e "               65 Hmode_ped1.5_0.93"
+            echo -e "               66 Hmode_ped1.5_0.93_HELENA"
+            echo -e "               67 Hmode_ped1.5_0.94"
+            echo -e "               68 Hmode_ped1.5_0.94_HELENA"
+            echo -e "               69 Hmode_ped1.5_0.95"
+            echo -e "               70 Hmode_ped1.5_0.95_HELENA"
+            echo -e "               71 Hmode_ped1.5_0.96"
+            echo -e "               72 Hmode_ped1.5_0.96_HELENA"
+            echo -e "               73 Hmode_ped1.5_0.97"
+            echo -e "               74 Hmode_ped1.5_0.97_HELENA"
+            echo -e "               75 Hmode_ped1.5_0.98"
+            echo -e "               76 Hmode_ped1.5_0.98_HELENA"
+            echo -e "               77 Hmode_ped1.5_0.99"
+            echo -e "               78 Hmode_ped1.5_0.99_HELENA"
+            echo -e ""
+            for ((i=131; i <= 180 ; i++)); do
+                echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
+                (( $((($i-101)%10+1)) == 10 )) && echo -e ""
+            done
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -349,7 +370,8 @@ catch_options() {
                     1)  # PB3D
                         use_input_mods=true
                         n_opt_args=$((n_opt_args+2))                            # 2 arguments
-                        IFS=$'\n' input_mods=($(grep "^[^#;]" "${OPTARG%/}"))
+                        input_mod_file=${OPTARG%/}
+                        IFS=$'\n' input_mods=($(grep "^[^#;]" "$input_mod_file"))
                         n_inputs=${#input_mods[@]}
                         echo -e "Using $n_inputs input file modification(s)"
                         echo -e ""
@@ -389,10 +411,10 @@ set_input() {
     case $prog_ID in
         1)  # PB3D
             case $1 in
-                1|2)
+                [1-4])
                     input_name=cbm18a
                 ;;
-                11|12|13|14|15|16|17|18)
+                1[1-8])
                     input_name=cbm18a_ripple
                 ;;
                 21)
@@ -401,8 +423,11 @@ set_input() {
                 31)
                     input_name=qps
                 ;;
-                41|42|43|44|45|46|47|48|49|50|51|52|53|54|55|56|61|62|63|64)
+                4[1-9]|5[0-9]|6[0-9]|7[0-8])
                     input_name=Hmode
+                ;;
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
+                    input_name=Hmode_ripple
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -418,6 +443,12 @@ set_input() {
                 ;;
                 2)
                     eq_name=cbm18a
+                ;;
+                3)
+                    eq_name=wout_cbm18a_small.nc
+                ;;
+                4)
+                    eq_name=cbm18a_small
                 ;;
                 11)
                     eq_name=wout_cbm18a_ripple.nc
@@ -497,17 +528,74 @@ set_input() {
                 56)
                     eq_name=Hmode_ped0.5
                 ;;
+                57)
+                    eq_name=wout_Hmode_ped0.4.nc
+                ;;
+                58)
+                    eq_name=Hmode_ped0.4
+                ;;
+                59)
+                    eq_name=wout_Hmode_ped0.3.nc
+                ;;
+                60)
+                    eq_name=Hmode_ped0.3
+                ;;
                 61)
-                    eq_name=wout_Hmode_ped1.0_ripple16_0.5.nc
+                    eq_name=wout_Hmode_ped1.5_0.91.nc
                 ;;
                 62)
-                    eq_name=wout_Hmode_ped1.0_ripple16_1.0.nc
+                    eq_name=Hmode_ped1.5_0.91
                 ;;
                 63)
-                    eq_name=wout_Hmode_ped1.0_ripple16_1.5.nc
+                    eq_name=wout_Hmode_ped1.5_0.92.nc
                 ;;
                 64)
-                    eq_name=wout_Hmode_ped1.0_ripple16_2.0.nc
+                    eq_name=Hmode_ped1.5_0.92
+                ;;
+                65)
+                    eq_name=wout_Hmode_ped1.5_0.93.nc
+                ;;
+                66)
+                    eq_name=Hmode_ped1.5_0.93
+                ;;
+                67)
+                    eq_name=wout_Hmode_ped1.5_0.94.nc
+                ;;
+                68)
+                    eq_name=Hmode_ped1.5_0.94
+                ;;
+                69)
+                    eq_name=wout_Hmode_ped1.5_0.95.nc
+                ;;
+                70)
+                    eq_name=Hmode_ped1.5_0.95
+                ;;
+                71)
+                    eq_name=wout_Hmode_ped1.5_0.96.nc
+                ;;
+                72)
+                    eq_name=Hmode_ped1.5_0.96
+                ;;
+                73)
+                    eq_name=wout_Hmode_ped1.5_0.97.nc
+                ;;
+                74)
+                    eq_name=Hmode_ped1.5_0.97
+                ;;
+                75)
+                    eq_name=wout_Hmode_ped1.5_0.98.nc
+                ;;
+                76)
+                    eq_name=Hmode_ped1.5_0.98
+                ;;
+                77)
+                    eq_name=wout_Hmode_ped1.5_0.99.nc
+                ;;
+                78)
+                    eq_name=Hmode_ped1.5_0.99
+                ;;
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
+                    eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -546,16 +634,21 @@ set_input() {
 
 # Setup output name
 # input: default directory of output
-# sets: out
+# sets: out_base
+#       out
 # Note: if the -i option is used, subfolder are created for every line of the input modification file.
 set_output() {
     [[ $# -ne 1 ]] && err_arg 1
     if [[ $use_out_loc = true ]]; then
-        out=$out_loc
+        out_base=$out_loc
     else
-        out=$1
+        out_base=$1
     fi
-    [[ $use_input_mods = true ]] && out=$out/$input_i
+    if [[ $use_input_mods = true ]]; then
+        out=$out_base/$input_i
+    else
+        out=$out_base
+    fi
 }
 
 # modify input file if requested
@@ -591,7 +684,7 @@ modify_input_file() {
 change_input_var() {
     [[ $# -ne 3 ]] && err_arg 3
     # find the line of var
-    var_line=$(grep -nr -m 1 $2 $1)
+    var_line=$(grep -E -nr -m 1 "(^| )$2" $1)
     # find the line number of var
     var_line_nr=$(echo $var_line | cut -d : -f 1)
     # replace whole line by new line
@@ -618,10 +711,12 @@ create_loc_script() {
             exit 1
         }
         
-        # Move/copy inputs and the program
-        mv $input_full_loc \$out_full/$input_name 2> /dev/null
+        # copy inputs and the program
+        cp $out_full_loc/$input_name \$out_full/ 2> /dev/null
+        cp $out_full_loc/${prog_name}_out.h5 \$out_full/ 2> /dev/null
+        cp $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
         $(aux_copy_inputs)
-        cp \$base/../$prog_name \$out_full
+        cp \$base/../$prog_name \$out_full/
         chmod +x \$out_full/$prog_name
         
         # go to run directory
@@ -663,7 +758,7 @@ init_MPI_command() {
 aux_copy_inputs() {
     case $prog_ID in
         1)  # PB3D
-            echo "cp \$base/$eq_name \$out_full"
+            echo "cp \$base/$eq_name \$out_full/"
         ;;
         2)  # POST
             echo "cp $base/$PB3D_out_full $out_full/ 2> /dev/null"
@@ -686,7 +781,7 @@ setup_pbs_script_1() {
         #PBS -q batch
         #PBS -l vmem=$max_tot_mem$mem_unit
         #PBS -l mem=$max_tot_mem$mem_unit
-        #PBS -l walltime=04:00:00
+        #PBS -l walltime=12:00:00
         #PBS -m a
         #PBS -M toon.weyens@gmail.com
         
@@ -699,6 +794,7 @@ setup_pbs_script_1() {
         echo "    name              \$PBS_JOBNAME"
         echo "    environment       \$PBS_ENVIRONMENT"
         echo "    nodefile          \$PBS_NODEFILE"
+        echo "    nodes             \$(cat \$PBS_NODEFILE | paste -sd ',' -)"
         echo "    array ID          \$PBS_ARRAYID"
         echo "    procs             \$PBS_NP"
         echo "    queue             \$PBS_QUEUE"
@@ -709,6 +805,12 @@ setup_pbs_script_1() {
         echo "    login name        \$PBS_O_LOGNAME"
         echo "    home              \$PBS_O_HOME"
         echo "" 
+        
+        # set local output and error and create symbolic links
+        loc_out=\$PBS_O_HOME/$(echo $out | tr '/' '_').o\$(echo \$PBS_JOBID | cut -d'.' -f 1)
+        loc_err=\$PBS_O_HOME/$(echo $out | tr '/' '_').e\$(echo \$PBS_JOBID | cut -d'.' -f 1)
+        ln -sf \$loc_out $out_full_loc/$prog_name.out
+        ln -sf \$loc_err $out_full_loc/$prog_name.err
 END
     # cut 8 leading whitespaces and make executable
     sed -i 's/^.\{8\}//' $prog_name".pbs"
@@ -719,29 +821,18 @@ END
 # sets: PB3D:   PB3D.pbs
 #       POST:   POST.pbs
 setup_pbs_script_2() {
-    # add commands to create symbolic link to output in base
-    echo "" >> $prog_name".pbs"
-    echo "# set local output and error and create symbolic links" >> $prog_name".pbs"
-    echo "loc_out=\$PBS_O_HOME/$(echo $out | tr '/' '_').o\$(echo \$PBS_JOBID | cut -d'.' -f 1)" >> $prog_name".pbs"
-    echo "loc_err=\$PBS_O_HOME/$(echo $out | tr '/' '_').e\$(echo \$PBS_JOBID | cut -d'.' -f 1)" >> $prog_name".pbs"
-    echo "ln -sf \$loc_out $out_full_loc/$prog_name.out" >> $prog_name".pbs"
-    echo "ln -sf \$loc_err $out_full_loc/$prog_name.err" >> $prog_name".pbs"
-}
-
-# setup third part of  pbs script
-# sets: PB3D:   PB3D.pbs
-#       POST:   POST.pbs
-setup_pbs_script_3() {
     # add commands to move output after finishing
     echo "" >> $prog_name".pbs"
     echo "# Done, copy files back with rsync" >> $prog_name".pbs"
     echo "echo '# Copy results with rsync'" >> $prog_name".pbs"
+    echo "find $out_full/ -name '*temp.h5' | xargs rm -f" >> $prog_name".pbs"
     echo "cd $out_full_loc" >> $prog_name".pbs"
-    echo "rsync -zvhr $out_full/* $out_full_loc/" >> $prog_name".pbs"
+    echo "rsync --remove-source-files --exclude='PB3D_out.h5' -zvhr $out_full/* ." >> $prog_name".pbs"
+    echo "rsync --remove-source-files -zvhr $out_full/* ." >> $prog_name".pbs"
     echo "rm -r $out_full" >> $prog_name".pbs"
-    echo "mv \$loc_out $out_full_loc/$prog_name.out" >> $prog_name".pbs"
-    echo "mv \$loc_err $out_full_loc/$prog_name.err" >> $prog_name".pbs"
-    echo "[[ -s $out_full_loc/$prog_name.err ]] || rm $out_full_loc/$prog_name.err" >> $prog_name".pbs"
+    echo "mv \$loc_out $prog_name.out" >> $prog_name".pbs"
+    echo "mv \$loc_err $prog_name.err" >> $prog_name".pbs"
+    echo "[[ -s $prog_name.err ]] || rm $prog_name.err" >> $prog_name".pbs"
     
     # terminate pbs script
     echo "" >> $prog_name".pbs"

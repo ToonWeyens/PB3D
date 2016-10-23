@@ -1533,6 +1533,12 @@ contains
             max_n_EV = n_sol_requested
         end if
         
+        ! check whether solutions found
+        if (max_n_EV.le.0) then
+            ierr = 1
+            CHCKERR('No solutions found')
+        end if
+        
         call lvl_ud(-1)
     end function summarize_solution
     
@@ -1739,7 +1745,7 @@ contains
             
 #if ldebug
             if (EV_err_str.eq.'') then
-                call EPSGetErrorEstimate(solver,id_tot-1,error_est)             ! get error estimate
+                call EPSGetErrorEstimate(solver,id_tot-1,error_est,ierr)        ! get error estimate
                 CHCKERR('EPSGetErrorEstimate failed')
                 ! user message
                 call writo('Checking whether A x - omega^2 B x = 0 for EV '//&

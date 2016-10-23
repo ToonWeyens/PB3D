@@ -1,0 +1,11 @@
+# Perturbation data for N = 4, M = 12, 0.01 perturbation.
+# It implements (1/2 (1+cos(theta)))^3 cos(M theta - N zeta)
+# This corresponds to a perturbation that is present extra predominantly outside.
+#   N   M   delta_c       delta_s
+    4   12  0.003125     0.0
+    4   13  0.00234375   0.0
+    4   11  0.00234375   0.0
+    4   14  0.0009375    0.0
+    4   10  0.0009375    0.0
+    4   15  0.00015625   0.0
+    4   9   0.00015625   0.0
