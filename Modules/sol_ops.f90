@@ -94,9 +94,9 @@ contains
     ! grid.
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id,res_surf,full_output) result(ierr)
-        use num_vars, only: no_plots
+        use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST
         use grid_utilities, only: trim_grid
-        use sol_utilities, only: calc_XUQ
+        use sol_utilities, only: calc_XUQ, calc_pert_cart_comp
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
         use num_utilities, only: con2dis, c
@@ -128,6 +128,7 @@ contains
         integer :: col                                                          ! collection type for HDF5 plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
+        real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
         real(dp), allocatable :: f_plot_phase(:,:,:,:)                          ! phase of f_plot
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
@@ -214,12 +215,7 @@ contains
         plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_sol_trim%n(3),product(n_t)]
         plot_offset = [0,0,grid_sol_trim%i_min-1,0]
         
-        ! set up copies of XYZ for plot
-        allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
-            &product(n_t),3))
-        
-        ! For each time step, calculate the time (as fraction of Alfvén
-        ! time) and make a copy of XYZ for X, Y and Z
+        ! For each time step, calculate the time (as fraction of Alfvén time)
         allocate(time(product(n_t)))
         do kd = 1,product(n_t)
             if (n_t(1).eq.1) then
@@ -228,8 +224,32 @@ contains
                 time(kd) = (mod(kd-1,n_t(1))*1._dp/n_t(1) + &
                     &(kd-1)/n_t(1)) * 0.25
             end if
-            XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
         end do
+        
+        ! set up XYZ
+        allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+            &size(time),3))
+        if (abs(pert_mult_factor_POST).lt.tol_zero) then
+            ! set up copies of XYZ for plot
+            do kd = 1,product(n_t)
+                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
+            end do
+        else
+            ! calculate Cartesian components of the perturbation
+            allocate(ccomp(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+                &size(time),3))
+            ierr = calc_pert_cart_comp(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,1,&
+                &time,ccomp)
+            CHCKERR('')
+            
+            ! perturb the position vector (X,Y,Z)
+            call writo('Perturbing the position vector (X,Y,Z) with &
+                &multiplicative factor '//trim(r2strt(pert_mult_factor_POST)))
+            do kd = 1,product(n_t)
+                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:) + &
+                    &ccomp(:,:,norm_id(1):norm_id(2),kd,:)*pert_mult_factor_POST
+            end do
+        end if
         
         ! calculate omega =  sqrt(sol_val) and make sure to  select the decaying
         ! solution
@@ -368,6 +388,15 @@ contains
                 &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
                 &Z=XYZ_plot(:,:,:,:,3),col=col,description=description(kd))
         end do
+        
+        if (abs(pert_mult_factor_POST).ge.tol_zero) then
+            call plot_HDF5(['total perturbation'],trim(i2str(X_id))//&
+                &'_sol_pert',norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
+                &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
+                &description='Norm of solution perturbation for Eigenvalue '//&
+                &trim(i2str(X_id))//' with omega = '//trim(r2str(rp(omega))))
+        end if
         
         ! clean up
         call grid_sol_trim%dealloc()

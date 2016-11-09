@@ -5,14 +5,14 @@
     alpha                   = 0.0
     min_r_sol               = 0.2
     max_r_sol               = 0.90
-    n_r_sol                 = 500
+    n_r_sol                 = 400
     norm_disc_prec_sol      = 3
     norm_disc_prec_eq       = 5
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X                  = 30
-    n_mod_X                 = 40
+    prim_X                  = 10
+    n_mod_X                 = 20
     tol_rich                = 1.0E-4
     n_sol_requested         = 1
     max_it_inv              = 1

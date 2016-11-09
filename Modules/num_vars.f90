@@ -29,7 +29,7 @@ module num_vars
         &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
         &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
         &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
-        &jump_to_sol, export_HEL, ex_plot_style, &
+        &jump_to_sol, export_HEL, ex_plot_style, pert_mult_factor_POST, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_file_i, HEL_export_file_i, X_jobs_file_i, input_i, PB3D_i, &
         &PB3D_name, eq_i, output_i
@@ -50,7 +50,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.40_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.41_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -143,6 +143,7 @@ module num_vars
     integer :: rich_restart_lvl                                                 ! starting Richardson level (0: none [default])
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     integer :: ex_plot_style                                                    ! external plot style (1: GNUPlot, 2: Bokeh for 2D, Mayavi for 3D)
+    real(dp) :: pert_mult_factor_POST                                           ! factor with which to multiply perturbation strength for POST
     
     ! Concerning file numbers
     integer, parameter :: input_i = 50                                          ! file number of input file

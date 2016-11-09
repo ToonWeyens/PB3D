@@ -589,3 +589,6 @@ CHANGELOG
       - NUFFT now happens in "grid_utilities".
       - The routine HELENA export now also plots the approximate proportionality constant between the toroidal field ripple and the plasma displacement, as well as the corresponding Fourier series.
       - HELENA export now also is able to automatically use this for the edge modification shape.
+
+1.41: - Introduced variable "pert_mult_factor_POST", which is used to deterimine by how much to perturb the X, Y and Z values of the plot grid in POST. It works only for VMEC on an extended grid (POST style 1).
+      - In "calc_pert_cart_comp" the Cartesian components of the perturbation are calculated. If "pert_mult_factor_POST" is not zero, these are then used to perturb the position.

@@ -303,6 +303,7 @@ contains
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &swap_angles, plot_resonance, tol_SLEPC, prog_style, POST_style, &
             &minim_output, jump_to_sol, export_HEL, ex_plot_style, &
+            &pert_mult_factor_POST, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem_per_proc, max_X_mem_per_proc, plot_size, &
             &do_execute_command_line, print_mem_usage, &
@@ -450,6 +451,9 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(POST_style,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(pert_mult_factor_POST,1,&
+                        &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case default
                     err_msg = 'No program style associated with '//&

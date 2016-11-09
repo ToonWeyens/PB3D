@@ -29,7 +29,7 @@ contains
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
-            &magn_int_style, K_style, ex_plot_style
+            &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -66,7 +66,7 @@ contains
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots, &
-            &max_tot_mem_per_proc, ex_plot_style
+            &max_tot_mem_per_proc, ex_plot_style, pert_mult_factor_POST
         
         ! initialize ierr
         ierr = 0
@@ -194,6 +194,9 @@ contains
                         ! adapt plotting variables if needed
                         call adapt_plot
                         
+                        ! adapt input / output variables if needed
+                        call adapt_inoutput_POST()
+                        
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
                         ierr = 1
@@ -311,6 +314,7 @@ contains
             
             ! variables concerning input / output
             slab_plots = .false.                                                ! normal plots on 3D geometry
+            pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
             
             ! Richardson variables
             ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_minim_output)           ! get highest Richardson level found and set minim_output
@@ -429,6 +433,21 @@ contains
                 end if
             end if
         end function adapt_inoutput
+        
+        ! Checks  whether the variables  concerning output are  chosen correctly
+        ! for POST
+        !   pert_mult_factor_POST can only be nonzero for POST style 1 (extended
+        !   grid) and for VMEC equilbria.
+        ! Note: it uses general tolerance tol_zero
+        subroutine adapt_inoutput_POST()
+            if (abs(pert_mult_factor_POST).ge.tol_zero) then
+                if (POST_style.ne.1 .or. eq_style.ne.1) then
+                    call writo('pert_mult_factor_POST can only be nonzero for &
+                        &VMEC equilibria with POST style 1',warning=.true.)
+                    pert_mult_factor_POST = 0._dp
+                end if
+            end if
+        end subroutine adapt_inoutput_POST
         
         ! Checks whether the variables concerning plotting are chosen correctly:
         !   n_theta_plot and n_zeta_plot have to be positive,
