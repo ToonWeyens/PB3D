@@ -4,9 +4,11 @@
     plot_flux_q             = .false.
     plot_magn_grid          = .false.
     norm_disc_prec_sol      = 3
-    n_zeta_plot             = 4
-    min_zeta_plot           = 0.0
-    max_zeta_plot           = 0.02
+    n_zeta_plot             = 50
+    min_r_plot              = 0.45
+    max_r_plot              = 0.61
+    min_zeta_plot           = 1.25
+    max_zeta_plot           = 1.50
     n_theta_plot            = 300
     POST_style              = 1
     slab_plots              = .false.

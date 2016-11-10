@@ -257,8 +257,8 @@ contains
     ! Sets  n_X  and  m_X  using  by default  global  variables  but  optionally
     ! different limits for the secundary mode  numbers (m_X for poloidal flux or
     ! n_X for toroidal flux).
-    ! Note: The  lowest limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
-    ! for first process.
+    ! Note: n_X  and m_X need to  have been set up  with the same limits  as the
+    ! grid used here.
     subroutine set_nm_X_1(grid_X,n_X_loc,m_X_loc,lim_sec_X)                     ! vectorial version
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid

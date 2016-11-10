@@ -240,6 +240,8 @@ display_usage() {
             echo -e "                3 cbm18a_small"
             echo -e "                4 cbm18a_small_HELENA"
             echo -e ""
+            echo -e "                5 Hmode_ped3.0_0.90"
+            echo -e ""
             echo -e "               11 cbm18a_ripple_1"
             echo -e "               12 cbm18a_ripple_2"
             echo -e "               13 cbm18a_ripple_5"
@@ -414,6 +416,9 @@ set_input() {
                 [1-4])
                     input_name=cbm18a
                 ;;
+                5)
+                    input_name=Hmode
+                ;;
                 1[1-8])
                     input_name=cbm18a_ripple
                 ;;
@@ -449,6 +454,9 @@ set_input() {
                 ;;
                 4)
                     eq_name=cbm18a_small
+                ;;
+                5)
+                    eq_name=wout_Hmode_ped3.0_0.90.nc
                 ;;
                 11)
                     eq_name=wout_cbm18a_ripple.nc

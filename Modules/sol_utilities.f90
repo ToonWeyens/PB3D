@@ -520,12 +520,12 @@ contains
                 &rp(ccomp_F(:,:,:,it,2))*cos(grid_X%zeta_E))
             ccomp(:,:,:,it,3) = rp(ccomp_F(:,:,:,it,3))
         end do
-        !!!! Artificial modulation for plots
-        !!!do it = 1,size(time)
-            !!!ccomp(:,:,:,it,1) = sin(grid_X%zeta_E)*ccomp(:,:,:,it,1)
-            !!!ccomp(:,:,:,it,2) = sin(grid_X%zeta_E)*ccomp(:,:,:,it,2)
-            !!!ccomp(:,:,:,it,3) = sin(grid_X%zeta_E)*ccomp(:,:,:,it,3)
-        !!!end do
+        ! Artificial modulation for plots
+        do it = 1,size(time)
+            ccomp(:,:,:,it,1) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,1)
+            ccomp(:,:,:,it,2) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,2)
+            ccomp(:,:,:,it,3) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,3)
+        end do
         
         ! clean up
         deallocate(ccomp_F)

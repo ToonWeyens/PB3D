@@ -592,3 +592,8 @@ CHANGELOG
 
 1.41: - Introduced variable "pert_mult_factor_POST", which is used to deterimine by how much to perturb the X, Y and Z values of the plot grid in POST. It works only for VMEC on an extended grid (POST style 1).
       - In "calc_pert_cart_comp" the Cartesian components of the perturbation are calculated. If "pert_mult_factor_POST" is not zero, these are then used to perturb the position.
+
+1.42: - Fixed a bug in the calculation of the Cartesian components of perturbation where the trimmed grid was erroneously used.
+      - Fixed a bug when checking the input normal range, erroneously making use of the number of points in the equilibrium, which is not yet known.
+      - The solution normal range can now be chosen for POST. Note that this obviously affects the energy reconstruction.
+      - In the POST driver, the nm variables are now setup for the entire ranges.

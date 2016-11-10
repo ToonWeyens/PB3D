@@ -26,10 +26,11 @@ module num_vars
         &ex_max_size, eq_name, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
-        &max_zeta_plot, n_sol_requested, n_sol_plotted, retain_all_sol, &
-        &do_execute_command_line, print_mem_usage, input_name, slab_plots, &
-        &swap_angles, rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, &
-        &jump_to_sol, export_HEL, ex_plot_style, pert_mult_factor_POST, &
+        &max_zeta_plot, min_r_plot, max_r_plot, n_sol_requested, &
+        &n_sol_plotted, retain_all_sol, do_execute_command_line, &
+        &print_mem_usage, input_name, slab_plots, swap_angles, &
+        &rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, jump_to_sol, &
+        &export_HEL, ex_plot_style, pert_mult_factor_POST, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_file_i, HEL_export_file_i, X_jobs_file_i, input_i, PB3D_i, &
         &PB3D_name, eq_i, output_i
@@ -50,7 +51,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.41_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.42_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.32_dp                           ! minimum PB3D version for POST
 
     ! MPI variables
@@ -137,6 +138,7 @@ module num_vars
     integer :: n_zeta_plot                                                      ! nr. of toroidal points in plot
     real(dp) :: min_theta_plot, max_theta_plot                                  ! min. and max. of theta_plot
     real(dp) :: min_zeta_plot, max_zeta_plot                                    ! min. and max. of zeta_plot
+    real(dp) :: min_r_plot, max_r_plot                                          ! min. and max. of r_plot
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches

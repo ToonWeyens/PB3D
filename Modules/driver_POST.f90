@@ -119,13 +119,20 @@ contains
         call writo('Setting up grid limits')
         call lvl_ud(1)
         
-        ! reconstruct full equilibrium, perturbation and solution grids
+        ! reconstruct full equilibrium, perturbation and solution grids and flux
+        ! equilibrium quantities
         ! note: only the normal part is needed, so no need for tot_rich.
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_sol,'sol')
+        CHCKERR('')
+        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
+        CHCKERR('')
+        
+        ! set up nm in full grids
+        ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
         
         ! set eq and X limits, using r_F of the grids
@@ -134,10 +141,11 @@ contains
             &r_F_sol=grid_sol%r_F)
         CHCKERR('')
         
-        ! deallocate the grids
+        ! deallocate the grids and equilibrium flux quantities
         call grid_eq%dealloc()
         call grid_X%dealloc()
         call grid_sol%dealloc()
+        call eq_1%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -164,10 +172,6 @@ contains
             ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
                 &rich_lvl=rich_lvl_name,tot_rich=.true.)
             CHCKERR('')
-        end if
-        ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
-        CHCKERR('')
-        if (.not.minim_output) then
             ierr = reconstruct_PB3D_X_1(grid_X,X,'X_1',rich_lvl=rich_lvl_name,&
                 &tot_rich=.true.)
             CHCKERR('')

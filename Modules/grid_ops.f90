@@ -311,29 +311,38 @@ contains
             r_F_sol = r_F_sol*max_flux_F/(2*pi)
         end function calc_norm_range_PB3D_sol
         
-        ! The normal range is determined  by simply dividing the solution range,
-        ! including a ghost range and getting a bounding equilibrium range.
+        ! The normal range is determined by simply dividing a possible subset of
+        ! the solution range, indicated by min_r_plot and max_r_sol, including a
+        ! ghost range and getting a bounding equilibrium range.
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_sol)                                                           ! POST version
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol
+            use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
+                &min_r_plot, max_r_plot
+            use eq_vars, only: max_flux_F
             
             ! input / output
             integer, intent(inout) :: eq_limits(2), X_limits(2), sol_limits(2)  ! min. and max. index of eq, X and sol grid for this process
             real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! eq and sol r_F
             
             ! local variables
+            integer :: sol_limits_tot(2)                                        ! total solution limits
             integer :: n_r_eq, n_r_sol                                          ! total nr. of normal points in eq and solution grid
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
-            integer :: id                                                       ! counter
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
-            real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
             
             ! initialize ierr
             ierr = 0
             
+            ! get min and max of solution range
+            min_sol = max(minval(r_F_sol),min_r_plot*max_flux_F/(2*pi))
+            max_sol = min(maxval(r_F_sol),max_r_plot*max_flux_F/(2*pi))
+            
+            ! find the solution index that comprises this range
+            call find_compr_range(r_F_sol,[min_sol,max_sol],sol_limits_tot)
+            
             ! initialize n_r_eq and n_r_sol
             n_r_eq = size(r_F_eq)
-            n_r_sol = size(r_F_sol)
+            n_r_sol = sol_limits_tot(2)-sol_limits_tot(1)+1
             allocate(loc_n_r_sol(n_procs))
             
             ! divide the solution grid equally over all the processes
@@ -343,6 +352,7 @@ contains
             
             ! set sol_limits
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
+            sol_limits = sol_limits + sol_limits_tot(1) - 1
             if (rank.gt.0) sol_limits(1) = sol_limits(1)-norm_disc_prec_sol     ! ghost region for num. deriv.
             if (rank.lt.n_procs-1) sol_limits(2) = &
                 &sol_limits(2)+norm_disc_prec_sol+1                             ! ghost region for num. deriv. and overlap for int_vol
@@ -350,24 +360,42 @@ contains
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
             ! determine eq_limits: smallest eq range comprising sol range
-            eq_limits = [1,n_r_eq]                                              ! initialize out of range
-            if (r_F_eq(1).lt.r_F_eq(n_r_eq)) then                               ! ascending r_F_eq
-                do id = 1,n_r_eq
-                    if (r_F_eq(id).le.min_sol-tol) eq_limits(1) = id            ! move lower limit up
-                    if (r_F_eq(n_r_eq-id+1).ge.max_sol+tol) &
-                        &eq_limits(2) = n_r_eq-id+1                             ! move upper limit down
-                end do
-            else                                                                ! descending r_F_eq
-                do id = 1,n_r_eq
-                    if (r_F_eq(id).ge.max_sol+tol) eq_limits(1) = id            ! move lower limit up
-                    if (r_F_eq(n_r_eq-id+1).le.min_sol-tol) &
-                        &eq_limits(2) = n_r_eq-id+1                             ! move upper limit down
-                end do
-            end if
+            call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
             
             ! copy solution range to perturbation range
             X_limits = sol_limits
         end subroutine calc_norm_range_POST
+        
+        ! finds smallest range that comprises a minimum and maximum value
+        subroutine find_compr_range(r_F,lim_r,lim_id)
+            ! input / output
+            real(dp), intent(in) :: r_F(:)                                      ! all values of coordinate
+            real(dp), intent(in) :: lim_r(2)                                    ! limiting range
+            integer, intent(inout) :: lim_id(2)                                 ! limiting indices
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            integer :: n_r                                                      ! number of points in coordinate
+            real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
+            
+            ! set n_r
+            n_r = size(r_F)
+            
+            lim_id = [1,n_r]                                                    ! initialize with full range
+            if (r_F(1).lt.r_F(n_r)) then                                        ! ascending r_F
+                do id = 1,n_r
+                    if (r_F(id).le.lim_r(1)-tol) lim_id(1) = id                 ! move lower limit up
+                    if (r_F(n_r-id+1).ge.lim_r(2)+tol) &
+                        &lim_id(2) = n_r-id+1                                   ! move upper limit down
+                end do
+            else                                                                ! descending r_F
+                do id = 1,n_r
+                    if (r_F(id).ge.lim_r(2)+tol) lim_id(1) = id                 ! move lower limit up
+                    if (r_F(n_r-id+1).le.lim_r(1)-tol) &
+                        &lim_id(2) = n_r-id+1                                   ! move upper limit down
+                end do
+            end if
+        end subroutine find_compr_range
     end function calc_norm_range
 
     ! Sets up the general equilibrium grid, in which the following variables are

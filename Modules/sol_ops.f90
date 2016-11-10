@@ -236,7 +236,7 @@ contains
             end do
         else
             ! calculate Cartesian components of the perturbation
-            allocate(ccomp(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+            allocate(ccomp(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
                 &size(time),3))
             ierr = calc_pert_cart_comp(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,1,&
                 &time,ccomp)

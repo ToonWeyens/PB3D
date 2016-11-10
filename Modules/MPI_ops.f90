@@ -140,7 +140,7 @@ contains
         ! local variables
         integer :: current_job                                                  ! current job when calling this routine
         integer :: n_jobs                                                       ! nr. of jobs
-        integer :: id, kd                                                       ! counters
+        integer :: id                                                           ! counter
         integer :: read_stat                                                    ! read status
         integer :: proc                                                         ! process that did a job
         integer :: X_job_done                                                   ! X_job done already
@@ -250,7 +250,6 @@ contains
         character(*), parameter :: rout_name = 'print_jobs_info'
         
         ! local variables
-        integer :: kd                                                           ! counter
         integer :: read_stat                                                    ! read status
         integer :: proc                                                         ! process that did a job
         integer :: X_job_done                                                   ! X_job done already
@@ -301,8 +300,9 @@ contains
             &retain_all_sol, plot_flux_q, plot_magn_grid, no_plots, &
             &slab_plots, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &swap_angles, plot_resonance, tol_SLEPC, prog_style, POST_style, &
-            &minim_output, jump_to_sol, export_HEL, ex_plot_style, &
+            &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
+            &prog_style, POST_style, minim_output, jump_to_sol, export_HEL, &
+            &ex_plot_style, &
             &pert_mult_factor_POST, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem_per_proc, max_X_mem_per_proc, plot_size, &
@@ -362,6 +362,12 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(max_zeta_plot,1,MPI_DOUBLE_PRECISION,0,&
                 &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(min_r_plot,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                &ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(max_r_plot,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
+                &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

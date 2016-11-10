@@ -28,8 +28,9 @@ contains
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_HH, POST_style, slab_plots, def_relax_fac_HH, &
-            &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST
+            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, slab_plots, &
+            &def_relax_fac_HH, magn_int_style, K_style, ex_plot_style, &
+            &pert_mult_factor_POST
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -65,8 +66,9 @@ contains
             &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
-            &max_zeta_plot, max_nr_tries_HH, POST_style, slab_plots, &
-            &max_tot_mem_per_proc, ex_plot_style, pert_mult_factor_POST
+            &max_zeta_plot, min_r_plot, max_r_plot, max_nr_tries_HH, &
+            &POST_style, slab_plots, max_tot_mem_per_proc, ex_plot_style, &
+            &pert_mult_factor_POST
         
         ! initialize ierr
         ierr = 0
@@ -83,6 +85,8 @@ contains
             ! common variables for all program styles
             max_tot_mem_per_proc = 6000_dp/n_procs                              ! count with 6GB total
             plot_size = [10,5]                                                  ! size of plot in inch
+            min_r_plot = 0._dp                                                  ! minimal plot normal range
+            max_r_plot = 1._dp                                                  ! maximal plot normal range
             min_theta_plot = 1                                                  ! starting from pi gives nicer plots
             max_theta_plot = 3
             select case(eq_style)
@@ -142,7 +146,7 @@ contains
                         call adapt_min_n_par_X
                         
                         ! adapt solution grid
-                        ierr = adapt_sol_grid()
+                        ierr = adapt_sol_grid(min_r_sol,max_r_sol,'sol')
                         CHCKERR('')
                         
                         ! adapt normalization variables if needed
@@ -196,6 +200,10 @@ contains
                         
                         ! adapt input / output variables if needed
                         call adapt_inoutput_POST()
+                        
+                        ! adapt plot grid and save to solution variable
+                        ierr = adapt_sol_grid(min_r_plot,max_r_plot,'plot')
+                        CHCKERR('')
                         
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
@@ -592,43 +600,43 @@ contains
         end subroutine adapt_min_n_par_X
         
         ! Checks  whether variables  concerning the  solution grid  are correct:
-        !   min_r_sol should  not be too  close to zero because  the equilibrium
-        !   calculations yield an infinity at the magnetic axis,
-        !   max_r_sol  cannot be  larger  than 1.0  and has  to  be larger  than
-        !   min_r_sol,
-        !   the number of normal points has to be big enough.
-        integer function adapt_sol_grid() result(ierr)
-            use grid_vars, only: n_r_eq
-            
+        !   min_r should be greater than 0
+        !   max_r should be lesser than 1
+        !   min_r should be lesser than max_r
+        ! The number of solution points should be large enough for the numerical
+        ! discretization scheme.
+        integer function adapt_sol_grid(min_r,max_r,var_name) result(ierr)
             character(*), parameter :: rout_name = 'adapt_sol_grid'
+            
+            ! input / output
+            real(dp), intent(inout) :: min_r, max_r                             ! min and max of norma range
+            character(len=*), intent(in) :: var_name                            ! name of variable
             
             ! local variables
             character(len=max_str_ln) :: err_msg                                ! error message
-            real(dp) :: one = 1.00000001_dp                                     ! one plus a little margin
             
             ! initialize ierr
             ierr = 0
             
-            ! check min_r_sol
-            if (min_r_sol.lt.one/(n_r_eq-1)) then
-                min_r_sol = one/(n_r_eq-1)
-                call writo('min_r_sol has been increased to '//&
-                    &trim(r2strt(min_r_sol)),warning=.true.)
+            ! check min_r
+            if (min_r.lt.0._dp) then
+                min_r = 0._dp
+                call writo('min_r_'//trim(var_name)//' has been increased to '&
+                    &//trim(r2strt(min_r)),warning=.true.)
             end if
             
-            ! check if max_r_sol is not greater than 1
-            if (max_r_sol.gt.1.0) then
-                max_r_sol = 1.
-                call writo('max_r_sol has been decreased to '//&
-                    &trim(r2strt(max_r_sol)),warning=.true.)
+            ! check if max_r is not greater than 1
+            if (max_r.gt.1._dp) then
+                max_r = 1._dp
+                call writo('max_r_'//trim(var_name)//' has been decreased to '&
+                    &//trim(r2strt(max_r)),warning=.true.)
             end if
             
-            ! check if min_r_sol < max_r_sol  with at least one equilbrium point
-            ! between them
-            if (min_r_sol+1./(n_r_eq-1).ge.max_r_sol) then
+            ! check if min_r < max_r
+            if (min_r.ge.max_r) then
                 ierr = 1
-                err_msg = 'max_r_sol - min_r_sol has to be at least '//&
-                    &trim(r2strt(1._dp/(n_r_eq-1)))
+                err_msg = 'min_r_'//trim(var_name)//' should be lower than &
+                    & max_r_'//trim(var_name)
                 CHCKERR(err_msg)
             end if
             
