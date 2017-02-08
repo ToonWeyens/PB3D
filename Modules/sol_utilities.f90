@@ -520,12 +520,17 @@ contains
                 &rp(ccomp_F(:,:,:,it,2))*cos(grid_X%zeta_E))
             ccomp(:,:,:,it,3) = rp(ccomp_F(:,:,:,it,3))
         end do
-        ! Artificial modulation for plots
-        do it = 1,size(time)
-            ccomp(:,:,:,it,1) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,1)
-            ccomp(:,:,:,it,2) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,2)
-            ccomp(:,:,:,it,3) = 0.5*(1+sin(grid_X%zeta_E))*ccomp(:,:,:,it,3)
-        end do
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        !! Artificial modulation for plots (0 at 0 and 1 at 3/2 pi)
+        !do it = 1,size(time)
+            !ccomp(:,:,:,it,1) = 0.5*(1+cos(2._dp/3*grid_X%zeta_E+pi))*&
+                !&ccomp(:,:,:,it,1)
+            !ccomp(:,:,:,it,2) = 0.5*(1+cos(2._dp/3*grid_X%zeta_E+pi))*&
+                !&ccomp(:,:,:,it,2)
+            !ccomp(:,:,:,it,3) = 0.5*(1+cos(2._dp/3*grid_X%zeta_E+pi))*&
+                !&ccomp(:,:,:,it,3)
+        !end do
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         ! clean up
         deallocate(ccomp_F)
@@ -575,9 +580,9 @@ contains
     !   can  be different  from the  local number  for X  style 2,  as the  mode
     !   numbers depend on the normal coordinate.
     ! If the output variable is not allocated, it is done here.
-    ! Note: The lowest  limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
-    ! for first  process. If  the full  grid is used,  the input  variable i_min
-    ! should be set to 1.
+    ! Note: If the lowest limits of the grid is not 1 (e.g. grid_X%i_min = 1 for
+    ! first process), the  input variable i_min should be set  to set correctly.
+    ! For a full grid, it should be set to 1.
     integer function calc_tot_sol_vec(i_min,sol_vec_loc,sol_vec_tot) &
         &result(ierr)
         use num_vars, only: X_style

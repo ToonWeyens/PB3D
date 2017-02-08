@@ -132,6 +132,8 @@ contains
         CHCKERR('')
         
         ! set up nm in full grids
+        !  Note: This  is needed  as many  routines count  on this,  for example
+        ! 'set_nm_X' in X_vars, also used to initialize a solution variable.
         ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
         
@@ -140,6 +142,18 @@ contains
             &sol_limits=sol_limits,r_F_eq=grid_eq%r_F,r_F_X=grid_X%r_F,&
             &r_F_sol=grid_sol%r_F)
         CHCKERR('')
+        call writo('grid limits:')
+        call lvl_ud(1)
+        call writo('proc '//trim(i2str(rank))//' - equilibrium:  '//&
+            &trim(i2str(eq_limits(1)))//' .. '//trim(i2str(eq_limits(2))),&
+            &persistent=.true.)
+        call writo('proc '//trim(i2str(rank))//' - perturbation: '//&
+            &trim(i2str(X_limits(1)))//' .. '//trim(i2str(X_limits(2))),&
+            &persistent=.true.)
+        call writo('proc '//trim(i2str(rank))//' - solution:     '//&
+            &trim(i2str(sol_limits(1)))//' .. '//trim(i2str(sol_limits(2))),&
+            &persistent=.true.)
+        call lvl_ud(-1)
         
         ! deallocate the grids and equilibrium flux quantities
         call grid_eq%dealloc()

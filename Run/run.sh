@@ -295,6 +295,8 @@ display_usage() {
             echo -e "               77 Hmode_ped1.5_0.99"
             echo -e "               78 Hmode_ped1.5_0.99_HELENA"
             echo -e ""
+            echo -e "               81 Hmode_JET_HELENA"
+            echo -e ""
             for ((i=131; i <= 180 ; i++)); do
                 echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
                 (( $((($i-101)%10+1)) == 10 )) && echo -e ""
@@ -428,7 +430,7 @@ set_input() {
                 31)
                     input_name=qps
                 ;;
-                4[1-9]|5[0-9]|6[0-9]|7[0-8])
+                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-1])
                     input_name=Hmode
                 ;;
                 13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
@@ -601,6 +603,9 @@ set_input() {
                 ;;
                 78)
                     eq_name=Hmode_ped1.5_0.99
+                ;;
+                81)
+                    eq_name=Hmode_JET
                 ;;
                 13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
                     eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc

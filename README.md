@@ -597,3 +597,6 @@ CHANGELOG
       - Fixed a bug when checking the input normal range, erroneously making use of the number of points in the equilibrium, which is not yet known.
       - The solution normal range can now be chosen for POST. Note that this obviously affects the energy reconstruction.
       - In the POST driver, the nm variables are now setup for the entire ranges.
+
+1.43: - Fixed a bug when 'calc_tot_sol_vec' did not work for partial normal grids.
+      - Added script that can concatenate HDF5 files.

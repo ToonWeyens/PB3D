@@ -22,9 +22,9 @@
     U_style                 = 3
     max_it_slepc            = 500
     max_tot_mem_per_proc    = 2000
-    plot_magn_grid          = .false.
-    plot_flux_q             = .false.
-    plot_resonance          = .false.
+    plot_magn_grid          = .true.
+    plot_flux_q             = .true.
+    plot_resonance          = .true.
     matrix_SLEPC_style      = 1
     max_it_rich             = 4
     rich_restart_lvl        = 1

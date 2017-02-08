@@ -42,7 +42,7 @@ SLEPC_DIR=/opt/slepc-3.6.3# 1. XPS-L501X
 #SLEPC_DIR = $(HOME)/Programs/slepc-3.6.3# 3. GEORGE
 
 # PB3D
-PB3D_DIR = $(HOME)/Documents/PHD/PB3D# 1. XPS-L501X
+PB3D_DIR = $(HOME)/Documents/PB3D# 1. XPS-L501X
 #PB3D_DIR = $(HOME)/Programs_MPICH3.1.3/PB3D# 2. ITER
 #PB3D_DIR = $(HOME)/Programs/PB3D# 3. GEORGE
 

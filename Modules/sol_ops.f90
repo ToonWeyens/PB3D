@@ -161,7 +161,7 @@ contains
         call lvl_ud(1)
         
         ! plot information about harmonics
-        ierr = plot_harmonics(grid_sol_trim,sol,X_id,res_surf)
+        ierr = plot_harmonics(grid_sol_trim,sol,X_id,res_surf,grid_sol%i_min)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -405,7 +405,8 @@ contains
     contains
         ! plots the harmonics and their maximum in 2D
         ! Note: This routine needs a trimmed grid.
-        integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
+        integer function plot_harmonics(grid_sol,sol,X_id,res_surf,i_min) &
+            &result(ierr)
             use MPI_utilities, only: wait_MPI, get_ser_var
             use num_vars, only: ex_max_size, rank, no_plots
             use eq_vars, only: max_flux_F
@@ -419,6 +420,7 @@ contains
             type(sol_type), intent(in) :: sol                                   ! solution variables
             integer, intent(in) :: X_id                                         ! nr. of Eigenvalue (for output name)
             real(dp), intent(in) :: res_surf(:,:)                               ! resonant surfaces
+            integer, intent(in) :: i_min                                        ! i_min of full grid?
             
             ! local variables
             integer :: ld                                                       ! counter
@@ -459,7 +461,7 @@ contains
             ! convert to full mode on master and set up normal factor
             if (rank.eq.0) then
                 allocate(sol_vec_ser_tot(1:n_mod_tot,1:grid_sol%n(3)))
-                ierr = calc_tot_sol_vec(1,sol_vec_ser,sol_vec_ser_tot)
+                ierr = calc_tot_sol_vec(i_min,sol_vec_ser,sol_vec_ser_tot)
                 CHCKERR('')
                 
                 norm_factor = max_flux_F/(2*pi)
