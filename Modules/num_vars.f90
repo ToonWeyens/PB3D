@@ -28,7 +28,7 @@ module num_vars
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, min_r_plot, max_r_plot, n_sol_requested, &
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
-        &print_mem_usage, input_name, slab_plots, swap_angles, &
+        &print_mem_usage, input_name, slab_plots_style, swap_angles, &
         &rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, jump_to_sol, &
         &export_HEL, ex_plot_style, pert_mult_factor_POST, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
@@ -130,7 +130,6 @@ module num_vars
     logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)
     logical :: minim_output = .false.                                           ! minimize output file size
     logical :: retain_all_sol                                                   ! retain also faulty solutions
-    logical :: slab_plots                                                       ! slab plots (only for POST)
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
     character(len=4) :: data_dir = 'Data'                                       ! directory where to save data for plots
@@ -139,6 +138,7 @@ module num_vars
     real(dp) :: min_theta_plot, max_theta_plot                                  ! min. and max. of theta_plot
     real(dp) :: min_zeta_plot, max_zeta_plot                                    ! min. and max. of zeta_plot
     real(dp) :: min_r_plot, max_r_plot                                          ! min. and max. of r_plot
+    integer :: slab_plots_style                                                 ! slab plots style, only for POST: (0: 3-D plots, 1: slab plots, 2: slab plots with folding)
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches

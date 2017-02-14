@@ -1,5 +1,8 @@
 #!/bin/bash
 # Structure from http://stackoverflow.com/a/13588485/3229162
+# Makes use of auxiliary scripts
+#   - gen_node_list.sh: to generate the correct nodes on the ITER cluster
+#   - get_disk_space.sh: to create a list of broken nodes on the ITER cluster (has to be called manually)
 
 # Main program
 main() {
@@ -67,11 +70,29 @@ main() {
                 out_full=$base/$out                                             # use subdirectory
             ;;
             2)  # ITER
+                ##########
+                # select your queue here: compute, testqueue, ib or ib_gen8
+                ##########
+                queue="ib"
                 n_nodes=1                                                       # use one node
-                n_cores=8                                                       # 8 cores per node
+                node_list=$(./gen_node_list.sh -m $n_nodes $queue $(cat broken_nodes.txt 2> /dev/null))
+                n_cores=${node_list#*=}
                 nr_procs=$(( n_cores < $2 ? n_cores : $2 ))                     # take nr_procs from input, limited by number of cores
                 memory_factor=2                                                 # safety factor for requesting memory (needs to be integer)
-                max_tot_mem=30000                                               # every core has 4GB, using 8, with some margin
+                case $queue in
+                    compute)
+                        max_tot_mem=30000
+                    ;;
+                    testqueue)
+                        max_tot_mem=20000
+                    ;;
+                    ib)
+                        max_tot_mem=20000
+                    ;;
+                    ib_gen8)
+                        max_tot_mem=60000
+                    ;;
+                esac
                 mem_unit='mb'                                                   # MB
                 out_full=/tmp/$out                                              # use temporary directory in local node
             ;;
@@ -239,8 +260,6 @@ display_usage() {
             echo -e "                2 cbm18a_HELENA"
             echo -e "                3 cbm18a_small"
             echo -e "                4 cbm18a_small_HELENA"
-            echo -e ""
-            echo -e "                5 Hmode_ped3.0_0.90"
             echo -e ""
             echo -e "               11 cbm18a_ripple_1"
             echo -e "               12 cbm18a_ripple_2"
@@ -418,9 +437,6 @@ set_input() {
                 [1-4])
                     input_name=cbm18a
                 ;;
-                5)
-                    input_name=Hmode
-                ;;
                 1[1-8])
                     input_name=cbm18a_ripple
                 ;;
@@ -456,9 +472,6 @@ set_input() {
                 ;;
                 4)
                     eq_name=cbm18a_small
-                ;;
-                5)
-                    eq_name=wout_Hmode_ped3.0_0.90.nc
                 ;;
                 11)
                     eq_name=wout_cbm18a_ripple.nc
@@ -725,11 +738,11 @@ create_loc_script() {
         }
         
         # copy inputs and the program
-        cp $out_full_loc/$input_name \$out_full/ 2> /dev/null
-        cp $out_full_loc/${prog_name}_out.h5 \$out_full/ 2> /dev/null
-        cp $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
+        rsync --progress -zvhL $out_full_loc/$input_name \$out_full/ 2> /dev/null
+        rsync --progress -vhL --compress-level=9 $out_full_loc/${prog_name}_out.h5 \$out_full/ 2> /dev/null
+        rsync --progress -zvhL $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
         $(aux_copy_inputs)
-        cp \$base/../$prog_name \$out_full/
+        rsync --progress -zvhL \$base/../$prog_name \$out_full/
         chmod +x \$out_full/$prog_name
         
         # go to run directory
@@ -754,12 +767,12 @@ END
 }
 
 # Initialize MPI command
-# Note: --minim_ouptut is hard-coded, but it can be removed
+### Note: --minim_ouptut WAS hard-coded, but it can be removed
 # sets: MPI_command
 init_MPI_command() {
     case $prog_ID in
         1)  # PB3D
-            echo "./$prog_name $input_name $eq_name $slepc_opt $other_opts --minim_output"
+            echo "./$prog_name $input_name $eq_name $slepc_opt $other_opts"
         ;;
         2)  # POST
             echo "./$prog_name $input_name $PB3D_out_name $other_opts"
@@ -771,10 +784,10 @@ init_MPI_command() {
 aux_copy_inputs() {
     case $prog_ID in
         1)  # PB3D
-            echo "cp \$base/$eq_name \$out_full/"
+            echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
         ;;
         2)  # POST
-            echo "cp $base/$PB3D_out_full $out_full/ 2> /dev/null"
+            echo "rsync --progress -zvhL $base/$PB3D_out_full $out_full/ 2> /dev/null"
         ;;
     esac
 }
@@ -782,6 +795,7 @@ aux_copy_inputs() {
 # setup first part of pbs script
 # sets: PB3D:   PB3D.pbs
 #       POST:   POST.pbs
+### previously: PBS -l nodes=$n_nodes:ppn=$n_cores
 setup_pbs_script_1() {
     # print into script
     cat <<- END > $prog_name.pbs
@@ -790,8 +804,8 @@ setup_pbs_script_1() {
         #PBS -k oe
         #PBS -o $out_full_loc/$prog_name.out
         #PBS -e $out_full_loc/$prog_name.err
-        #PBS -l nodes=$n_nodes:ppn=$n_cores
-        #PBS -q batch
+        #PBS -l nodes=$node_list
+        #PBS -q ib
         #PBS -l vmem=$max_tot_mem$mem_unit
         #PBS -l mem=$max_tot_mem$mem_unit
         #PBS -l walltime=12:00:00
@@ -834,15 +848,17 @@ END
 # sets: PB3D:   PB3D.pbs
 #       POST:   POST.pbs
 setup_pbs_script_2() {
-    # add commands to move output after finishing
+    # add commands to move output after finishing, but only if succesfully transfered
     echo "" >> $prog_name".pbs"
     echo "# Done, copy files back with rsync" >> $prog_name".pbs"
     echo "echo '# Copy results with rsync'" >> $prog_name".pbs"
     echo "find $out_full/ -name '*temp.h5' | xargs rm -f" >> $prog_name".pbs"
     echo "cd $out_full_loc" >> $prog_name".pbs"
-    echo "rsync --remove-source-files --exclude='PB3D_out.h5' -zvhr $out_full/* ." >> $prog_name".pbs"
-    echo "rsync --remove-source-files -zvhr $out_full/* ." >> $prog_name".pbs"
-    echo "rm -r $out_full" >> $prog_name".pbs"
+    echo "rsync --remove-source-files --progress --exclude='PB3D_out.h5' -zvhr $out_full/* ." >> $prog_name".pbs"
+    if (( prog_ID == 1 )); then
+        echo "rsync --remove-source-files --progress -zvhr $out_full/* ." >> $prog_name".pbs"
+    fi
+    echo "[[ \$? -eq 0 ]] && rm -r $out_full" >> $prog_name".pbs"
     echo "mv \$loc_out $prog_name.out" >> $prog_name".pbs"
     echo "mv \$loc_err $prog_name.err" >> $prog_name".pbs"
     echo "[[ -s $prog_name.err ]] || rm $prog_name.err" >> $prog_name".pbs"

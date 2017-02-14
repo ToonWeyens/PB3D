@@ -34,7 +34,7 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, plot_resonance, &
             &plot_flux_q, plot_magn_grid, rank, norm_disc_prec_X, POST_style, &
-            &slab_plots, use_pol_flux_F, pi, swap_angles, minim_output, &
+            &slab_plots_style, use_pol_flux_F, pi, swap_angles, minim_output, &
             &decomp_i
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -48,7 +48,8 @@ contains
         use grid_utilities, only: calc_XYZ_grid, extend_grid_E, &
             &setup_interp_data, apply_disc
         use X_ops, only: calc_X, resonance_plot, calc_res_surf, setup_nm_X
-        use sol_ops, only: plot_sol_vals, plot_sol_vec, decompose_energy
+        use sol_ops, only: plot_sol_vals, plot_harmonics, plot_sol_vec, &
+            &decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
         use VMEC, onLy: calc_trigon_factors
         use input_utilities, only: dealloc_in
@@ -87,7 +88,7 @@ contains
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! fraction between total E_pot and E_kin, compared with EV
         complex(dp), allocatable :: sol_val_comp_loc(:,:,:)                     ! local sol_val_comp
-        !real(dp), allocatable :: plot_var(:,:,:) 
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -456,57 +457,64 @@ contains
             ! set up XYZ
             allocate(XYZ_out(grid_X_out%n(1),grid_X_out%n(2),&
                 &grid_X_out%loc_n_r,3))
-            if (slab_plots) then
-                ! user output
-                call writo('Plots are done in slab geometry')
-                call lvl_ud(1)
-                
-                if (B_aligned) then
-                    if (swap_angles) then
-                        call writo('For plotting, the angular coordinates are &
-                            &swapped: theta <-> zeta')
-                        if (use_pol_flux_F) then
-                            XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
+            select case (slab_plots_style)
+                case (0)                                                        ! 3-D geometry
+                    ierr = calc_XYZ_grid(grid_eq,grid_X_out,XYZ_out(:,:,:,1),&
+                        &XYZ_out(:,:,:,2),XYZ_out(:,:,:,3))
+                    CHCKERR('')
+                    !!! To plot the cross-section
+                    !!call print_ex_2D(['cross_section'],'cross_section',&
+                        !!&XYZ_out(:,1,:,3),x=XYZ_out(:,1,:,1),draw=.false.)
+                    !!call draw_ex('cross_section','cross_section',&
+                        !!&'cross_section',size(XYZ_out,3),1,.false.)
+                case (1,2)                                                      ! slab geometry (with or without wrapping to fundamental interval)
+                    ! user output
+                    call writo('Plots are done in slab geometry')
+                    call lvl_ud(1)
+                    
+                    if (B_aligned .and. slab_plots_style.eq.1) then             ! for slab_plots style 2 both theta and zeta need to be chosen, not alpha
+                        if (swap_angles) then
+                            call writo('For plotting, the angular coordinates &
+                                &are swapped: theta <-> zeta')
+                            if (use_pol_flux_F) then
+                                XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
+                            else
+                                XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
+                            end if
                         else
-                            XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
+                            if (use_pol_flux_F) then
+                                XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
+                            else
+                                XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
+                            end if
                         end if
+                        XYZ_out(:,:,:,2) = alpha
                     else
                         if (use_pol_flux_F) then
                             XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
+                            XYZ_out(:,:,:,2) = grid_X_out%zeta_F/pi
                         else
                             XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
+                            XYZ_out(:,:,:,2) = grid_X_out%theta_F/pi
                         end if
                     end if
-                    XYZ_out(:,:,:,2) = alpha
+                    
                     do kd = 1,grid_X_out%loc_n_r
                         XYZ_out(:,:,kd,3) = grid_X_out%loc_r_F(kd)/&
                             &max_flux_F*2*pi
                     end do
-                else
-                    if (use_pol_flux_F) then
-                        XYZ_out(:,:,:,1) = grid_X_out%theta_F/pi
-                        XYZ_out(:,:,:,2) = grid_X_out%zeta_F/pi
-                    else
-                        XYZ_out(:,:,:,1) = grid_X_out%zeta_F/pi
-                        XYZ_out(:,:,:,2) = grid_X_out%theta_F/pi
-                    end if
-                    do kd = 1,grid_X_out%loc_n_r
-                        XYZ_out(:,:,kd,3) = grid_X_out%loc_r_F(kd)/&
-                            &max_flux_F*2*pi
-                    end do
-                end if
-                
-                call lvl_ud(-1)
-            else
-                ierr = calc_XYZ_grid(grid_eq,grid_X_out,XYZ_out(:,:,:,1),&
-                    &XYZ_out(:,:,:,2),XYZ_out(:,:,:,3))
-                CHCKERR('')
-                !!! To plot the cross-section
-                !!call print_ex_2D('cross_section','cross_section',&
-                    !!&XYZ_out(:,1,:,3),x=XYZ_out(:,1,:,1),draw=.false.)
-                !!call draw_ex('cross_section','cross_section','cross_section',&
-                    !!&size(XYZ_out,3),1,.false.)
-            end if
+                    
+                    ! limit to fundamental interval -1..1
+                    if (slab_plots_style.eq.2) XYZ_out(:,:,:,1:2) = &
+                        &modulo(XYZ_out(:,:,:,1:2)+1._dp,2._dp)-1._dp
+                    
+                    call lvl_ud(-1)
+                case default
+                    err_msg = 'No style "'//trim(i2str(slab_plots_style))//&
+                        &'" for slab_plots_style'
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
             
             ! deallocate memory-thirsty trigonometric factors
             if (eq_style.eq.1) deallocate(grid_X_out%trigon_factors)
@@ -551,10 +559,9 @@ contains
                     &//trim(c2strt(sol%val(id))))
                 call lvl_ud(1)
                 
-                call writo('Plot the Eigenvector')
+                call writo('Plot the Harmonics')
                 call lvl_ud(1)
-                ierr = plot_sol_vec(grid_eq_out,grid_X_out,grid_sol,&
-                    &eq_1,eq_2_out,X_out,sol,XYZ_out,id,res_surf,full_output)
+                ierr = plot_harmonics(grid_sol,sol,id,res_surf)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -563,6 +570,14 @@ contains
                 CHCKERR('')
                 
                 if (full_output) then
+                    ! user output
+                    call writo('Plot the Eigenvector')
+                    call lvl_ud(1)
+                    ierr = plot_sol_vec(grid_eq_out,grid_X_out,grid_sol,eq_1,&
+                        &eq_2_out,X_out,sol,XYZ_out,id)
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                    
                     ! user output
                     call writo('Decompose the energy into its terms')
                     call lvl_ud(1)

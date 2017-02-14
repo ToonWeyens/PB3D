@@ -28,9 +28,9 @@ contains
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, slab_plots, &
-            &def_relax_fac_HH, magn_int_style, K_style, ex_plot_style, &
-            &pert_mult_factor_POST
+            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
+            &slab_plots_style, def_relax_fac_HH, magn_int_style, K_style, &
+            &ex_plot_style, pert_mult_factor_POST
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -67,8 +67,8 @@ contains
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
             &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot, min_r_plot, max_r_plot, max_nr_tries_HH, &
-            &POST_style, slab_plots, max_tot_mem_per_proc, ex_plot_style, &
-            &pert_mult_factor_POST
+            &POST_style, slab_plots_style, max_tot_mem_per_proc, &
+            &ex_plot_style, pert_mult_factor_POST
         
         ! initialize ierr
         ierr = 0
@@ -321,7 +321,7 @@ contains
             POST_style = 1                                                      ! process on extended plot grid
             
             ! variables concerning input / output
-            slab_plots = .false.                                                ! normal plots on 3D geometry
+            slab_plots_style = 0                                                ! normal plots on 3D geometry
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
             
             ! Richardson variables

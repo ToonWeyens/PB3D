@@ -298,7 +298,7 @@ contains
             &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
             &tol_rich, max_nr_tries_HH, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, no_plots, &
-            &slab_plots, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &slab_plots_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
             &prog_style, POST_style, minim_output, jump_to_sol, export_HEL, &
@@ -444,11 +444,11 @@ contains
                         &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case(2)                                                         ! POST
-                    call MPI_Bcast(slab_plots,1,MPI_LOGICAL,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
                     call MPI_Bcast(swap_angles,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(slab_plots_style,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(n_sol_plotted,4,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)

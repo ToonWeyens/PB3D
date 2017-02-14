@@ -600,3 +600,8 @@ CHANGELOG
 
 1.43: - Fixed a bug when 'calc_tot_sol_vec' did not work for partial normal grids.
       - Added script that can concatenate HDF5 files.
+
+1.44: - Changed institution to ITER Organization.
+      - Fixed a bug where uninitialized pointers were used in the POST driver for non-full outputs. Now, the harmonics are plot separately.
+      - "slab_plots" is now an integer variable "slab_plots_style" that can take value 2 as well, which stands for slab plots with the angular coordinates wrapped to the fundamental intervals.
+      - Improved the run script for the ITER cluster, making use now of two auxiliary scripts "gen_node_file.sh" and "get_disk_space.sh".

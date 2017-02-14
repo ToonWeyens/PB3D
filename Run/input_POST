@@ -10,8 +10,8 @@
     min_zeta_plot           = 0.00
     max_zeta_plot           = 0.00
     n_theta_plot            = 300
-    POST_style              = 1
-    slab_plots              = .false.
+    POST_style              = 2
+    slab_plots_style        = 2
     ex_plot_style           = 2
     PB3D_rich_lvl           = 2
     pert_mult_factor_POST   = 0.0001
