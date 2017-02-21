@@ -72,8 +72,10 @@ main() {
             2)  # ITER
                 ##########
                 # select your queue here: compute, testqueue, ib or ib_gen8
+                # + additional node name: batch,   testqueue, ib or ib_gen8
                 ##########
-                queue="ib"
+                queue="compute"
+                queue_name="batch"
                 n_nodes=1                                                       # use one node
                 node_list=$(./gen_node_list.sh -m $n_nodes $queue $(cat broken_nodes.txt 2> /dev/null))
                 n_cores=${node_list#*=}
@@ -739,7 +741,6 @@ create_loc_script() {
         
         # copy inputs and the program
         rsync --progress -zvhL $out_full_loc/$input_name \$out_full/ 2> /dev/null
-        rsync --progress -vhL --compress-level=9 $out_full_loc/${prog_name}_out.h5 \$out_full/ 2> /dev/null
         rsync --progress -zvhL $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
         $(aux_copy_inputs)
         rsync --progress -zvhL \$base/../$prog_name \$out_full/
@@ -761,9 +762,22 @@ create_loc_script() {
         # go back to base directory
         cd \$base
 END
-    # cut 8 leading whitespaces and make executable
-    sed -i 's/^.\{8\}//' $prog_name"_loc.sh"
+    # cut leading whitespaces and make executable
+    sed -i 's/^[ \t]*//' $prog_name"_loc.sh"
     chmod u+x $prog_name"_loc.sh"
+}
+
+# Auxiliary procedure to copy inputs
+aux_copy_inputs() {
+    case $prog_ID in
+        1)  # PB3D
+            echo "rsync --progress -vhL --compress-level=9 $out_full_loc/PB3D_out.h5 \$out_full/ 2> /dev/null"
+            echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
+        ;;
+        2)  # POST
+            echo "ln -s $base/$PB3D_out_full $out_full/ 2> /dev/null"
+        ;;
+    esac
 }
 
 # Initialize MPI command
@@ -776,18 +790,6 @@ init_MPI_command() {
         ;;
         2)  # POST
             echo "./$prog_name $input_name $PB3D_out_name $other_opts"
-        ;;
-    esac
-}
-
-# Auxiliary procedure to copy inputs
-aux_copy_inputs() {
-    case $prog_ID in
-        1)  # PB3D
-            echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
-        ;;
-        2)  # POST
-            echo "rsync --progress -zvhL $base/$PB3D_out_full $out_full/ 2> /dev/null"
         ;;
     esac
 }
@@ -805,7 +807,7 @@ setup_pbs_script_1() {
         #PBS -o $out_full_loc/$prog_name.out
         #PBS -e $out_full_loc/$prog_name.err
         #PBS -l nodes=$node_list
-        #PBS -q ib
+        #PBS -q $queue_name
         #PBS -l vmem=$max_tot_mem$mem_unit
         #PBS -l mem=$max_tot_mem$mem_unit
         #PBS -l walltime=12:00:00
@@ -839,8 +841,8 @@ setup_pbs_script_1() {
         ln -sf \$loc_out $out_full_loc/$prog_name.out
         ln -sf \$loc_err $out_full_loc/$prog_name.err
 END
-    # cut 8 leading whitespaces and make executable
-    sed -i 's/^.\{8\}//' $prog_name".pbs"
+    # cut leading whitespaces and make executable
+    sed -i 's/^[ \t]*//' $prog_name".pbs"
     chmod u+x $prog_name".pbs"
 }
 

@@ -1270,16 +1270,12 @@ contains
     ! Optionally, output can be given about the variable being read.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
     ! name if it is > 0, and similarly for "eq_job" in "_E_eq_job".
-    ! Furthermore,  using  lim_loc,  a   contiguous  (yet  only  a  contiguous!)
-    ! hyperslab  of  the variable  can  be  read. Note  that  this  refers to  a
-    ! contiguous  hyperslab of  a stored  variable  in memory.  If therefore  in
-    ! memory a  variable stores,  for example,  only the even  values of  a PB3D
-    ! variable, then this contiguous hyperslab refers to only these even values!
-    ! Furthermore, note that if one of the upper limits of lim_loc is a negative
-    ! value, the  procedure just takes  the entire  range. This is  necessary as
-    ! sometimes  the calling  procuderes don't  have,  and don't  need to  have,
-    ! knowledge  of the  underlying sizes,  for example  in the  case of  having
-    ! multiple parallel jobs.
+    ! Furthermore, using lim_loc, a hyperslab of the variable can be read.
+    ! Finally,  note  that if  a  limit  of lim_loc  is  a  negative value,  the
+    ! procedure just takes the entire range.  This is necessary as sometimes the
+    ! calling procuderes  don't have, and don't  need to have, knowledge  of the
+    ! underlying  sizes, for  example in  the case  of having  multiple parallel
+    ! jobs.
     integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
         &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
         use HDF5_utilities, only: set_1D_vars
@@ -1465,16 +1461,18 @@ contains
             ! set up local limits
             if (present(lim_loc)) then
                 lim_loc_loc = lim_loc
+                where (lim_loc(:,1).lt.0) lim_loc_loc(:,1) = lim_tot(:,1)
                 where (lim_loc(:,2).lt.0) lim_loc_loc(:,2) = lim_tot(:,2)
             else
                 lim_loc_loc = lim_tot
             end if
             
             ! copy into limits of var
-            ! Note: The local  limits in the HDF5 file are  the total limits
-            ! in the output.
-            var%tot_i_min = lim_loc_loc(:,1)
-            var%tot_i_max = lim_loc_loc(:,2)
+            ! Note: tot_i_min is started from 1,  the actual limits in the grid,
+            ! eq_1, eq_2,  X_1, X_2 or  sol variables  is set by  the respective
+            ! "init" procedure.
+            var%tot_i_min = 1
+            var%tot_i_max = lim_loc_loc(:,2)-lim_loc_loc(:,1)+1
             
             ! close the dataset.
             call H5Dclose_f(dset_id,ierr)

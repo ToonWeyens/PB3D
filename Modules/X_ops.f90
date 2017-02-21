@@ -786,7 +786,7 @@ contains
     
     ! plot  q-profile  or iota-profile  in  flux coordinates  with nq-m  = 0  or
     ! n-iotam = 0 indicate if requested
-    integer function resonance_plot(eq,grid) result(ierr)
+    integer function resonance_plot(grid,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
             &n_zeta_plot, rank, eq_style, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot
@@ -799,8 +799,8 @@ contains
         character(*), parameter :: rout_name = 'resonance_plot'
         
         ! input / output
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium
         
         ! local variables (not to be used in child functions)
         integer :: ld                                                           ! counter

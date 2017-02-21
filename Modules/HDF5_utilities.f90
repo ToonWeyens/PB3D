@@ -127,6 +127,8 @@ contains
         do id = 1,n_dims
             if (lim_tot(id,1).gt.lim_loc(id,1) .or. &
                 &lim_tot(id,2).lt.lim_loc(id,2)) then
+                write(*,*) rank, 'lim_tot = ', lim_tot
+                write(*,*) rank, 'lim_loc = ', lim_loc
                 ierr = 1
                 err_msg = 'Total limits must comprise local ones'
                 CHCKERR(err_msg)

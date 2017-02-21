@@ -293,6 +293,9 @@ contains
     
     ! Broadcasts options (e.g. user-prescribed) that  are not passed through the
     ! HDF5 output file (i.e. ltest, no_plots, ...).
+    ! Note that  some variables (e.g.  eq_style, ...)  are not passed  over MPI.
+    ! Every process should call its own "reconstruct_PB3D_in" in order to obtain
+    ! them.
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
             &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
@@ -369,6 +372,9 @@ contains
             call MPI_Bcast(max_r_plot,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(max_tot_mem_per_proc,1,MPI_DOUBLE_PRECISION,0,&
+                &MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -429,9 +435,6 @@ contains
                     call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,&
                         &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_tot_mem_per_proc,1,MPI_DOUBLE_PRECISION,&
-                        &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_X_mem_per_proc,1,MPI_DOUBLE_PRECISION,&
                         &0,MPI_Comm_world,ierr)

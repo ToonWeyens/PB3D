@@ -135,7 +135,7 @@ contains
         else
             ! plot resonances if requested
             if (plot_resonance .and. rank.eq.0 .and. rich_lvl.eq.1) then
-                ierr = resonance_plot(eq_1,grid_eq)
+                ierr = resonance_plot(grid_eq,eq_1)
                 CHCKERR('')
             else
                 call writo('Resonance plot not requested')
@@ -537,8 +537,8 @@ contains
     end function run_driver_X_1
     
     ! Part 2 of driver_X: Tensorial jobs.
-    ! Note: Everything is done in the field-aligned grids, where ELENA vectorial
-    ! perturbation variables are first interpolated.
+    ! Note:  Everything  is  done  in  the  field-aligned  grids,  where  HELENA
+    ! vectorial perturbation variables are first interpolated.
     integer function run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B) &
         &result(ierr)
         use MPI_ops, only: get_next_job, print_jobs_info

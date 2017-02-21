@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.44                                                              !
+!   Version: 1.45                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -30,9 +30,11 @@ program POST
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input_opts
-    use driver_POST, only: run_driver_POST
+    use driver_POST, only: run_driver_POST, init_POST
     use PB3D_ops, only: reconstruct_PB3D_in
     use input_utilities, only: dealloc_in
+    use eq_utilities, only: do_eq, eq_info
+    use grid_vars, only: grid_type
 #if ldebug
     use num_vars, only: ltest
     use test, only: generic_tests
@@ -103,14 +105,24 @@ program POST
     !   Main driver
     !-------------------------------------------------------
     call start_time
-    call writo('Main driver')
+    call writo('Initializing POST')
     call lvl_ud(1)
-    ierr = run_driver_POST()
+    ierr = init_POST()
     CHCKERR
-    call writo('')
-    call passed_time
+    call stop_time
     call writo('')
     call lvl_ud(-1)
+    PAR: do while(do_eq())
+        call start_time
+        call writo('Main driver'//trim(eq_info()))
+        call lvl_ud(1)
+        ierr = run_driver_POST()
+        CHCKERR
+        call writo('')
+        call passed_time
+        call writo('')
+        call lvl_ud(-1)
+    end do PAR
 
     !-------------------------------------------------------
     !   clean up

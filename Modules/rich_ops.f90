@@ -300,7 +300,7 @@ contains
         use eq_utilities, only: divide_eq_jobs
         use HELENA_vars, only: nchi
         use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
-            &minim_output, PB3D_name_eq
+            &minim_output, PB3D_name_eq, max_deriv
         use HDF5_ops, only: create_output_HDF5
         use MPI_utilities, only: get_ser_var
         
@@ -309,6 +309,7 @@ contains
         ! local variables
         logical :: only_half_grid                                               ! calculate only half grid with even points
         integer :: n_par_X_loc                                                  ! local n_par_X
+        integer :: var_size_without_par                                         ! size of variables without parallel dimension
         real(dp) :: tot_mem_size                                                ! total memory size per process
         real(dp), allocatable :: tot_mem_size_full(:)                           ! tot_mem_size for all processes
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -330,17 +331,20 @@ contains
         ierr = calc_n_par_X_rich(n_par_X_loc,only_half_grid)
         CHCKERR('')
         
-        ! Get local n_par_X to divide the equilibrium jobs. Note that the 
-        ! average size per process is n_r_eeq / n_procs
+        ! Get  local n_par_X  to  divide  the equilibrium  jobs.  Note that  the
+        ! average size  per process is n_r_eq  / n_procs, times the  size due to
+        ! the dimensions  corresponding to  the derivatives,  and the  number of
+        ! variables (see subroutine "calc_memory" inside "divide_eq_jobs")
+        var_size_without_par = 13*n_r_eq*(1+max_deriv)**3/n_procs
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! divide equilibrium jobs
-                ierr = divide_eq_jobs(n_par_X_loc,n_r_eq/n_procs)
+                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! divide equilibrium jobs
-                ierr = divide_eq_jobs(n_par_X_loc,n_r_eq/n_procs,&
-                    &n_par_X_base=nchi,tot_mem_size=tot_mem_size)               ! always use nchi points as base
+                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
+                    &n_par_X_base=nchi,tot_mem_size=tot_mem_size)               ! everything is tabulated on nchi poloidal points
                 CHCKERR('')
                 
                 ! check whether  calculation for  first Richardson level  can be

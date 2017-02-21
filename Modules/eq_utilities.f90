@@ -802,13 +802,16 @@ contains
     ! parts of the  interpolated and integrated X_2 variables, though  it has no
     ! direct influence on the equilibrium variables.
     ! Therefore, the whole  load is divided into jobs depending  on the sizes of
-    ! the sizes of the pieces in  memory. The division of equilibrium jobs forms
-    ! an  "outer  loop"  compared  to  the  "inner  loop"  of  the  division  of
-    ! perturbation jobs.
+    ! the pieces  in memory. The  division of  equilibrium jobs forms  an "outer
+    ! loop" compared to the "inner loop" of the division of perturbation jobs.
     ! This  function does  the  job of  dividing the  grids  setting the  global
     ! variables 'eq_jobs_lims'.  In contrast  with "divide_X_jobs", there  is no
     ! need for a variable such as "eq_jobs_taken". See note below.
-    ! Optionally, a base n_par_X can be set, which is undivisible. 
+    ! Optionally, a  base number  can be  provided for  n_par_X, that  is always
+    ! added to the number of points in  the divided n_par_X. This is useful when
+    ! interpolation is  used on some  fundamental interval to another  range. In
+    ! this case  you always need to  store the fundamental interval,  as well as
+    ! the other range.
     ! Also, optionally the total memory size per process is also returned.
     ! Note: a  very important difference  between the equilibrium  parallel jobs
     ! and the perturbation jobs is that  the parallel jobs are done serially, by
@@ -826,6 +829,27 @@ contains
     ! In fact,  the equilibrium  jobs have  much in  common with  the Richardson
     ! levels,  as is  attested  by the  existence of  the  routines "do_eq"  and
     ! "eq_info", which are equivalent to "do_rich" and "rich_info".
+    ! Note: For PB3D,  only the variables g_FD, h_FD and  jac_FD are counted, as
+    ! the  equilibrium variables  and  the transformation  matrices are  deleted
+    ! after use. Also, S, sigma, kappa_n and kappa_g can be neglected as they do
+    ! not contain derivatives and are therefore much smaller.
+    ! These variables  are tabulated  in an equilibrium  normal grid.  For VMEC,
+    ! their angular grid is that of the perturbation quantities, but for HELENA,
+    ! it  is  the  input  grid  from HELENA.  Later,  the  quantities  are  then
+    ! interpolated  on  the perturbation  angular  grid.  This means  that  this
+    ! routine  should be  called with  the  perturbation angular  size for  both
+    ! cases, but  that for  HELENA, a base  size should be  added, equal  to the
+    ! input angular size (i.e. nchi).
+    ! In POST, finally, the situation is slightly different in two ways:
+    !   - As there are no perturbation jobs: All the requested variables have to
+    !   fit, including the D and DU variables. The parallel range to be taken is
+    !   then the  one of  the output  grid, including a  base range  for HELENA.
+    !   Also, for extended  output grids, the size of the  grid in the secondary
+    !   angle has to  be included in arr_size (i.e. toroidal  when poloidal flux
+    !   is used and vice versa).
+    !   -  Though  the perturbation  variables  are  tabulated  in a  grid  with
+    !   different normal  extent, their  angular variables do  match. Therefore,
+    !   the weighted sum can be used as arr_size.
     integer function divide_eq_jobs(n_par_X_rich,arr_size,n_par_X_base,&
         &tot_mem_size) result(ierr)
         
@@ -867,13 +891,13 @@ contains
                 fund_n_par = 3   
         end select
         
-        ! calculate largest possible range of parallel points
+        ! calculate largest possible range of parallel points fitting in memory
         n_div = 0
         mem_size = huge(1._dp)
         if (rich_lvl.eq.1) then
-            n_div_max = (n_par_X_rich-1)/fund_n_par                             ! through adapt_min_n_par_X: n_par_X_rich = 1 + fund_n_par(1+k)
+            n_div_max = (n_par_X_rich-1)/fund_n_par
         else
-            n_div_max = n_par_X_rich/fund_n_par                                 ! next levels: n_par_X_rich - 1 = fund_n_par(1+k)
+            n_div_max = n_par_X_rich/fund_n_par
         end if
         do while (mem_size.gt.max_tot_mem_per_proc)
             n_div = n_div + 1
@@ -904,7 +928,8 @@ contains
             &trim(i2str(ceiling(max_tot_mem_per_proc)))//'MB)')
         
         ! calculate max memory available for perturbation calculations
-        max_X_mem_per_proc = max_tot_mem_per_proc - mem_size/mem_scale_fac      ! don't need scale factor as no operations are done on eq vars
+        ! (mem_size was scaled by mem_scale_fac)
+        max_X_mem_per_proc = max_tot_mem_per_proc - mem_size/mem_scale_fac      ! don't need scale factor for eq vars as no operations are done on them, they are just stored
         call writo('In the perturbation phase, the equilibrium variables are &
             &not being operated on:')
         call lvl_ud(1)
@@ -914,7 +939,7 @@ contains
             &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB')
         call lvl_ud(-1)
         
-        ! set total memory size if requested
+        ! set total memory size if requested, reusing n_par_range
         if (present(tot_mem_size)) then
             n_par_range = n_par_X_rich
             if (present(n_par_X_base)) n_par_range = n_par_range + n_par_X_base
@@ -923,11 +948,10 @@ contains
             tot_mem_size = 1._dp*ceiling(tot_mem_size)                          ! round up
         end if
         
-        ! set up jobs data as illustrated below for 3 divisions:
-        !   [1,2,3]
+        ! Set up jobs data (eq_jobs_lims).
         ! Also initialize eq_job_nr to 0 as it is incremented by "do_eq".
         allocate(n_par_loc(n_div))
-        n_par_loc = n_par_X_rich/n_div                                          ! number of radial points on this processor
+        n_par_loc = n_par_X_rich/n_div                                          ! number of parallel points on this processor
         n_par_loc(1:mod(n_par_X_rich,n_div)) = &
             &n_par_loc(1:mod(n_par_X_rich,n_div)) + 1                           ! add a point to if there is a remainder
         ierr = calc_eq_jobs_lims(n_par_loc,eq_jobs_lims)
@@ -942,17 +966,21 @@ contains
         call lvl_ud(-1)
         call writo('Equilibrium jobs divided')
     contains
-        ! Calculate memory in MB necessary for eq variables:
-        !   (2*6+1) x n_geo x loc_n_r x n_par x (max_deriv + 1)^3
-        ! where  n_geo x  loc_n_r should  be passed as  'arr_size' and  n_par as
-        ! well.
-        ! Note:  only g_FD,  h_FD and  jac_FD  are counted,  as the  equilibrium
-        ! variables and the transformation matrices are deleted after use. Also,
-        ! S, sigma, kappa_n and kappa_g can  be neglected as they do not contain
-        ! derivatives.
+        ! Calculate memory in MB necessary for variables in equilibrium job. The
+        ! size of  these variables is equal  to the product of  the non-parallel
+        ! dimensions (e.g. n_geo x loc_n_r), times the number of variables.
+        ! The latter should be:
+        !   - PB3D:  only take into  account (2*6+1 = 13)  equilibrium variables
+        !   g_FD, h_FD and jac_FD, as  the perturbation variables are divided in
+        !   jobs  occupying  the  remaning space.  These  equilibrium  variables
+        !   are  tabulated  on the  equilibrium  grid.  Note that  they  contain
+        !   derivatives  in  extra dimensions,  so  that  their size  should  be
+        !   multiplied by (max_deriv+1)^3.
+        !   - POST: take into account these 13 equilibrium variables, as well as
+        !   4 variables U and DU, with double size due to being complex, and the
+        !   additional dimension equal to n_mod_X, but without derivatives.
         integer function calc_memory(arr_size,n_par,mem_size) result(ierr)
             use ISO_C_BINDING
-            use num_vars, only: max_deriv
             
             character(*), parameter :: rout_name = 'calc_memory'
             
@@ -973,9 +1001,8 @@ contains
             dp_size = sizeof(1._dp)
             
             ! set memory size
-            mem_size = 13*arr_size
+            mem_size = arr_size*1._dp
             mem_size = mem_size*n_par
-            mem_size = mem_size*(max_deriv+1)**3
             mem_size = mem_size*dp_size
             
             ! convert B to MB

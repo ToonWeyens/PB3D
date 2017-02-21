@@ -13,7 +13,7 @@ module grid_utilities
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
-        &calc_int_vol, trim_grid, untrim_grid, setup_deriv_data, &
+        &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich, nufft
 #if ldebug
     public debug_calc_int_vol, debug_setup_interp_data
@@ -879,6 +879,70 @@ contains
             CHCKERR('')
         end if
     end function extend_grid_E
+    
+    ! Copy a grid A to a new grid B, that was not yet initialized. This new grid
+    ! can contain  a subsection of the  previous grid in all  dimensions. It can
+    ! also be a divided grid, by providing the limits
+    ! Note that  these normal  limits for  the divided grid  should be  given in
+    ! terms of the normal dimension of grid B.
+    integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
+        character(*), parameter :: rout_name = 'init_grid'
+        
+        ! input / output
+        class(grid_type), intent(in) :: grid_A                                  ! grid to be initialized
+        class(grid_type), intent(inout) :: grid_B                               ! grid to be initialized
+        integer, intent(in), optional :: lims_B(3,2)                            ! ranges for subset of grid
+        integer, intent(in), optional :: i_lim(2)                               ! min. and max. local normal index
+        
+        ! local variables
+        integer :: n_B(3)                                                       ! n of grid B
+        integer :: lims_B_loc(3,2)                                              ! local lims_B
+        integer :: i_lim_loc(2)                                                 ! local i_lim
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up dimensions and of B
+        lims_B_loc(1,:) = [1,grid_A%n(1)]
+        lims_B_loc(2,:) = [1,grid_A%n(2)]
+        lims_B_loc(3,:) = [1,grid_A%n(3)]
+        if (present(lims_B)) lims_B_loc = lims_B
+        n_B = lims_B_loc(:,2)-lims_B_loc(:,1)+1
+        where (lims_B_loc(:,1).eq.lims_B_loc(:,2) &
+            &.and. lims_B_loc(:,1).eq.[0,0,0]) n_B = 0
+        i_lim_loc = lims_B_loc(3,:)
+        if (present(i_lim)) i_lim_loc = lims_B_loc(3,1) - 1 + i_lim
+        ! tests
+        if (n_B(1).gt.grid_A%n(1) .or. n_B(2).gt.grid_A%n(2) .or. &
+            &n_B(3).gt.grid_A%n(3)) then
+            ierr = 1
+            CHCKERR('lims_B is too large')
+        end if
+        if (i_lim_loc(1).gt.grid_A%n(3) .or. i_lim_loc(2).gt.grid_A%n(3)) then
+            ierr = 1
+            CHCKERR('normal limits too wide')
+        end if
+        
+        ! allocate the new grid
+        ierr = grid_B%init(n_B,i_lim)
+        CHCKERR('')
+        
+        ! copy arrays, possibly subset
+        grid_B%r_F = grid_A%r_F(lims_B_loc(3,1):lims_B_loc(3,2))
+        grid_B%r_E = grid_A%r_E(lims_B_loc(3,1):lims_B_loc(3,2))
+        grid_B%loc_r_F = grid_A%r_F(i_lim_loc(1):i_lim_loc(2))
+        grid_B%loc_r_E = grid_A%r_E(i_lim_loc(1):i_lim_loc(2))
+        if (n_B(1).ne.0 .and. n_B(2).ne.0) then
+            grid_B%theta_F = grid_A%theta_F(lims_B_loc(1,1):lims_B_loc(1,2),&
+                &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
+            grid_B%theta_E = grid_A%theta_E(lims_B_loc(1,1):lims_B_loc(1,2),&
+                &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
+            grid_B%zeta_F = grid_A%zeta_F(lims_B_loc(1,1):lims_B_loc(1,2),&
+                &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
+            grid_B%zeta_E = grid_A%zeta_E(lims_B_loc(1,1):lims_B_loc(1,2),&
+                &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
+        end if
+    end function copy_grid
     
     ! Calculates volume integral on a 3D grid.
     ! Two angular and  one normal variable has  to be provided on a the grid. If

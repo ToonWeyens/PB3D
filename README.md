@@ -605,3 +605,14 @@ CHANGELOG
       - Fixed a bug where uninitialized pointers were used in the POST driver for non-full outputs. Now, the harmonics are plot separately.
       - "slab_plots" is now an integer variable "slab_plots_style" that can take value 2 as well, which stands for slab plots with the angular coordinates wrapped to the fundamental intervals.
       - Improved the run script for the ITER cluster, making use now of two auxiliary scripts "gen_node_file.sh" and "get_disk_space.sh".
+
+1.45: - The run script does not copy the HDF5 output file for POST on the ITER cluster, but instead creates a symbolic link.
+      - Updated some comments in the code, for example concerning the wrong statement that HDF5 data read has to be contiguous. This is not any more the case.
+      - The routines that call "divide_eq_jobs" now need to include derivatives the array size.
+      - There is a new function "copy_grid" that allows the user to copy a grid to a new, unallocated grid, taking a possible subset of variables.
+      - Part of the tasks of the POST driver is now done in an initalisation routine "init_POST".
+      - The other parts are done for multiple equilibrium jobs.
+      - These jobs are divided according to memory requirements.
+      - "setup_par_id" has been generalized and can also output the indices in HDF5 memory.
+      - In HDF5 array reading, the indices of the dummy variables now start at 1 always. It is the job of the initialization of the various variables (e.g. eq_1, eq_2, ...) to set the range limits correct (e.g. starting at 0 for derivatives, ...).
+      - This is an untested version.
