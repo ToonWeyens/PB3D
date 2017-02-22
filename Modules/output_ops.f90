@@ -95,18 +95,26 @@ contains
         npnt = size(y,1)
         nplt = size(y,2)
         if (present(x)) then
-            if (size(x,1).ne.size(y,1) .or. size(x,2).ne.size(y,2)) then
+            if (size(x,1).ne.size(y,1) .or. &
+                &(size(x,2).ne.1 .and. size(x,2).ne.size(y,2))) then
+                write(*,*) 'shape(x)', shape(x)
+                write(*,*) 'shape(y)', shape(y)
                 call writo('In print_ex_2D, the size of x and y has to be the &
                     &same... Skipping plot',persistent=.true.,warning=.true.)
             end if
         end if
         
         ! set x
+        allocate(x_fin(npnt,nplt))
         if (present(x)) then
-            allocate(x_fin(size(x,1),size(x,2)))
-            x_fin = x
+            if (size(x,2).eq.1) then                                            ! assume copy
+                do iplt = 1,nplt
+                    x_fin(:,iplt) = x(:,1)
+                end do
+            else
+                x_fin = x
+            end if
         else
-            allocate(x_fin(size(y,1),size(y,2)))
             do ipnt = 1,npnt
                 x_fin(ipnt,:) = ipnt
             end do
@@ -230,7 +238,9 @@ contains
         nplt = size(z,3)
         if (present(x)) then
             if (size(x,1).ne.size(z,1) .or. size(x,2).ne.size(z,2) .or. &
-                &size(x,3).ne.size(z,3)) then
+                &(size(x,3).ne.1 .and. size(x,3).ne.size(z,3))) then
+                write(*,*) 'shape(x)', shape(x)
+                write(*,*) 'shape(z)', shape(z)
                 call writo('In print_ex, the size of x and z has to be the &
                     &same... Skipping plot',persistent=.true.,warning=.true.)
                 return
@@ -238,7 +248,9 @@ contains
         end if
         if (present(y)) then
             if (size(y,1).ne.size(z,1) .or. size(y,2).ne.size(z,2) .or. &
-                &size(y,3).ne.size(z,3)) then
+                &(size(y,3).ne.1 .and. size(y,3).ne.size(z,3))) then
+                write(*,*) 'shape(y)', shape(y)
+                write(*,*) 'shape(z)', shape(z)
                 call writo('In print_ex, the size of y and z has to be the &
                     &same... Skipping plot',persistent=.true.,warning=.true.)
                 return
@@ -246,19 +258,31 @@ contains
         end if
         
         ! set x
+        allocate(x_fin(npntx,npnty,nplt))
         if (present (x)) then
-            x_fin = x
+            if (size(x,3).eq.1) then                                            ! assume copy
+                do iplt = 1,nplt
+                    x_fin(:,:,iplt) = x(:,:,1)
+                end do
+            else
+                x_fin = x
+            end if
         else
-            allocate(x_fin(size(z,1),size(z,2),size(z,3)))
             do ipntx = 1,npntx
                 x_fin(ipntx,:,:) = ipntx
             end do
         end if
         ! set y
+        allocate(y_fin(npntx,npnty,nplt))
         if (present (y)) then
-            y_fin = y
+            if (size(y,3).eq.1) then                                            ! assume copy
+                do iplt = 1,nplt
+                    y_fin(:,:,iplt) = y(:,:,1)
+                end do
+            else
+                y_fin = y
+            end if
         else
-            allocate(y_fin(size(z,1),size(z,2),size(z,3)))
             do ipnty = 1,npnty
                 y_fin(:,ipnty,:) = ipnty
             end do
@@ -457,7 +481,7 @@ contains
             case (2)                                                            ! Bokeh
                 select case (draw_dim)
                     case (1)                                                    ! 2D
-                        run_shell_necessary = plot_on_screen                    ! only need to run if plot on screen
+                        !!run_shell_necessary = plot_on_screen                    ! only need to run if plot on screen (?)
                         if (is_animated_loc) then
                             call draw_ex_animated_Bokeh()
                         else
@@ -503,7 +527,7 @@ contains
                         &cmdstat=cmdstat,cmdmsg=cmdmsg)
                     ! ignore errors
                 else
-                    call writo('Created plot in output file "'//&
+                    call writo('Plot in output file "'//&
                         &trim(plot_dir)//'/'//trim(draw_name)//&
                         &'.'//trim(ex_ext)//'"',persistent=.true.)
                 end if

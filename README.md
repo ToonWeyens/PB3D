@@ -616,3 +616,10 @@ CHANGELOG
       - "setup_par_id" has been generalized and can also output the indices in HDF5 memory.
       - In HDF5 array reading, the indices of the dummy variables now start at 1 always. It is the job of the initialization of the various variables (e.g. eq_1, eq_2, ...) to set the range limits correct (e.g. starting at 0 for derivatives, ...).
       - This is an untested version.
+
+1.46: - In "print_ex_2D" and "print_ex_3D", x (and y) variables can now be provided for 1 plot, and are then copied for the possible others.
+      - Implemented a test procedure "test_read_HDF5_subset" for the subset reading capacities.
+      - This routine can test for the correct reading of subsets, with or without normally divided grids.
+      - Some bugs have been fixed.
+      - Tests have been concluded.
+      - There appears to be a problem when reading the variables from HELENA equilibria for testing: Performance drops very much. This needs to be investigated.

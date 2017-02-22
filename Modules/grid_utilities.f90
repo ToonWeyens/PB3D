@@ -467,9 +467,13 @@ contains
         call norm_interp_data%dealloc()
     end function coord_E2F_r
     
-    ! Calculates X,Y  and Z on a  grid, which should have  the local equilibrium
-    ! grid angles  set up in E(quilibrium)  coordinates. The total r_E,  and the
-    ! F(lux) variables are ignored.
+    ! Calculates  X,Y  and  Z  on   a  grid  grid_XYZ,  determined  through  its
+    ! E(quilibrium) coordinates.
+    ! Furthermore, a grid  grid_eq must be provided, which is  the grid in which
+    ! the variables concerning R and Z  are tabulated, i.e. the full equilibrium
+    ! grid  in E(quilibrium)  coordinates. Of  this grid,  however, only  r_E is
+    ! used,  and the  rest ignored.  It can  therefore be  provided without  the
+    ! angular part, i.e. by reconstructing it with a subset.
     ! If VMEC is the equilibrium  model, this routine also optionally calculates
     ! lambda on the grid, as this is  also needed some times. If HELENA is used,
     ! this variable is not used.

@@ -424,6 +424,8 @@ contains
     ! the position dimensions only. If provided,  the normal limits of a divided
     ! grid refer to the subset, as in "copy_grid".
     ! Note: "grid_" is added in front the data_name.
+    ! Note: By providing  grid_limits equal to 0 in the  angular dimensions, the
+    ! angular part can be discarded when reconstructing the grid.
     integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,eq_job,&
         &tot_rich,lim_pos,grid_limits) result(ierr)
         use num_vars, only: PB3D_name
@@ -514,6 +516,8 @@ contains
                 &lim_pos(2,2)-lim_pos(2,1)+1
             if (lim_pos(3,1).ge.0 .and. lim_pos(3,2).ge.0) n(3) = &
                 &lim_pos(3,2)-lim_pos(3,1)+1
+            where (lim_pos(:,1).eq.lim_pos(:,2) .and. lim_pos(:,1).eq.[0,0,0]) &
+                &n = 0
         end if
         
         ! set up parallel limits
@@ -542,19 +546,20 @@ contains
             end if
 #endif
             
-            ! set up local limits for HDF5 reconstruction
+            ! set up local limits for HDF5 reconstruction of full vars
             lim_mem(1,:) = par_id_mem
             lim_mem(2,:) = [1,grid%n(2)]
-            lim_mem(3,:) = [grid%i_min,grid%i_max]
+            lim_mem(3,:) = [1,grid%n(3)]
             if (present(lim_pos)) then
                 lim_mem(2,:) = lim_pos(2,:)
-                lim_mem(3,:) = lim_mem(3,:) + lim_pos(3,1) - 1                  ! take into account the grid limits (relative to position subset)
+                lim_mem(3,:) = lim_pos(3,:)
             end if
             
             ! r_F
             allocate(vars_1D(1))
             ierr = read_HDF5_arr(vars_1D(1),PB3D_name,'grid_'//&
-                &trim(data_name),'r_F',rich_lvl=id,eq_job=eq_id(1))
+                &trim(data_name),'r_F',rich_lvl=id,eq_job=eq_id(1),&
+                &lim_loc=lim_mem(3:3,:))
             CHCKERR('')
             call conv_1D2ND(vars_1D(1),dum_1D)                                  ! use first equilibrium job, as it should be invariant
             grid%r_F = dum_1D
@@ -564,7 +569,8 @@ contains
             ! r_E
             allocate(vars_1D(1))
             ierr = read_HDF5_arr(vars_1D(1),PB3D_name,'grid_'//&
-                &trim(data_name),'r_E',rich_lvl=id,eq_job=eq_id(1))
+                &trim(data_name),'r_E',rich_lvl=id,eq_job=eq_id(1),&
+                &lim_loc=lim_mem(3:3,:))
             CHCKERR('')
             call conv_1D2ND(vars_1D(1),dum_1D)                                  ! use first equilibrium job, as it should be invariant
             grid%r_E = dum_1D
@@ -576,6 +582,15 @@ contains
             
             ! loc_r_E
             grid%loc_r_E = grid%r_E(grid%i_min:grid%i_max)
+            
+            ! overwrite local limits for HDF5 reconstruction of divided vars
+            lim_mem(1,:) = par_id_mem
+            lim_mem(2,:) = [1,grid%n(2)]
+            lim_mem(3,:) = [grid%i_min,grid%i_max]
+            if (present(lim_pos)) then
+                lim_mem(2,:) = lim_pos(2,:)
+                lim_mem(3,:) = lim_mem(3,:) + lim_pos(3,1) - 1                  ! take into account the grid limits (relative to position subset)
+            end if
             
             ! only for 3D grids
             if (product(grid%n(1:2)).ne.0) then
@@ -1122,6 +1137,7 @@ contains
             if (is_field_averaged_loc) then
                 par_id = [1,1,1]                                                ! only first element
                 loc_n_par = 1
+                par_id_mem = [1,1]
             else
                 par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich=tot_rich,&
                     &par_lim=par_lim,par_id_mem=par_id_mem)
@@ -1332,6 +1348,7 @@ contains
         &lim_sec_sol,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
+        use X_vars, only: n_mod_X
         use PB3D_utilities, only: conv_1D2ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
@@ -1346,7 +1363,8 @@ contains
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
-        integer :: lim_mem(1,2)                                                 ! memory limits for variables
+        integer :: lim_sec_sol_loc(2)                                           ! local version of lim_sec_sol
+        integer :: lim_mem(3,2)                                                 ! memory limits for variables
         integer :: n_EV                                                         ! nr. of Eigenvalues
         
         ! initialize ierr
@@ -1361,20 +1379,26 @@ contains
         n_EV = var_1D%tot_i_max(3)-var_1D%tot_i_min(3)+1
         call dealloc_var_1D(var_1D)
         
+        ! set up local lim_sec_sol
+        lim_sec_sol_loc = [1,n_mod_X]
+        if (present(lim_sec_sol)) lim_sec_sol_loc = lim_sec_sol
+        
         ! create solution
         call sol%init(grid_sol,n_EV,lim_sec_sol)
         
         ! set up local limits for HDF5 reconstruction
-        lim_mem(1,:) = [1,grid_sol%n(3)]
+        lim_mem(1,:) = lim_sec_sol_loc
+        lim_mem(2,:) = [grid_sol%i_min,grid_sol%i_max]
+        lim_mem(3,:) = [-1,-1]
         if (present(lim_pos)) then
-            lim_mem(1,:) = lim_pos(1,:) - 1 + [grid_sol%i_min,grid_sol%i_max]
+            lim_mem(2,:) = lim_mem(2,:) + lim_pos(1,1) - 1                  ! take into account the grid limits (relative to position subset)
         end if
         
         ! restore variables
         
         ! RE_sol_val
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'RE_sol_val',&
-            &rich_lvl=rich_lvl,lim_loc=lim_mem)
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_1D)
         sol%val = dum_1D
@@ -1383,7 +1407,7 @@ contains
         
         ! IM_sol_val
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'IM_sol_val',&
-            &rich_lvl=rich_lvl,lim_loc=lim_mem)
+            &rich_lvl=rich_lvl)
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_1D)
         sol%val = sol%val + iu*dum_1D

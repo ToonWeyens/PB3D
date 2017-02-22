@@ -830,31 +830,57 @@ contains
         use num_vars, only: rank, eq_style, n_procs
         use MPI_utilities, only: wait_MPI
         use grid_vars, only: grid_type
-        use grid_utilities, only: copy_grid, calc_XYZ_grid
+        use grid_utilities, only: copy_grid, calc_XYZ_grid, trim_grid
         use rich_vars, only: rich_lvl
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq_2
-        use eq_vars, only: eq_2_type
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
+            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
+        use eq_vars, only: eq_1_type, eq_2_type
+        use X_vars, only: X_1_type, &
+            &m_X
+        use sol_vars, only: sol_type
+        use X_ops, only: setup_nm_X
         use VMEC, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'test_read_HDF5_subset'
         
         ! local variables
-        type(grid_type) :: grid_eq                                              ! equilibrium grid
-        type(grid_type) :: grid_eq_sub                                          ! grid_eq for subset
-        type(eq_2_type) :: eq_2                                                 ! tensorial equilibrium variables
+        type(grid_type) :: grid                                                 ! equilibrium or perturbation grid
+        type(grid_type) :: grid_sub                                             ! grid for subset
+        type(grid_type) :: grid_trim                                            ! trimmed grid for subset
+        type(grid_type) :: grid_eq                                              ! equilibrium grid for XYZ calculation
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
+        type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
+        type(X_1_type) :: X_1                                                   ! vectorial perturbation variables
+        type(sol_type) :: sol                                                   ! solution variables
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
+        integer :: rich_lvl_name_eq                                             ! either the Richardson level or zero, to append to names
         integer :: id, jd, kd                                                   ! counters
         integer :: i_sub                                                        ! counter
-        integer :: n_eq(3)                                                      ! n of equilibrium grid
+        integer :: n_tot(3)                                                     ! n of equilibrium grid
         integer :: n_sub(3)                                                     ! nr. of subsets
-        integer, allocatable :: n_sub_loc(:)                                    ! local starting indices of each process
+        integer :: n_sub_norm                                                   ! nr. of subsets
+        integer :: norm_ol = 4                                                  ! normal overlap
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: i_lim(2)                                                     ! normal limit for this process
+        integer :: plot_dim(3)                                                  ! dimensions of plot
+        integer :: plot_offset(3)                                               ! local offset of plot
+        integer :: test_case                                                    ! which case to test (1: eq_2, 2: X_1)
+        integer :: i_sec                                                        ! which mode for X_1 or sol
+        integer, allocatable :: n_sub_loc(:)                                    ! number of subsets per process
+        integer, allocatable :: n_sub_norm_loc(:)                               ! number of normal poins per process per subset
         integer, allocatable :: lims(:,:,:)                                     ! limits (3,2,product(n_sub))
         integer, allocatable :: lims_loc(:,:,:)                                 ! limits for current process
         real(dp), allocatable :: XYZ(:,:,:,:)                                   ! X, Y and Z on output grid
         real(dp), allocatable :: XYZ_i(:,:,:,:)                                 ! X, Y and Z for slab plot
         character(len=max_str_ln) :: description                                ! description for plot
+        character(len=8) :: name_suff(2)                                        ! suffix of name, without and possibly with rank appended
+        character(len=3) :: grid_name                                           ! either eq or X
         character :: XYZ_name(3)                                                ! X, Y and Z
+        logical :: direct_grid_read                                             ! whether grid is directly read with subsets or copied
+        logical :: divide_over_procs                                            ! whether a division over process should be made
+        logical :: pers_out                                                     ! whether output is persistent (all procs) or not (only master)
+        logical :: tot_rich                                                     ! whether variable is spread out over multiple Richardson levels or not
         
         ! initialize ierr
         ierr = 0
@@ -870,73 +896,163 @@ contains
         XYZ_name(2) = 'Y'
         XYZ_name(3) = 'Z'
         
-        ! set up whether Richardson level has to be appended to the name
+        ! get information about which variables to reconstruct from user
+        call writo('Which variable do you want to test?')
+        call lvl_ud(1)
+        call writo('1. eq_2: Jac_FD and kappa_n')
+        call writo('2. X_1:  IM(U_0), RE(DU_1)')
+        call writo('3. sol:  RE(sol_vec)')
+        call lvl_ud(-1)
+        test_case = get_int(lim_lo=1,lim_hi=3)
+        
+        ! set up  whether Richardson level  has to be  appended to the  name and
+        ! whether tot_rich is used or not
         select case (eq_style) 
             case (1)                                                            ! VMEC
-                rich_lvl_name = rich_lvl                                        ! append richardson level
+                select case (test_case)
+                    case (1)                                                    ! eq_2
+                        rich_lvl_name = rich_lvl                                ! append richardson level
+                        tot_rich = .true.
+                    case (2)                                                    ! X_1
+                        rich_lvl_name = rich_lvl                                ! append richardson level
+                        tot_rich = .true.
+                    case (3)                                                    ! sol
+                        rich_lvl_name = 0                                       ! do not append name
+                        tot_rich = .false.
+                end select
+                rich_lvl_name_eq = rich_lvl                                     ! append richardson level
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append name
+                rich_lvl_name_eq = 0                                            ! do not append name
+                tot_rich = .false.
+        end select
+        select case (test_case)
+            case (1)                                                            ! eq_2
+                grid_name = 'eq'
+            case (2)                                                            ! X_1
+                grid_name = 'X'
+            case (3)                                                            ! sol
+                grid_name = 'sol'
         end select
         
-        ! reconstruct full equilibrium grids
-        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
+        ! reconstruct full grid
+        ierr = reconstruct_PB3D_grid(grid,trim(grid_name),&
+            &rich_lvl=rich_lvl_name,tot_rich=.true.)
         CHCKERR('')
-        n_eq = grid_eq%n
+        n_tot = grid%n
+        
+        ! get direct read flag from user
+        call writo('Read the grids directly using subsets?')
+        direct_grid_read = get_log(.true.)
+        
+        ! get flag concerning division over MPI procs
+        if (n_procs.gt.1) then
+            call writo('Divide over MPI processes?')
+            divide_over_procs = get_log(.true.)
+        else
+            divide_over_procs = .false.
+        end if
         
         ! get limits from user
-        call writo('Total equilibrium grid size: ['//&
-            &trim(i2str(n_eq(1)))//','//trim(i2str(n_eq(2)))//','//&
-            &trim(i2str(n_eq(3)))//']')
+        call writo('Total '//trim(grid_name)//' grid size: ['//&
+            &trim(i2str(n_tot(1)))//','//trim(i2str(n_tot(2)))//','//&
+            &trim(i2str(n_tot(3)))//']')
         do id = 1,3
-            call writo('how many divisions in dimension '//trim(i2str(id)))
-            n_sub(id) = get_int(lim_lo=0,lim_hi=n_eq(id)-1) + 1
+            if (n_tot(id).gt.0) then
+                call writo('how many divisions in dimension '//trim(i2str(id)))
+                n_sub(id) = get_int(lim_lo=0,lim_hi=n_tot(id)-1) + 1
+            else
+                n_sub(id) = 1
+            end if
         end do
         allocate(lims(3,2,product(n_sub)))
+        
+        ! also construct equilibrium grid for XYZ calculation, using lims
+        lims(1,:,1) = [0,0]
+        lims(2,:,1) = [0,0]
+        lims(3,:,1) = [-1,-1]
+        ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name_eq,&
+            &tot_rich=.true.,lim_pos=lims(:,:,1))
+        CHCKERR('')
+        call print_ex_2D('r_E','r_E_'//trim(i2str(rank)),grid_eq%r_E,draw=.false.)
+        call draw_ex(['r_E'],'r_E_'//trim(i2str(rank)),1,1,.false.)
         
         ! set limits
         i_sub = 1
         do kd = 1,n_sub(3)
             do jd = 1,n_sub(2)
                 do id = 1,n_sub(1)
-                    lims(1,1,i_sub) = (id-1)*(n_eq(1)/n_sub(1)) + &
-                        &min(mod(n_eq(1),n_sub(1)),id-1) + 1
-                    lims(1,2,i_sub) = id*(n_eq(1)/n_sub(1)) + &
-                        &min(mod(n_eq(1),n_sub(1)),id)
-                    lims(2,1,i_sub) = (jd-1)*(n_eq(2)/n_sub(2)) + &
-                        &min(mod(n_eq(2),n_sub(2)),jd-1) + 1
-                    lims(2,2,i_sub) = jd*(n_eq(2)/n_sub(2)) + &
-                        &min(mod(n_eq(2),n_sub(2)),jd)
-                    lims(3,1,i_sub) = (kd-1)*(n_eq(3)/n_sub(3)) + &
-                        &min(mod(n_eq(3),n_sub(3)),kd-1) + 1
-                    lims(3,2,i_sub) = kd*(n_eq(3)/n_sub(3)) + &
-                        &min(mod(n_eq(3),n_sub(3)),kd)
+                    lims(1,1,i_sub) = (id-1)*(n_tot(1)/n_sub(1)) + &
+                        &min(mod(n_tot(1),n_sub(1)),id-1) + 1
+                    lims(1,2,i_sub) = id*(n_tot(1)/n_sub(1)) + &
+                        &min(mod(n_tot(1),n_sub(1)),id)
+                    lims(2,1,i_sub) = (jd-1)*(n_tot(2)/n_sub(2)) + &
+                        &min(mod(n_tot(2),n_sub(2)),jd-1) + 1
+                    lims(2,2,i_sub) = jd*(n_tot(2)/n_sub(2)) + &
+                        &min(mod(n_tot(2),n_sub(2)),jd)
+                    lims(3,1,i_sub) = (kd-1)*(n_tot(3)/n_sub(3)) + &
+                        &min(mod(n_tot(3),n_sub(3)),kd-1) + 1
+                    lims(3,2,i_sub) = kd*(n_tot(3)/n_sub(3)) + &
+                        &min(mod(n_tot(3),n_sub(3)),kd)
                     i_sub = i_sub+1
                 end do
             end do
         end do
         
-        ! divide under processes
+        ! divide under processes:  either just dividing over  all processes with
+        ! full normal  subranges, or by letting  every process work on  the same
+        ! subranges, dividing these normally.
         allocate(n_sub_loc(n_procs))
-        n_sub_loc = product(n_sub)/n_procs
-        n_sub_loc(1:mod(product(n_sub),n_procs)) = &
-            &n_sub_loc(1:mod(product(n_sub),n_procs)) + 1
-        allocate(lims_loc(3,2,n_sub_loc(rank+1)))
-        lims_loc = lims(:,:,sum(n_sub_loc(1:rank))+1:sum(n_sub_loc(1:rank+1)))
-        call writo('Process '//trim(i2str(rank))//' has subsets:',&
-            &persistent=.true.)
+        allocate(n_sub_norm_loc(n_procs))
+        if (divide_over_procs) then
+            pers_out = rank.eq.0
+            n_sub_loc = product(n_sub)
+            allocate(lims_loc(3,2,product(n_sub)))
+            lims_loc = lims
+            call writo('All process perform every job together, dividing each &
+                &one normally with overlap '//trim(i2str(norm_ol)))
+        else
+            pers_out = .true.
+            n_sub_loc = product(n_sub)/n_procs
+            n_sub_loc(1:mod(product(n_sub),n_procs)) = &
+                &n_sub_loc(1:mod(product(n_sub),n_procs)) + 1
+            allocate(lims_loc(3,2,n_sub_loc(rank+1)))
+            lims_loc = &
+                &lims(:,:,sum(n_sub_loc(1:rank))+1:sum(n_sub_loc(1:rank+1)))
+            call writo('Process '//trim(i2str(rank))//' has subsets:',&
+                &persistent=.true.)
+        end if
         call lvl_ud(1)
         do i_sub = 1,size(lims_loc,3)
-            call writo('process '//trim(i2str(i_sub)),persistent=.true.)
+            call writo('subset '//trim(i2str(i_sub)),persistent=pers_out)
             call lvl_ud(1)
             do id = 1,3
                 call writo('lim('//trim(i2str(id))//'&
                     &) = ['//trim(i2str(lims_loc(id,1,i_sub)))//'..'//&
-                    &trim(i2str(lims_loc(id,2,i_sub)))//']',persistent=.true.)
+                    &trim(i2str(lims_loc(id,2,i_sub)))//']',&
+                    &persistent=pers_out)
             end do
             call lvl_ud(-1)
         end do
         call lvl_ud(-1)
+        
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
+        ! for  X_1 and sol, set  up nm and  get information about which  mode to
+        ! plot
+        if (test_case.eq.2 .or. test_case.eq.3) then
+            ! set up nm in full grids
+            ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
+            CHCKERR('')
+            ierr = setup_nm_X(grid_eq,grid,eq_1,plot_nm=.false.)                ! is necessary for X variables
+            CHCKERR('')
+            call eq_1%dealloc()
+            ! get user input
+            call writo('Which perturbation mode do you want to plot?')
+            i_sec = get_int(lim_lo=1,lim_hi=size(m_X,2))
+        end if
         
         ! synchronize MPI
         ierr = wait_MPI()
@@ -949,6 +1065,7 @@ contains
                 &trim(i2str(i_sub))//':',persistent=.true.)
             call lvl_ud(1)
             
+            ! initialize description
             description = ''
             do id = 1,3
                 description = trim(description)//' lim('//trim(i2str(id))//&
@@ -956,117 +1073,270 @@ contains
                     &trim(i2str(lims_loc(id,2,i_sub)))//']'
                 if (id.lt.3) description = trim(description)// ','
             end do
+            
+            ! set up i_lim
+            n_sub_norm = lims_loc(3,2,i_sub)-lims_loc(3,1,i_sub)+1
+            if (divide_over_procs) then
+                n_sub_norm_loc = n_sub_norm/n_procs
+                n_sub_norm_loc(1:mod(n_sub_norm,n_procs)) = &
+                    &n_sub_norm_loc(1:mod(n_sub_norm,n_procs)) + 1
+                i_lim = [sum(n_sub_norm_loc(1:rank))+1,&
+                    &sum(n_sub_norm_loc(1:rank+1))]
+                if (rank+1.lt.n_procs) i_lim(2) = i_lim(2)+norm_ol
+                description = trim(description)//', normal range = '//&
+                    &trim(i2str(i_lim(1)))//'..'//trim(i2str(i_lim(2)))
+            else
+                n_sub_norm_loc = n_sub_norm
+                i_lim = lims_loc(3,:,i_sub) - lims_loc(3,1,i_sub) + 1
+            end if
+            
+            ! output description
             description = adjustl(description)
             call writo(trim(description),persistent=.true.)
             
-            ! set up grid
-            ierr = copy_grid(grid_eq,grid_eq_sub,lims_B=lims_loc(:,:,i_sub))
-            CHCKERR('')
-            
-            ! reconstruct Jacobian of subset
-            ierr = reconstruct_PB3D_eq_2(grid_eq_sub,eq_2,'eq_2',&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                &lim_pos=lims_loc(:,:,i_sub))
-            CHCKERR('')
-            
-            ! set up XYZ and XYZ_i
-            if (eq_style.eq.1) then                                             ! if VMEC, calculate trigonometric factors of output grid
-                ierr = calc_trigon_factors(grid_eq_sub%theta_E,&
-                    &grid_eq_sub%zeta_E,grid_eq_sub%trigon_factors)
+            ! set up subset grid
+            if (direct_grid_read) then
+                ! check whether it coincides with a direct read using subsets
+                ierr = reconstruct_PB3D_grid(grid_sub,trim(grid_name),&
+                    &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                    &lim_pos=lims_loc(:,:,i_sub),grid_limits=i_lim)
+                CHCKERR('')
+            else
+                ierr = copy_grid(grid,grid_sub,&
+                    &lims_B=lims_loc(:,:,i_sub),i_lim=i_lim)
                 CHCKERR('')
             end if
-            allocate(&
-                &XYZ(grid_eq_sub%n(1),grid_eq_sub%n(2),grid_eq_sub%loc_n_r,3))
-            ierr = calc_XYZ_grid(grid_eq,grid_eq_sub,XYZ(:,:,:,1),&
-                &XYZ(:,:,:,2),XYZ(:,:,:,3))
+            
+            ! trim grid
+            ierr = trim_grid(grid_sub,grid_trim,norm_id)
             CHCKERR('')
-            allocate(&
-                &XYZ_i(grid_eq_sub%n(1),grid_eq_sub%n(2),grid_eq_sub%loc_n_r,3))
-            do id = 1,grid_eq_sub%n(1)
-                XYZ_i(id,:,:,1) = lims_loc(1,1,i_sub) + id - 2
-            end do
-            do jd = 1,grid_eq_sub%n(2)
-                XYZ_i(:,jd,:,2) = lims_loc(2,1,i_sub) + jd - 2
-            end do
-            do kd = 1,grid_eq_sub%loc_n_r
-                XYZ_i(:,:,kd,3) = lims_loc(3,1,i_sub) + kd - 2
-            end do
+            
+            ! set up plot dimensions and local dimensions
+            plot_dim = grid_trim%n
+            plot_offset = [0,0,grid_trim%i_min-1]
+            
+            ! reconstruct metric equilibrium or vectorial perturbation variables
+            ! of subset
+            select case (test_case)
+                case (1)                                                        ! eq_2
+                    ierr = reconstruct_PB3D_eq_2(grid_sub,eq_2,'eq_2',&
+                        &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                        &lim_pos=lims_loc(:,:,i_sub))
+                    CHCKERR('')
+                case (2)                                                        ! X_1
+                    ierr = reconstruct_PB3D_X_1(grid_sub,X_1,'X_1',&
+                        &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                        &lim_pos=lims_loc(:,:,i_sub),&
+                        &lim_sec_X=[i_sec,i_sec])
+                    CHCKERR('')
+                case (3)                                                        ! sol
+                    ierr = reconstruct_PB3D_sol(grid_sub,sol,'sol',&
+                        &rich_lvl=rich_lvl,&
+                        &lim_pos=lims_loc(3:3,:,i_sub),&
+                        &lim_sec_sol=[i_sec,i_sec])
+                    CHCKERR('')
+            end select
+            
+            ! set up name suffix
+            if (divide_over_procs) then
+                name_suff(1) = '_'//trim(i2str(i_sub))
+            else
+                name_suff(1) = '_'//trim(i2str(sum(n_sub_loc(1:rank))+i_sub))
+            end if
+            if (divide_over_procs) then
+                name_suff(2) = trim(name_suff(1))//'_'//trim(i2str(rank))
+            else
+                name_suff(2) = trim(name_suff(1))
+            end if
+            
+            ! set up XYZ and XYZ_i
+            if (test_case.eq.1 .or. test_case.eq.2) then
+                if (eq_style.eq.1) then                                         ! if VMEC, calculate trigonometric factors of output grid
+                    ierr = calc_trigon_factors(grid_trim%theta_E,&
+                        &grid_trim%zeta_E,grid_trim%trigon_factors)
+                    CHCKERR('')
+                end if
+                allocate(XYZ(grid_trim%n(1),grid_trim%n(2),&
+                    &grid_trim%loc_n_r,3))
+                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ(:,:,:,1),&
+                    &XYZ(:,:,:,2),XYZ(:,:,:,3))
+                CHCKERR('')
+                allocate(&
+                    &XYZ_i(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
+                do id = 1,grid_trim%n(1)
+                    XYZ_i(id,:,:,1) = lims_loc(1,1,i_sub) + id - 2
+                end do
+                do jd = 1,grid_trim%n(2)
+                    XYZ_i(:,jd,:,2) = lims_loc(2,1,i_sub) + jd - 2
+                end do
+                do kd = 1,grid_trim%loc_n_r
+                    XYZ_i(:,:,kd,3) = lims_loc(3,1,i_sub) + kd - 2 + &
+                        &grid_trim%i_min - 1
+                end do
+            else
+                allocate(XYZ_i(1,grid_trim%loc_n_r,1,1))
+                do kd = 1,grid_trim%loc_n_r
+                    XYZ_i(1,kd,1,1) = lims_loc(3,1,i_sub) + kd - 2 + &
+                        &grid_trim%i_min - 1
+                end do
+            end if
             
             ! plot
-            call plot_HDF5('jac_FD',&
-                &'jac_FD_'//trim(i2str(sum(n_sub_loc(1:rank))+i_sub)),&
-                &eq_2%jac_FD(:,:,:,0,0,0),description=description,&
-                &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
-            call plot_HDF5('kappa_n',&
-                &'kappa_n_'//trim(i2str(sum(n_sub_loc(1:rank))+i_sub)),&
-                &eq_2%kappa_n,description=description,&
-                &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
-            do id = 1,3
-                call plot_HDF5(XYZ_name(id),XYZ_name(id)//'_'//&
-                    &trim(i2str(sum(n_sub_loc(1:rank))+i_sub)),XYZ(:,:,:,id),&
-                    &X=XYZ_i(:,:,:,1),Y=XYZ_i(:,:,:,2),Z=XYZ_i(:,:,:,3))
-            end do
+            select case (test_case)
+                case (1)                                                        ! eq_2
+                    call plot_HDF5('jac_FD',&
+                        &'jac_FD'//trim(name_suff(1)),&
+                        &eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0),&
+                        &tot_dim=plot_dim,loc_offset=plot_offset,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                    call plot_HDF5('kappa_n',&
+                        &'kappa_n'//trim(name_suff(1)),&
+                        &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
+                        &tot_dim=plot_dim,loc_offset=plot_offset,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                case (2)                                                        ! X_1
+                    call plot_HDF5('U_0_IM',&
+                        &'U_0_IM'//trim(name_suff(1)),&
+                        &ip(X_1%U_0(:,:,norm_id(1):norm_id(2),1)),&
+                        &tot_dim=plot_dim,loc_offset=plot_offset,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                    call plot_HDF5('DU_1_RE',&
+                        &'DU_1_RE'//trim(name_suff(1)),&
+                        &rp(X_1%DU_1(:,:,norm_id(1):norm_id(2),1)),&
+                        &tot_dim=plot_dim,loc_offset=plot_offset,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                case (3)                                                        ! sol
+                    call print_ex_2D(['sol_RE'],'sol_RE'//trim(name_suff(2)),&
+                        &rp(sol%vec(1,norm_id(1):norm_id(2),:)),&
+                        &x=XYZ_i(1,:,:,1),draw=.false.)
+                    call draw_ex(['sol_RE'],'sol_RE'//trim(name_suff(2)),&
+                        &size(sol%vec,3),1,.false.)
+            end select
+            if (test_case.eq.1 .or. test_case.eq.2) then
+                do id = 1,3
+                    call plot_HDF5(XYZ_name(id),XYZ_name(id)//&
+                        &trim(name_suff(2)),XYZ(:,:,:,id),&
+                        &X=XYZ_i(:,:,:,1),Y=XYZ_i(:,:,:,2),Z=XYZ_i(:,:,:,3))
+                end do
+            end if
             
             ! clean up
-            call grid_eq_sub%dealloc()
-            call eq_2%dealloc()
-            deallocate(XYZ)
+            call grid_sub%dealloc()
+            call grid_trim%dealloc()
+            select case (test_case)
+                case (1)                                                        ! eq_2
+                    call eq_2%dealloc()
+                case (2)                                                        ! X_1
+                    call X_1%dealloc()
+                case (3)                                                        ! sol
+                    call sol%dealloc()
+            end select
+            if (test_case.eq.1 .or. test_case.eq.2) deallocate(XYZ)
             deallocate(XYZ_i)
             call lvl_ud(-1)
         end do
         
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
         ! Now for entire region if wanted
         call writo('Do you want to plot the entire region at once?')
         if (get_log(.false.) .and. rank.eq.0) then
-            ! reconstruct Jacobian of subset
-            ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.)
-            CHCKERR('')
+            ! reconstruct metric equilibrium or vectorial perturbation variables
+            select case (test_case)
+                case (1)                                                        ! eq_2
+                    ierr = reconstruct_PB3D_eq_2(grid,eq_2,'eq_2',&
+                        &rich_lvl=rich_lvl_name,tot_rich=.true.)
+                    CHCKERR('')
+                case (2)                                                        ! X_1
+                    ierr = reconstruct_PB3D_X_1(grid,X_1,'X_1',&
+                        &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                        &lim_sec_X=[i_sec,i_sec])
+                    CHCKERR('')
+                case (3)                                                        ! sol
+                    ierr = reconstruct_PB3D_sol(grid,sol,'sol',&
+                        &rich_lvl=rich_lvl,&
+                        &lim_sec_sol=[i_sec,i_sec])
+                    CHCKERR('')
+            end select
             
             ! set up XYZ and XYZ_i
-            if (eq_style.eq.1) then                                             ! if VMEC, calculate trigonometric factors of output grid
-                ierr = calc_trigon_factors(grid_eq%theta_E,&
-                    &grid_eq%zeta_E,grid_eq%trigon_factors)
+            if (test_case.eq.1 .or. test_case.eq.2) then
+                if (eq_style.eq.1) then                                         ! if VMEC, calculate trigonometric factors of output grid
+                    ierr = calc_trigon_factors(grid%theta_E,&
+                        &grid%zeta_E,grid%trigon_factors)
+                    CHCKERR('')
+                end if
+                allocate(XYZ(grid%n(1),grid%n(2),grid%loc_n_r,3))
+                ierr = calc_XYZ_grid(grid_eq,grid,XYZ(:,:,:,1),&
+                    &XYZ(:,:,:,2),XYZ(:,:,:,3))
                 CHCKERR('')
+                allocate(XYZ_i(grid%n(1),grid%n(2),grid%loc_n_r,3))
+                do id = 1,grid%n(1)
+                    XYZ_i(id,:,:,1) = id - 1
+                end do
+                do jd = 1,grid%n(2)
+                    XYZ_i(:,jd,:,2) = jd - 1
+                end do
+                do kd = 1,grid%loc_n_r
+                    XYZ_i(:,:,kd,3) = kd - 1
+                end do
+            else
+                allocate(XYZ_i(1,grid%loc_n_r,1,1))
+                do kd = 1,grid%loc_n_r
+                    XYZ_i(1,kd,1,1) = kd - 1
+                end do
             end if
-            allocate(&
-                &XYZ(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
-            ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ(:,:,:,1),&
-                &XYZ(:,:,:,2),XYZ(:,:,:,3))
-            CHCKERR('')
-            allocate(&
-                &XYZ_i(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
-            do id = 1,grid_eq%n(1)
-                XYZ_i(id,:,:,1) = id - 1
-            end do
-            do jd = 1,grid_eq%n(2)
-                XYZ_i(:,jd,:,2) = jd - 1
-            end do
-            do kd = 1,grid_eq%loc_n_r
-                XYZ_i(:,:,kd,3) = kd - 1
-            end do
             
             ! plot
             description = 'total range'
-            call plot_HDF5('jac_FD','jac_FD_tot',eq_2%jac_FD(:,:,:,0,0,0),&
-                &description=description,&
-                &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
-            call plot_HDF5('kappa_n','kappa_n_tot',eq_2%kappa_n,&
-                &description=description,&
-                &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
-            do id = 1,3
-                call plot_HDF5(XYZ_name(id),XYZ_name(id)//'_tot',XYZ(:,:,:,id))
-            end do
+            select case (test_case)
+                case (1)                                                        ! eq_2
+                    call plot_HDF5('jac_FD','jac_FD_tot',&
+                        &eq_2%jac_FD(:,:,:,0,0,0),&
+                        &description=description,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
+                    call plot_HDF5('kappa_n','kappa_n_tot',eq_2%kappa_n,&
+                        &description=description,&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
+                case (2)                                                        ! X_1
+                    call plot_HDF5('U_0_IM','U_0_IM_tot',&
+                        &ip(X_1%U_0(:,:,:,1)),&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                    call plot_HDF5('DU_1_RE','DU_1_RE_tot',&
+                        &rp(X_1%DU_1(:,:,:,1)),&
+                        &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
+                        &description=description)
+                case (3)                                                        ! sol
+                    call print_ex_2D(['sol_RE'],'sol_RE_tot',&
+                        &rp(sol%vec(1,:,:)),x=XYZ_i(1,:,:,1),draw=.false.)
+                    call draw_ex(['sol_RE'],'sol_RE_tot',&
+                        &size(sol%vec,3),1,.false.)
+            end select
+            if (test_case.eq.1 .or. test_case.eq.2) then
+                do id = 1,3
+                    call plot_HDF5(XYZ_name(id),XYZ_name(id)//'_tot',&
+                        &XYZ(:,:,:,id),&
+                        &X=XYZ_i(:,:,:,1),Y=XYZ_i(:,:,:,2),Z=XYZ_i(:,:,:,3))
+                end do
+            end if
             
             ! clean up
             call eq_2%dealloc()
-            deallocate(XYZ)
+            if (test_case.eq.1 .or. test_case.eq.2) deallocate(XYZ)
             deallocate(XYZ_i)
             call lvl_ud(-1)
         end if
         
         ! clean up
-        call grid_eq%dealloc()
+        call grid%dealloc()
+        if (test_case.eq.2 .or. test_case.eq.3) call grid_eq%dealloc()
         
         ! synchronize MPI
         ierr = wait_MPI()

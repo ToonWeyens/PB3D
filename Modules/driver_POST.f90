@@ -473,7 +473,6 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
             &reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
-        use grid_ops, only: calc_norm_range
         use eq_vars, only: max_flux_F
         use eq_ops, only: calc_eq, calc_derived_q
         use eq_utilities, only: calc_F_derivs
