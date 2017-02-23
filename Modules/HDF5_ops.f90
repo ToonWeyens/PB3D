@@ -924,7 +924,6 @@ contains
         logical :: group_exists                                                 ! the group exists and does not have to be created
         integer(HID_T) :: a_plist_id                                            ! access property list identifier 
         integer(HID_T) :: x_plist_id                                            ! transfer property list identifier 
-        integer(HID_T) :: chunk_a_plist_id                                      ! chunk access property list identifier 
         integer(HID_T) :: chunk_c_plist_id                                      ! chunk create property list identifier 
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
@@ -1077,38 +1076,27 @@ contains
                 call H5Screate_simple_f(1,dimsf,filespace,ierr)
                 CHCKERR('Failed to create file space')
                 
-                ! set up chunk creation and access property list
-                ierr = set_1D_vars(lim_tot,lim_loc,c_plist_id=chunk_c_plist_id,&
-                    &a_plist_id=chunk_a_plist_id)
+                ! set up chunk creation property list
+                ierr = set_1D_vars(lim_tot,lim_loc,c_plist_id=chunk_c_plist_id)
                 CHCKERR('')
                 
                 ! create file data set in group
                 call H5Dcreate_f(group_id,'var',HDF5_kind_64,filespace,&
-                        &dset_id,ierr,dcpl_id=chunk_c_plist_id,&
-                        &dapl_id=chunk_a_plist_id)
+                        &dset_id,ierr,dcpl_id=chunk_c_plist_id)
                 CHCKERR('Failed to create file data set')
                 
                 ! close chunk property list
                 call H5Pclose_f(chunk_c_plist_id,ierr)
                 CHCKERR('Failed to close property list')
             else                                                                ! group already exists
-                ! set up chunk access property list
-                ierr = set_1D_vars(lim_tot,lim_loc,a_plist_id=chunk_a_plist_id)
-                CHCKERR('')
-                
                 ! open file data set
-                call H5Dopen_f(group_id,'var',dset_id,ierr,&
-                    &dapl_id=chunk_a_plist_id)
+                call H5Dopen_f(group_id,'var',dset_id,ierr)
                 CHCKERR('Failed to open file data set')
                 
                 ! get file data space
                 call H5Dget_space_f(dset_id,filespace,ierr)
                 CHCKERR('Failed to get file space')
             end if
-            
-            ! close data access property list
-            call H5Pclose_f(chunk_a_plist_id,ierr)
-            CHCKERR('Failed to close property list')
             
 #if ldebug
             if (debug_print_HDF5_arrs) then
@@ -1306,7 +1294,6 @@ contains
         integer(HID_T) :: head_group_id                                         ! head group identifier
         integer(HID_T) :: filespace                                             ! dataspace identifier in file 
         integer(HID_T) :: memspace                                              ! Dataspace identifier in memory
-        integer(HID_T) :: chunk_a_plist_id                                      ! chunk access property list identifier 
         integer(HSIZE_T) :: id                                                  ! counter
         integer(HSIZE_T) :: data_size                                           ! size of data set
         integer(HSIZE_T) :: n_dims                                              ! nr. of dimensions
@@ -1484,17 +1471,9 @@ contains
             data_size = product(lim_loc_loc(:,2)-lim_loc_loc(:,1)+1)
             allocate(var%p(data_size))
             
-            ! set up chunk access property list
-            ierr = set_1D_vars(lim_tot,lim_loc_loc,a_plist_id=chunk_a_plist_id)
-            CHCKERR('')
-            
             ! open variable dataset
-            call H5Dopen_f(group_id,'var',dset_id,ierr,dapl_id=chunk_a_plist_id)
+            call H5Dopen_f(group_id,'var',dset_id,ierr)
             CHCKERR('Failed to open dataset')
-            
-            ! close data access property list
-            call H5Pclose_f(chunk_a_plist_id,ierr)
-            CHCKERR('Failed to close property list')
             
             ! get dataspace
             call H5Dget_space_f(dset_id,filespace,ierr)

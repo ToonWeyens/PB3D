@@ -3607,6 +3607,7 @@ contains
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
         use grid_utilities, only: trim_grid
+        use HDF5_utilities, only: debug_set_1D_vars
         
         character(*), parameter :: rout_name = 'print_output_eq_2'
         

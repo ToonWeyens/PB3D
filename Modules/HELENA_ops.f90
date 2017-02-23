@@ -1110,7 +1110,7 @@ contains
     ! Also, test whether the pressure balance is satisfied.
     integer function test_metrics_H() result(ierr)
         use num_vars, only: rank, norm_disc_prec_eq
-        use grid_utilities, only: setup_deriv_data, apply_disc, nufft
+        use grid_utilities, only: setup_deriv_data, apply_disc
         use output_ops, only: plot_diff_HDF5
         use input_utilities, only: get_int
         use grid_vars, only: n_r_eq

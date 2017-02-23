@@ -832,6 +832,7 @@ contains
         use grid_vars, only: grid_type
         use grid_utilities, only: copy_grid, calc_XYZ_grid, trim_grid
         use rich_vars, only: rich_lvl
+        use input_utilities, only: dealloc_in
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
@@ -1337,6 +1338,7 @@ contains
         ! clean up
         call grid%dealloc()
         if (test_case.eq.2 .or. test_case.eq.3) call grid_eq%dealloc()
+        call dealloc_in()
         
         ! synchronize MPI
         ierr = wait_MPI()

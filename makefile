@@ -104,12 +104,14 @@ LINK = -llapack -lblas \
 #   Compiler
 ##############################################################################
 COMPILER=mpifort
+#COMPILER=/opt/scorep-3.0/bin/scorep mpifort
 
 
 ##############################################################################
 #   Linker
 ##############################################################################
 LINKER=mpifort
+#LINKER=/opt/scorep-3.0/bin/scorep mpifort
 
 
 ##############################################################################
@@ -122,7 +124,7 @@ LINKER=mpifort
 #   note: INTEL warning 6536 is suppressed, which informs about extra "USE".
 #   note: INTEL warning 6843 is suppressed, which informs about empty intent(out) variables
 ##############################################################################
-COMP_FLAGS = -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -pg -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# debug, profiling with gprof2dot, GCC
+COMP_FLAGS = -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=bounds,array-temps,do,pointer,recursion -cpp -Dldebug# debug, profiling with gprof2dot, GCC
 #COMP_FLAGS = -O3 -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
 
 #COMP_FLAGS = -O0 -DlIB -Dldebug -g -recursive -ftrapuv -check bounds -check uninit -traceback -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# debug, profiling with gprof2dot, INTEL
@@ -136,7 +138,7 @@ COMP_FLAGS_F= -O2 -funroll-loops -fexpensive-optimizations
 ##############################################################################
 #   Link flags
 ##############################################################################
-LINK_FLAGS = -fPIC -pg
+LINK_FLAGS = -fPIC
 
 
 ##############################################################################

@@ -623,3 +623,9 @@ CHANGELOG
       - Some bugs have been fixed.
       - Tests have been concluded.
       - There appears to be a problem when reading the variables from HELENA equilibria for testing: Performance drops very much. This needs to be investigated.
+
+1.47: - The problem was due to too small chunk sizes for the variables that were written by multiple processes, not just for HELENA.
+      - Chunk sizes are now calculated different, by multiplying the total sizes for increasing dimensions until reaching more than the minimum requested (10kb set for now).
+      - Chunk caching is not done any more, so "a_plist_id" from "set_1D_vars" is not available any more.
+      - Added support for scalasca in the compilation, gprof is deprecated as it does not work properly, even for only 1 process.
+      - Added a file "scorep.fil" with common scorep filters for the user-input routines that take up time. Use with -f scorep.fill when analyzing with scalasca.

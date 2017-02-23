@@ -67,13 +67,13 @@ contains
     !   count_i     = n_(i+1)*n_(i+2)*..*n_N ,
     ! where a_i and b_i  represent the local limits of dimension  i, A_i and B_i
     ! the total ones and the number of dimensions is N, as can be verified.
-    ! The chunk property list for creation and  access can be set up so that its
-    ! size is equal to the largest dimensions  of full range, or an integer part
-    ! of that if it exceeds 4GB, and the number of elements in the hash table is
-    ! set up optimally.  Furthermore, since the variables don't need  to be used
-    ! more than once, the w0 factor is set to 1.
-    integer function set_1D_vars(lim_tot,lim_loc,space_id,c_plist_id,&
-        &a_plist_id) result(ierr)
+    ! The chunk  property list for creation  can be set  up so that its  size is
+    ! equal to the largest dimensions of full  range, or an integer part of that
+    ! if it  exceeds 4GB. Since  the variables don't need  to be used  more than
+    ! once, either  nbytes or  nslots could be  set to 0  in an  access property
+    ! list, but this is currently not done.
+    integer function set_1D_vars(lim_tot,lim_loc,space_id,c_plist_id) &
+        &result(ierr)
 #if ldebug
         use num_vars, only: rank
 #endif
@@ -85,7 +85,6 @@ contains
         integer, intent(in) :: lim_loc(:,:)                                     ! local limits
         integer(HID_T), intent(in), optional :: space_id                        ! dataspace identifier
         integer(HID_T), intent(inout), optional :: c_plist_id                   ! chunk creation property list identifier 
-        integer(HID_T), intent(inout), optional :: a_plist_id                   ! chunk access property list identifier 
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -98,10 +97,8 @@ contains
         integer(HSIZE_T) :: count(1)                                            ! nr. of repetitions of block in memory
         integer(HSIZE_T) :: offset(1)                                           ! offset in memory
         integer(HSIZE_T) :: chunk_dims(1)                                       ! chunk dimensions
-        integer(SIZE_T) :: chunk_nslots                                         ! number of chunk slots in the raw data chunk  cache hash table.
-        integer(SIZE_T) :: chunk_nbytes                                         ! total size of the raw data chunk cache, in bytes. 
         real(dp) :: max_chunk_size                                              ! maximum 4 GB (from manual)
-        real :: chunk_w0                                                        ! preemption policy.
+        real(dp) :: min_chunk_size                                              ! minimum 10 MB (from experience)
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         integer :: istat                                                        ! status
@@ -209,16 +206,27 @@ contains
         
         ! set chunk property list if requested
         max_chunk_size = 4.E9_dp / sizeof(1._dp)                                ! maximum 4 GB (from manual)
-        if (present(c_plist_id) .or. present(a_plist_id)) then
+        min_chunk_size = min(10.E6_dp/sizeof(1._dp),&
+            &product(lim_tot(:,2)-lim_tot(:,1)+1._dp))                          ! maximum 10 MB (from experience), or limit to total variable size
+        if (present(c_plist_id)) then
             ! set up variables
-            chunk_size = &
-                &product(lim_tot(1:div_dim-1,2)-lim_tot(1:div_dim-1,1)+1)       ! all dimensions up to divided one
+            chunk_size = 1
+            id = 1
+            do while (chunk_size.le.min_chunk_size .and. id.le.size(lim_tot,1))
+                chunk_size = chunk_size * (lim_tot(id,2)-lim_tot(id,1)+1)
+                id = id + 1
+            end do
 #if ldebug
-            if (chunk_size.gt.max_chunk_size) call writo('Chunk size of '//&
-                &trim(i2str(chunk_size))//' greater than maximum chunk size'//&
-                &trim(i2str(nint(max_chunk_size))),warning=.true.)
+            if (debug_set_1D_vars) then
+                write(*,*,IOSTAT=istat) rank, 'suggested chunk size', chunk_size
+            end if
 #endif
             chunk_size = chunk_size / (1 + floor(chunk_size/max_chunk_size))    ! limit to max chunk size
+#if ldebug
+            if (debug_set_1D_vars) then
+                write(*,*,IOSTAT=istat) rank, 'def. chunk size', chunk_size
+            end if
+#endif
             
             ! set creation property list if provided
             if (present(c_plist_id)) then
@@ -227,20 +235,6 @@ contains
                 CHCKERR('Failed to create property list')
                 call H5Pset_chunk_f(c_plist_id,1,chunk_dims,ierr)               ! one dimension for 1D chunk
                 CHCKERR('Failed to create chunk')
-            end if
-            
-            ! set access property list if provided
-            if (present(a_plist_id)) then
-                chunk_nbytes = chunk_size * sizeof(1._dp)                       ! each chunk has a size in memory
-                chunk_nslots = &
-                    &ceiling(1._dp*product(lim_tot(:,2)-lim_tot(:,1)+1) /&
-                    &chunk_size)                                                ! divide total number of elements by elements in chunk
-                chunk_w0 = 1.0                                                  ! cache is never reused
-                call H5Pcreate_f(H5P_DATASET_ACCESS_F,a_plist_id,ierr)
-                CHCKERR('Failed to create property list')
-                call H5Pset_chunk_cache_f(a_plist_id,chunk_nslots,&
-                    &chunk_nbytes,chunk_w0,ierr)
-                CHCKERR('Failed to set chunk cache')
             end if
         end if
     end function set_1D_vars
