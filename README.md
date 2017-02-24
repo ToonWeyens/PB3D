@@ -629,3 +629,11 @@ CHANGELOG
       - Chunk caching is not done any more, so "a_plist_id" from "set_1D_vars" is not available any more.
       - Added support for scalasca in the compilation, gprof is deprecated as it does not work properly, even for only 1 process.
       - Added a file "scorep.fil" with common scorep filters for the user-input routines that take up time. Use with -f scorep.fill when analyzing with scalasca.
+
+1.48: - Fixed a bug in the reading of subsets for X_1.
+      - Fixed some bugs for driver_POST.
+      - For POST, the magnetic integration style is now set to 1, no matter what PB3D did, as the integration is done by volume, using the trapezoidal rule always.
+      - Changed the structure of driver_POST a little bit, as the integrations of energy have to be added up for different parallel jobs.
+      - The energy reconstruction now takes into account multiple equilibrium parallel jobs.
+      - There is still one HDF5 output per equilibrium parallel job. This could be changed in the future. In Paraview, "group datasets" can be used.
+      - A note considering the implementation: The division for POST is always done in the first coordinate, which commonly corresponds to theta when poloidal flux is used as normal coordinate. This makes the individual plots a bit weird when not viewed in their entirety. This should not be an issue if all the jobs are plotted together.

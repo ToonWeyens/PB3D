@@ -119,6 +119,7 @@ contains
         if (present(i_lim)) then                                                ! might be divided grid
             if (i_lim(2).le.i_lim(1)) then
                 ierr = 1
+                write(*,*) 'i_lim = ', i_lim
                 err_msg = 'faulty i_lim'
                 CHCKERR(err_msg)
             end if

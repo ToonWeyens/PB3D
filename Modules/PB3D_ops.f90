@@ -369,7 +369,12 @@ contains
         U_style = nint(dum_1D(7))
         X_style = nint(dum_1D(8))
         matrix_SLEPC_style = nint(dum_1D(9))
-        magn_int_style = nint(dum_1D(10))
+        select case(prog_style)
+            case (1)                                                            ! PB3D
+                magn_int_style = nint(dum_1D(10))
+            case (2)                                                            ! POST
+                magn_int_style = 1                                              ! integration is done in volume, currently only with trapezoidal rule
+        end select
         K_style = nint(dum_1D(11))
         deallocate(dum_1D)
         call dealloc_var_1D(var_1D)
@@ -971,11 +976,11 @@ contains
             ! set up local limits for HDF5 reconstruction
             lim_mem(1,:) = par_id_mem
             lim_mem(2,:) = [1,grid_X%n(2)]
-            lim_mem(3,:) = [1,grid_X%n(3)]
+            lim_mem(3,:) = [grid_X%i_min,grid_X%i_max]
             lim_mem(4,:) = lim_sec_X_loc
             if (present(lim_pos)) then
                 lim_mem(2,:) = lim_pos(2,:)
-                lim_mem(3,:) = lim_pos(3,1) - 1 + [grid_X%i_min,grid_X%i_max]
+                lim_mem(3,:) = lim_mem(3,:) + lim_pos(3,1) - 1                  ! take into account the grid limits (relative to position subset)
             end if
             
             ! RE_U_0

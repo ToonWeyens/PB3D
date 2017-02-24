@@ -4,17 +4,18 @@
     plot_flux_q             = .false.
     plot_magn_grid          = .false.
     norm_disc_prec_sol      = 3
-    n_zeta_plot             = 5
+    n_zeta_plot             = 100
     min_r_plot              = 0.0
     max_r_plot              = 1.0
     min_zeta_plot           = 0.00
-    max_zeta_plot           = 0.00
+    max_zeta_plot           = 2.00
     n_theta_plot            = 300
-    POST_style              = 2
-    slab_plots_style        = 2
+    POST_style              = 1
+    slab_plots_style        = 0
     ex_plot_style           = 2
     PB3D_rich_lvl           = 2
     pert_mult_factor_POST   = 0.0001
+    max_tot_mem_per_proc    = 1000
 /
     PB3D_rich_lvl           = 1
     min_zeta_plot           = 0.0

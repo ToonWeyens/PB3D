@@ -825,7 +825,7 @@ contains
         call writo('Test complete')
     end function test_conv_FHM
     
-    ! tests calculation of volume integral
+    ! tests reading of HDF5 subset
     integer function test_read_HDF5_subset() result(ierr)
         use num_vars, only: rank, eq_style, n_procs
         use MPI_utilities, only: wait_MPI

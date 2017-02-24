@@ -16,13 +16,12 @@ module grid_utilities
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich, nufft
 #if ldebug
-    public debug_calc_int_vol, debug_setup_interp_data
+    public debug_calc_int_vol
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
-    logical :: debug_setup_interp_data = .false.                                ! plot debug information for calc_int_vol
 #endif
     
     interface coord_F2E
@@ -54,8 +53,7 @@ contains
     integer function coord_F2E_rtz(grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: tol_zero, eq_style
-        use VMEC, only: fourier2real, calc_trigon_factors, &
-            &L_V_c, L_V_s, is_asym_V
+        use VMEC, only: fourier2real, L_V_c, L_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
@@ -351,8 +349,7 @@ contains
     contains
         integer function coord_E2F_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use VMEC, only: calc_trigon_factors, fourier2real, &
-                &mnmax_V, L_V_c, L_V_s, is_asym_V
+            use VMEC, only: fourier2real, mnmax_V, L_V_c, L_V_s, is_asym_V
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -982,7 +979,7 @@ contains
     ! repeated numerical integration using the trapezoidal method, NOT Simpson's
     ! 3/8 rule!
     ! Note: by  setting debug_calc_int_vol, this  method can be compared  to the
-    ! trapezoidal and simple method for independent coordinates, again NOT for 
+    ! trapezoidal and simple  method for independent coordinates,  again NOT for
     ! Simpson's 3/8 rule!
     ! The  Simpson's  3/8  rule  could  be developed  but  it  is not  of  great
     ! importance.

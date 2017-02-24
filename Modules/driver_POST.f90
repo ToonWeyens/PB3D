@@ -26,8 +26,14 @@ module driver_POST
     integer :: min_id(3), max_id(3)                                             ! min. and max. index of range 1, 2 and 3
     integer :: last_unstable_id                                                 ! index of last unstable EV
     type(grid_type) :: grids_out(3)                                             ! eq and X output grids (full parallel and normal range)
-    type(eq_1_type) :: eq_1                                                     ! flux equilibrium
     type(sol_type) :: sol                                                       ! solution variables
+    type(grid_type) :: grid_eq_XYZ                                              ! eq grid for XYZ calculations
+    type(grid_type) :: grid_eq_HEL                                              ! HELENA eq grid
+    type(grid_type) :: grid_X_HEL                                               ! HELENA X grid
+    type(eq_2_type) :: eq_2_HEL                                                 ! metric equilibrium for HELENA tables
+    type(X_1_type) :: X_HEL                                                     ! vectorial perturbation variables for HELENA tables
+    complex(dp), allocatable :: E_pot_int(:,:)                                  ! E_pot integrated for requested solutions
+    complex(dp), allocatable :: E_kin_int(:,:)                                  ! E_kin integrated for requested solutions
 
 contains
     ! Initializes the POST driver:
@@ -58,12 +64,13 @@ contains
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type
         use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
-            &minim_output, norm_disc_prec_X, plot_magn_grid, plot_resonance, &
-            &plot_flux_q, eq_jobs_lims
+            &minim_output, plot_magn_grid, plot_resonance, plot_flux_q, &
+            &eq_jobs_lims, slab_plots_style
         use eq_ops, only: flux_q_plot
         use eq_utilities, only: divide_eq_jobs
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
-            &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
+            &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
+            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
         use X_vars, only: n_mod_X
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
@@ -76,11 +83,11 @@ contains
         character(*), parameter :: rout_name = 'init_POST'
         
         ! local variables
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         type(grid_type), target :: grid_eq                                      ! equilibrium grid
         type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         integer :: id, jd                                                       ! counters
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
         integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job (last index: eq or X)
@@ -150,34 +157,12 @@ contains
                 B_aligned = .false.
                 
                 ! extend eq grid
-                ierr = extend_grid_E(grid_eq,grids_out(1),grid_eq=grid_eq)       ! extend eq grid and convert to F
+                ierr = extend_grid_E(grid_eq,grids_out(1),grid_eq=grid_eq)      ! extend eq grid and convert to F
                 CHCKERR('')
-                write(*,*) '!!!!!!!!!!! EXTENDING CAN BE DONE FOR 1 INDEX AND THEN COPIED !!!!!!!!!!!1'
                 
-                ! interpolate extended eq grid to extended X grid
-                ! (this goes much faster than extending a grid)
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
+                ! extend X grid
+                ierr = extend_grid_E(grid_X,grids_out(2),grid_eq=grid_eq)       ! extend X grid and convert to F
                 CHCKERR('')
-                ierr = grids_out(2)%init([grids_out(1)%n(1:2),grid_X%n(3)])
-                CHCKERR('')
-                grids_out(2)%r_E = grid_X%r_E
-                grids_out(2)%r_F = grid_X%r_F
-                grids_out(2)%loc_r_E = grid_X%loc_r_E
-                grids_out(2)%loc_r_F = grid_X%loc_r_F
-                ierr = apply_disc(grids_out(2)%theta_E,norm_interp_data,&
-                    &grids_out(2)%theta_E,3)
-                CHCKERR('')
-                ierr = apply_disc(grids_out(2)%theta_F,norm_interp_data,&
-                    &grids_out(2)%theta_F,3)
-                CHCKERR('')
-                ierr = apply_disc(grids_out(2)%zeta_E,norm_interp_data,&
-                    &grids_out(2)%zeta_E,3)
-                CHCKERR('')
-                ierr = apply_disc(grids_out(2)%zeta_F,norm_interp_data,&
-                    &grids_out(2)%zeta_F,3)
-                CHCKERR('')
-                call norm_interp_data%dealloc()                                 ! clean up
             case (2)                                                            ! field-aligned grid
                 ! user output
                 call writo('POST style 2: Output grid is field-aligned grid')
@@ -201,12 +186,10 @@ contains
                         
                         ! reconstruct from output
                         ierr = reconstruct_PB3D_grid(grids_out(1),'eq_B',&
-                            &rich_lvl=rich_lvl,tot_rich=.true.,&
-                            &grid_limits=lims_norm(:,1))
+                            &rich_lvl=rich_lvl,tot_rich=.true.)
                         CHCKERR('')
                         ierr = reconstruct_PB3D_grid(grids_out(2),'X_B',&
-                            &rich_lvl=rich_lvl,tot_rich=.true.,&
-                            &grid_limits=lims_norm(:,1))
+                            &rich_lvl=rich_lvl,tot_rich=.true.)
                         CHCKERR('')
                 end select
         end select
@@ -427,6 +410,47 @@ contains
             allocate(eq_jobs_lims(2,0))
         end if
         
+        ! Calculate variables  on HELENA output  grid if full output  and HELENA
+        ! for later interpolation
+        if (full_output .and. eq_style.eq.2) then
+            ! user output
+            call writo('Reconstructing HELENA output for later interpolation')
+            call lvl_ud(1)
+            
+            ierr = reconstruct_PB3D_grid(grid_eq_HEL,'eq',&
+                &grid_limits=lims_norm(:,1))
+            CHCKERR('')
+            ierr = reconstruct_PB3D_grid(grid_X_HEL,'X',&
+                &grid_limits=lims_norm(:,2))
+            CHCKERR('')
+            ierr = reconstruct_PB3D_eq_2(grid_eq_HEL,eq_2_HEL,'eq_2')
+            CHCKERR('')
+            ierr = reconstruct_PB3D_X_1(grid_X_HEL,X_HEL,'X_1')
+            CHCKERR('')
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('HELENA output reconstructed for later interpolation')
+        end if
+        
+        ! reconstruct normal part of full eq grid for XYZ reconstruction
+        if (full_output .and. slab_plots_style.eq.0) then
+            ! user output
+            call writo('Reconstructing full eq grid for XYZ reconstruction')
+            call lvl_ud(1)
+            
+            lim_loc(1,:) = [0,0]
+            lim_loc(2,:) = [0,0]
+            lim_loc(3,:) = [-1,-1]
+            ierr = reconstruct_PB3D_grid(grid_eq_XYZ,'eq',&
+                &rich_lvl=rich_lvl_name,tot_rich=.true.,lim_pos=lim_loc)
+            CHCKERR('')
+            
+            ! user output
+            call writo('Full eq grid reconstructed for XYZ reconstruction')
+            call lvl_ud(-1)
+        end if
+        
         ! synchronize processes
         ierr = wait_MPI()
         CHCKERR('')
@@ -439,6 +463,7 @@ contains
         call grid_eq%dealloc()
         call grid_X%dealloc()
         call grid_sol%dealloc()
+        call eq_1%dealloc()
     end function init_POST
     
     ! The main driver routine for postprocessing
@@ -470,8 +495,8 @@ contains
         use num_vars, only: no_output, no_plots, eq_style, rank, POST_style, &
             &slab_plots_style, use_pol_flux_F, pi, swap_angles, decomp_i, &
             &eq_jobs_lims, eq_job_nr
-        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
-            &reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1
+        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
+            &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
         use eq_vars, only: max_flux_F
         use eq_ops, only: calc_eq, calc_derived_q
@@ -491,21 +516,20 @@ contains
         
         ! local variables
         type(grid_type) :: grid_eq                                              ! local output eq grid, with limited parallel range and divided normal range
-        type(grid_type) :: grid_eq_HEL                                          ! HELENA eq grid
         type(grid_type) :: grid_X                                               ! local output X grid, with limited parallel range and divided normal range
-        type(grid_type) :: grid_X_HEL                                           ! HELENA X grid
         type(grid_type) :: grid_sol                                             ! local output sol grid, with limited parallel range and divided normal range
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium
-        type(eq_2_type) :: eq_2_HEL                                             ! metric equilibrium for HELENA tables
         type(X_1_type) :: X                                                     ! vectorial perturbation variables
-        type(X_1_type) :: X_HEL                                                 ! vectorial perturbation variables for HELENA tables
         integer :: id, jd, kd                                                   ! counter
+        integer :: n_EV_out                                                     ! how many EV's are treated
+        integer :: i_EV_out                                                     ! counter
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_output_loc                                                ! local copy of no_output
+        logical :: last_eq_job                                                  ! last parallel job
         real(dp), allocatable :: XYZ(:,:,:,:)                                   ! X, Y and Z on output grid
-        complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! fraction between total E_pot and E_kin, compared with EV
-        complex(dp), allocatable :: sol_val_comp_loc(:,:,:)                     ! local sol_val_comp
+        complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! solution eigenvalue for requested solutions
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -521,6 +545,10 @@ contains
             &trim(i2str(eq_jobs_lims(2,eq_job_nr)))//' of '//'1..'//&
             &trim(i2str(grids_out(1)%n(1))))
         call lvl_ud(-1)
+        
+        ! some variables
+        last_eq_job = eq_job_nr.eq.size(eq_jobs_lims,2)
+        n_EV_out = sum(max_id-min_id+1)
         
         ! create restricted output grids for this equilibrium job
         ! eq
@@ -545,7 +573,9 @@ contains
             &i_lim=lims_norm(:,3))
         CHCKERR('')
         
-        ! set up output eq_2 and X_1, depending on equilibrium style
+        ! set up output eq_1, eq_2 and X_1, depending on equilibrium style
+        ierr = calc_eq(grid_eq,eq_1)
+        CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
                 select case (POST_style)
@@ -608,29 +638,6 @@ contains
                 end select
             case (2)                                                            ! HELENA
                 ! user output
-                call writo('Reconstructing PB3D output')
-                call lvl_ud(1)
-                
-                ierr = reconstruct_PB3D_grid(grid_eq_HEL,'eq',&
-                    &grid_limits=lims_norm(:,1))
-                CHCKERR('')
-                ierr = reconstruct_PB3D_grid(grid_X_HEL,'X',&
-                    &grid_limits=lims_norm(:,2))
-                CHCKERR('')
-                ierr = reconstruct_PB3D_eq_2(grid_eq_HEL,eq_2_HEL,'eq_2')
-                CHCKERR('')
-                ierr = reconstruct_PB3D_X_1(grid_X_HEL,X_HEL,'X_1')
-                CHCKERR('')
-                
-                ! synchronize processes
-                ierr = wait_MPI()
-                CHCKERR('')
-                
-                ! user output
-                call lvl_ud(-1)
-                call writo('PB3D output reconstructed')
-                
-                ! user output
                 call writo('Interpolate on output grid')
                 call lvl_ud(1)
                 
@@ -651,12 +658,6 @@ contains
                 ! user output
                 call lvl_ud(-1)
                 call writo('Interpolated on output grid')
-                
-                ! clean up
-                call grid_eq_HEL%dealloc()
-                call grid_X_HEL%dealloc()
-                call eq_2_HEL%dealloc()
-                call X_HEL%dealloc()
         end select
         
         ! user output
@@ -665,6 +666,14 @@ contains
         
         call writo('Calculate helper variables')
         call lvl_ud(1)
+        
+        ! initialize integrated energies if first equilibrium job
+        if (eq_job_nr.eq.1) then
+            allocate(E_pot_int(6,n_EV_out))
+            allocate(E_kin_int(6,n_EV_out))
+            E_pot_int = 0._dp
+            E_kin_int = 0._dp
+        end if
         
         ! if VMEC, calculate trigonometric factors of output grid
         if (eq_style.eq.1) then
@@ -677,14 +686,16 @@ contains
         allocate(XYZ(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,3))
         select case (slab_plots_style)
             case (0)                                                            ! 3-D geometry
-                ierr = calc_XYZ_grid(grid_eq,grid_X,XYZ(:,:,:,1),&
+                ierr = calc_XYZ_grid(grid_eq_XYZ,grid_X,XYZ(:,:,:,1),&
                     &XYZ(:,:,:,2),XYZ(:,:,:,3))
                 CHCKERR('')
                 !!! To plot the cross-section
-                !!call print_ex_2D(['cross_section'],'cross_section',&
+                !!call print_ex_2D(['cross_section'],'cross_section_'//&
+                    !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
                     !!&XYZ(:,1,:,3),x=XYZ(:,1,:,1),draw=.false.)
-                !!call draw_ex('cross_section','cross_section',&
-                    !!&'cross_section',size(XYZ,3),1,.false.)
+                !!call draw_ex(['cross_section'],'cross_section_'//&
+                    !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
+                    !!&size(XYZ,3),1,.false.)
             case (1,2)                                                          ! slab geometry (with or without wrapping to fundamental interval)
                 ! user output
                 call writo('Plots are done in slab geometry')
@@ -739,9 +750,11 @@ contains
         
         call lvl_ud(-1)
         
-        ! open decomposition log file
-        ierr = open_decomp_log()
-        CHCKERR('')
+        ! open decomposition log file if first parallel job
+        if (eq_job_nr.eq.1) then
+            ierr = open_decomp_log()
+            CHCKERR('')
+        end if
         
         ! synchronize processes
         ierr = wait_MPI()
@@ -756,7 +769,8 @@ contains
         call lvl_ud(1)
         
         ! loop over three ranges
-        allocate(sol_val_comp(2,2,0))
+        i_EV_out = 1
+        if (last_eq_job) allocate(sol_val_comp(2,2,n_EV_out))
         do jd = 1,3
             if (min_id(jd).le.max_id(jd)) call &
                 &writo('RANGE '//trim(i2str(jd))//': modes '//&
@@ -782,17 +796,28 @@ contains
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
-                allocate(sol_val_comp_loc(2,2,size(sol_val_comp,3)+1))
-                sol_val_comp_loc(:,:,1:size(sol_val_comp,3)) = sol_val_comp
                 ierr = decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-                    &sol,id,B_aligned,log_i=decomp_i,sol_val_comp=&
-                    &sol_val_comp_loc(:,:,size(sol_val_comp_loc,3)),XYZ=XYZ)
+                    &sol,id,B_aligned,XYZ=XYZ,&
+                    &E_pot_int=E_pot_int(:,i_EV_out),&
+                    &E_kin_int=E_kin_int(:,i_EV_out))
                 CHCKERR('')
-                deallocate(sol_val_comp)
-                allocate(sol_val_comp(2,2,size(sol_val_comp_loc,3)))
-                sol_val_comp = sol_val_comp_loc
-                deallocate(sol_val_comp_loc)
                 call lvl_ud(-1)
+                
+                ! write to log  file and save difference  between Eigenvalue and
+                ! energy fraction if last parallel job
+                if (last_eq_job) then
+                    ierr = write_decomp_log(id,E_pot_int(:,i_EV_out),&
+                        &E_kin_int(:,i_EV_out))
+                    CHCKERR('')
+                    
+                    sol_val_comp(:,1,i_EV_out) = id*1._dp
+                    sol_val_comp(:,2,i_EV_out) = [sol%val(id),&
+                        &sum(E_pot_int(:,i_EV_out))/&
+                        &sum(E_kin_int(:,i_EV_out))]
+                end if
+                
+                ! increment counter
+                i_EV_out = i_EV_out + 1
                 
                 ! synchronize processes
                 ierr = wait_MPI()
@@ -809,8 +834,11 @@ contains
                 &writo('RANGE '//trim(i2str(jd))//' plotted')
         end do
         
-        ! print difference between Eigenvalue and energy fraction
-        call plot_sol_val_comp(sol_val_comp)
+        ! plot  difference  between  Eigenvalue  and  energy  fraction  if  last
+        ! parallel job
+        if (last_eq_job) then
+            call plot_sol_val_comp(sol_val_comp)
+        end if
         
         ! synchronize processes
         ierr = wait_MPI()
@@ -823,23 +851,31 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        call dealloc_in()
         call grid_eq%dealloc()
         call grid_X%dealloc()
         call grid_sol%dealloc()
+        call eq_1%dealloc()
         call eq_2%dealloc()
         call X%dealloc()
-        if (eq_job_nr.eq.size(eq_jobs_lims,2)) then
-            call eq_1%dealloc()
+        if (last_eq_job) then
+            call dealloc_in()
             call sol%dealloc()
+            if (eq_style.eq.2) then
+                call grid_eq_HEL%dealloc()
+                call grid_X_HEL%dealloc()
+                call eq_2_HEL%dealloc()
+                call X_HEL%dealloc()
+            end if
+            if (slab_plots_style.eq.0) then
+                call grid_eq_XYZ%dealloc()
+            end if
+            if (rank.eq.0) close(decomp_i)
         end if
+        call lvl_ud(-1)
         
         ! synchronize processes
         ierr = wait_MPI()
         CHCKERR('')
-        
-        ! close output
-        if (rank.eq.0) close(decomp_i)
     end function run_driver_POST
     
     ! opens the decomposition log file
@@ -919,6 +955,99 @@ contains
         end if
         call lvl_ud(-1)
     end function open_decomp_log
+    
+    ! write to decomposition log file
+    integer function write_decomp_log(X_id,E_pot_int,E_kin_int) result(ierr)
+        use num_vars, only: decomp_i, rank
+        
+        character(*), parameter :: rout_name = 'write_decomp_log'
+        
+        ! input / output
+        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
+        complex(dp), intent(in) :: E_pot_int(6)                                 ! E_pot integrated for requested solutions
+        complex(dp), intent(in) :: E_kin_int(2)                                 ! E_kin integrated for requested solutions
+        
+        ! local variables
+        character(len=max_str_ln) :: format_val                                 ! format
+        character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Write to log file')
+        call lvl_ud(1)
+        
+        ! only master
+        if (rank.eq.0) then
+            ! set up format string:
+            !   row 1: EV, E_pot/E_kin
+            !   row 2: E_pot, E_kin
+            !   row 3: E_kin(1), E_kin(2)
+            !   row 4: E_pot(1), E_pot(2)
+            !   row 5: E_pot(3), E_pot(4)
+            !   row 6: E_pot(5), E_pot(6)
+            format_val = '("  ",ES23.16," ",ES23.16," ",&
+                &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
+            
+            ! write header
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &'# Eigenvalue '//trim(i2str(X_id))
+            CHCKERR('Failed to write')
+            
+            ! write values
+            write(temp_output_str,format_val) &
+                &rp(sol%val(X_id)),&
+                &rp(sum(E_pot_int)/sum(E_kin_int)),&
+                &rp(sum(E_pot_int)),&
+                &rp(sum(E_kin_int))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_val) &
+                &ip(sol%val(X_id)),&
+                &ip(sum(E_pot_int)/sum(E_kin_int)), &
+                &ip(sum(E_pot_int)),&
+                &ip(sum(E_kin_int))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_val) &
+                &rp(E_kin_int(1)),&
+                &rp(E_kin_int(2))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_val) &
+                &ip(E_kin_int(1)),&
+                &ip(E_kin_int(2))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_val) &
+                &rp(E_pot_int(1)),&
+                &rp(E_pot_int(2)),&
+                &rp(E_pot_int(3)),&
+                &rp(E_pot_int(4)),&
+                &rp(E_pot_int(5)),&
+                &rp(E_pot_int(6))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+            write(temp_output_str,format_val) &
+                &ip(E_pot_int(1)),&
+                &ip(E_pot_int(2)),&
+                &ip(E_pot_int(3)),&
+                &ip(E_pot_int(4)),&
+                &ip(E_pot_int(5)),&
+                &ip(E_pot_int(6))
+            write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
+                &trim(temp_output_str)
+            CHCKERR('Failed to write')
+        end if
+        
+        call lvl_ud(-1)
+    end function write_decomp_log
     
     ! finds the plot ranges min_id and max_id
     ! There are three ranges, calculated using n_sol_plotted, which indicates:

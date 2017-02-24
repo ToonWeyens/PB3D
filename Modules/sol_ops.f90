@@ -94,7 +94,8 @@ contains
     ! grid and the normal part of the provided perturbation grid.
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id) result(ierr)
-        use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST
+        use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
+            &eq_job_nr
         use grid_utilities, only: trim_grid
         use sol_utilities, only: calc_XUQ, calc_pert_cart_comp
 #if ldebug
@@ -351,12 +352,14 @@ contains
             &product(n_t)))
         
         do kd = 1,2
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE_'//&
+                &trim(i2str(eq_job_nr)),&
                 &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
                 &description=description(kd))
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM',&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM_'//&
+                &trim(i2str(eq_job_nr)),&
                 &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
@@ -365,7 +368,8 @@ contains
                 &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
             where (f_plot_phase.lt.0) f_plot_phase = f_plot_phase + 2*pi
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH',&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH_'//&
+                &trim(i2str(eq_job_nr)),&
                 &f_plot_phase,tot_dim=plot_dim,loc_offset=plot_offset,&
                 &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
                 &Z=XYZ_plot(:,:,:,:,3),col=col,description=description(kd))
@@ -373,7 +377,8 @@ contains
         
         if (abs(pert_mult_factor_POST).ge.tol_zero) then
             call plot_HDF5(['total perturbation'],trim(i2str(X_id))//&
-                &'_sol_pert',norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
+                &'_sol_pert_'//trim(i2str(eq_job_nr)),&
+                &norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
                 &description='Norm of solution perturbation for Eigenvalue '//&
@@ -649,9 +654,9 @@ contains
     ! Also, the  fraction between potential and kinetic energy  can be returned,
     ! compared with the Eigenvalue.
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-        &sol,X_id,B_aligned,log_i,XYZ,sol_val_comp) result(ierr)
+        &sol,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
         use grid_utilities, only: trim_grid
-        use num_vars, only: rank, no_plots
+        use num_vars, only: no_plots, eq_job_nr
         
         character(*), parameter :: rout_name = 'decompose_energy'
         
@@ -665,9 +670,9 @@ contains
         type(sol_type), intent(in) :: sol                                       ! solution variables
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
-        integer, intent(in), optional :: log_i                                  ! file number of log file
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
-        complex(dp), intent(inout), optional :: sol_val_comp(2,2)               ! comparison of EV and energy fraction
+        complex(dp), intent(inout), optional :: E_pot_int(6)                    ! integrated potential energy
+        complex(dp), intent(inout), optional :: E_kin_int(2)                    ! integrated kinetic energy
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -678,8 +683,8 @@ contains
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         complex(dp), allocatable, target :: E_pot(:,:,:,:)                      ! potential energy
         complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
-        complex(dp), allocatable :: E_pot_int(:)                                ! integrated potential energy
-        complex(dp), allocatable :: E_kin_int(:)                                ! integrated kinetic energy
+        complex(dp) :: E_pot_int_loc(6)                                         ! integrated potential energy for this parallel job
+        complex(dp) :: E_kin_int_loc(2)                                         ! integrated kinetic energy for this parallel job
         complex(dp), pointer :: E_pot_trim(:,:,:,:) => null()                   ! trimmed part of E_pot
         complex(dp), pointer :: E_kin_trim(:,:,:,:) => null()                   ! trimmed part of E_kin
         real(dp), allocatable, target :: X_tot(:,:,:,:), Y_tot(:,:,:,:), &
@@ -692,8 +697,6 @@ contains
         character(len=max_str_ln), allocatable :: var_names(:)                  ! name of other variables that are plot
         character(len=max_str_ln) :: file_name                                  ! name of file
         character(len=max_str_ln) :: description                                ! description
-        character(len=max_str_ln) :: format_val                                 ! format
-        character(len=2*max_str_ln) :: temp_output_str                          ! temporary output string
         
         ! initialize ierr
         ierr = 0
@@ -702,94 +705,16 @@ contains
         call writo('Calculate energy terms')
         call lvl_ud(1)
         
+        ! calculate for this parallel job
         ierr = calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,B_aligned,&
-            &X_id,E_pot,E_kin,E_pot_int,E_kin_int)
+            &X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
         CHCKERR('')
         
+        ! add to totals if requested
+        if (present(E_pot_int)) E_pot_int = E_pot_int + E_pot_int_loc
+        if (present(E_kin_int)) E_kin_int = E_kin_int + E_kin_int_loc
+        
         call lvl_ud(-1)
-        
-        ! set sol_val_comp if wanted
-        if (present(sol_val_comp)) then
-            sol_val_comp(:,1) = X_id*1._dp
-            sol_val_comp(:,2) = [sol%val(X_id),sum(E_pot_int)/sum(E_kin_int)]
-        end if
-        
-        ! write to log file if wanted
-        if (present(log_i)) then
-            ! user output
-            call writo('Write to log file')
-            call lvl_ud(1)
-            
-            ! only master
-            if (rank.eq.0) then
-                ! set up format string:
-                !   row 1: EV, E_pot/E_kin
-                !   row 2: E_pot, E_kin
-                !   row 3: E_kin(1), E_kin(2)
-                !   row 4: E_pot(1), E_pot(2)
-                !   row 5: E_pot(3), E_pot(4)
-                !   row 6: E_pot(5), E_pot(6)
-                format_val = '("  ",ES23.16," ",ES23.16," ",&
-                    &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
-                
-                ! write header
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &'# Eigenvalue '//trim(i2str(X_id))
-                CHCKERR('Failed to write')
-                
-                ! write values
-                write(temp_output_str,format_val) &
-                    &rp(sol%val(X_id)),&
-                    &rp(sum(E_pot_int)/sum(E_kin_int)),&
-                    &rp(sum(E_pot_int)),&
-                    &rp(sum(E_kin_int))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-                write(temp_output_str,format_val) &
-                    &ip(sol%val(X_id)),&
-                    &ip(sum(E_pot_int)/sum(E_kin_int)), &
-                    &ip(sum(E_pot_int)),&
-                    &ip(sum(E_kin_int))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-                write(temp_output_str,format_val) &
-                    &rp(E_kin_int(1)),&
-                    &rp(E_kin_int(2))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-                write(temp_output_str,format_val) &
-                    &ip(E_kin_int(1)),&
-                    &ip(E_kin_int(2))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-                write(temp_output_str,format_val) &
-                    &rp(E_pot_int(1)),&
-                    &rp(E_pot_int(2)),&
-                    &rp(E_pot_int(3)),&
-                    &rp(E_pot_int(4)),&
-                    &rp(E_pot_int(5)),&
-                    &rp(E_pot_int(6))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-                write(temp_output_str,format_val) &
-                    &ip(E_pot_int(1)),&
-                    &ip(E_pot_int(2)),&
-                    &ip(E_pot_int(3)),&
-                    &ip(E_pot_int(4)),&
-                    &ip(E_pot_int(5)),&
-                    &ip(E_pot_int(6))
-                write(UNIT=log_i,FMT='(A)',IOSTAT=ierr) &
-                    &trim(temp_output_str)
-                CHCKERR('Failed to write')
-            end if
-            
-            call lvl_ud(-1)
-        end if
         
         ! plot if wanted
         if (present(XYZ)) then
@@ -848,12 +773,12 @@ contains
             X_tot_trim => X_tot(:,:,:,1:2)
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
-            call plot_HDF5(var_names_kin,trim(file_name)//'_RE',&
-                &rp(E_kin_trim),tot_dim=[tot_dim,2],&
+            call plot_HDF5(var_names_kin,trim(file_name)//'_RE_'//&
+                &trim(i2str(eq_job_nr)),rp(E_kin_trim),tot_dim=[tot_dim,2],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names_kin,trim(file_name)//'_IM',&
-                &ip(E_kin_trim),tot_dim=[tot_dim,2],&
+            call plot_HDF5(var_names_kin,trim(file_name)//'_IM_'//&
+                &trim(i2str(eq_job_nr)),ip(E_kin_trim),tot_dim=[tot_dim,2],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
@@ -864,12 +789,12 @@ contains
             X_tot_trim => X_tot(:,:,:,1:6)
             Y_tot_trim => Y_tot(:,:,:,1:6)
             Z_tot_trim => Z_tot(:,:,:,1:6)
-            call plot_HDF5(var_names_pot,trim(file_name)//'_RE',&
-                &rp(E_pot_trim),tot_dim=[tot_dim,6],&
+            call plot_HDF5(var_names_pot,trim(file_name)//'_RE_'//&
+                &trim(i2str(eq_job_nr)),rp(E_pot_trim),tot_dim=[tot_dim,6],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names_pot,trim(file_name)//'_IM',&
-                &ip(E_pot_trim),tot_dim=[tot_dim,6],&
+            call plot_HDF5(var_names_pot,trim(file_name)//'_IM_'//&
+                &trim(i2str(eq_job_nr)),ip(E_pot_trim),tot_dim=[tot_dim,6],&
                 &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
                 &Z=Z_tot_trim,description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
@@ -882,12 +807,14 @@ contains
             X_tot_trim => X_tot(:,:,:,1:2)
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
-            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE_'//&
+                &trim(i2str(eq_job_nr)),rp(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM_'//&
+                &trim(i2str(eq_job_nr)),ip(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
@@ -898,12 +825,14 @@ contains
             var_names(2) = '2. kinetic energy'
             file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
-            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE_'//&
+                &trim(i2str(eq_job_nr)),rp(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
                 &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_IM_'//&
+                &trim(i2str(eq_job_nr)),ip(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
@@ -948,8 +877,8 @@ contains
         integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
         complex(dp), intent(inout), allocatable :: E_pot(:,:,:,:)               ! potential energy
         complex(dp), intent(inout), allocatable :: E_kin(:,:,:,:)               ! kinetic energy
-        complex(dp), intent(inout), allocatable :: E_pot_int(:)                 ! integrated potential energy
-        complex(dp), intent(inout), allocatable :: E_kin_int(:)                 ! integrated kinetic energy
+        complex(dp), intent(inout) :: E_pot_int(6)                              ! integrated potential energy
+        complex(dp), intent(inout) :: E_kin_int(2)                              ! integrated kinetic energy
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -957,7 +886,6 @@ contains
         integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
         integer :: loc_dim(3)                                                   ! local dimension
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
-        type(grid_type) :: grid_sol_ghost                                       ! ghosted sol grid
         real(dp) :: loc_r_eq                                                    ! loc_r_F of sol grid interpolated in eq grid
         real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)               ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
         real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)                 ! interpolated kappa_n and kappa_g
@@ -992,8 +920,6 @@ contains
         allocate(XUQ(loc_dim(1),loc_dim(2),loc_dim(3),4))
         allocate(E_pot(loc_dim(1),loc_dim(2),loc_dim(3),6))
         allocate(E_kin(loc_dim(1),loc_dim(2),loc_dim(3),2))
-        allocate(E_pot_int(6))
-        allocate(E_kin_int(2))
 #if ldebug
         if (debug_calc_E .or. debug_DU) then
             allocate(DU(loc_dim(1),loc_dim(2),loc_dim(3)))
@@ -1164,8 +1090,6 @@ contains
         CHCKERR('')
         
         ! add ghost region of width one to the right of the interval
-        ierr = untrim_grid(grid_sol_trim,grid_sol_ghost,1)
-        CHCKERR('')
         if (rank.lt.n_procs-1) norm_id(2) = norm_id(2)+1                        ! adjust norm_id as well
         
         ! integrate energy using ghosted variables
@@ -1202,7 +1126,6 @@ contains
         
         ! deallocate variables
         call grid_sol_trim%dealloc()
-        call grid_sol_ghost%dealloc()
     end function calc_E
     
     ! Print solution quantities to an output file:

@@ -1025,7 +1025,12 @@ contains
         ! end of a fundamental integration interval, as discussed in above:
         !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
         !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
+        ! for POST, there are no Richardson  levels, and there has to be overlap
+        ! of one  always, in order  to have  correct composite integrals  of the
+        ! different regions.
         integer function calc_eq_jobs_lims(n_par,res) result(ierr)
+            use num_vars, only: prog_style
+            
             character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
             
             ! input / output
@@ -1048,11 +1053,16 @@ contains
             allocate(res(2,n_div))
             
             ! set overlap width
-            if (rich_lvl.eq.1) then
-                ol_width = 1
-            else
-                ol_width = 0
-            end if
+            select case (prog_style)
+                case (1)                                                        ! PB3D
+                    if (rich_lvl.eq.1) then
+                        ol_width = 1
+                    else
+                        ol_width = 0
+                    end if
+                case (2)                                                        ! POST
+                    ol_width = 1
+            end select
             
             ! loop over divisions
             do id = 1,n_div
