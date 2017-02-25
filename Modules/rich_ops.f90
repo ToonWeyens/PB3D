@@ -547,15 +547,12 @@ contains
         if (present(minim_output)) then
             select case(eq_style)
                 case (1)                                                        ! VMEC
-                    ! try  whether eq_2  and X_1 variables  exist with  first eq
-                    ! jobs suffix
-                    group_name = 'eq_2_R_'//trim(i2str(max_lvl_rich_file))//&
-                        &'_E_1'
+                    ! try whether eq_2 and X_1 variables exist
+                    group_name = 'eq_2_R_'//trim(i2str(max_lvl_rich_file))
                     ierr = probe_HDF5_group(PB3D_name,group_name,&
                         &group_exists(1))
                     CHCKERR('')
-                    group_name = 'X_1_R_'//trim(i2str(max_lvl_rich_file))//&
-                        &'_E_1'
+                    group_name = 'X_1_R_'//trim(i2str(max_lvl_rich_file))
                     ierr = probe_HDF5_group(PB3D_name,group_name,&
                         &group_exists(2))
                     CHCKERR('')

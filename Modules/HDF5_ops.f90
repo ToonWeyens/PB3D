@@ -53,9 +53,6 @@ module HDF5_ops
     interface reset_HDF5_item
         module procedure reset_HDF5_item_ind, reset_HDF5_item_arr
     end interface
-    interface read_HDF5_arr
-        module procedure read_HDF5_arr_ind, read_HDF5_arr_range
-    end interface
     
 contains
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
@@ -981,11 +978,10 @@ contains
     ! file.
     ! Optionally, output can be given about the variable being written.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if  it is  > 0.  Similarly, if "eq_job"  is provided,  "_E_eq_job" is
-    ! appended.
+    ! name if it is > 0.
     ! Note: See https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html, 7.4.2.3
     ! for an explanation of the selection of the dataspaces.
-    integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,eq_job,&
+    integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,&
         &disp_info,ind_print) result(ierr)
         use num_vars, only: n_procs, rank
         use MPI
@@ -1000,7 +996,6 @@ contains
         character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
         character(len=*), intent(in) :: head_name                               ! head name of variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to append to file name
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to append to file name
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
         logical, intent(in), optional :: ind_print                              ! individual write (possibly partial I/O)
         
@@ -1047,10 +1042,6 @@ contains
         if (present(rich_lvl)) then
             if (rich_lvl.gt.0) head_name_loc = trim(head_name_loc)//'_R_'//&
                 &trim(i2str(rich_lvl))
-        end if
-        if (present(eq_job)) then
-            if (eq_job.gt.0) head_name_loc = trim(head_name_loc)//'_E_'//&
-                &trim(i2str(eq_job))
         end if
         
         ! detect whether individual or collective print
@@ -1327,7 +1318,7 @@ contains
             ! input / output
             logical, intent(inout) :: ind_print                                 ! whether an individual or collective print
             
-            ! initialie ind_print to true
+            ! initialize ind_print to true
             ind_print = .true.
             
             ! one process ensures individual print
@@ -1351,15 +1342,15 @@ contains
     ! acceptable variable names can be passed.
     ! Optionally, output can be given about the variable being read.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if it is > 0, and similarly for "eq_job" in "_E_eq_job".
+    ! name if it is > 0.
     ! Furthermore, using lim_loc, a hyperslab of the variable can be read.
     ! Finally,  note  that if  a  limit  of lim_loc  is  a  negative value,  the
     ! procedure just takes the entire range.  This is necessary as sometimes the
     ! calling procuderes  don't have, and don't  need to have, knowledge  of the
     ! underlying  sizes, for  example in  the case  of having  multiple parallel
     ! jobs.
-    integer function read_HDF5_arr_ind(var,PB3D_name,head_name,var_name,&
-        &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! individual version
+    integer function read_HDF5_arr(var,PB3D_name,head_name,var_name,rich_lvl,&
+        &disp_info,lim_loc) result(ierr)
         use HDF5_utilities, only: set_1D_vars
         use MPI_vars, only: HDF5_lock
         use MPI_utilities, only: lock_req_acc, lock_return_acc
@@ -1375,7 +1366,6 @@ contains
         character(len=*), intent(in) :: head_name                               ! head name of variables
         character(len=*), intent(in) :: var_name                                ! name of variable
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to append to file name
         logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
         integer, intent(in), optional :: lim_loc(:,:)                           ! local limits
         
@@ -1417,10 +1407,6 @@ contains
         if (present(rich_lvl)) then
             if (rich_lvl.gt.0) head_name_loc = trim(head_name_loc)//'_R_'//&
                 &trim(i2str(rich_lvl))
-        end if
-        if (present(eq_job)) then
-            if (eq_job.gt.0) head_name_loc = trim(head_name_loc)//'_E_'//&
-                &trim(i2str(eq_job))
         end if
         
         ! user output
@@ -1625,50 +1611,7 @@ contains
         call H5Close_f(ierr)
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
-    end function read_HDF5_arr_ind
-    integer function read_HDF5_arr_range(vars,PB3D_name,head_name,var_name,&
-        &rich_lvl,eq_job,disp_info,lim_loc) result(ierr)                        ! range version
-        character(*), parameter :: rout_name = 'read_HDF5_arr_range'
-        
-        ! input / output
-        type(var_1D_type), intent(inout), allocatable :: vars(:)                ! variables to read
-        character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
-        character(len=*), intent(in) :: head_name                               ! head name of variables
-        character(len=*), intent(in) :: var_name                                ! name of variable
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        integer, intent(in), optional :: eq_job(2)                              ! equilibrium job to append to file name
-        logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
-        integer, intent(in), optional :: lim_loc(:,:)                           ! local limits
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        type(var_1D_type) :: var_loc                                            ! local vars
-        integer, allocatable :: eq_job_loc(:)                                   ! local eq_job
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local eq_job
-        allocate(eq_job_loc(2))
-        if (present(eq_job)) then
-            eq_job_loc = eq_job
-        else
-            eq_job_loc = 0
-        end if
-        
-        ! set up vars
-        allocate(vars(eq_job(2)-eq_job(1)+1))
-        
-        ! call individual version for every local eq_job
-        do id = eq_job_loc(1),eq_job_loc(2)
-            ierr = read_HDF5_arr_ind(var_loc,PB3D_name,head_name,var_name,&
-                &rich_lvl=rich_lvl,eq_job=id,disp_info=disp_info,&
-                &lim_loc=lim_loc)
-            CHCKERR('')
-            vars(id-eq_job_loc(1)+1) = var_loc
-            call dealloc_var_1D(var_loc)
-        end do
-    end function read_HDF5_arr_range
+    end function read_HDF5_arr
     
     ! resets an HDF5 XDMF item
     ! Note: individual version cannot make use of array version because then the

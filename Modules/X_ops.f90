@@ -806,8 +806,8 @@ contains
         integer :: ld                                                           ! counter
         integer :: n_mod_loc                                                    ! local n_mod
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
-        real(dp), allocatable :: x_plot_loc(:,:)                                    ! for plotting
-        real(dp), allocatable :: y_plot_loc(:,:)                                    ! for plotting
+        real(dp), allocatable :: x_plot_loc(:,:)                                ! for plotting
+        real(dp), allocatable :: y_plot_loc(:,:)                                ! for plotting
         character(len=max_str_ln) :: plot_title, file_name                      ! name of plot, of file
         real(dp), allocatable :: jq(:)                                          ! saf. fac. or rot. transf. in Flux coords.
         integer :: n_r                                                          ! total number of normal points
@@ -2171,14 +2171,18 @@ contains
     !   - tensorial:    PV_int, KV_int
     !     (the non-integrated variables are heavy and not requested)
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 , and similarly for "eq_job" through "_E_eq_job".
+    ! it is > 0.
+    ! Optionally, it  can be  specified that  this is  a divided  parallel grid,
+    ! corresponding to  the variable  "eq_jobs_lims" with index  "eq_job_nr". In
+    ! this  case, the  total  grid size  is  adjusted to  the  one specified  by
+    ! "eq_jobs_lims" and the grid is written as a subset.
     ! Note: Flux coordinates used as normal coordinates
     ! Note: the tensorial perturbation type can  also be used for field- aligned
     ! variables, in  which case the first  index is assumed to  have dimension 1
     ! only. This can be triggered using "is_field_averaged".
-    integer function print_output_X_1(grid,X,data_name,rich_lvl,eq_job,&
-        &lim_sec_X,ind_print) result(ierr)                                      ! vectorial version
-        use num_vars, only: PB3D_name_eq
+    integer function print_output_X_1(grid,X,data_name,rich_lvl,par_div,&
+        &lim_sec_X) result(ierr)                                                ! vectorial version
+        use num_vars, only: PB3D_name_eq, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -2191,16 +2195,18 @@ contains
         type(X_1_type), intent(in) :: X                                         ! vectorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
+        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
         integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
-        logical, intent(in), optional :: ind_print                              ! individual write
         
         ! local variables
+        integer :: n_tot(3)                                                     ! total n
+        integer :: par_id(2)                                                    ! local parallel interval
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
-        integer :: n_mod_loc                                                    ! local nr. of modes
         integer :: id                                                           ! counters
-        integer :: dims(3)                                                      ! dimension of variables
+        logical :: par_div_loc = .false.                                        ! local par_div
+        integer :: lim_sec_X_loc(2)                                             ! local lim_sec_X
+        integer :: loc_size                                                     ! local size
         
         ! initialize ierr
         ierr = 0
@@ -2209,16 +2215,24 @@ contains
         call writo('Write vectorial perturbation variables to output file')
         call lvl_ud(1)
         
+        ! set local par_div
+        if (present(par_div)) par_div_loc = par_div
+        
+        ! set total n and parallel interval
+        n_tot = grid%n
+        par_id = [1,n_tot(1)]
+        if (grid%n(1).gt.0 .and. par_div_loc) then                              ! total grid includes all equilibrium jobs
+            n_tot(1) = maxval(eq_jobs_lims)-minval(eq_jobs_lims)+1
+            par_id = eq_jobs_lims(:,eq_job_nr)
+        end if
+        
+        ! set local size and lim_sec_X
+        loc_size = size(X%U_0)
+        lim_sec_X_loc = [1,n_mod_X]
+        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        
         ! Set up the 1D equivalents of the perturbation variables
         allocate(X_1D(max_dim_var_1D))
-        
-        ! set dimensions and local n_mod_X
-        dims = grid%n
-        if (present(lim_sec_X)) then
-            n_mod_loc = lim_sec_X(2)-lim_sec_X(1)+1
-        else
-            n_mod_loc = n_mod_X
-        end if
         
         ! set up variables X_1D
         id = 1
@@ -2229,10 +2243,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(rp(X%U_0),[size(X_1D_loc%p)])
         
         ! IM_U_0
@@ -2241,10 +2255,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(ip(X%U_0),[size(X_1D_loc%p)])
         
         ! RE_U_1
@@ -2253,10 +2267,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(rp(X%U_1),[size(X_1D_loc%p)])
         
         ! IM_U_1
@@ -2265,10 +2279,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(ip(X%U_1),[size(X_1D_loc%p)])
         
         ! RE_DU_0
@@ -2277,10 +2291,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(rp(X%DU_0),[size(X_1D_loc%p)])
         
         ! IM_DU_0
@@ -2289,10 +2303,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(ip(X%DU_0),[size(X_1D_loc%p)])
         
         ! RE_DU_1
@@ -2301,10 +2315,10 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(rp(X%DU_1),[size(X_1D_loc%p)])
         
         ! IM_DU_1
@@ -2313,15 +2327,15 @@ contains
         allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
         allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
         X_1D_loc%tot_i_min = [1,1,1,1]
-        X_1D_loc%tot_i_max = [dims,n_mod_X]
-        X_1D_loc%loc_i_min = [1,1,1,lim_sec_X(1)]
-        X_1D_loc%loc_i_max = [dims,lim_sec_X(2)]
-        allocate(X_1D_loc%p(product(dims)*n_mod_loc))
+        X_1D_loc%tot_i_max = [n_tot,n_mod_X]
+        X_1D_loc%loc_i_min = [par_id(1),1,1,lim_sec_X_loc(1)]
+        X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),lim_sec_X_loc(2)]
+        allocate(X_1D_loc%p(loc_size))
         X_1D_loc%p = reshape(ip(X%DU_1),[size(X_1D_loc%p)])
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name_eq,trim(data_name),&
-            &rich_lvl=rich_lvl,eq_job=eq_job,ind_print=ind_print)
+            &rich_lvl=rich_lvl,ind_print=.true.)
         CHCKERR('')
         
         ! clean up
@@ -2331,9 +2345,9 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_X_1
-    integer function print_output_X_2(grid,X,data_name,rich_lvl,eq_job,&
-        &lim_sec_X,is_field_averaged,ind_print) result(ierr)                    ! tensorial version
-        use num_vars, only: PB3D_name
+    integer function print_output_X_2(grid,X,data_name,rich_lvl,par_div,&
+        &lim_sec_X,is_field_averaged) result(ierr)                              ! tensorial version
+        use num_vars, only: PB3D_name,eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -2348,23 +2362,24 @@ contains
         type(X_2_type), intent(in) :: X                                         ! tensorial perturbation variables 
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
+        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
         integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
         logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
-        logical, intent(in), optional :: ind_print                              ! individual write
         
         ! local variables
+        integer :: n_tot(3)                                                     ! total n
+        integer :: par_id(2)                                                    ! local parallel interval
         type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
         type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
         logical :: print_this(2)                                                ! whether symmetric and asymmetric variables need to be printed
         integer :: nn_mod_tot(2)                                                ! total nr. of modes for symmetric and asymmetric variables
         integer :: nn_mod_loc(2)                                                ! local nr. of modes for symmetric and asymmetric variables
         integer :: id                                                           ! counter
+        logical :: par_div_loc = .false.                                        ! local par_div
+        integer :: loc_size(2)                                                  ! local size for symmetric and asymmetric variables
         integer :: m, k                                                         ! counters
         integer :: sXr_loc(2,2)                                                 ! local secondary X limits for symmetric and asymmetric variables
         integer :: sXr_tot(2,2)                                                 ! total secondary X limits for symmetric and asymmetric variables
-        integer :: dims(3)                                                      ! dimension of variables
-        integer :: par_lim(2)                                                   ! limits on parallel variable
         
         ! initialize ierr
         ierr = 0
@@ -2373,21 +2388,30 @@ contains
         call writo('Write tensorial perturbation variables to output file')
         call lvl_ud(1)
         
-        ! Set up the 1D equivalents of the perturbation variables
-        allocate(X_1D(max_dim_var_1D))
+        ! set local par_div
+        if (present(par_div)) par_div_loc = par_div
         
-        ! set dimensions, parallel limits and local and total nn_mod_X
-        dims = grid%n
-        par_lim = [1,grid%n(1)]
-        if (present(is_field_averaged)) then                                    ! only first parallel index
-            if (is_field_averaged) then
-                dims(1) = 1
-                par_lim = [1,1]
+        ! set total n, parallel interval and total n_mod_X
+        n_tot = grid%n
+        par_id = [1,n_tot(1)]
+        if (grid%n(1).gt.0 .and. par_div_loc) then                              ! total grid includes all equilibrium jobs
+            n_tot(1) = maxval(eq_jobs_lims)-minval(eq_jobs_lims)+1
+            par_id = eq_jobs_lims(:,eq_job_nr)
+        else if (present(is_field_averaged)) then
+            if (is_field_averaged) then                                         ! only first point
+                par_id = [1,1]
+                n_tot(1) = 1
             end if
         end if
         nn_mod_tot(1) = set_nn_mod(.true.)
         nn_mod_tot(2) = set_nn_mod(.false.)
         
+        ! set dimensions, parallel limits and local and total nn_mod_X
+        
+        ! Set up the 1D equivalents of the perturbation variables
+        allocate(X_1D(max_dim_var_1D))
+        
+        ! set up variables X_1D
         id = 1
         
         ! loop over modes of dimension 2
@@ -2401,6 +2425,12 @@ contains
                 if (sXr_loc(1,k).le.sXr_loc(2,k)) print_this(k) = .true.        ! a bound is found
             end do
             
+            ! set local size
+            loc_size(1) = (par_id(2)-par_id(1)+1)*product(n_tot(2:3))*&
+                &nn_mod_loc(1)
+            loc_size(2) = (par_id(2)-par_id(1)+1)*product(n_tot(2:3))*&
+                &nn_mod_loc(2)
+            
             if (print_this(1)) then
                 ! RE_PV_0
                 X_1D_loc => X_1D(id); id = id+1
@@ -2408,12 +2438,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%PV_0(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(rp(X%PV_0(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_PV_0
@@ -2422,12 +2451,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%PV_0(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(ip(X%PV_0(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                     
                 ! RE_PV_2
@@ -2436,12 +2464,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%PV_2(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(rp(X%PV_2(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_PV_2
@@ -2450,12 +2477,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%PV_2(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(ip(X%PV_2(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! RE_KV_0
@@ -2464,12 +2490,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%KV_0(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(rp(X%KV_0(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_KV_0
@@ -2478,12 +2503,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%KV_0(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(ip(X%KV_0(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                     
                 ! RE_KV_2
@@ -2492,12 +2516,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%KV_2(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(rp(X%KV_2(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
                 
                 ! IM_KV_2
@@ -2506,12 +2529,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(1)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,1)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,1)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(1)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%KV_2(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(1)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,1)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,1)]
+                allocate(X_1D_loc%p(loc_size(1)))
+                X_1D_loc%p = reshape(ip(X%KV_2(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,1):sXr_loc(2,1))),[size(X_1D_loc%p)])
             end if
             
@@ -2522,12 +2544,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%PV_1(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,2)]
+                allocate(X_1D_loc%p(loc_size(2)))
+                X_1D_loc%p = reshape(rp(X%PV_1(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
                 ! IM_PV_1
@@ -2536,12 +2557,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%PV_1(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,2)]
+                allocate(X_1D_loc%p(loc_size(2)))
+                X_1D_loc%p = reshape(ip(X%PV_1(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
                 ! RE_KV_1
@@ -2550,12 +2570,11 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(rp(&
-                    &X%KV_1(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,2)]
+                allocate(X_1D_loc%p(loc_size(2)))
+                X_1D_loc%p = reshape(rp(X%KV_1(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
                 
                 ! IM_KV_1
@@ -2564,19 +2583,18 @@ contains
                 allocate(X_1D_loc%tot_i_min(4),X_1D_loc%tot_i_max(4))
                 allocate(X_1D_loc%loc_i_min(4),X_1D_loc%loc_i_max(4))
                 X_1D_loc%tot_i_min = [1,1,1,1]
-                X_1D_loc%tot_i_max = [dims,nn_mod_tot(2)]
-                X_1D_loc%loc_i_min = [1,1,1,sXr_tot(1,2)]
-                X_1D_loc%loc_i_max = [dims,sXr_tot(2,2)]
-                allocate(X_1D_loc%p(product(dims)*nn_mod_loc(2)))
-                X_1D_loc%p = reshape(ip(&
-                    &X%KV_1(par_lim(1):par_lim(2),:,:,&
+                X_1D_loc%tot_i_max = [n_tot,nn_mod_tot(2)]
+                X_1D_loc%loc_i_min = [par_id(1),1,1,sXr_tot(1,2)]
+                X_1D_loc%loc_i_max = [par_id(2),n_tot(2:3),sXr_tot(2,2)]
+                allocate(X_1D_loc%p(loc_size(2)))
+                X_1D_loc%p = reshape(ip(X%KV_1(par_id(1):par_id(2),:,:,&
                     &sXr_loc(1,2):sXr_loc(2,2))),[size(X_1D_loc%p)])
             end if
         end do
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&
-            &rich_lvl=rich_lvl,eq_job=eq_job,ind_print=ind_print)
+            &rich_lvl=rich_lvl,ind_print=.true.)
         CHCKERR('')
         
         ! clean up

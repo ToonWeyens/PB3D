@@ -887,7 +887,7 @@ contains
     ! Note that  these normal  limits for  the divided grid  should be  given in
     ! terms of the normal dimension of grid B.
     integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
-        character(*), parameter :: rout_name = 'init_grid'
+        character(*), parameter :: rout_name = 'copy_grid'
         
         ! input / output
         class(grid_type), intent(in) :: grid_A                                  ! grid to be initialized
@@ -916,6 +916,8 @@ contains
         ! tests
         if (n_B(1).gt.grid_A%n(1) .or. n_B(2).gt.grid_A%n(2) .or. &
             &n_B(3).gt.grid_A%n(3)) then
+            write(*,*) 'n_B' ,n_B
+            write(*,*) 'grid_A', grid_A%n
             ierr = 1
             CHCKERR('lims_B is too large')
         end if

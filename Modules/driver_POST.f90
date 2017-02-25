@@ -90,7 +90,7 @@ contains
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         integer :: id, jd                                                       ! counters
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
-        integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job (last index: eq or X)
+        integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -293,7 +293,7 @@ contains
                 case (2)                                                        ! HELENA
                     allocate(grid_eq_B)
                     ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
-                        &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                        &rich_lvl=rich_lvl,tot_rich=.true.,&
                         &grid_limits=lims_norm(:,1))
                     CHCKERR('')
             end select

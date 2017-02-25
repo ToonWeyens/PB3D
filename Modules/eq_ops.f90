@@ -3464,8 +3464,11 @@ contains
     !               kappa_n, kappa_g, sigma
     !   - metric:   g_FD, h_FD, jac_FD
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
-    ! This counts only for eq_2.
+    ! it is > 0 (only for eq_2).
+    ! Optionally, for eq_2, it can be  specified that this is a divided parallel
+    ! grid, corresponding to the variable "eq_jobs_lims" with index "eq_job_nr".
+    ! In this  case, the  total grid size  is adjusted to  the one  specified by
+    ! "eq_jobs_lims" and the grid is written as a subset.
     ! Note: The equilibrium quantities are outputted in Flux coordinates.
     ! Note: The  metric equilibrium  quantities can be  deallocated on  the fly,
     ! which is useful if this routine is  followed by a deallocation any way, so
@@ -3589,7 +3592,8 @@ contains
         
         
         ! write
-        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name))
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
+            &ind_print=.not.grid_trim%divided)
         CHCKERR('')
         
         ! clean up
@@ -3600,9 +3604,9 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_eq_1
-    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,eq_job,&
+    integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,par_div,&
         &dealloc_vars) result(ierr)                                             ! metric version
-        use num_vars, only: PB3D_name_eq
+        use num_vars, only: PB3D_name_eq, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -3615,15 +3619,18 @@ contains
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
+        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
         logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
         
         ! local variables
+        integer :: n_tot(3)                                                     ! total n
+        integer :: par_id(2)                                                    ! local parallel interval
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
+        logical :: par_div_loc = .false.                                        ! local par_div
         integer :: loc_size                                                     ! local size
         logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
@@ -3637,6 +3644,17 @@ contains
         ! trim grids
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
+        
+        ! set local par_div
+        if (present(par_div)) par_div_loc = par_div
+        
+        ! set total n and parallel interval
+        n_tot = grid_trim%n
+        par_id = [1,n_tot(1)]
+        if (grid_trim%n(1).gt.0 .and. par_div_loc) then                         ! total grid includes all equilibrium jobs
+            n_tot(1) = maxval(eq_jobs_lims)-minval(eq_jobs_lims)+1
+            par_id = eq_jobs_lims(:,eq_job_nr)
+        end if
         
         ! set up local dealloc_vars
         dealloc_vars_loc = .false.
@@ -3654,12 +3672,11 @@ contains
         allocate(eq_1D_loc%tot_i_min(7),eq_1D_loc%tot_i_max(7))
         allocate(eq_1D_loc%loc_i_min(7),eq_1D_loc%loc_i_max(7))
         eq_1D_loc%tot_i_min = [1,1,1,1,0,0,0]
-        eq_1D_loc%tot_i_max = [grid_trim%n,6,size(eq%g_FD,5)-1,&
-            &size(eq%g_FD,6)-1,size(eq%g_FD,7)-1]
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min,1,0,0,0]
-        eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-            &grid_trim%i_max,6,size(eq%g_FD,5)-1,size(eq%g_FD,6)-1,&
+        eq_1D_loc%tot_i_max = [n_tot,6,size(eq%g_FD,5)-1,size(eq%g_FD,6)-1,&
             &size(eq%g_FD,7)-1]
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min,1,0,0,0]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max,6,&
+            &size(eq%g_FD,5)-1,size(eq%g_FD,6)-1,size(eq%g_FD,7)-1]
         loc_size = size(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%g_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
@@ -3672,12 +3689,11 @@ contains
         allocate(eq_1D_loc%tot_i_min(7),eq_1D_loc%tot_i_max(7))
         allocate(eq_1D_loc%loc_i_min(7),eq_1D_loc%loc_i_max(7))
         eq_1D_loc%tot_i_min = [1,1,1,1,0,0,0]
-        eq_1D_loc%tot_i_max = [grid_trim%n,6,size(eq%h_FD,5)-1,&
-            &size(eq%h_FD,6)-1,size(eq%h_FD,7)-1]
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min,1,0,0,0]
-        eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-            &grid_trim%i_max,6,size(eq%h_FD,5)-1,size(eq%h_FD,6)-1,&
+        eq_1D_loc%tot_i_max = [n_tot,6,size(eq%h_FD,5)-1,size(eq%h_FD,6)-1,&
             &size(eq%h_FD,7)-1]
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min,1,0,0,0]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max,6,&
+            &size(eq%h_FD,5)-1,size(eq%h_FD,6)-1,size(eq%h_FD,7)-1]
         loc_size = size(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%h_FD(:,:,norm_id(1):norm_id(2),:,:,:,:),&
@@ -3690,12 +3706,11 @@ contains
         allocate(eq_1D_loc%tot_i_min(6),eq_1D_loc%tot_i_max(6))
         allocate(eq_1D_loc%loc_i_min(6),eq_1D_loc%loc_i_max(6))
         eq_1D_loc%tot_i_min = [1,1,1,0,0,0]
-        eq_1D_loc%tot_i_max = [grid_trim%n,size(eq%jac_FD,4)-1,&
-            &size(eq%jac_FD,5)-1,size(eq%jac_FD,6)-1]
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min,0,0,0]
-        eq_1D_loc%loc_i_max = [grid_trim%n(1),grid_trim%n(2),&
-            &grid_trim%i_max,size(eq%jac_FD,4)-1,size(eq%jac_FD,5)-1,&
+        eq_1D_loc%tot_i_max = [n_tot,size(eq%jac_FD,4)-1,size(eq%jac_FD,5)-1,&
             &size(eq%jac_FD,6)-1]
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min,0,0,0]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max,&
+            &size(eq%jac_FD,4)-1,size(eq%jac_FD,5)-1,size(eq%jac_FD,6)-1]
         loc_size = size(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%jac_FD(:,:,norm_id(1):norm_id(2),:,:,:),&
@@ -3708,10 +3723,9 @@ contains
         allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
         allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
         eq_1D_loc%tot_i_min = [1,1,1]
-        eq_1D_loc%tot_i_max = grid_trim%n
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-        eq_1D_loc%loc_i_max = &
-            &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+        eq_1D_loc%tot_i_max = n_tot
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
         loc_size = size(eq%S(:,:,norm_id(1):norm_id(2)))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%S(:,:,norm_id(1):norm_id(2)),&
@@ -3724,10 +3738,9 @@ contains
         allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
         allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
         eq_1D_loc%tot_i_min = [1,1,1]
-        eq_1D_loc%tot_i_max = grid_trim%n
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-        eq_1D_loc%loc_i_max = &
-            &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+        eq_1D_loc%tot_i_max = n_tot
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
         loc_size = size(eq%kappa_n(:,:,norm_id(1):norm_id(2)))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_n(:,:,norm_id(1):norm_id(2)),&
@@ -3740,10 +3753,9 @@ contains
         allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
         allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
         eq_1D_loc%tot_i_min = [1,1,1]
-        eq_1D_loc%tot_i_max = grid_trim%n
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-        eq_1D_loc%loc_i_max = &
-            &[grid_trim%n(1),grid_trim%n(2),grid_trim%i_max]
+        eq_1D_loc%tot_i_max = n_tot
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
         loc_size = size(eq%kappa_g(:,:,norm_id(1):norm_id(2)))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%kappa_g(:,:,norm_id(1):norm_id(2)),&
@@ -3756,9 +3768,9 @@ contains
         allocate(eq_1D_loc%tot_i_min(3),eq_1D_loc%tot_i_max(3))
         allocate(eq_1D_loc%loc_i_min(3),eq_1D_loc%loc_i_max(3))
         eq_1D_loc%tot_i_min = [1,1,1]
-        eq_1D_loc%tot_i_max = grid_trim%n
-        eq_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-        eq_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
+        eq_1D_loc%tot_i_max = n_tot
+        eq_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+        eq_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
         loc_size = size(eq%sigma(:,:,norm_id(1):norm_id(2)))
         allocate(eq_1D_loc%p(loc_size))
         eq_1D_loc%p = reshape(eq%sigma(:,:,norm_id(1):norm_id(2)),&
@@ -3767,7 +3779,7 @@ contains
         
         ! write
         ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name_eq,trim(data_name),&
-            &rich_lvl=rich_lvl,eq_job=eq_job)
+            &rich_lvl=rich_lvl,ind_print=.not.grid_trim%divided)
         CHCKERR('')
         
         ! clean up

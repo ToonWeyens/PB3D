@@ -147,7 +147,7 @@ contains
                 
                 ! write equilibrium grid variables to output
                 ierr = print_output_grid(grid_eq,'equilibrium','eq',&
-                    &rich_lvl=rich_lvl,eq_job=eq_job_nr)
+                    &rich_lvl=rich_lvl,par_div=.true.)
                 CHCKERR('')
                 
                 ! Calculate the metric equilibrium quantities
@@ -163,7 +163,7 @@ contains
                 
                 ! write metric equilibrium variables to output
                 ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl,&
-                    &eq_job=eq_job_nr,dealloc_vars=dealloc_vars)
+                    &par_div=.true.,dealloc_vars=dealloc_vars)
                 CHCKERR('')
                 
                 ! clean up
@@ -171,7 +171,8 @@ contains
             case (2)                                                            ! HELENA
                 if (rich_lvl.eq.1) then
                     ! write equilibrium grid variables to output
-                    ierr = print_output_grid(grid_eq,'equilibrium','eq')
+                    ierr = print_output_grid(grid_eq,'equilibrium','eq',&
+                        &par_div=.false.)
                     CHCKERR('')
                     
                     ! Calculate the metric equilibrium quantities
@@ -187,7 +188,7 @@ contains
                     
                     ! write metric equilibrium variables to output
                     ierr = print_output_eq(grid_eq,eq_2,'eq_2',&
-                        &dealloc_vars=dealloc_vars)
+                        &par_div=.false.,dealloc_vars=dealloc_vars)
                     CHCKERR('')
                     
                     ! clean up
@@ -203,7 +204,7 @@ contains
                 
                 ! write field-aligned equilibrium grid variables to output
                 ierr = print_output_grid(grid_eq_B,'field-aligned equilibrium',&
-                    &'eq_B',rich_lvl=rich_lvl,eq_job=eq_job_nr)
+                    &'eq_B',rich_lvl=rich_lvl,par_div=.true.)
                 CHCKERR('')
         end select
         

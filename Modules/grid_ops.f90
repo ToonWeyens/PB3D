@@ -1163,12 +1163,16 @@ contains
     end function magn_grid_plot
     
     ! Print grid variables to an output file.
-    ! Note: "grid_" is added in front the data_name.
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 (only for eq_2), and similarly for "eq_job" through "_E_eq_job".
+    ! it is > 0.
+    ! Optionally, it  can be  specified that  this is  a divided  parallel grid,
+    ! corresponding to  the variable  "eq_jobs_lims" with index  "eq_job_nr". In
+    ! this  case, the  total  grid size  is  adjusted to  the  one specified  by
+    ! "eq_jobs_lims" and the grid is written as a subset.
+    ! Note: "grid_" is added in front the data_name.
     integer function print_output_grid(grid,grid_name,data_name,rich_lvl,&
-        &eq_job) result(ierr)
-        use num_vars, only: PB3D_name
+        &par_div) result(ierr)
+        use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
             &max_dim_var_1D
@@ -1181,13 +1185,16 @@ contains
         character(len=*), intent(in) :: grid_name                               ! name to display
         character(len=*), intent(in) :: data_name                               ! name under which to store
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        integer, intent(in), optional :: eq_job                                 ! equilibrium job to print
+        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
         
         ! local variables
+        integer :: n_tot(3)                                                     ! total n
+        integer :: par_id(2)                                                    ! local parallel interval
         type(grid_type) :: grid_trim                                            ! trimmed grid
         type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
         type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
         integer :: id                                                           ! counter
+        logical :: par_div_loc = .false.                                        ! local par_div
         
         ! initialize ierr
         ierr = 0
@@ -1200,6 +1207,17 @@ contains
         ! trim grid
         ierr = trim_grid(grid,grid_trim)
         CHCKERR('')
+        
+        ! set local par_div
+        if (present(par_div)) par_div_loc = par_div
+        
+        ! set total n and parallel interval
+        n_tot = grid_trim%n
+        par_id = [1,n_tot(1)]
+        if (grid_trim%n(1).gt.0 .and. par_div_loc) then                         ! total grid includes all equilibrium jobs
+            n_tot(1) = maxval(eq_jobs_lims)-minval(eq_jobs_lims)+1
+            par_id = eq_jobs_lims(:,eq_job_nr)
+        end if
         
         ! Set up the 1D equivalents of the perturbation variables
         allocate(grid_1D(max_dim_var_1D))
@@ -1217,7 +1235,7 @@ contains
         grid_1D_loc%loc_i_min = [1]
         grid_1D_loc%loc_i_max = [3]
         allocate(grid_1D_loc%p(3))
-        grid_1D_loc%p = grid_trim%n
+        grid_1D_loc%p = n_tot
         
         ! r_F
         grid_1D_loc => grid_1D(id); id = id+1
@@ -1225,7 +1243,7 @@ contains
         allocate(grid_1D_loc%tot_i_min(1),grid_1D_loc%tot_i_max(1))
         allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
         grid_1D_loc%tot_i_min = [1]
-        grid_1D_loc%tot_i_max = [grid_trim%n(3)]
+        grid_1D_loc%tot_i_max = [n_tot(3)]
         grid_1D_loc%loc_i_min = [grid_trim%i_min]
         grid_1D_loc%loc_i_max = [grid_trim%i_max]
         allocate(grid_1D_loc%p(size(grid_trim%loc_r_F)))
@@ -1237,7 +1255,7 @@ contains
         allocate(grid_1D_loc%tot_i_min(1),grid_1D_loc%tot_i_max(1))
         allocate(grid_1D_loc%loc_i_min(1),grid_1D_loc%loc_i_max(1))
         grid_1D_loc%tot_i_min = [1]
-        grid_1D_loc%tot_i_max = [grid_trim%n(3)]
+        grid_1D_loc%tot_i_max = [n_tot(3)]
         grid_1D_loc%loc_i_min = [grid_trim%i_min]
         grid_1D_loc%loc_i_max = [grid_trim%i_max]
         allocate(grid_1D_loc%p(size(grid_trim%loc_r_E)))
@@ -1251,9 +1269,9 @@ contains
             allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
             allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
             grid_1D_loc%tot_i_min = [1,1,1]
-            grid_1D_loc%tot_i_max = grid_trim%n
-            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
+            grid_1D_loc%tot_i_max = n_tot
+            grid_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%theta_F)))
             grid_1D_loc%p = reshape(grid_trim%theta_F,[size(grid_trim%theta_F)])
             
@@ -1263,9 +1281,9 @@ contains
             allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
             allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
             grid_1D_loc%tot_i_min = [1,1,1]
-            grid_1D_loc%tot_i_max = grid_trim%n
-            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
+            grid_1D_loc%tot_i_max = n_tot
+            grid_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%theta_E)))
             grid_1D_loc%p = reshape(grid_trim%theta_E,[size(grid_trim%theta_E)])
             
@@ -1275,9 +1293,9 @@ contains
             allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
             allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
             grid_1D_loc%tot_i_min = [1,1,1]
-            grid_1D_loc%tot_i_max = grid_trim%n
-            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
+            grid_1D_loc%tot_i_max = n_tot
+            grid_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%zeta_F)))
             grid_1D_loc%p = reshape(grid_trim%zeta_F,[size(grid_trim%zeta_F)])
             
@@ -1287,16 +1305,17 @@ contains
             allocate(grid_1D_loc%tot_i_min(3),grid_1D_loc%tot_i_max(3))
             allocate(grid_1D_loc%loc_i_min(3),grid_1D_loc%loc_i_max(3))
             grid_1D_loc%tot_i_min = [1,1,1]
-            grid_1D_loc%tot_i_max = grid_trim%n
-            grid_1D_loc%loc_i_min = [1,1,grid_trim%i_min]
-            grid_1D_loc%loc_i_max = [grid_trim%n(1:2),grid_trim%i_max]
+            grid_1D_loc%tot_i_max = n_tot
+            grid_1D_loc%loc_i_min = [par_id(1),1,grid_trim%i_min]
+            grid_1D_loc%loc_i_max = [par_id(2),n_tot(2),grid_trim%i_max]
             allocate(grid_1D_loc%p(size(grid_trim%zeta_E)))
             grid_1D_loc%p = reshape(grid_trim%zeta_E,[size(grid_trim%zeta_E)])
         end if
         
         ! write
         ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
-            &'grid_'//trim(data_name),rich_lvl=rich_lvl,eq_job=eq_job)
+            &'grid_'//trim(data_name),rich_lvl=rich_lvl,&
+            &ind_print=.not.grid_trim%divided)
         CHCKERR('')
         
         ! clean up

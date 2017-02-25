@@ -641,3 +641,9 @@ CHANGELOG
 1.49: - Symmetry type can now be forced in HDF5 output and is also written to the file xdmf in an information element.
       - There is now an option "cont_plot" that indicates that the plot in HDF5 is a continuation of a previously started plot. This can be used to (over-)write HDF5 data, for example when dividing into jobs in POST.
       - POST now makes use of continued plots so that the plot outputs are single files.
+
+1.50: - Version 1.49 suffered from an important flaw: It only worked when there were no multiple equilibrium jobs in PB3D.
+      - The system of equilibrium jobs is now overhauled: There is only one group per Richardson level.
+      - Many routines have been simplified.
+      - "eq_job" has been removed in many routines.
+      - "read_HDF5_arr" now only has one version, and "conv_1D2ND" only has individual versions.

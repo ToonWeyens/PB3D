@@ -114,7 +114,7 @@ contains
         endif
         
         ! initialize secondary X range
-        k_range_loc = [n_mod+1,0]                                           ! initialize to inverted values, out of bounds
+        k_range_loc = [n_mod+1,0]                                               ! initialize to inverted values, out of bounds
         
         ! find start and end of k range
         find_start: do k = 1,n_mod
