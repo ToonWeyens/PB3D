@@ -14,7 +14,7 @@
     prim_X                  = 10
     n_mod_X                 = 20
     tol_rich                = 1.0E-4
-    n_sol_requested         = 2
+    n_sol_requested         = 1
     max_it_inv              = 1
     BC_style                = 1 1
     K_style                 = 1

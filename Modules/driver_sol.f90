@@ -43,7 +43,6 @@ contains
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
         use num_utilities, only: c, con
-        use MPI_utilities, only: get_ser_var
 #endif
         
         character(*), parameter :: rout_name = 'run_driver_sol'

@@ -95,7 +95,7 @@ contains
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id) result(ierr)
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
-            &eq_job_nr
+            &eq_job_nr, eq_jobs_lims, eq_job_nr
         use grid_utilities, only: trim_grid
         use sol_utilities, only: calc_XUQ, calc_pert_cart_comp
 #if ldebug
@@ -125,6 +125,7 @@ contains
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: col                                                          ! collection type for HDF5 plot
+        logical :: cont_plot                                                    ! continued plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
         real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
@@ -197,6 +198,13 @@ contains
         ! size from the trimmed sol grid.
         plot_dim = [grid_eq%n(1), grid_eq%n(2),grid_sol_trim%n(3),product(n_t)]
         plot_offset = [0,0,grid_sol_trim%i_min-1,0]
+        
+        ! possibly modify if multiple equilibrium parallel jobs
+        if (size(eq_jobs_lims,2).gt.1) then
+            plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                &eq_jobs_lims(1,1) + 1
+            plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+        end if
         
         ! For each time step, calculate the time (as fraction of Alfvén time)
         allocate(time(product(n_t)))
@@ -351,36 +359,37 @@ contains
         allocate(f_plot_phase(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
             &product(n_t)))
         
+        ! set up continued plot
+        cont_plot = eq_job_nr.gt.1
+        
         do kd = 1,2
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE_'//&
-                &trim(i2str(eq_job_nr)),&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
                 &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
-                &description=description(kd))
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM_'//&
-                &trim(i2str(eq_job_nr)),&
+                &cont_plot=cont_plot,description=description(kd))
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM',&
                 &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
                 &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
-                &description=description(kd))
+                &cont_plot=cont_plot,description=description(kd))
             f_plot_phase = atan2(&
                 &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                 &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
             where (f_plot_phase.lt.0) f_plot_phase = f_plot_phase + 2*pi
-            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH_'//&
-                &trim(i2str(eq_job_nr)),&
+            call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_PH',&
                 &f_plot_phase,tot_dim=plot_dim,loc_offset=plot_offset,&
                 &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
-                &Z=XYZ_plot(:,:,:,:,3),col=col,description=description(kd))
+                &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
+                &description=description(kd))
         end do
         
         if (abs(pert_mult_factor_POST).ge.tol_zero) then
             call plot_HDF5(['total perturbation'],trim(i2str(X_id))//&
-                &'_sol_pert_'//trim(i2str(eq_job_nr)),&
-                &norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
-                &tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
-                &Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
+                &'_sol_pert',norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,&
+                &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
+                &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
                 &description='Norm of solution perturbation for Eigenvalue '//&
                 &trim(i2str(X_id))//' with omega = '//trim(r2str(rp(omega))))
         end if
@@ -656,7 +665,7 @@ contains
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
         &sol,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
         use grid_utilities, only: trim_grid
-        use num_vars, only: no_plots, eq_job_nr
+        use num_vars, only: no_plots, eq_job_nr, eq_jobs_lims, eq_job_nr
         
         character(*), parameter :: rout_name = 'decompose_energy'
         
@@ -675,12 +684,13 @@ contains
         complex(dp), intent(inout), optional :: E_kin_int(2)                    ! integrated kinetic energy
         
         ! local variables
+        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: kd                                                           ! counter
         integer :: loc_dim(3)                                                   ! local dimension
-        integer :: tot_dim(3)                                                   ! total dimensions
-        integer :: loc_offset(3)                                                ! local offsets
-        type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
+        integer :: plot_dim(3)                                                  ! total dimensions for plot
+        integer :: plot_offset(3)                                               ! local offsets for plot
+        logical :: cont_plot                                                    ! continued plot
         complex(dp), allocatable, target :: E_pot(:,:,:,:)                      ! potential energy
         complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
         complex(dp) :: E_pot_int_loc(6)                                         ! integrated potential energy for this parallel job
@@ -725,6 +735,9 @@ contains
             call writo('Preparing plots')
             call lvl_ud(1)
             
+            ! set up continued plot
+            cont_plot = eq_job_nr.gt.1
+            
             ! set up potential energy variable names
             allocate(var_names_pot(6))
             var_names_pot(1) = '1. normal line bending term ~ Q_n^2'
@@ -745,8 +758,8 @@ contains
             
             ! set plot variables
             loc_dim = [grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r]
-            tot_dim = [grid_eq%n(1),grid_eq%n(2),grid_sol_trim%n(3)]
-            loc_offset = [0,0,grid_sol_trim%i_min-1]
+            plot_dim = [grid_eq%n(1),grid_eq%n(2),grid_sol_trim%n(3)]
+            plot_offset = [0,0,grid_sol_trim%i_min-1]
             allocate(X_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
             allocate(Y_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
             allocate(Z_tot(loc_dim(1),loc_dim(2),loc_dim(3),6))
@@ -756,6 +769,13 @@ contains
                 Z_tot(:,:,:,kd) = XYZ(:,:,norm_id(1):norm_id(2),3)
             end do
             allocate(var_names(2))
+            
+            ! possibly modify if multiple equilibrium parallel jobs
+            if (size(eq_jobs_lims,2).gt.1) then
+                plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                    &eq_jobs_lims(1,1) + 1
+                plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+            end if
             
             ! point to the trimmed versions of energy
             E_pot_trim => E_pot(:,:,norm_id(1):norm_id(2),:)
@@ -773,14 +793,14 @@ contains
             X_tot_trim => X_tot(:,:,:,1:2)
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
-            call plot_HDF5(var_names_kin,trim(file_name)//'_RE_'//&
-                &trim(i2str(eq_job_nr)),rp(E_kin_trim),tot_dim=[tot_dim,2],&
-                &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
-                &Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names_kin,trim(file_name)//'_IM_'//&
-                &trim(i2str(eq_job_nr)),ip(E_kin_trim),tot_dim=[tot_dim,2],&
-                &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
-                &Z=Z_tot_trim,description=description)
+            call plot_HDF5(var_names_kin,trim(file_name)//'_RE',rp(E_kin_trim),&
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
+            call plot_HDF5(var_names_kin,trim(file_name)//'_IM',ip(E_kin_trim),&
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             ! E_pot
@@ -789,14 +809,14 @@ contains
             X_tot_trim => X_tot(:,:,:,1:6)
             Y_tot_trim => Y_tot(:,:,:,1:6)
             Z_tot_trim => Z_tot(:,:,:,1:6)
-            call plot_HDF5(var_names_pot,trim(file_name)//'_RE_'//&
-                &trim(i2str(eq_job_nr)),rp(E_pot_trim),tot_dim=[tot_dim,6],&
-                &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
-                &Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names_pot,trim(file_name)//'_IM_'//&
-                &trim(i2str(eq_job_nr)),ip(E_pot_trim),tot_dim=[tot_dim,6],&
-                &loc_offset=[loc_offset,0],X=X_tot_trim,Y=Y_tot_trim,&
-                &Z=Z_tot_trim,description=description)
+            call plot_HDF5(var_names_pot,trim(file_name)//'_RE',rp(E_pot_trim),&
+                &tot_dim=[plot_dim,6],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
+            call plot_HDF5(var_names_pot,trim(file_name)//'_IM',ip(E_pot_trim),&
+                &tot_dim=[plot_dim,6],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             ! E_stab
@@ -807,36 +827,36 @@ contains
             X_tot_trim => X_tot(:,:,:,1:2)
             Y_tot_trim => Y_tot(:,:,:,1:2)
             Z_tot_trim => Z_tot(:,:,:,1:2)
-            call plot_HDF5(var_names,trim(file_name)//'_RE_'//&
-                &trim(i2str(eq_job_nr)),rp(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
-                &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
-                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM_'//&
-                &trim(i2str(eq_job_nr)),ip(reshape(&
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,&
+                &cont_plot=cont_plot,description=description)
+            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
-                &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],&
-                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,description=description)
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,&
+                &cont_plot=cont_plot,description=description)
             
             ! E
             var_names(1) = '1. potential energy'
             var_names(2) = '2. kinetic energy'
             file_name = trim(i2str(X_id))//'_E'
             description = 'total potential and kinetic energy'
-            call plot_HDF5(var_names,trim(file_name)//'_RE_'//&
-                &trim(i2str(eq_job_nr)),rp(reshape(&
+            call plot_HDF5(var_names,trim(file_name)//'_RE',rp(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
-                &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
-                &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
-            call plot_HDF5(var_names,trim(file_name)//'_IM_'//&
-                &trim(i2str(eq_job_nr)),ip(reshape(&
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
+            call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
-                &tot_dim=[tot_dim,2],loc_offset=[loc_offset,0],X=X_tot_trim,&
-                &Y=Y_tot_trim,Z=Z_tot_trim,description=description)
+                &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
+                &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
+                &description=description)
             
             call lvl_ud(-1)
             

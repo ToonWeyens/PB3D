@@ -637,3 +637,7 @@ CHANGELOG
       - The energy reconstruction now takes into account multiple equilibrium parallel jobs.
       - There is still one HDF5 output per equilibrium parallel job. This could be changed in the future. In Paraview, "group datasets" can be used.
       - A note considering the implementation: The division for POST is always done in the first coordinate, which commonly corresponds to theta when poloidal flux is used as normal coordinate. This makes the individual plots a bit weird when not viewed in their entirety. This should not be an issue if all the jobs are plotted together.
+
+1.49: - Symmetry type can now be forced in HDF5 output and is also written to the file xdmf in an information element.
+      - There is now an option "cont_plot" that indicates that the plot in HDF5 is a continuation of a previously started plot. This can be used to (over-)write HDF5 data, for example when dividing into jobs in POST.
+      - POST now makes use of continued plots so that the plot outputs are single files.

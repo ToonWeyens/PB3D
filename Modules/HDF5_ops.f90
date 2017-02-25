@@ -61,34 +61,46 @@ contains
     ! Opens an HDF5 file and accompanying xmf file and returns the handles.
     ! Optionally, a description of the file  can be provided. Also, the plot can
     ! be done for only one process, setting the variable "ind_plot" to .true.
+    ! Furthermore,  if  the  plot  is a  continuation,  using  "cont_plot",  the
+    ! previous plot is opened and sym_type is returned.
     ! [MPI] Parts by all processes, parts only by group master
-    integer function open_HDF5_file(file_info,file_name,description,&
-        &ind_plot) result(ierr)
+    integer function open_HDF5_file(file_info,file_name,sym_type,description,&
+        &ind_plot,cont_plot) result(ierr)
         use num_vars, only: rank
         use MPI
         use files_utilities, only: nextunit
+        use MPI_utilities, only: broadcast_var
         
         character(*), parameter :: rout_name = 'open_HDF5_file'
         
         ! input / output
         type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
         character(len=*), intent(in) :: file_name                               ! name of HDF5 file
+        integer, intent(inout), optional :: sym_type                            ! symmetry type
         character(len=*), intent(in), optional  :: description                  ! description of file
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        logical, intent(in), optional :: cont_plot                              ! continued plot
         
         ! local variables
         character(len=max_str_ln) :: full_file_name                             ! full file name
+        character(len=max_str_ln) :: line                                       ! line in file
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: plist_id                                              ! property list identifier 
         integer :: MPI_Comm_loc                                                 ! MPI Communicator used
         integer :: disable_rw                                                   ! MPI info to disable read and write
+        integer :: i_st(2)                                                      ! indices of sym_type in read string
+        integer :: id                                                           ! counter
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set up local cont_plot
+        if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set up MPI Communicator
         if (ind_plot_loc) then
@@ -128,10 +140,17 @@ contains
         CHCKERR('Failed to free MPI info')
 #endif
         
-        ! create the file collectively.
-        call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,HDF5_i,&
-            &ierr,access_prp=plist_id)
-        CHCKERR('Failed to create file')
+        ! create or open the file collectively.
+        if (cont_plot_loc) then
+            call H5Fopen_f(trim(full_file_name)//'.h5',H5F_ACC_RDWR_F,&
+                &HDF5_i,ierr,access_prp=plist_id)
+        else
+            call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,&
+                &HDF5_i,ierr,access_prp=plist_id)
+            CHCKERR('Failed to create file')
+        end if
+        
+        ! close property list
         call H5Pclose_f(plist_id,ierr)
         CHCKERR('Failed to close property list')
         
@@ -139,43 +158,87 @@ contains
         file_info%HDF5_i = HDF5_i
         file_info%name = file_name
         
-        ! only group master if parallel plot or current rank if individual plot
+        ! XDMF  operations: only  master if  parallel  plot or  current rank  if
+        ! individual plot
         if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
-            ! open accompanying xmf file
-            open(nextunit(file_info%XDMF_i),STATUS='replace',&
-                &file=trim(full_file_name)//'.xmf',iostat=ierr)
-            CHCKERR('Failed to open xmf file')
-            
-            ! write header if group master
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'<?xml version="1.0" ?>'
-            CHCKERR('Failed to write')
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>'
-            CHCKERR('Failed to write')
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'<Xdmf Version="2.0">'
-            CHCKERR('Failed to write')
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'<Domain>'
-            CHCKERR('Failed to write')
-            if (present(description)) then
+            if (cont_plot_loc) then
+                ! open accompanying xmf file
+                open(nextunit(file_info%XDMF_i),STATUS='old',ACTION='read',&
+                    &file=trim(full_file_name)//'.xmf',iostat=ierr)
+                CHCKERR('Failed to open xmf file')
+                
+                ! read symmetry type in fourth line if requested
+                if (present(sym_type)) then
+                    do id = 1,4
+                        read(file_info%XDMF_i,'(A)',iostat=ierr) line
+                        CHCKERR('Failed to read file')
+                    end do
+                    i_st(1) = index(line,'Value="')
+                    if (i_st(1).eq.0) then
+                        ierr = 1
+                        CHCKERR('Can''t find symmetry type')
+                    else
+                        i_st(1) = i_st(1) + 7
+                    end if
+                    i_st(2) = index(line(i_st(1):),'"/>') + i_st(1)
+                    if (i_st(2).eq.0) then
+                        ierr = 1
+                        CHCKERR('Can''t find symmetry type')
+                    else
+                        i_st(2) = i_st(2) - 2
+                    end if
+                    read(line(i_st(1):i_st(2)),*,iostat=ierr) sym_type
+                    CHCKERR('Can''t read symmetry type')
+                end if
+            else
+                ! open accompanying xmf file
+                open(nextunit(file_info%XDMF_i),STATUS='replace',&
+                    &file=trim(full_file_name)//'.xmf',iostat=ierr)
+                CHCKERR('Failed to create xmf file')
+                
+                ! write header if group master
                 write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                    &'<Information Name="Description">'
+                    &'<?xml version="1.0" ?>'
                 CHCKERR('Failed to write')
                 write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                    &trim(description)
+                    &'<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>'
                 CHCKERR('Failed to write')
                 write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                    &'</Information>'
+                    &'<Xdmf Version="2.0">'
                 CHCKERR('Failed to write')
+                if (present(sym_type)) then
+                    write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                        &'<Information Name="sym_type" &
+                        &Value="'//trim(i2str(sym_type))//'"/>'
+                    CHCKERR('Failed to write')
+                end if
+                write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &'<Domain>'
+                CHCKERR('Failed to write')
+                if (present(description)) then
+                    write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                        &'<Information Name="Description">'
+                    CHCKERR('Failed to write')
+                    write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                        &trim(description)
+                    CHCKERR('Failed to write')
+                    write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                        &'</Information>'
+                    CHCKERR('Failed to write')
+                end if
             end if
+        end if
+        
+        ! pass symmetry type to other processes if continued plot
+        if (cont_plot_loc .and. .not.ind_plot_loc .and. present(sym_type)) then
+            ierr = broadcast_var(sym_type)
+            CHCKERR('')
         end if
     end function open_HDF5_file
     
     ! Closes an HDF5 file and writes the accompanying xmf file
     ! [MPI] Parts by all processes, parts only by group master
-    integer function close_HDF5_file(file_info,ind_plot) result(ierr)
+    integer function close_HDF5_file(file_info,ind_plot,cont_plot) result(ierr)
         use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'close_HDF5_file'
@@ -183,18 +246,23 @@ contains
         ! input / output
         type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        logical, intent(in), optional :: cont_plot                              ! continued plot
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set up local cont_plot
+        if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set full file name and HDF5_i (converting integers)
         full_file_name = data_dir//'/'//trim(file_info%name)
@@ -209,23 +277,31 @@ contains
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
         
-        ! only group master if parallel plot or current rank if individual plot
+        ! only master if parallel plot or current rank if individual plot
         if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
-            ! close header
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'</Domain>'
-            CHCKERR('Failed to write')
-            write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                &'</Xdmf>'
-            CHCKERR('Failed to write')
+            ! XDMF operations: only if not continued plot
+            if (.not.cont_plot_loc) then
+                ! close header
+                write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &'</Domain>'
+                CHCKERR('Failed to write')
+                write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
+                    &'</Xdmf>'
+                CHCKERR('Failed to write')
+            end if
             
             ! close accompanying xmf file
             close(file_info%XDMF_i,IOSTAT=ierr)
             CHCKERR('Failed to close xmf file')
             
             ! user output
-            call writo('Created HDF5/XMF plot in output file "'//&
-                &trim(full_file_name)//'.xmf''')
+            if (cont_plot_loc) then
+                call writo('Contributed to HDF5/XMF plot in output file "'//&
+                    &trim(full_file_name)//'.xmf''')
+            else
+                call writo('Created HDF5/XMF plot in output file "'//&
+                    &trim(full_file_name)//'.xmf''')
+            end if
         end if
     end function close_HDF5_file
     
@@ -286,7 +362,9 @@ contains
     ! specified as well.
     ! [MPI] Parts by all processes, parts only by group master
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
-        &var,dim_tot,loc_dim,loc_offset,init_val,ind_plot) result(ierr)
+        &var,dim_tot,loc_dim,loc_offset,init_val,ind_plot,cont_plot) &
+        &result(ierr)
+        
         use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
@@ -301,6 +379,7 @@ contains
         integer, intent(in), optional :: loc_offset(3)                          ! offset in this group
         real(dp), intent(in), optional :: init_val                              ! initial fill value
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        logical, intent(in), optional :: cont_plot                              ! continued plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -319,6 +398,7 @@ contains
         character(len=max_str_ln) :: dim_str                                    ! string with dimensions
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
         integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
 #if ldebug
         integer :: istat                                                        ! status
@@ -329,6 +409,9 @@ contains
         
         ! set up local ind_plot
         if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set up local cont_plot
+        if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set HDF5 type corresponding to dp
         HDF5_kind_64 = H5Kind_to_type(dp,H5_REAL_KIND)
@@ -346,34 +429,41 @@ contains
         call H5Screate_simple_f(size(dimsm),dimsm,memspace,ierr)
         CHCKERR('Failed to create memory space')
         
-        ! set initial fill value if provided and create data set
-        if (present(init_val)) then
-            call H5Pcreate_f(H5P_DATASET_CREATE_F,plist_id,ierr)
-            err_msg = 'Failed to create property list'
-            CHCKERR(err_msg)
-            call H5Pset_fill_value_f(plist_id,HDF5_kind_64,init_val,ierr) 
-            err_msg = 'Failed to set default fill value property'
-            CHCKERR(err_msg)
-            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
-                &filespace,dset_id,ierr,plist_id)
-            CHCKERR('Failed to create file data set')
-            call H5Pclose_f(plist_id,ierr)
-            CHCKERR('Failed to close property list')
+        ! open or create data set
+        if (cont_plot_loc) then
+            ! open file data set
+            call H5Dopen_f(file_info%HDF5_i,trim(var_name),dset_id,ierr)
+            CHCKERR('Failed to open file data set')
+            
+            ! get file data space
+            call H5Dget_space_f(dset_id,filespace,ierr)
+            CHCKERR('Failed to get file space')
         else
-            call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
-                &filespace,dset_id,ierr)
-            CHCKERR('Failed to create file data set')
+            ! set initial fill value if provided and create data set
+            if (present(init_val)) then
+                call H5Pcreate_f(H5P_DATASET_CREATE_F,plist_id,ierr)
+                err_msg = 'Failed to create property list'
+                CHCKERR(err_msg)
+                call H5Pset_fill_value_f(plist_id,HDF5_kind_64,init_val,ierr) 
+                err_msg = 'Failed to set default fill value property'
+                CHCKERR(err_msg)
+                call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
+                    &filespace,dset_id,ierr,plist_id)
+                CHCKERR('Failed to create file data set')
+                call H5Pclose_f(plist_id,ierr)
+                CHCKERR('Failed to close property list')
+            else
+                call H5Dcreate_f(file_info%HDF5_i,trim(var_name),HDF5_kind_64,&
+                    &filespace,dset_id,ierr)
+                CHCKERR('Failed to create file data set')
+            end if
         end if
-        call H5Sclose_f(filespace,ierr)
-        CHCKERR('Failed to close file space')
         
         ! select hyperslab in the file.
         mem_count = 1
         mem_stride = 1
         mem_block = loc_dim_loc
         mem_offset = loc_offset_loc
-        call H5Dget_space_f(dset_id,filespace,ierr)
-        CHCKERR('Failed to get file space')
         call H5Sselect_hyperslab_f(filespace,H5S_SELECT_SET_F,mem_offset,&
             &mem_count,ierr,mem_stride,mem_block)
         CHCKERR('Failed to select hyperslab')
@@ -405,27 +495,31 @@ contains
         call H5Dclose_f(dset_id,ierr)
         CHCKERR('Failed to close data set')
         
-        ! only group master if parallel plot or current rank if individual plot
-        if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
-            ! set up dimensions string
-            dim_str = ''
-            do id = 1,size(dim_tot)
-                if (dim_tot(id).gt.1) then
-                    dim_str = trim(dim_str)//' '//trim(i2str(dim_tot(id)))
-                end if
-            end do
-            dataitem_id%name = 'DataItem - '//trim(var_name)
-            allocate(dataitem_id%xml_str(3))
-            dataitem_id%xml_str(1) = '<DataItem Dimensions="'//trim(dim_str)//&
-                &'" NumberType="Float" Precision="8" Format="HDF">'
-            dataitem_id%xml_str(2) = trim(file_info%name)//'.h5:/'//&
-                &trim(var_name)
-            dataitem_id%xml_str(3) = '</DataItem>'
-            
+        ! only group master if parallel plot or current rank if individual plot,
+        ! if not continued plot
+        if (.not.cont_plot_loc) then
+            if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
+                ! set up dimensions string
+                dim_str = ''
+                do id = 1,size(dim_tot)
+                    if (dim_tot(id).gt.1) then
+                        dim_str = trim(dim_str)//' '//trim(i2str(dim_tot(id)))
+                    end if
+                end do
+                dataitem_id%name = 'DataItem - '//trim(var_name)
+                allocate(dataitem_id%xml_str(3))
+                dataitem_id%xml_str(1) = '<DataItem Dimensions="'//&
+                    &trim(dim_str)//'" NumberType="Float" Precision="8" &
+                    &Format="HDF">'
+                dataitem_id%xml_str(2) = trim(file_info%name)//'.h5:/'//&
+                    &trim(var_name)
+                dataitem_id%xml_str(3) = '</DataItem>'
+                
 #if ldebug
-            if (debug_HDF5_ops) write(*,*,IOSTAT=istat) 'created data item "'//&
-                &trim(dataitem_id%name)//'"'
+                if (debug_HDF5_ops) write(*,*,IOSTAT=istat) &
+                    &'created data item "'//trim(dataitem_id%name)//'"'
 #endif
+            end if
         end if
     contains
         ! check whether the  dimensions provided are a  valid parallel indicator

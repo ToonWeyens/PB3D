@@ -982,7 +982,8 @@ contains
     ! value for var_names is used, so it should have a size of one.
     ! The plot is generally  3D, but if one of the  dimensions provided is equal
     ! to 1, it is checked whether  there is poloidal or toroidal axisymmetry and
-    ! if so, the plot becomes 2D.
+    ! if so, the  plot becomes 2D. This  can be forced using  the optional input
+    ! argument "sym_type".
     ! Optionally, the  (curvilinear) grid can  be provided through "X",  "Y" and
     ! "Z". If  not, the grid  is assumed to  be Cartesian with  discrete indices
     ! where X corresponds to the first dimensions,  Y to the second and Z to the
@@ -994,6 +995,23 @@ contains
     !   col = 1: no collection, just plots of different variables
     !   col = 2: time collection
     !   col = 3: spatial collection
+    ! Furthermore, using the variable "cont_plot",  a plot can be (over-)written
+    ! in multiple writes. By this is meant that there should be an initial plot,
+    ! with collection type 1, 2 or 3, which can then be followed by an arbitrary
+    ! number of additional  writes. As these additional  writes currently cannot
+    ! modify  the  plot structure,  nor  the  XDMF variables,  their  collection
+    ! dimension should be complete from the  start. This has no implications for
+    ! single plots but means that for collection  types 2 and 3 all the elements
+    ! in the collection have to be present, though they do not necessary need to
+    ! have been  completely written in  the other dimensions.  Subsequent writes
+    ! with "cont_plot" can then, for instance,  write parts of the data that had
+    ! not yet been written,  or overwrite ones that had. This  can be useful for
+    ! post-processing where the  memory requirements are large so  that the work
+    ! has to be split.
+    ! Note: In  order to  merge collections in  their collection  dimension, the
+    ! xdmf files can always easily be joined.
+    ! Note: If necessary,  a lock system should be used  when multiple processes
+    ! are writing the same file, including continued writes.
     ! Note: To plot this with VisIt, use:
     !   - for temporal collections: pseudocolor using the variable name (other 
     !       names are ignored).
@@ -1008,7 +1026,7 @@ contains
     ! Note: To  project the data to  2D in VisIt, use the  projection tool under
     ! Operators > Transform
     subroutine plot_HDF5_arr(var_names,file_name,vars,tot_dim,loc_offset,&
-        &X,Y,Z,col_id,col,description)                                          ! array version
+        &X,Y,Z,col_id,col,sym_type,cont_plot,description)                       ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
             &print_HDF5_grid, close_HDF5_file
@@ -1028,6 +1046,8 @@ contains
         real(dp), intent(in), target, optional :: Z(:,:,:,:)                    ! curvlinear grid Z points
         integer, intent(in), optional :: col_id                                 ! index of time dimension
         integer, intent(in), optional :: col                                    ! whether a collection is made
+        integer, intent(in), optional :: sym_type                               ! type of symmetry (1: no symmetry, 2: toroidal, 3: poloidal)
+        logical, intent(in), optional :: cont_plot                              ! continued plot
         character(len=*), intent(in), optional :: description                   ! description
         
         ! local variables
@@ -1037,7 +1057,7 @@ contains
         integer :: col_loc                                                      ! local copy of col
         integer :: n_plot                                                       ! nr. of plots
         integer :: id, jd                                                       ! counter
-        integer :: sym_type                                                     ! type of symmetry (1: no symmetry, 2: toroidal, 3: poloidal)
+        integer :: sym_type_loc                                                 ! local sym_type
         integer :: sym_pol, sym_tor                                             ! used to determine symmetry
         integer, allocatable :: tot_sym_pol(:), tot_sym_tor(:)                  ! sym_pol and sym_tor for all processes
         integer :: tot_dim_loc(4)                                               ! local copy of tot_dim
@@ -1053,6 +1073,7 @@ contains
         type(XML_str_type) :: att(1)                                            ! attribute
         logical :: col_mask(4)                                                  ! to select out the collection dimension
         logical :: ind_plot                                                     ! individual plot
+        logical :: cont_plot_loc                                                ! local cont_plot
         real(dp), allocatable :: sym_ang(:,:,:)                                 ! angle to be checked for symmetry
         real(dp) :: tol_sym = 1.E-8_dp                                          ! tolerance for symmetry determination
         real(dp), pointer :: var_3D(:,:,:) => null()                            ! pointer to vars
@@ -1108,109 +1129,123 @@ contains
             ind_plot = .false.
         end if
         
-        ! default symmetry type
-        sym_type = 1
+        ! set up continued plot
+        cont_plot_loc = .false.
+        if (present(cont_plot)) cont_plot_loc = cont_plot
         
-        ! Find  symmetry type  by  checking whether  Y/X  is constant  (toroidal
-        ! symmetry) or  Z^2/(X^2+Y^2) is  constant (poloidal symmetry),  for all
-        ! plots.
-        if (minval(tot_dim_3D).eq.1) then                                       ! possibly symmetry
-            ! allocate helper variable
-            allocate(sym_ang(loc_dim_3D(1),loc_dim_3D(2),loc_dim_3D(3)))
-            ! initialize sym_pol and sym_tor
-            sym_pol = 0
-            sym_tor = 0
-            ! loop over all plots
-            do id = 1,n_plot
-                ! assign pointers
-                call assign_pointers(id)
-                ! check poloidal angle
-                sym_ang = atan(Y_3D/X_3D)
-                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
-                    &(maxval(X_3D).ge.0._dp .neqv. minval(X_3D).lt.0._dp).and.& ! X has to be either positive or negative
-                    &(maxval(Y_3D).ge.0._dp .neqv. minval(Y_3D).lt.0._dp)) &    ! Y has to be either positive or negative
-                    &sym_pol = sym_pol+1                                        ! poloidal symmetry for this plot
-                ! check toroidal angle
-                sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))
-                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
-                    &sym_tor = sym_tor+1                                        ! toroidal symmetry for this plot
-            end do
-            ! get total sym_pol and sym_tor
-            if (ind_plot) then                                                  ! so that below test succeeds
-                allocate(tot_sym_pol(n_procs),tot_sym_tor(n_procs))
-                tot_sym_pol = sym_pol
-                tot_sym_tor = sym_tor
-            else                                                                ! get from all the processes
-                istat = get_ser_var([sym_pol],tot_sym_pol,scatter=.true.)
-                CHCKSTT
-                istat = get_ser_var([sym_tor],tot_sym_tor,scatter=.true.)
-                CHCKSTT
+        ! set up symmetry type, and local var names if not a continued plot
+        if (.not.cont_plot_loc) then
+            ! default symmetry type
+            sym_type_loc = 1
+            
+            ! Find symmetry type  by checking whether Y/X  is constant (toroidal
+            ! symmetry) or  Z^2/(X^2+Y^2) is  constant (poloidal  symmetry), for
+            ! all plots.
+            if (minval(tot_dim_3D).eq.1) then                                   ! possibly symmetry
+                ! allocate helper variable
+                allocate(sym_ang(loc_dim_3D(1),loc_dim_3D(2),loc_dim_3D(3)))
+                ! initialize sym_pol and sym_tor
+                sym_pol = 0
+                sym_tor = 0
+                ! loop over all plots
+                do id = 1,n_plot
+                    ! assign pointers
+                    call assign_pointers(id)
+                    ! check poloidal angle
+                    sym_ang = atan(Y_3D/X_3D)
+                    if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
+                        &(maxval(X_3D).ge.0._dp .neqv. &
+                        &minval(X_3D).lt.0._dp).and.&                           ! X has to be either positive or negative
+                        &(maxval(Y_3D).ge.0._dp .neqv. &
+                        &minval(Y_3D).lt.0._dp)) &                              ! Y has to be either positive or negative
+                        &sym_pol = sym_pol+1                                    ! poloidal symmetry for this plot
+                    ! check toroidal angle
+                    sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))
+                    if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
+                        &sym_tor = sym_tor+1                                    ! toroidal symmetry for this plot
+                end do
+                ! get total sym_pol and sym_tor
+                if (ind_plot) then                                              ! so that below test succeeds
+                    allocate(tot_sym_pol(n_procs),tot_sym_tor(n_procs))
+                    tot_sym_pol = sym_pol
+                    tot_sym_tor = sym_tor
+                else                                                            ! get from all the processes
+                    istat = get_ser_var([sym_pol],tot_sym_pol,scatter=.true.)
+                    CHCKSTT
+                    istat = get_ser_var([sym_tor],tot_sym_tor,scatter=.true.)
+                    CHCKSTT
+                end if
+                
+                ! check total results
+                if (sum(tot_sym_pol).eq.n_procs*n_plot) then                    ! poloidal symmetry for all plots
+                    sym_type_loc = 2
+                else if (sum(tot_sym_tor).eq.n_procs*n_plot) then               ! toroidal symmetry for all plots
+                    sym_type_loc = 3
+                end if
+                ! deallocate helper variables
+                deallocate(sym_ang)
             end if
             
-            ! check total results
-            if (sum(tot_sym_pol).eq.n_procs*n_plot) then                        ! poloidal symmetry for all plots
-                sym_type = 2
-            else if (sum(tot_sym_tor).eq.n_procs*n_plot) then                   ! toroidal symmetry for all plots
-                sym_type = 3
-            end if
-            ! deallocate helper variables
-            deallocate(sym_ang)
-        end if
-        
-        ! set up local var_names
-        allocate(grd_names(n_plot))
-        allocate(att_names(n_plot))
-        if (col_loc.eq.1) then                                                  ! without collection
-            if (n_plot.eq.1) then                                               ! just one plot: attribute name is important
-                if (size(var_names).eq.n_plot) then                             ! the right number of variable names provided
-                    att_names = var_names
-                else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
-                    att_names = var_names(1:n_plot)
-                    call writo('Too many variable names provided',&
-                        &persistent=.true.,warning=.true.)
-                else                                                            ! not enough variable names provided
-                    att_names(1:size(var_names)) = var_names
-                    do id = size(var_names)+1,n_plot
-                        att_names(id) = 'unnamed variable '//trim(i2str(id))
-                    end do
-                    call writo('Not enough variable names provided',&
-                        &persistent=.true.,warning=.true.)
+            ! possibly overwrite local symmetry type
+            if (present(sym_type)) sym_type_loc = sym_type
+            
+            ! set up local var_names
+            allocate(grd_names(n_plot))
+            allocate(att_names(n_plot))
+            if (col_loc.eq.1) then                                              ! without collection
+                if (n_plot.eq.1) then                                           ! just one plot: attribute name is important
+                    if (size(var_names).eq.n_plot) then                         ! the right number of variable names provided
+                        att_names = var_names
+                    else if (size(var_names).gt.n_plot) then                    ! too many variable names provided
+                        att_names = var_names(1:n_plot)
+                        call writo('Too many variable names provided',&
+                            &persistent=.true.,warning=.true.)
+                    else                                                        ! not enough variable names provided
+                        att_names(1:size(var_names)) = var_names
+                        do id = size(var_names)+1,n_plot
+                            att_names(id) = 'unnamed variable '//trim(i2str(id))
+                        end do
+                        call writo('Not enough variable names provided',&
+                            &persistent=.true.,warning=.true.)
+                    end if
+                    grd_names = 'default_grid_name'
+                else                                                            ! multiple plots: grid name is important
+                    if (size(var_names).eq.n_plot) then                         ! the right number of variable names provided
+                        grd_names = var_names
+                    else if (size(var_names).gt.n_plot) then                    ! too many variable names provided
+                        grd_names = var_names(1:n_plot)
+                        call writo('Too many variable names provided',&
+                            &persistent=.true.,warning=.true.)
+                    else                                                        ! not enough variable names provided
+                        grd_names(1:size(var_names)) = var_names
+                        do id = size(var_names)+1,n_plot
+                            grd_names(id) = 'unnamed variable '//trim(i2str(id))
+                        end do
+                        call writo('Not enough variable names provided',&
+                            &persistent=.true.,warning=.true.)
+                    end if
+                    att_names = 'default_att_name'
                 end if
+            else                                                                ! collections: attribute name is important
+                att_names = var_names(1)
+                if (size(var_names).gt.1) call writo('For collections, only &
+                    &the first variable name is used',persistent=.true.,&
+                    &warning=.true.)
                 grd_names = 'default_grid_name'
-            else                                                                ! multiple plots: grid name is important
-                if (size(var_names).eq.n_plot) then                             ! the right number of variable names provided
-                    grd_names = var_names
-                else if (size(var_names).gt.n_plot) then                        ! too many variable names provided
-                    grd_names = var_names(1:n_plot)
-                    call writo('Too many variable names provided',&
-                        &persistent=.true.,warning=.true.)
-                else                                                            ! not enough variable names provided
-                    grd_names(1:size(var_names)) = var_names
-                    do id = size(var_names)+1,n_plot
-                        grd_names(id) = 'unnamed variable '//trim(i2str(id))
-                    end do
-                    call writo('Not enough variable names provided',&
-                        &persistent=.true.,warning=.true.)
-                end if
-                att_names = 'default_att_name'
             end if
-        else                                                                    ! collections: attribute name is important
-            att_names = var_names(1)
-            if (size(var_names).gt.1) call writo('For collections, only the &
-                &first variable name is used',persistent=.true.,warning=.true.)
-            grd_names = 'default_grid_name'
         end if
         
         ! open HDF5 file
-        istat = open_HDF5_file(file_info,file_name,description,&
-            &ind_plot=ind_plot)
+        istat = open_HDF5_file(file_info,file_name,sym_type=sym_type_loc,&
+            &description=description,&
+            &ind_plot=ind_plot,cont_plot=cont_plot_loc)
         CHCKSTT
         
-        ! create grid for collection
-        allocate(grids(n_plot))
-        
+        ! create grid for collection if not continued plot
+        if (.not.cont_plot_loc) allocate(grids(n_plot))
+            
         ! allocate geometry arrays
-        if (sym_type.eq.1) then                                                 ! 3D grid
+        if (sym_type_loc.eq.1) then                                             ! 3D grid
             allocate(XYZ(3))
         else                                                                    ! 2D grid
             allocate(XYZ(2))
@@ -1218,11 +1253,13 @@ contains
         
         ! loop over all plots
         do id = 1,n_plot
-            ! print topology
-            if (sym_type.eq.1) then                                             ! 3D grid
-                call print_HDF5_top(top,2,tot_dim_3D,ind_plot=ind_plot)
-            else                                                                ! 2D grid
-                call print_HDF5_top(top,1,tot_dim_3D,ind_plot=ind_plot)
+            ! print topology if not continued plot
+            if (.not.cont_plot_loc) then
+                if (sym_type_loc.eq.1) then                                     ! 3D grid
+                    call print_HDF5_top(top,2,tot_dim_3D,ind_plot=ind_plot)
+                else                                                            ! 2D grid
+                    call print_HDF5_top(top,1,tot_dim_3D,ind_plot=ind_plot)
+                end if
             end if
             
             ! assign pointers
@@ -1230,110 +1267,129 @@ contains
             
             ! print data  item for X, Y  and Z (no symmetry),  R = sqrt(X^2+Y^2)
             ! and Z (poloidal symmetry) or X and Y (toroidal symmetry)
-            select case (sym_type)
+            select case (sym_type_loc)
                 case (1)                                                        ! no symmetry
                     istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
                         &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                     istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
                         &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                     istat = print_HDF5_3D_data_item(XYZ(3),file_info,&
                         &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                 case (2)                                                        ! poloidal symmetry
                     istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
                         &'R_'//trim(i2str(id)),sqrt(X_3D**2+Y_3D**2),&
-                        &tot_dim_3D,loc_dim_3D,loc_offset_3D,ind_plot=ind_plot)
+                        &tot_dim_3D,loc_dim_3D,loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                     istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
                         &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                 case (3)                                                        ! toroidal symmetry
                     istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
                         &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                     istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
                         &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot)
+                        &loc_offset_3D,ind_plot=ind_plot,&
+                        &cont_plot=cont_plot_loc)
                     CHCKSTT
                 case default                                                    ! no symmetry
                     istat = 1
-                    call writo('symmetry type '//trim(i2str(sym_type))//&
+                    call writo('symmetry type '//trim(i2str(sym_type_loc))//&
                         &' not recognized',persistent=.true.,warning=.true.)
                     CHCKSTT
             end select
             
-            ! print geometry with X, Y and Z data item
-            if (sym_type.eq.1) then                                             ! no symmetry so 3D geometry
-                call print_HDF5_geom(geom,2,XYZ,reset=.true.,ind_plot=ind_plot)
-            else                                                                ! symmetry so 2D geometry
-                call print_HDF5_geom(geom,1,XYZ,reset=.true.,ind_plot=ind_plot)
+            ! print geometry with X, Y and Z data item if not continued plot
+            if (.not.cont_plot_loc) then
+                if (sym_type_loc.eq.1) then                                         ! no symmetry so 3D geometry
+                    call print_HDF5_geom(geom,2,XYZ,reset=.true.,&
+                        &ind_plot=ind_plot)
+                else                                                                ! symmetry so 2D geometry
+                    call print_HDF5_geom(geom,1,XYZ,reset=.true.,&
+                        &ind_plot=ind_plot)
+                end if
             end if
             
             ! print data item for plot variable
             istat = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
                 &trim(i2str(id)),var_3D,tot_dim_3D,loc_dim_3D,loc_offset_3D,&
-                &ind_plot=ind_plot)                                             ! reuse XYZ(1)
+                &ind_plot=ind_plot,cont_plot=cont_plot_loc)                     ! reuse XYZ(1)
             CHCKSTT
             
-            ! print attribute with this data item
-            call print_HDF5_att(att(1),XYZ(1),att_names(id),1,reset=.true.,&
-                &ind_plot=ind_plot)
+            ! print attribute with this data item if not continued plot
+            if (.not.cont_plot_loc) call print_HDF5_att(att(1),XYZ(1),&
+                &att_names(id),1,reset=.true.,ind_plot=ind_plot)
             
             ! create a  grid with the topology, the geometry,  the attribute and
-            ! time if time collection
-            if (col_loc.eq.2) then                                              ! time collection
-                istat = print_HDF5_grid(grids(id),grd_names(id),1,&
-                    &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
-                    &grid_atts=att,reset=.true.,ind_plot=ind_plot)
-                CHCKSTT
-            else                                                                ! no time collection
-                istat = print_HDF5_grid(grids(id),grd_names(id),1,&
-                    &grid_top=top,grid_geom=geom,grid_atts=att,reset=.true.,&
-                    &ind_plot=ind_plot)
-                CHCKSTT
+            ! time if time collection, if not continued plot
+            if (.not.cont_plot_loc) then
+                if (col_loc.eq.2) then                                          ! time collection
+                    istat = print_HDF5_grid(grids(id),grd_names(id),1,&
+                        &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
+                        &grid_atts=att,reset=.true.,ind_plot=ind_plot)
+                    CHCKSTT
+                else                                                            ! no time collection
+                    istat = print_HDF5_grid(grids(id),grd_names(id),1,&
+                        &grid_top=top,grid_geom=geom,grid_atts=att,&
+                        &reset=.true.,ind_plot=ind_plot)
+                    CHCKSTT
+                end if
             end if
         end do
         
-        ! either create collection or just use individual grids
-        if (col_loc.eq.1) then
-            ! add individual grids to HDF5 file and reset them
-            do id = 1,n_plot
-                istat = add_HDF5_item(file_info,grids(id),reset=.true.,&
-                &ind_plot=ind_plot)
+        ! either create collection or just use individual grids if not continued
+        ! plot
+        if (.not.cont_plot_loc) then
+            if (col_loc.eq.1) then
+                ! add individual grids to HDF5 file and reset them
+                do id = 1,n_plot
+                    istat = add_HDF5_item(file_info,grids(id),reset=.true.,&
+                    &ind_plot=ind_plot)
+                    CHCKSTT
+                end do
+            else
+                ! create grid collection from individual grids and reset them
+                istat = print_HDF5_grid(col_grid,'domain of mesh',col_loc,&
+                    &grid_grids=grids,reset=.true.,ind_plot=ind_plot)
                 CHCKSTT
-            end do
-        else
-            ! create grid collection from individual grids and reset them
-            istat = print_HDF5_grid(col_grid,'domain of mesh',col_loc,&
-                &grid_grids=grids,reset=.true.,ind_plot=ind_plot)
-            CHCKSTT
-            
-            ! add collection grid to HDF5 file and reset it
-            istat = add_HDF5_item(file_info,col_grid,reset=.true.,&
-                &ind_plot=ind_plot)
-            CHCKSTT
+                
+                ! add collection grid to HDF5 file and reset it
+                istat = add_HDF5_item(file_info,col_grid,reset=.true.,&
+                    &ind_plot=ind_plot)
+                CHCKSTT
+            end if
         end if
         
         ! close HDF5 file
-        istat = close_HDF5_file(file_info,ind_plot=ind_plot)
+        istat = close_HDF5_file(file_info,ind_plot=ind_plot,&
+            &cont_plot=cont_plot_loc)
         CHCKSTT
         
         ! clean up
         nullify(var_3D)
         nullify(X_3D,Y_3D,Z_3D)
-        call dealloc_XML_str(col_grid)
-        call dealloc_XML_str(grids)
-        call dealloc_XML_str(top)
         call dealloc_XML_str(XYZ)
-        call dealloc_XML_str(geom)
-        call dealloc_XML_str(att(1))
+        if (.not.cont_plot_loc) then
+            call dealloc_XML_str(grids)
+            call dealloc_XML_str(top)
+            call dealloc_XML_str(geom)
+            call dealloc_XML_str(att(1))
+            call dealloc_XML_str(col_grid)
+        end if
     contains
         ! assigns the 3D subarray pointer variables
         subroutine assign_pointers(id)
