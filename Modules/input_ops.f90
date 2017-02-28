@@ -20,17 +20,17 @@ contains
         use num_vars, only: &
             &max_it_zero, tol_zero, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_tot_mem_per_proc, plot_resonance, tol_rich, &
-            &n_sol_requested, rank, plot_magn_grid, plot_flux_q, &
-            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, pi, &
-            &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
-            &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
-            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
-            &slab_plots_style, def_relax_fac_HH, magn_int_style, K_style, &
-            &ex_plot_style, pert_mult_factor_POST
+            &n_sol_requested, rank, plot_magn_grid, plot_flux_q, plot_sol, &
+            &plot_E_rec, use_normalization, n_sol_plotted, n_theta_plot, &
+            &n_zeta_plot, EV_BC, rho_style, retain_all_sol, prog_style, &
+            &norm_disc_prec_X, norm_disc_prec_eq, norm_disc_prec_sol, &
+            &BC_style, max_it_inv, tol_norm, tol_SLEPC_loc => tol_SLEPC, &
+            &max_it_SLEPC, n_procs, pi, plot_size, U_style, norm_style, &
+            &X_style, matrix_SLEPC_style, input_name, rich_restart_lvl, &
+            &eq_style, relax_fac_HH, min_theta_plot, max_theta_plot, &
+            &min_zeta_plot, max_zeta_plot, min_r_plot, max_r_plot, &
+            &max_nr_tries_HH, POST_style, plot_grid_style, def_relax_fac_HH, &
+            &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -63,12 +63,12 @@ contains
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &max_nr_tries_HH, magn_int_style, ex_plot_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &plot_resonance, plot_flux_q, plot_magn_grid, norm_disc_prec_sol, &
-            &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, &
-            &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
-            &max_zeta_plot, min_r_plot, max_r_plot, max_nr_tries_HH, &
-            &POST_style, slab_plots_style, max_tot_mem_per_proc, &
-            &ex_plot_style, pert_mult_factor_POST
+            &plot_resonance, plot_flux_q, plot_magn_grid, plot_sol, &
+            &plot_E_rec, norm_disc_prec_sol, plot_size, PB3D_rich_lvl, &
+            &max_it_zero, tol_zero, relax_fac_HH, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
+            &max_r_plot, max_nr_tries_HH, POST_style, plot_grid_style, &
+            &max_tot_mem_per_proc, ex_plot_style, pert_mult_factor_POST
         
         ! initialize ierr
         ierr = 0
@@ -299,12 +299,7 @@ contains
         end subroutine default_input_PB3D
         
         integer function default_input_POST() result(ierr)
-            use num_vars, only: minim_output
-            
             character(*), parameter :: rout_name = 'default_input_POST'
-            
-            ! local variables
-            logical :: PB3D_minim_output                                        ! minim_output from PB3D
             
             ! initialize ierr
             ierr = 0
@@ -314,25 +309,26 @@ contains
             tol_zero = 1.0E-8_dp                                                ! less relative error than PB3D
             
             ! runtime variables
-            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
-            plot_flux_q = .false.                                               ! do not plot the flux quantities
-            plot_magn_grid = .false.                                            ! do not plot the magnetic grid
+            plot_resonance = .true.                                             ! plot the q-profile with nq-m = 0
+            plot_flux_q = .true.                                                ! plot the flux quantities
+            plot_magn_grid = .true.                                             ! plot the magnetic grid
+            plot_sol = .true.                                                   ! plot solution
+            plot_E_rec = .true.                                                 ! plot energy reconstruction
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             POST_style = 1                                                      ! process on extended plot grid
             
             ! variables concerning input / output
-            slab_plots_style = 0                                                ! normal plots on 3D geometry
+            plot_grid_style = 0                                                 ! normal plots on 3D geometry
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
             
             ! Richardson variables
-            ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_minim_output)           ! get highest Richardson level found and set minim_output
+            ierr = find_max_rich_lvl(PB3D_rich_lvl)                             ! get highest Richardson level found
             CHCKERR('')
             if (PB3D_rich_lvl.le.0) then
                 ierr = 1
                 err_msg = 'No suitable Richardson level found'
                 CHCKERR(err_msg)
             end if
-            if (.not.minim_output) minim_output = PB3D_minim_output             ! only if user chose not minimimal output
             call writo('Maximum Richardson level found: '//&
                 &trim(i2str(PB3D_rich_lvl)))
             
@@ -824,7 +820,7 @@ contains
     !   - misc_in:   prog_version, eq_style, rho_style, R_0, pres_0, B_0, psi_0
     !                rho_0, T_0, vac_perm, use_pol_flux_F, use_pol_flux_E,
     !                use_normalization, norm_disc_prec_eq, n_r_in, n_r_eq,
-    !                n_r_sol
+    !                n_r_sol, debug_version
     !   - misc_in_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
     !   - flux_q_H:  flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, pres_V, rot_t_V
     !   - mn_V
@@ -849,7 +845,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC, magn_int_style, K_style
+            &EV_BC, magn_int_style, K_style, debug_version
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -910,17 +906,18 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [19]
+        in_1D_loc%loc_i_max = [20]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(19))
+        allocate(in_1D_loc%p(20))
         in_1D_loc%p = [prog_version,eq_style*1._dp,rho_style*1._dp,&
             &R_0,pres_0,B_0,psi_0,rho_0,T_0,vac_perm,-1._dp,-1._dp,&
             &-1._dp,norm_disc_prec_eq*1._dp,n_r_in*1._dp,n_r_eq*1._dp,&
-            &n_r_sol*1._dp,max_flux_E,max_flux_F]
+            &n_r_sol*1._dp,max_flux_E,max_flux_F,-1._dp]
         if (use_pol_flux_E) in_1D_loc%p(11) = 1._dp
         if (use_pol_flux_F) in_1D_loc%p(12) = 1._dp
         if (use_normalization) in_1D_loc%p(13) = 1._dp
+        if (debug_version) in_1D_loc%p(20) = 1._dp
         
         ! misc_in_V or misc_in_H, depending on equilibrium style
         select case (eq_style)

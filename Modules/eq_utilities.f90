@@ -863,11 +863,12 @@ contains
         ! input / output
         integer, intent(in) :: n_par_X_rich                                     ! number of parallel points in this Richardson level
         integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
-        integer, intent(in), optional :: n_par_X_base                           ! base n_par_X, undivisible
+        real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
         real(dp), intent(inout), optional :: tot_mem_size                       ! total memory size
         
         ! local variables
         real(dp) :: mem_size                                                    ! approximation of memory required for X variables
+        real(dp) :: n_par_X_base_loc = 0._dp                                    ! local n_par_X_base
         integer :: n_div                                                        ! factor by which to divide the total size
         integer :: n_div_max                                                    ! maximum n_div
         integer :: n_par_range                                                  ! nr. of points in range
@@ -891,6 +892,9 @@ contains
                 fund_n_par = 3   
         end select
         
+        ! set up local n_par_X_base
+        if (present(n_par_X_base)) n_par_X_base_loc = n_par_X_base
+        
         ! calculate largest possible range of parallel points fitting in memory
         n_div = 0
         mem_size = huge(1._dp)
@@ -901,8 +905,7 @@ contains
         end if
         do while (mem_size.gt.max_tot_mem_per_proc)
             n_div = n_div + 1
-            n_par_range = ceiling(n_par_X_rich*1._dp/n_div)
-            if (present(n_par_X_base)) n_par_range = n_par_range + n_par_X_base
+            n_par_range = ceiling(n_par_X_rich*1._dp/n_div + n_par_X_base_loc)
             ierr = calc_memory(arr_size,n_par_range,mem_size)
             CHCKERR('')
             if (n_div.eq.n_div_max) then                                        ! reached the maximum n_div
@@ -941,8 +944,7 @@ contains
         
         ! set total memory size if requested, reusing n_par_range
         if (present(tot_mem_size)) then
-            n_par_range = n_par_X_rich
-            if (present(n_par_X_base)) n_par_range = n_par_range + n_par_X_base
+            n_par_range = ceiling(n_par_X_rich + n_par_X_base_loc)
             ierr = calc_memory(arr_size,n_par_range,tot_mem_size)
             CHCKERR('')
             tot_mem_size = 1._dp*ceiling(tot_mem_size)                          ! round up

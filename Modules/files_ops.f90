@@ -28,24 +28,24 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(17), inc_args(17))
+                allocate(opt_args(16), inc_args(16))
                 opt_args = ''
                 inc_args = 0
-                opt_args(8) = '--no_guess'
-                opt_args(9) = '--jump_to_sol'
-                opt_args(10) = '--export_HEL'
-                opt_args(11) = '-st_pc_factor_shift_type'
-                opt_args(12) = '-st_pc_type'
-                opt_args(13) = '-st_pc_factor_mat_solver_package'
-                opt_args(14) = '-eps_monitor'
-                opt_args(15) = '-eps_tol'
-                opt_args(16) = '-eps_ncv'
-                opt_args(17) = '-eps_mpd'
-                inc_args(8:17) = [0,0,0,1,1,1,0,1,1,1]
+                opt_args(7) = '--no_guess'
+                opt_args(8) = '--jump_to_sol'
+                opt_args(9) = '--export_HEL'
+                opt_args(10) = '-st_pc_factor_shift_type'
+                opt_args(11) = '-st_pc_type'
+                opt_args(12) = '-st_pc_factor_mat_solver_package'
+                opt_args(13) = '-eps_monitor'
+                opt_args(14) = '-eps_tol'
+                opt_args(15) = '-eps_ncv'
+                opt_args(16) = '-eps_mpd'
+                inc_args(7:16) = [0,0,0,1,1,1,0,1,1,1]
             case(2)                                                             ! POST
-                allocate(opt_args(8), inc_args(8))
+                allocate(opt_args(7), inc_args(7))
                 opt_args = ''
-                opt_args(8) = '--swap_angles'
+                opt_args(7) = '--swap_angles'
                 inc_args = 0
         end select
         
@@ -58,8 +58,7 @@ contains
         opt_args(4) = '--no_output'
         opt_args(5) = '--do_execute_command_line'
         opt_args(6) = '--mem_info'
-        opt_args(7) = '--minim_output'
-        inc_args(1:7) = [0,0,0,0,0,0,0]
+        inc_args(1:6) = [0,0,0,0,0,0]
     end subroutine init_files
 
     ! parses the command line arguments
@@ -162,8 +161,7 @@ contains
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
             &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
-            &print_mem_usage, swap_angles, minim_output, jump_to_sol, &
-            &export_HEL
+            &print_mem_usage, swap_angles, jump_to_sol, export_HEL
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -243,8 +241,15 @@ contains
                         CHCKERR('')
                     end if
                     
-                    ! set PB3D output name
+                    ! set PB3D output name and equilibrium output name
                     PB3D_name = prog_name//'_'//trim(output_name)//'.h5'
+                    select case(eq_style)
+                        case (1)                                                ! VMEC
+                            PB3D_name_eq = prog_name//'_'//trim(output_name)//&
+                                &'_eq.h5'                                       ! eq and X_1 vars will be thrown away after every Richardson extrapolation
+                        case (2)                                                ! HELENA
+                            PB3D_name_eq = PB3D_name                            ! eq and X_1 vars will be saved, but only for first Richardson extrapolation
+                    end select
                 case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
@@ -263,15 +268,13 @@ contains
                     open(UNIT=PB3D_i,FILE=PB3D_name,STATUS='old',IOSTAT=ierr)
                     err_msg = 'No PB3D file found.'
                     CHCKERR(err_msg)
+                    PB3D_name_eq = trim(PB3D_name)                              ! is necessary for HELENA
                     
                     ! succeeded
                     call writo('PB3D output file "' // trim(PB3D_name) &
                         &// '" opened')
                     close(PB3D_i)
             end select
-            
-            ! also initialize PB3D equilibrium output name
-            PB3D_name_eq = PB3D_name
             
             ! set options
             if (numargs.gt.2) then                                              ! options given
@@ -378,29 +381,16 @@ contains
             integer, intent(in) :: arg_nr                                       ! argument number
             
             select case(opt_nr)
-                case (7)                                                        ! minimize output file size by not writing variables on eq grid
-                    select case(eq_style)
-                        case (1)                                                ! VMEC
-                            call writo('option minim_output chosen: some &
-                                &variables not saved to minimize output file &
-                                &size')
-                            minim_output = .true.
-                            PB3D_name_eq = prog_name//'_'//trim(output_name)//&
-                                &'_temp.h5'
-                        case (2)                                                ! HELENA
-                            call writo('option minim_output not compatible &
-                                &with HELENA equilibria',alert=.true.)
-                    end select
-                case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option no_guess chosen: Eigenfunction not &
                         &guessed from previous Richardson level')
                     no_guess = .true.
-                case (9)                                                        ! skip calculating perturbation variables
+                case (8)                                                        ! skip calculating perturbation variables
                     call writo('option jump_to_sol chosen: Skip all possible &
                         &equilibrium and perturbation drivers for first &
                         &Richardson level')
                     jump_to_sol = .true.
-                case (10)                                                       ! export HELENA
+                case (9)                                                        ! export HELENA
                     if (eq_style.eq.2) then
                         call writo('option export_HEL chosen: Exporting to &
                             &VMEC')
@@ -410,22 +400,22 @@ contains
                             &warning=.true.)
                         export_HEL = .false.
                     end if
-                case (11)
+                case (10)
                     call writo('option st_pc_factor_shift_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (12)
+                case (11)
                     call writo('option st_pc_type '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (13)
+                case (12)
                     call writo('option st_pc_factor_mat_solver_package '//&
                         &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (14)
+                case (13)
                     call writo('option eps_monitor passed to SLEPC')
-                case (15)
+                case (14)
                     call writo('option eps_tol passed to SLEPC')
-                case (16)
+                case (15)
                     call writo('option eps_ncv passed to SLEPC')
-                case (17)
+                case (16)
                     call writo('option eps_mpd passed to SLEPC')
                 case default
                     call writo('Invalid option number',warning=.true.)
@@ -438,11 +428,7 @@ contains
             integer, intent(in) :: opt_nr                                       ! option number
             
             select case(opt_nr)
-                case (7)                                                        ! minimize output file size by not writing variables on eq grid
-                    call writo('option minim_output chosen: non-minimal plots &
-                        &not performed')
-                    minim_output = .true.
-                case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option swap_angles chosen: theta and zeta are &
                         &swapped in plots')
                     swap_angles = .true.

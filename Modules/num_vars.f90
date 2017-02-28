@@ -8,6 +8,7 @@ module num_vars
     private
     public dp, dpi, max_str_ln, max_name_ln, max_deriv, prog_name, &
         &output_name, prog_version, prog_style, min_PB3D_version, &
+        &debug_version, &
         &shell_commands_name, mem_usage_name, &
         &mem_usage_count, weight_dp, rank, n_procs, time_start, &
         &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
@@ -15,8 +16,8 @@ module num_vars
         &eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
-        &plot_flux_q, ltest, use_pol_flux_E, use_pol_flux_F, &
-        &use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
+        &plot_flux_q, plot_sol, plot_E_rec, ltest, use_pol_flux_E, &
+        &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
         &norm_disc_prec_eq, K_style, norm_disc_prec_X, norm_disc_prec_sol, &
         &POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
@@ -28,8 +29,8 @@ module num_vars
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
         &max_zeta_plot, min_r_plot, max_r_plot, n_sol_requested, &
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
-        &print_mem_usage, input_name, slab_plots_style, swap_angles, &
-        &rich_restart_lvl, plot_size, minim_output, PB3D_name_eq, jump_to_sol, &
+        &print_mem_usage, input_name, plot_grid_style, swap_angles, &
+        &rich_restart_lvl, plot_size, PB3D_name_eq, jump_to_sol, &
         &export_HEL, ex_plot_style, pert_mult_factor_POST, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_file_i, HEL_export_file_i, X_jobs_file_i, input_i, PB3D_i, &
@@ -51,8 +52,13 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.50_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.50_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.51_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.51_dp                           ! minimum PB3D version for POST
+#if ldebug
+    logical :: debug_version = .true.                                           ! debug version used
+#else
+    logical :: debug_version = .false.                                          ! not debug version
+#endif
 
     ! MPI variables
     integer :: rank                                                             ! MPI rank
@@ -90,6 +96,8 @@ module num_vars
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_magn_grid                                                   ! whether to plot the grid in real coordinates
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates
+    logical :: plot_sol                                                         ! whether to plot solution in POST
+    logical :: plot_E_rec                                                       ! whether to plot energy reconstruction in POST
     logical :: ltest                                                            ! whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   ! whether poloidal flux is used in E coords.
     logical :: use_pol_flux_F                                                   ! whether poloidal flux is used in F coords.
@@ -120,7 +128,7 @@ module num_vars
     integer, parameter :: ex_max_size = 300                                     ! maximum size of matrices for external plot
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
-    character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid (see minim_output)
+    character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid
     logical :: no_plots = .false.                                               ! no plots made
     logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: export_HEL = .false.                                             ! export HELENA
@@ -128,7 +136,6 @@ module num_vars
     logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
     logical :: print_mem_usage = .false.                                        ! print memory usage is printed
     logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)
-    logical :: minim_output = .false.                                           ! minimize output file size
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots
@@ -138,7 +145,7 @@ module num_vars
     real(dp) :: min_theta_plot, max_theta_plot                                  ! min. and max. of theta_plot
     real(dp) :: min_zeta_plot, max_zeta_plot                                    ! min. and max. of zeta_plot
     real(dp) :: min_r_plot, max_r_plot                                          ! min. and max. of r_plot
-    integer :: slab_plots_style                                                 ! slab plots style, only for POST: (0: 3-D plots, 1: slab plots, 2: slab plots with folding)
+    integer :: plot_grid_style                                                  ! style for POST plot grid (0: 3-D plots, 1: slab plots, 2: slab plots with folding, 3: straight cylinder))
     integer :: n_sol_requested                                                  ! how many solutions requested
     integer :: n_sol_plotted(4)                                                 ! how many solutions to be plot (first unstable, last unstable, first stable, last stable)
     integer :: plot_size(2)                                                     ! size of plot in inches

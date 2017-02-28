@@ -16,7 +16,7 @@ module driver_POST
     
     implicit none
     private
-    public run_driver_POST, init_POST
+    public run_driver_POST, init_POST, stop_POST
     
     ! local variables
     logical :: full_output                                                      ! whether full output is possible if requested
@@ -25,7 +25,8 @@ module driver_POST
     integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
     integer :: min_id(3), max_id(3)                                             ! min. and max. index of range 1, 2 and 3
     integer :: last_unstable_id                                                 ! index of last unstable EV
-    type(grid_type) :: grids_out(3)                                             ! eq and X output grids (full parallel and normal range)
+    integer :: n_par_tot                                                        ! total n(1) for all equilibrium jobs together
+    character(len=4) :: grid_name(3)                                            ! names of grids
     type(sol_type) :: sol                                                       ! solution variables
     type(grid_type) :: grid_eq_XYZ                                              ! eq grid for XYZ calculations
     type(grid_type) :: grid_eq_HEL                                              ! HELENA eq grid
@@ -64,13 +65,13 @@ contains
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type
         use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
-            &minim_output, plot_magn_grid, plot_resonance, plot_flux_q, &
-            &eq_jobs_lims, slab_plots_style
+            &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
+            &plot_grid_style, plot_sol, plot_E_rec, n_theta_plot, n_zeta_plot
         use eq_ops, only: flux_q_plot
         use eq_utilities, only: divide_eq_jobs
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
-            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
+            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size
         use X_vars, only: n_mod_X
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
@@ -88,6 +89,7 @@ contains
         type(grid_type) :: grid_X                                               ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
+        integer :: n_out(3,2)                                                   ! total grid sizes for eq and X output grids
         integer :: id, jd                                                       ! counters
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
         integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job
@@ -106,10 +108,7 @@ contains
         CHCKERR('')
         
         ! set up whether full output is possible
-        full_output = .true.
-        if (minim_output .and. POST_style.eq.2) full_output = .false.           ! field-aligned quantities not saved
-        if (.not.full_output) call writo('This is a minimal PB3D output: &
-            &field-aligned output is not available',alert=.true.)
+        full_output = plot_sol .or. plot_E_rec
         
         ! set up whether Richardson level has to be appended to the name
         select case (eq_style) 
@@ -119,12 +118,32 @@ contains
                 rich_lvl_name = 0                                               ! do not append name
         end select
         
-        ! reconstruct full equilibrium, perturbation and solution grids
+        ! set up grid names
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! take the standard grids
+                grid_name(1) = 'eq'
+                grid_name(2) = 'X'
+                grid_name(3) = 'sol'
+            case (2)                                                            ! HELENA
+                ! take the field-aligned grids
+                grid_name(1) = 'eq_B'
+                grid_name(2) = 'X_B'
+                grid_name(3) = 'sol'
+        end select
+        
+        ! limits to exclude angular part
+        lim_loc(1,:) = [0,0]
+        lim_loc(2,:) = [0,0]
+        lim_loc(3,:) = [1,-1]
+        
+        ! reconstruct normal part of full equilibrium, perturbation and solution
+        ! grids
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
+            &tot_rich=.true.,lim_pos=lim_loc)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.)
+            &tot_rich=.true.,lim_pos=lim_loc)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_sol,'sol')
         CHCKERR('')
@@ -144,69 +163,6 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Preliminary variables set up')
-        
-        ! user output
-        call writo('Set up output grids')
-        call lvl_ud(1)
-        
-        ! set up output eq and X grids, depending on POST style
-        select case (POST_style)
-            case (1)                                                            ! extended grid
-                ! user output
-                call writo('POST style 1: Output grid is extended grid')
-                B_aligned = .false.
-                
-                ! extend eq grid
-                ierr = extend_grid_E(grid_eq,grids_out(1),grid_eq=grid_eq)      ! extend eq grid and convert to F
-                CHCKERR('')
-                
-                ! extend X grid
-                ierr = extend_grid_E(grid_X,grids_out(2),grid_eq=grid_eq)       ! extend X grid and convert to F
-                CHCKERR('')
-            case (2)                                                            ! field-aligned grid
-                ! user output
-                call writo('POST style 2: Output grid is field-aligned grid')
-                B_aligned = .true.
-                
-                ! depends on equilibrium style
-                select case (eq_style)
-                    case (1)                                                    ! VMEC
-                        ! user output
-                        call writo('The grids are already field-aligned')
-                        
-                        ! the grids are already field-aligned
-                        ierr = copy_grid(grid_eq,grids_out(1))
-                        CHCKERR('')
-                        ierr = copy_grid(grid_X,grids_out(2))
-                        CHCKERR('')
-                    case (2)                                                    ! HELENA
-                        ! user output
-                        call writo('For HELENA, the grids are read from &
-                            &the output file')
-                        
-                        ! reconstruct from output
-                        ierr = reconstruct_PB3D_grid(grids_out(1),'eq_B',&
-                            &rich_lvl=rich_lvl,tot_rich=.true.)
-                        CHCKERR('')
-                        ierr = reconstruct_PB3D_grid(grids_out(2),'X_B',&
-                            &rich_lvl=rich_lvl,tot_rich=.true.)
-                        CHCKERR('')
-                end select
-        end select
-        
-        ! set up output sol grid
-        lim_loc(1,:) = [0,0]
-        lim_loc(2,:) = [0,0]
-        lim_loc(3,:) = [1,grids_out(2)%n(3)]
-        ierr = copy_grid(grids_out(2),grids_out(3),lims_B=lim_loc)
-        CHCKERR('')
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
-        
-        call lvl_ud(-1)
-        call writo('Output grid set up')
         
         ! user output
         call writo('Dividing grids over MPI processes')
@@ -377,8 +333,16 @@ contains
         ! If full output  not requested, allocate eq_jobs_lims to  zero size, so
         ! that the driver is never run.
         if (full_output) then
+            ! set total grid sizes
+            do id = 1,2
+                ierr = get_PB3D_grid_size(n_out(:,id),grid_name(id),&
+                    &rich_lvl=rich_lvl,tot_rich=.true.)
+                CHCKERR('')
+                if (POST_style.eq.1) n_out(1:2,id) = [n_theta_plot,n_zeta_plot]
+            end do
+            
             ! test if angular grid sizes are compatible
-            if (grids_out(1)%n(1).ne.grids_out(2)%n(1)) then
+            if (n_out(1,1).ne.n_out(1,2) .or. n_out(2,1).ne.n_out(2,2)) then
                 ierr = 1
                 call writo('grid sizes for output grids not compatible. This &
                     &is assumed in the calculation of the equilibrium jobs.')
@@ -389,23 +353,24 @@ contains
                 CHCKERR(err_msg)
             end if
             
+            ! set size of all variables, without parallel dimension
             var_size_without_par = (&
-                &13*product(grids_out(1)%n(2:3))*(1+max_deriv)**3 + &
-                &8*product(grids_out(2)%n(2:3))*n_mod_X)&
+                &13*product(n_out(2:3,1))*(1+max_deriv)**3 + &
+                &8*product(n_out(2:3,2))*n_mod_X)&
                 &/n_procs
             
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(grids_out(1)%n(1),&
-                        &var_size_without_par)
+                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(grids_out(1)%n(1),&
-                        &var_size_without_par,n_par_X_base=nchi)                ! everything is tabulated on nchi poloidal points
+                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,&
+                        &n_par_X_base=nchi*1._dp/n_out(2,1))                    ! everything is tabulated on nchi poloidal points, but only on one toroidal point
                     CHCKERR('')
             end select
+            n_par_tot = maxval(eq_jobs_lims(2,:))-minval(eq_jobs_lims(1,:))+1
         else
             allocate(eq_jobs_lims(2,0))
         end if
@@ -434,14 +399,12 @@ contains
         end if
         
         ! reconstruct normal part of full eq grid for XYZ reconstruction
-        if (full_output .and. slab_plots_style.eq.0) then
+        if (full_output .and. plot_grid_style.eq.0 .or. plot_grid_style.eq.3) &
+            &then
             ! user output
             call writo('Reconstructing full eq grid for XYZ reconstruction')
             call lvl_ud(1)
             
-            lim_loc(1,:) = [0,0]
-            lim_loc(2,:) = [0,0]
-            lim_loc(3,:) = [-1,-1]
             ierr = reconstruct_PB3D_grid(grid_eq_XYZ,'eq',&
                 &rich_lvl=rich_lvl_name,tot_rich=.true.,lim_pos=lim_loc)
             CHCKERR('')
@@ -492,9 +455,8 @@ contains
     integer function run_driver_POST() &
         &result(ierr)
         
-        use num_vars, only: no_output, no_plots, eq_style, rank, POST_style, &
-            &slab_plots_style, use_pol_flux_F, pi, swap_angles, decomp_i, &
-            &eq_jobs_lims, eq_job_nr
+        use num_vars, only: no_output, no_plots, eq_style, plot_grid_style, &
+            &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
@@ -508,23 +470,19 @@ contains
         use sol_ops, only: plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
         use VMEC, onLy: calc_trigon_factors
-        use input_utilities, only: dealloc_in
         use num_utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
         ! local variables
-        type(grid_type) :: grid_eq                                              ! local output eq grid, with limited parallel range and divided normal range
-        type(grid_type) :: grid_X                                               ! local output X grid, with limited parallel range and divided normal range
-        type(grid_type) :: grid_sol                                             ! local output sol grid, with limited parallel range and divided normal range
+        type(grid_type) :: grids(3)                                             ! local output eq, X and sol grid, with limited parallel range and divided normal range
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium
         type(X_1_type) :: X                                                     ! vectorial perturbation variables
         integer :: id, jd, kd                                                   ! counter
         integer :: n_EV_out                                                     ! how many EV's are treated
         integer :: i_EV_out                                                     ! counter
-        integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         logical :: no_plots_loc                                                 ! local copy of no_plots
         logical :: no_output_loc                                                ! local copy of no_output
         logical :: last_eq_job                                                  ! last parallel job
@@ -543,111 +501,68 @@ contains
         call lvl_ud(1)
         call writo(trim(i2str(eq_jobs_lims(1,eq_job_nr)))//'..'//&
             &trim(i2str(eq_jobs_lims(2,eq_job_nr)))//' of '//'1..'//&
-            &trim(i2str(grids_out(1)%n(1))))
+            &trim(i2str(n_par_tot)))
         call lvl_ud(-1)
         
         ! some variables
         last_eq_job = eq_job_nr.eq.size(eq_jobs_lims,2)
         n_EV_out = sum(max_id-min_id+1)
         
-        ! create restricted output grids for this equilibrium job
-        ! eq
-        lim_loc(1,:,1) = eq_jobs_lims(:,eq_job_nr)
-        lim_loc(2,:,1) = [1,grids_out(1)%n(2)]
-        lim_loc(3,:,1) = [1,grids_out(1)%n(3)]
-        ierr = copy_grid(grids_out(1),grid_eq,lims_B=lim_loc(:,:,1),&
-            &i_lim=lims_norm(:,1))
-        CHCKERR('')
-        ! X
-        lim_loc(1,:,2) = eq_jobs_lims(:,eq_job_nr)
-        lim_loc(2,:,2) = [1,grids_out(2)%n(2)]
-        lim_loc(3,:,2) = [1,grids_out(2)%n(3)]
-        ierr = copy_grid(grids_out(2),grid_X,lims_B=lim_loc(:,:,2),&
-            &i_lim=lims_norm(:,2))
-        CHCKERR('')
-        ! sol
-        lim_loc(1,:,3) = [0,0]
-        lim_loc(2,:,3) = [0,0]
-        lim_loc(3,:,3) = [1,grids_out(2)%n(3)]
-        ierr = copy_grid(grids_out(3),grid_sol,lims_B=lim_loc(:,:,3),&
-            &i_lim=lims_norm(:,3))
+        ! set up restricted output grids for this equilibrium job
+        ierr = setup_out_grids(grids)
         CHCKERR('')
         
         ! set up output eq_1, eq_2 and X_1, depending on equilibrium style
-        ierr = calc_eq(grid_eq,eq_1)
+        ierr = calc_eq(grids(1),eq_1)
         CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
-                select case (POST_style)
-                    case (1)                                                    ! extended grid
-                        ! user output
-                        call writo('Calculate variables on extended grid')
-                        call lvl_ud(1)
-                        
-                        ! back up no_plots and no_output and set to .true.
-                        no_plots_loc = no_plots; no_plots = .true.
-                        no_output_loc = no_output; no_output = .true.
-                        
-                        ! Calculate the metric equilibrium quantitities
-                        ierr = calc_eq(grid_eq,eq_1,eq_2)
-                        CHCKERR('')
-                        
-                        ! Transform E into F derivatives
-                        ierr = calc_F_derivs(eq_2)
-                        CHCKERR('')
-                        
-                        ! Calculate derived metric quantities
-                        call calc_derived_q(grid_eq,eq_1,eq_2)
-                        
-                        ! calculate X variables, vector phase
-                        ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X)
-                        CHCKERR('')
-                        
-                        ! reset no_plots and no_output
-                        no_plots = no_plots_loc
-                        no_output = no_output_loc
-                        
-                        ! synchronize processes
-                        ierr = wait_MPI()
-                        CHCKERR('')
-                        
-                        ! user output
-                        call lvl_ud(-1)
-                        call writo('Variables calculated')
-                    case (2)                                                    ! field-aligned grid
-                        ! user output
-                        call writo('Reconstructing PB3D output')
-                        call lvl_ud(1)
-                        
-                        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-                            &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                            &lim_pos=lim_loc(:,:,1))
-                        CHCKERR('')
-                        ierr = reconstruct_PB3D_X_1(grid_X,X,'X_1',&
-                            &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                            &lim_pos=lim_loc(:,:,2))
-                        CHCKERR('')
-                        
-                        ! synchronize processes
-                        ierr = wait_MPI()
-                        CHCKERR('')
-                        
-                        ! user output
-                        call lvl_ud(-1)
-                        call writo('PB3D output reconstructed')
-                end select
-            case (2)                                                            ! HELENA
                 ! user output
-                call writo('Interpolate on output grid')
+                call writo('Calculate variables on output grid')
                 call lvl_ud(1)
                 
-                call eq_2%init(grid_eq)
-                call X%init(grid_X)
-                ierr = interp_HEL_on_grid(grid_eq_HEL,grid_eq,eq_2=eq_2_HEL,&
-                    &eq_2_out=eq_2,eq_1=eq_1,&
+                ! back up no_plots and no_output and set to .true.
+                no_plots_loc = no_plots; no_plots = .true.
+                no_output_loc = no_output; no_output = .true.
+                
+                ! Calculate the metric equilibrium quantitities
+                ierr = calc_eq(grids(1),eq_1,eq_2)
+                CHCKERR('')
+                
+                ! Transform E into F derivatives
+                ierr = calc_F_derivs(eq_2)
+                CHCKERR('')
+                
+                ! Calculate derived metric quantities
+                call calc_derived_q(grids(1),eq_1,eq_2)
+                
+                ! calculate X variables, vector phase
+                ierr = calc_X(grids(1),grids(2),eq_1,eq_2,X)
+                CHCKERR('')
+                
+                ! reset no_plots and no_output
+                no_plots = no_plots_loc
+                no_output = no_output_loc
+                
+                ! synchronize processes
+                ierr = wait_MPI()
+                CHCKERR('')
+                
+                ! user output
+                call lvl_ud(-1)
+                call writo('Variables calculated on output grid')
+            case (2)                                                            ! HELENA
+                ! user output
+                call writo('Interpolate variables on output grid')
+                call lvl_ud(1)
+                
+                call eq_2%init(grids(1))
+                call X%init(grids(2))
+                ierr = interp_HEL_on_grid(grid_eq_HEL,grids(1),&
+                    &eq_2=eq_2_HEL,eq_2_out=eq_2,eq_1=eq_1,&
                     &grid_name='output equilibrium grid')
                 CHCKERR('')
-                ierr = interp_HEL_on_grid(grid_X_HEL,grid_X,X_1=X_HEL,&
+                ierr = interp_HEL_on_grid(grid_X_HEL,grids(2),X_1=X_HEL,&
                     &X_1_out=X,grid_name='output perturbation grid')
                 CHCKERR('')
                 
@@ -657,7 +572,7 @@ contains
                 
                 ! user output
                 call lvl_ud(-1)
-                call writo('Interpolated on output grid')
+                call writo('Variables interpolated on output grid')
         end select
         
         ! user output
@@ -677,18 +592,24 @@ contains
         
         ! if VMEC, calculate trigonometric factors of output grid
         if (eq_style.eq.1) then
-            ierr = calc_trigon_factors(grid_X%theta_E,grid_X%zeta_E,&
-                &grid_X%trigon_factors)
+            ierr = calc_trigon_factors(grids(2)%theta_E,&
+                &grids(2)%zeta_E,grids(2)%trigon_factors)
             CHCKERR('')
         end if
         
         ! set up XYZ
-        allocate(XYZ(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,3))
-        select case (slab_plots_style)
-            case (0)                                                            ! 3-D geometry
-                ierr = calc_XYZ_grid(grid_eq_XYZ,grid_X,XYZ(:,:,:,1),&
-                    &XYZ(:,:,:,2),XYZ(:,:,:,3))
+        allocate(XYZ(grids(2)%n(1),grids(2)%n(2),&
+            &grids(2)%loc_n_r,3))
+        select case (plot_grid_style)
+            case (0,3)                                                          ! 3-D geometry
+                ierr = calc_XYZ_grid(grid_eq_XYZ,grids(2),&
+                    &XYZ(:,:,:,1),XYZ(:,:,:,2),XYZ(:,:,:,3))
                 CHCKERR('')
+                if (plot_grid_style.eq.3) then
+                    call writo('Plots are done in an unwrapped torus')
+                    XYZ(:,:,:,1) = sqrt(XYZ(:,:,:,1)**2+XYZ(:,:,:,2)**2)        ! set X to R coordinate
+                    XYZ(:,:,:,2) = grids(2)%zeta_F                              ! set Y to toroidal coordinate
+                end if
                 !!! To plot the cross-section
                 !!call print_ex_2D(['cross_section'],'cross_section_'//&
                     !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
@@ -701,52 +622,52 @@ contains
                 call writo('Plots are done in slab geometry')
                 call lvl_ud(1)
                 
-                if (B_aligned .and. slab_plots_style.eq.1) then                 ! for slab_plots style 2 both theta and zeta need to be chosen, not alpha
+                if (B_aligned .and. plot_grid_style.eq.1) then                  ! for plot_grid_style 2 both theta and zeta need to be chosen, not alpha
                     if (swap_angles) then
                         call writo('For plotting, the angular coordinates &
                             &are swapped: theta <-> zeta')
                         if (use_pol_flux_F) then
-                            XYZ(:,:,:,1) = grid_X%zeta_F/pi
+                            XYZ(:,:,:,1) = grids(2)%zeta_F/pi
                         else
-                            XYZ(:,:,:,1) = grid_X%theta_F/pi
+                            XYZ(:,:,:,1) = grids(2)%theta_F/pi
                         end if
                     else
                         if (use_pol_flux_F) then
-                            XYZ(:,:,:,1) = grid_X%theta_F/pi
+                            XYZ(:,:,:,1) = grids(2)%theta_F/pi
                         else
-                            XYZ(:,:,:,1) = grid_X%zeta_F/pi
+                            XYZ(:,:,:,1) = grids(2)%zeta_F/pi
                         end if
                     end if
                     XYZ(:,:,:,2) = alpha
                 else
                     if (use_pol_flux_F) then
-                        XYZ(:,:,:,1) = grid_X%theta_F/pi
-                        XYZ(:,:,:,2) = grid_X%zeta_F/pi
+                        XYZ(:,:,:,1) = grids(2)%theta_F/pi
+                        XYZ(:,:,:,2) = grids(2)%zeta_F/pi
                     else
-                        XYZ(:,:,:,1) = grid_X%zeta_F/pi
-                        XYZ(:,:,:,2) = grid_X%theta_F/pi
+                        XYZ(:,:,:,1) = grids(2)%zeta_F/pi
+                        XYZ(:,:,:,2) = grids(2)%theta_F/pi
                     end if
                 end if
                 
-                do kd = 1,grid_X%loc_n_r
-                    XYZ(:,:,kd,3) = grid_X%loc_r_F(kd)/&
+                do kd = 1,grids(2)%loc_n_r
+                    XYZ(:,:,kd,3) = grids(2)%loc_r_F(kd)/&
                         &max_flux_F*2*pi
                 end do
                 
                 ! limit to fundamental interval -1..1
-                if (slab_plots_style.eq.2) XYZ(:,:,:,1:2) = &
+                if (plot_grid_style.eq.2) XYZ(:,:,:,1:2) = &
                     &modulo(XYZ(:,:,:,1:2)+1._dp,2._dp)-1._dp
                 
                 call lvl_ud(-1)
             case default
-                err_msg = 'No style "'//trim(i2str(slab_plots_style))//&
-                    &'" for slab_plots_style'
+                err_msg = 'No style "'//trim(i2str(plot_grid_style))//&
+                    &'" for plot_grid_style'
                 ierr = 1
                 CHCKERR(err_msg)
         end select
         
         ! deallocate memory-thirsty trigonometric factors
-        if (eq_style.eq.1) deallocate(grid_X%trigon_factors)
+        if (eq_style.eq.1) deallocate(grids(2)%trigon_factors)
         
         call lvl_ud(-1)
         
@@ -788,16 +709,16 @@ contains
                 ! user output
                 call writo('Plot the Eigenvector')
                 call lvl_ud(1)
-                ierr = plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-                    &XYZ,id)
+                ierr = plot_sol_vec(grids(1),grids(2),grids(3),&
+                    &eq_1,eq_2,X,sol,XYZ,id)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
                 ! user output
                 call writo('Decompose the energy into its terms')
                 call lvl_ud(1)
-                ierr = decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-                    &sol,id,B_aligned,XYZ=XYZ,&
+                ierr = decompose_energy(grids(1),grids(2),grids(3),&
+                    &eq_1,eq_2,X,sol,id,B_aligned,XYZ=XYZ,&
                     &E_pot_int=E_pot_int(:,i_EV_out),&
                     &E_kin_int=E_kin_int(:,i_EV_out))
                 CHCKERR('')
@@ -851,32 +772,36 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        call grid_eq%dealloc()
-        call grid_X%dealloc()
-        call grid_sol%dealloc()
+        call grids(1)%dealloc()
+        call grids(2)%dealloc()
+        call grids(3)%dealloc()
         call eq_1%dealloc()
         call eq_2%dealloc()
         call X%dealloc()
-        if (last_eq_job) then
-            call dealloc_in()
-            call sol%dealloc()
-            if (eq_style.eq.2) then
-                call grid_eq_HEL%dealloc()
-                call grid_X_HEL%dealloc()
-                call eq_2_HEL%dealloc()
-                call X_HEL%dealloc()
-            end if
-            if (slab_plots_style.eq.0) then
-                call grid_eq_XYZ%dealloc()
-            end if
-            if (rank.eq.0) close(decomp_i)
-        end if
         call lvl_ud(-1)
         
         ! synchronize processes
         ierr = wait_MPI()
         CHCKERR('')
     end function run_driver_POST
+    
+    ! Cleans up main driver for postprocessing.
+    subroutine stop_POST()
+        use num_vars, only: plot_grid_style, eq_style
+        use input_utilities, only: dealloc_in
+        
+        call dealloc_in()
+        call sol%dealloc()
+        if (full_output .and. eq_style.eq.2) then
+            call grid_eq_HEL%dealloc()
+            call grid_X_HEL%dealloc()
+            call eq_2_HEL%dealloc()
+            call X_HEL%dealloc()
+        end if
+        if (full_output .and. plot_grid_style.eq.0) then
+            call grid_eq_XYZ%dealloc()
+        end if
+    end subroutine stop_POST
     
     ! opens the decomposition log file
     integer function open_decomp_log() result(ierr)
@@ -1044,6 +969,8 @@ contains
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
                 &trim(temp_output_str)
             CHCKERR('Failed to write')
+            
+            close(decomp_i)
         end if
         
         call lvl_ud(-1)
@@ -1194,4 +1121,101 @@ contains
             call draw_ex(plot_title(1:1),plot_name,1,1,.false.)
         end if
     end subroutine plot_sol_val_comp
+    
+    ! Sets  up the output  grid for a particular  parallel job and  the variable
+    ! "B_aligned" as well.
+    integer function setup_out_grids(grids_out) result(ierr)
+        use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
+            &eq_job_nr, eq_jobs_lims
+        use grid_utilities, only: extend_grid_E, copy_grid
+        use PB3D_ops, only: reconstruct_PB3D_grid
+        
+        character(*), parameter :: rout_name = 'setup_out_grids'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grids_out(3)                          ! eq, X and sol output grids (full parallel and normal range)
+        
+        ! local variables
+        integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
+        real(dp) :: lim_theta(2)                                                ! theta limits
+        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(grid_type) :: grid_X                                               ! perturbation grid
+        integer :: n_theta                                                      ! nr. of points in theta for extended grid
+        ! initialize ierr
+        ierr = 0
+        
+        select case (POST_style)
+            case (1)                                                            ! extended grid
+                ! limits to exclude angular part
+                ! eq
+                lim_loc(1,:,1) = [0,0]
+                lim_loc(2,:,1) = [0,0]
+                lim_loc(3,:,1) = [1,-1]
+                ! X
+                lim_loc(1,:,2) = [0,0]
+                lim_loc(2,:,2) = [0,0]
+                lim_loc(3,:,2) = [1,-1]
+                ! sol
+                lim_loc(1,:,3) = [0,0]
+                lim_loc(2,:,3) = [0,0]
+                lim_loc(3,:,3) = [1,-1]
+                
+                ! reconstruct equilibrium, perturbation and solution grids
+                ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
+                    &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                    &lim_pos=lim_loc(:,:,1),grid_limits=lims_norm(:,1))
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grid_X,'X',&
+                    &rich_lvl=rich_lvl_name,tot_rich=.true.,&
+                    &lim_pos=lim_loc(:,:,2),grid_limits=lims_norm(:,2))
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grids_out(3),'sol',&
+                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
+                CHCKERR('')
+                
+                ! theta limits
+                lim_theta = min_theta_plot + (eq_jobs_lims(:,eq_job_nr)-1._dp)*&
+                    &(max_theta_plot-min_theta_plot)/(n_par_tot-1._dp)
+                
+                ! extend eq and X grid
+                n_theta = eq_jobs_lims(2,eq_job_nr)-eq_jobs_lims(1,eq_job_nr)+1
+                ierr = extend_grid_E(grid_eq,grids_out(1),n_theta_plot=n_theta,&
+                    &lim_theta_plot=lim_theta,grid_eq=grid_eq)                  ! extend eq grid and convert to F
+                CHCKERR('')
+                ierr = extend_grid_E(grid_X,grids_out(2),n_theta_plot=n_theta,&
+                    &lim_theta_plot=lim_theta,grid_eq=grid_eq)                  ! extend eq grid and convert to F
+                CHCKERR('')
+                
+                ! clean up
+                call grid_eq%dealloc()
+                call grid_X%dealloc()
+            case (2)                                                            ! field-aligned grid
+                ! limits to take subset of angular part
+                ! eq
+                lim_loc(1,:,1) = eq_jobs_lims(:,eq_job_nr)
+                lim_loc(2,:,1) = [1,-1]
+                lim_loc(3,:,1) = [1,-1]
+                ! X
+                lim_loc(1,:,2) = eq_jobs_lims(:,eq_job_nr)
+                lim_loc(2,:,2) = [1,-1]
+                lim_loc(3,:,2) = [1,-1]
+                ! sol
+                lim_loc(1,:,3) = [0,0]
+                lim_loc(2,:,3) = [0,0]
+                lim_loc(3,:,3) = [1,-1]
+                
+                ! reconstruct equilibrium, perturbation and solution grids
+                ierr = reconstruct_PB3D_grid(grids_out(1),trim(grid_name(1)),&
+                    &rich_lvl=rich_lvl,tot_rich=.true.,&
+                    &lim_pos=lim_loc(:,:,1),grid_limits=lims_norm(:,1))
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grids_out(2),trim(grid_name(2)),&
+                    &rich_lvl=rich_lvl,tot_rich=.true.,&
+                    &lim_pos=lim_loc(:,:,2),grid_limits=lims_norm(:,2))
+                CHCKERR('')
+                ierr = reconstruct_PB3D_grid(grids_out(3),trim(grid_name(3)),&
+                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
+                CHCKERR('')
+        end select
+    end function setup_out_grids
 end module driver_POST

@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.50                                                              !
+!   Version: 1.51                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -30,7 +30,7 @@ program POST
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input_opts
-    use driver_POST, only: run_driver_POST, init_POST
+    use driver_POST, only: run_driver_POST, init_POST, stop_POST
     use PB3D_ops, only: reconstruct_PB3D_in
     use input_utilities, only: dealloc_in
     use eq_utilities, only: do_eq, eq_info
@@ -123,6 +123,7 @@ program POST
         call writo('')
         call lvl_ud(-1)
     end do PAR
+    call stop_POST()
 
     !-------------------------------------------------------
     !   clean up

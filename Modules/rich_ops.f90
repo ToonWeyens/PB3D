@@ -300,7 +300,7 @@ contains
         use eq_utilities, only: divide_eq_jobs
         use HELENA_vars, only: nchi
         use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
-            &minim_output, PB3D_name_eq, max_deriv
+            &PB3D_name_eq, max_deriv
         use HDF5_ops, only: create_output_HDF5
         use MPI_utilities, only: get_ser_var
         
@@ -344,7 +344,7 @@ contains
             case (2)                                                            ! HELENA
                 ! divide equilibrium jobs
                 ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
-                    &n_par_X_base=nchi,tot_mem_size=tot_mem_size)               ! everything is tabulated on nchi poloidal points
+                    &n_par_X_base=nchi*1._dp,tot_mem_size=tot_mem_size)         ! everything is tabulated on nchi poloidal points
                 CHCKERR('')
                 
                 ! check whether  calculation for  first Richardson level  can be
@@ -371,20 +371,16 @@ contains
         ! set use_guess to .false. if user sets no_guess
         if (no_guess) use_guess = .false.
         
-        ! possibly create separate output for eq
-        if (minim_output) then
-            call writo('Output file size minimized: non-essential variables &
-                &get temporary file')
-            call lvl_ud(1)
+        ! possibly create separate output for eq and X_1 variables
+        if (eq_style.eq.1) then
             ierr = create_output_HDF5(PB3D_name_eq)
             CHCKERR('')
-            call lvl_ud(-1)
         end if
     end function start_rich_lvl
     
     ! stop a Richardson level
     subroutine stop_rich_lvl
-        use num_vars, only: minim_output, PB3D_name_eq
+        use num_vars, only: PB3D_name_eq, eq_style
         use files_utilities, only: delete_file
         
         ! local variables
@@ -415,8 +411,8 @@ contains
         ! increase level
         rich_lvl = rich_lvl + 1
         
-        ! possibly remove separate output for eq
-        if (minim_output) istat = delete_file(PB3D_name_eq)
+        ! possibly remove separate output for eq and X_1 variables
+        if (eq_style.eq.1) istat = delete_file(PB3D_name_eq)
     contains
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.
@@ -512,17 +508,15 @@ contains
     end subroutine check_conv
     
     ! Probe to find out which Richardson levels are available.
-    ! Also sets the global variable minim_output if provided.
-    integer function find_max_rich_lvl(max_lvl_rich_file,minim_output) &
+    integer function find_max_rich_lvl(max_lvl_rich_file) &
         &result(ierr)
-        use num_vars, only: PB3D_name, eq_style
+        use num_vars, only: PB3D_name
         use HDF5_utilities, only: probe_HDF5_group
         
         character(*), parameter :: rout_name = 'find_max_rich_lvl'
         
         ! input / output
         integer, intent(inout) :: max_lvl_rich_file                             ! max. Richardson level found in file
-        logical, intent(inout), optional :: minim_output                        ! minimal output
         
         ! local variables
         integer :: ir                                                           ! counter
@@ -542,28 +536,5 @@ contains
             ir = ir + 1                                                         ! increment counter
         end do
         max_lvl_rich_file = ir-2                                                ! -2 because there will be one additional iteration
-        
-        ! set up minim_output
-        if (present(minim_output)) then
-            select case(eq_style)
-                case (1)                                                        ! VMEC
-                    ! try whether eq_2 and X_1 variables exist
-                    group_name = 'eq_2_R_'//trim(i2str(max_lvl_rich_file))
-                    ierr = probe_HDF5_group(PB3D_name,group_name,&
-                        &group_exists(1))
-                    CHCKERR('')
-                    group_name = 'X_1_R_'//trim(i2str(max_lvl_rich_file))
-                    ierr = probe_HDF5_group(PB3D_name,group_name,&
-                        &group_exists(2))
-                    CHCKERR('')
-                    if (group_exists(1) .and. group_exists(2)) then
-                        minim_output = .false.
-                    else
-                        minim_output = .true.
-                    end if
-                case (2)                                                        ! HELENA
-                    minim_output = .false.                                      ! never minimal output
-            end select
-        end if
     end function find_max_rich_lvl
 end module rich_ops

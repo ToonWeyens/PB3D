@@ -843,9 +843,10 @@ contains
     ! equilibrium grid is provided. Though this is required for many operations,
     ! it  is  not   required  for  the  calculation  of  X,   Y  and  Z  through
     ! calc_XYZ_grid.
-    integer function extend_grid_E(grid_in,grid_ext,grid_eq) result(ierr)
-        use num_vars, only: n_theta_plot, n_zeta_plot, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot
+    integer function extend_grid_E(grid_in,grid_ext,grid_eq,n_theta_plot,&
+        &n_zeta_plot,lim_theta_plot,lim_zeta_plot) result(ierr)
+        use num_vars, only: n_theta => n_theta_plot, n_zeta => n_zeta_plot, &
+            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot
         
         character(*), parameter :: rout_name = 'extend_grid_E'
         
@@ -853,22 +854,42 @@ contains
         type(grid_type), intent(in) :: grid_in                                  ! grid to be extended
         type(grid_type), intent(inout) :: grid_ext                              ! extended grid
         type(grid_type), intent(in), optional :: grid_eq                        ! equilibrium grid
+        integer, intent(in), optional :: n_theta_plot                           ! number of poins in theta direction
+        integer, intent(in), optional :: n_zeta_plot                            ! number of poins in zeta direction
+        real(dp), intent(in), optional :: lim_theta_plot(2)                     ! limits in theta
+        real(dp), intent(in), optional :: lim_zeta_plot(2)                      ! limits in zeta
+        
+        ! local variables
+        integer :: n_theta_plot_loc                                             ! local n_theta_plot
+        integer :: n_zeta_plot_loc                                              ! local n_zeta_plot
+        real(dp) :: lim_theta_plot_loc(2)                                       ! local limits of theta_plot
+        real(dp) :: lim_zeta_plot_loc(2)                                        ! local limits of zeta_plot
         
         ! initialize ierr
         ierr = 0
         
+        ! set up local variables
+        n_theta_plot_loc = n_theta
+        if (present(n_theta_plot)) n_theta_plot_loc = n_theta_plot
+        n_zeta_plot_loc = n_zeta
+        if (present(n_zeta_plot)) n_zeta_plot_loc = n_zeta_plot
+        lim_theta_plot_loc = [min_theta_plot,max_theta_plot]
+        if (present(lim_theta_plot)) lim_theta_plot_loc = lim_theta_plot
+        lim_zeta_plot_loc = [min_zeta_plot,max_zeta_plot]
+        if (present(lim_zeta_plot)) lim_zeta_plot_loc = lim_zeta_plot
+        
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in E coordinates
-        ierr = grid_ext%init([n_theta_plot,n_zeta_plot,grid_in%n(3)],&
+        ierr = grid_ext%init([n_theta_plot_loc,n_zeta_plot_loc,grid_in%n(3)],&
             &[grid_in%i_min,grid_in%i_max])
         CHCKERR('')
         grid_ext%r_E = grid_in%r_E
         grid_ext%loc_r_E = grid_in%loc_r_E
-        ierr = calc_eqd_grid(grid_ext%theta_E,min_theta_plot*pi,&
-            &max_theta_plot*pi,1)
+        ierr = calc_eqd_grid(grid_ext%theta_E,lim_theta_plot_loc(1)*pi,&
+            &lim_theta_plot_loc(2)*pi,1)
         CHCKERR('')
-        ierr = calc_eqd_grid(grid_ext%zeta_E,min_zeta_plot*pi,&
-            &max_zeta_plot*pi,2)
+        ierr = calc_eqd_grid(grid_ext%zeta_E,lim_zeta_plot_loc(1)*pi,&
+            &lim_zeta_plot_loc(2)*pi,2)
         CHCKERR('')
         
         ! convert all E coordinates to F coordinates if requested

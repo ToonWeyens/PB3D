@@ -647,3 +647,8 @@ CHANGELOG
       - Many routines have been simplified.
       - "eq_job" has been removed in many routines.
       - "read_HDF5_arr" now only has one version, and "conv_1D2ND" only has individual versions.
+
+1.51: - The full output grids that were used in POST to later extract subsets for the different equilibrium jobs are not used any more. Everything is done for the subset directly.
+      - The option "minim_output" does not exist any more, as it is the only option.
+      - To get field-aligned output, the variables are calculated again in POST, without much penalty of time.
+      - "slab_plots_style" is now "plot_grid_style" and admits a new style 3 that corresponds to a straight cylinder by unwrapping the torus.

@@ -364,7 +364,7 @@ contains
         
         ! call array version
         ierr = calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,XUQ_style,&
-            &[time],XUQ_arr,deriv)
+            &[time],XUQ_arr,deriv=deriv)
         CHCKERR('')
         
         ! copy array to individual XUQ

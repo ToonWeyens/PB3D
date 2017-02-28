@@ -21,7 +21,7 @@ module PB3D_ops
     private
     public reconstruct_PB3D_in, reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
         &reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1, reconstruct_PB3D_X_2, &
-        &reconstruct_PB3D_sol
+        &reconstruct_PB3D_sol, get_PB3D_grid_size
     
     ! global variables
     real(dp), allocatable :: dum_1D(:)                                          ! dummy variables
@@ -38,7 +38,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC, magn_int_style, K_style
+            &EV_BC, magn_int_style, K_style, debug_version
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
@@ -67,6 +67,7 @@ contains
         type(var_1D_type) :: var_1D                                             ! 1D variable
         real(dp), parameter :: tol_version = 1.E-4_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
+        logical :: debug_version_PB3D                                           ! debug version of in
         
         ! initialize ierr
         ierr = 0
@@ -101,6 +102,8 @@ contains
         n_r_sol = nint(dum_1D(17))
         max_flux_E = dum_1D(18)
         max_flux_F = dum_1D(19)
+        debug_version_PB3D = .false.
+        if (dum_1D(2).gt.0) debug_version_PB3D = .true.
         call dealloc_var_1D(var_1D)
         
         ! variables depending on equilibrium style
@@ -388,6 +391,14 @@ contains
                     CHCKERR(err_msg)
                 end if
                 
+                if (debug_version_PB3D) call writo('debug version')
+                if (debug_version_PB3D.neqv.debug_version) then
+                    ierr = 1
+                    err_msg = 'Need to use debug version for both, or not for &
+                        &both'
+                    CHCKERR(err_msg)
+                end if
+                
                 call lvl_ud(-1)
         end select
         
@@ -447,20 +458,9 @@ contains
         ! setup rich_id
         rich_id = setup_rich_id(rich_lvl_loc,tot_rich)
         
-        ! set n from HDF5 for local Richardson level
-        n = 0
-        ierr = read_HDF5_arr(var_1D,PB3D_name,'grid_'//trim(data_name),&
-            &'n',rich_lvl=rich_lvl)
+        ! get total grid size
+        ierr = get_PB3D_grid_size(n,data_name,rich_lvl,tot_rich)
         CHCKERR('')
-        ! loop over all equilibrium jobs
-        call conv_1D2ND(var_1D,dum_1D)
-        n = nint(dum_1D)
-        call dealloc_var_1D(var_1D)
-        
-        ! possibly only half of the points were saved in local Richardson level
-        if (present(tot_rich) .and. rich_lvl_loc.gt.1) then
-            if (tot_rich) n(1) = n(1)*2+1
-        end if
         
         ! possibly change n to user-specified
         if (present(lim_pos)) then
@@ -1293,4 +1293,43 @@ contains
         deallocate(dum_3D)
         call dealloc_var_1D(var_1D)
     end function reconstruct_PB3D_sol
+    
+    ! get grid size
+    ! Note: "grid_" is added in front the grid_name.
+    integer function get_PB3D_grid_size(n,grid_name,rich_lvl,tot_rich) &
+        &result(ierr)
+        use num_vars, only: PB3D_name
+        use PB3D_utilities, only: conv_1D2ND
+        use HDF5_ops, only: read_HDF5_arr
+        
+        character(*), parameter :: rout_name = 'get_PB3D_grid_size'
+        
+        ! input / output
+        integer, intent(inout) :: n(3)                                          ! n of grid
+        character(len=*), intent(in) :: grid_name                               ! name of grid
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
+        
+        ! local variables
+        type(var_1D_type) :: var_1D                                             ! 1D variable
+        real(dp), allocatable :: dum_1D(:)                                      ! dummy variables
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n from HDF5 for local Richardson level
+        n = 0
+        ierr = read_HDF5_arr(var_1D,PB3D_name,'grid_'//trim(grid_name),&
+            &'n',rich_lvl=rich_lvl)
+        CHCKERR('')
+        ! loop over all equilibrium jobs
+        call conv_1D2ND(var_1D,dum_1D)
+        n = nint(dum_1D)
+        call dealloc_var_1D(var_1D)
+        
+        ! possibly only half of the points were saved in local Richardson level
+        if (present(tot_rich) .and. present(rich_lvl)) then
+            if (tot_rich .and. rich_lvl.gt.1) n(1) = n(1)*2+1
+        end if
+    end function get_PB3D_grid_size
 end module PB3D_ops
