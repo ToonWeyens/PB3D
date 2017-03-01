@@ -300,8 +300,7 @@ contains
         use eq_utilities, only: divide_eq_jobs
         use HELENA_vars, only: nchi
         use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
-            &PB3D_name_eq, max_deriv
-        use HDF5_ops, only: create_output_HDF5
+            &max_deriv
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
@@ -370,22 +369,10 @@ contains
         
         ! set use_guess to .false. if user sets no_guess
         if (no_guess) use_guess = .false.
-        
-        ! possibly create separate output for eq and X_1 variables
-        if (eq_style.eq.1) then
-            ierr = create_output_HDF5(PB3D_name_eq)
-            CHCKERR('')
-        end if
     end function start_rich_lvl
     
     ! stop a Richardson level
     subroutine stop_rich_lvl
-        use num_vars, only: PB3D_name_eq, eq_style
-        use files_utilities, only: delete_file
-        
-        ! local variables
-        integer :: istat                                                        ! status
-        
         ! update the x axis of the Eigenvalue plot
         x_axis_rich(rich_lvl,:) = 1._dp*n_par_X
         
@@ -410,9 +397,6 @@ contains
         
         ! increase level
         rich_lvl = rich_lvl + 1
-        
-        ! possibly remove separate output for eq and X_1 variables
-        if (eq_style.eq.1) istat = delete_file(PB3D_name_eq)
     contains
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.

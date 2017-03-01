@@ -905,8 +905,10 @@ contains
     ! Copy a grid A to a new grid B, that was not yet initialized. This new grid
     ! can contain  a subsection of the  previous grid in all  dimensions. It can
     ! also be a divided grid, by providing the limits
-    ! Note that  these normal  limits for  the divided grid  should be  given in
-    ! terms of the normal dimension of grid B.
+    ! Note: these normal limits for the divided grid should be given in terms of
+    ! the normal dimension of grid B.
+    ! Note: if the grids are not purely normal, the procedure can currently only
+    ! handle the copying of a grid_A that is not divided.
     integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
         character(*), parameter :: rout_name = 'copy_grid'
         
@@ -957,6 +959,10 @@ contains
         grid_B%loc_r_F = grid_A%r_F(i_lim_loc(1):i_lim_loc(2))
         grid_B%loc_r_E = grid_A%r_E(i_lim_loc(1):i_lim_loc(2))
         if (n_B(1).ne.0 .and. n_B(2).ne.0) then
+            if (grid_A%divided) then
+                ierr = 1
+                CHCKERR('grid_A cannot be divided')
+            end if
             grid_B%theta_F = grid_A%theta_F(lims_B_loc(1,1):lims_B_loc(1,2),&
                 &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
             grid_B%theta_E = grid_A%theta_E(lims_B_loc(1,1):lims_B_loc(1,2),&

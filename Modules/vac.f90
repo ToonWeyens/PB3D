@@ -23,13 +23,11 @@ contains
         ierr = 0
         
         ! user message
-        call writo('Calculating vacuum response')
+        call writo('Calculate vacuum response')
         call lvl_ud(1)
         
-        call writo('NOT YET IMPLEMENTED: SETTING TO ZERO')
         X%vac_res = 0._dp
         
         call lvl_ud(-1)
-        call writo('Vacuum response calculated')
     end function calc_vac
 end module vac

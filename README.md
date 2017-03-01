@@ -652,3 +652,11 @@ CHANGELOG
       - The option "minim_output" does not exist any more, as it is the only option.
       - To get field-aligned output, the variables are calculated again in POST, without much penalty of time.
       - "slab_plots_style" is now "plot_grid_style" and admits a new style 3 that corresponds to a straight cylinder by unwrapping the torus.
+
+1.52: - Metric equilibrium variables are not written to file any more for VMEC, as this is slow for multiple equilibrium parallel jobs.
+      - Both flux and metric equilibrium variables are passed on through the drivers for PB3D, and not deallocated and read.
+      - The flux equilibrium variables are deallocated at the end of the perturbation driver of every parallel job.
+      - This happens only to the metric equilibrium variables for VMEC. For HELENA, they are kept until the end.
+      - Vectorial perturbation variables are still written to HDF5 output, but for HELENA this is the full HDF5 output file, and for VMEC, this is the temporary HDF5 output file, so no parallel subset is needed. For HELENA, there are no equilibrium jobs for the first Richardson level, so nothing was changed there.
+      - These changes aleviate the problem that existed with big simulations with a lot of equilibrium jobs. In these cases, the whole 1-D variable system does not work satisfactorily, as the storage order in these 1D variables is unfavorable. Note that if these systems are to be used at some point, this should be looked at.
+      - Simplified perturbation driver somewhat.

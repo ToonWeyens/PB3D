@@ -14,7 +14,7 @@ module eq_ops
     implicit none
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
-        &print_output_eq, flux_q_plot
+        &print_output_eq, flux_q_plot, broadcast_output_eq
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
@@ -31,6 +31,9 @@ module eq_ops
     end interface
     interface print_output_eq
         module procedure print_output_eq_1, print_output_eq_2
+    end interface
+    interface broadcast_output_eq
+        module procedure broadcast_output_eq_1, broadcast_output_eq_2
     end interface
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
@@ -3473,6 +3476,9 @@ contains
     ! Note: The  metric equilibrium  quantities can be  deallocated on  the fly,
     ! which is useful if this routine is  followed by a deallocation any way, so
     ! that memory usage does not almost double.
+    ! Note: print_output_eq_2 is only used by HELENA  now, as for VMEC it is too
+    ! slow  since there  are often  multiple  VMEC equilibrium  jobs, while  for
+    ! HELENA this is explicitely forbidden.
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
@@ -3790,6 +3796,217 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_eq_2
+    
+    ! Broadcast equilibrium variables to all processes
+    integer function broadcast_output_eq_1(grid,eq,eq_tot) &
+        &result(ierr)                                                           ! flux version
+        use grid_utilities, only: trim_grid
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'broadcast_output_eq_1'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
+        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        type(eq_1_type), intent(inout) :: eq_tot                                ! flux equilibrium variables in total grid
+        
+        ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        type(grid_type) :: grid_trim                                            ! trimmed grid
+        type(grid_type) :: grid_tot                                             ! total grid
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: temp(:)                                        ! temporary variable
+        real(dp), allocatable :: temp_tot(:)                                    ! temporary variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Broadcasting flux equilibrium variables to full normal &
+            &grid')
+        call lvl_ud(1)
+        
+        ! create full grid
+        ierr = grid_tot%init(grid%n)
+        CHCKERR('')
+        
+        ! create full flux equilibrium variables
+        call eq_tot%init(grid_tot)
+        
+        ! clean up
+        call grid_tot%dealloc()
+        
+        ! trim grids
+        ierr = trim_grid(grid,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! temporary variable to hold dimensions before divided dimension
+        allocate(temp(grid_trim%loc_n_r))
+        allocate(temp_tot(grid_trim%n(3)))
+        
+        do id = lbound(eq%pres_FD,2),ubound(eq%pres_FD,2)
+            ! pres_FD
+            temp = eq%pres_FD(norm_id(1):norm_id(2),id)
+            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            CHCKERR('')
+            eq_tot%pres_FD(:,id) = temp_tot
+            
+            ! q_saf_FD
+            temp = eq%q_saf_FD(norm_id(1):norm_id(2),id)
+            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            CHCKERR('')
+            eq_tot%q_saf_FD(:,id) = temp_tot
+            
+            ! rot_t_FD
+            temp = eq%rot_t_FD(norm_id(1):norm_id(2),id)
+            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            CHCKERR('')
+            eq_tot%rot_t_FD(:,id) = temp_tot
+            
+            ! flux_p_FD
+            temp = eq%flux_p_FD(norm_id(1):norm_id(2),id)
+            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            CHCKERR('')
+            eq_tot%flux_p_FD(:,id) = temp_tot
+            
+            ! flux_t_FD
+            temp = eq%flux_t_FD(norm_id(1):norm_id(2),id)
+            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            CHCKERR('')
+            eq_tot%flux_t_FD(:,id) = temp_tot
+        end do
+        
+        ! rho
+        temp = eq%rho(norm_id(1):norm_id(2))
+        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        CHCKERR('')
+        eq_tot%rho = temp_tot
+        
+        ! clean up
+        call grid_trim%dealloc()
+        
+        ! user output
+        call lvl_ud(-1)
+    end function broadcast_output_eq_1
+    integer function broadcast_output_eq_2(grid,eq,eq_tot) &
+        &result(ierr)                                                           ! metric version
+        use grid_utilities, only: trim_grid
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'broadcast_output_eq_2'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq_tot                                ! metric equilibrium variables in total grid
+        
+        ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        type(grid_type) :: grid_trim                                            ! trimmed grid
+        type(grid_type) :: grid_tot                                             ! total grid
+        integer :: id, jd, kd, ld                                               ! counters
+        real(dp), allocatable :: temp(:)                                        ! temporary variable
+        real(dp), allocatable :: temp_tot(:)                                    ! temporary variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Broadcasting metric equilibrium variables to full normal &
+            &grid')
+        call lvl_ud(1)
+        
+        ! create full grid
+        ierr = grid_tot%init(grid%n)
+        CHCKERR('')
+        
+        ! create full metric equilibrium variables
+        call eq_tot%init(grid_tot)
+        
+        ! clean up
+        call grid_tot%dealloc()
+        
+        ! trim grids
+        ierr = trim_grid(grid,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! temporary variable to hold dimensions before divided dimension
+        allocate(temp(product(grid_trim%n(1:2))*grid_trim%loc_n_r))
+        allocate(temp_tot(product(grid_trim%n(1:3))))
+        
+        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
+            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
+                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
+                    do id = lbound(eq%g_FD,4),ubound(eq%g_FD,4)
+                        ! g_FD
+                        temp = reshape(&
+                            &eq%g_FD(:,:,norm_id(1):norm_id(2),id,jd,kd,ld),&
+                            &[size(temp)])
+                        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                        CHCKERR('')
+                        eq_tot%g_FD(:,:,:,id,jd,kd,ld) = reshape(&
+                            &temp_tot,grid_trim%n)
+                        
+                        ! h_FD
+                        temp = reshape(&
+                            &eq%h_FD(:,:,norm_id(1):norm_id(2),id,jd,kd,ld),&
+                            &[size(temp)])
+                        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                        CHCKERR('')
+                        eq_tot%h_FD(:,:,:,id,jd,kd,ld) = reshape(&
+                            &temp_tot,grid_trim%n)
+                    end do
+                    
+                    ! jac_FD
+                    temp = reshape(&
+                        &eq%jac_FD(:,:,norm_id(1):norm_id(2),jd,kd,ld),&
+                        &[size(temp)])
+                    ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                    CHCKERR('')
+                    eq_tot%jac_FD(:,:,:,jd,kd,ld) = reshape(&
+                        &temp_tot,grid_trim%n)
+                end do
+            end do
+        end do
+        
+        ! S
+        temp = reshape(&
+            &eq%S(:,:,norm_id(1):norm_id(2)),&
+            &[size(temp)])
+        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        CHCKERR('')
+        eq_tot%S = reshape(temp_tot,grid_trim%n)
+        
+        ! kappa_n
+        temp = reshape(&
+            &eq%kappa_n(:,:,norm_id(1):norm_id(2)),&
+            &[size(temp)])
+        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        CHCKERR('')
+        eq_tot%kappa_n = reshape(temp_tot,grid_trim%n)
+        
+        ! kappa_g
+        temp = reshape(&
+            &eq%kappa_g(:,:,norm_id(1):norm_id(2)),&
+            &[size(temp)])
+        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        CHCKERR('')
+        eq_tot%kappa_g = reshape(temp_tot,grid_trim%n)
+        
+        ! sigma
+        temp = reshape(&
+            &eq%sigma(:,:,norm_id(1):norm_id(2)),&
+            &[size(temp)])
+        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        CHCKERR('')
+        eq_tot%sigma = reshape(temp_tot,grid_trim%n)
+        
+        ! clean up
+        call grid_trim%dealloc()
+        
+        ! user output
+        call lvl_ud(-1)
+    end function broadcast_output_eq_2
 
 #if ldebug
     ! See if T_EF it complies with the theory of [ADD REF]

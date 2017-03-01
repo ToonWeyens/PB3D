@@ -55,7 +55,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Calculating vectorial perturbation variables')
+        call writo('Calculate vectorial perturbation variables')
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
@@ -70,7 +70,6 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Vectorial perturbation variables calculated')
     end function calc_X_1
     integer function calc_X_2(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)                                                           ! tensorial version
@@ -90,7 +89,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Calculating tensorial perturbation variables')
+        call writo('Calculate tensorial perturbation variables')
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
@@ -114,7 +113,6 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Tensorial perturbation variables calculated')
     end function calc_X_2
     
     ! Setup  minimum and  maximum  of  mode numbers  at  every  flux surface  in
@@ -1955,7 +1953,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Calculating field-line averages')
+        call writo('Calculate field-line averages')
         call lvl_ud(1)
         
         ! set up local prev_style
@@ -1988,10 +1986,9 @@ contains
         
         ! set up integration variables
         
-        ! set nr_int_regions and user output
+        ! set nr_int_regions
         select case (magn_int_style)
             case (1)                                                            ! Trapezoidal rule
-                call writo('magnetic interpolation style: 1 (trapezoidal rule)')
                 select case (prev_style_loc)
                     case (2,3)                                                  ! change indices
                         nr_int_regions = 1
@@ -1999,7 +1996,6 @@ contains
                         nr_int_regions = 2
                 end select
             case (2)                                                            ! Simpson's 3/8 rule
-                call writo('magnetic interpolation style: 2 (Simpson 3/8 rule)')
                 select case (prev_style_loc)
                     case (2,3)                                                  ! change indices
                         nr_int_regions = 3
@@ -2126,7 +2122,6 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Field-line averages calculated')
     contains
         ! Integrate local magnetic integral.
         ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang

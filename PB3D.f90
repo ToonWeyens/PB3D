@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.51                                                              !
+!   Version: 1.52                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -22,9 +22,10 @@
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D
-    use num_vars, only: prog_name, prog_style, rank, rich_restart_lvl
+    use num_vars, only: prog_name, prog_style, rank, rich_restart_lvl, eq_style
     use str_utilities, only: r2str, i2str
     use messages
+    use eq_vars, only: eq_1_type, eq_2_type
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
     use driver_X, only: run_driver_X
@@ -50,6 +51,8 @@ program PB3D
 
     ! local variables
     integer :: ierr                                                             ! error
+    type(eq_1_type) :: eq_1                                                     ! flux equilibrium variables
+    type(eq_2_type) :: eq_2                                                     ! metric equilibrium variables
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -146,7 +149,7 @@ program PB3D
             call writo('Equilibrium driver'//trim(rich_info())//&
                 &trim(eq_info()))
             call lvl_ud(1)
-            ierr = run_driver_eq()                                              ! equilibrium driver
+            ierr = run_driver_eq(eq_1,eq_2)                                     ! equilibrium driver
             CHCKERR
             call writo('')
             call passed_time
@@ -160,7 +163,7 @@ program PB3D
             call writo('Perturbation driver'//trim(rich_info())//&
                 &trim(eq_info()))
             call lvl_ud(1)
-            ierr = run_driver_X()                                               ! perturbation driver
+            ierr = run_driver_X(eq_1,eq_2)                                      ! perturbation driver
             CHCKERR
             call writo('')
             call passed_time
@@ -198,6 +201,7 @@ program PB3D
     !-------------------------------------------------------
     call writo('Clean up')
     call lvl_ud(1)
+    if (eq_style.eq.2) call eq_2%dealloc()
     ierr = stop_MPI()
     CHCKERR
     call close_output

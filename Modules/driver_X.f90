@@ -28,9 +28,9 @@ module driver_X
     
 contains
     ! Main driver of PB3D perturbation part.
-    integer function run_driver_X() result(ierr)
+    integer function run_driver_X(eq_1,eq_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, rank, plot_resonance, &
-            &X_style, rich_restart_lvl, jump_to_sol
+            &X_style, rich_restart_lvl, jump_to_sol, PB3D_name_eq
         use rich_vars, only: n_par_X, rich_lvl
         use MPI_utilities, only: wait_MPI
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
@@ -41,18 +41,22 @@ contains
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X
         use input_utilities, only: dealloc_in
+        use files_utilities, only: delete_file
         !!use num_utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_X'
+        
+        ! input / output
+        type(eq_1_type), intent(inout) :: eq_1                                  ! flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
         
         ! local variables
         type(grid_type), target :: grid_eq                                      ! equilibrium grid
         type(grid_type), pointer :: grid_eq_B                                   ! field-aligned equilibrium grid
         type(grid_type), target :: grid_X                                       ! perturbation grid
         type(grid_type), pointer :: grid_X_B                                    ! field-aligned perturbation grid
-        type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
-        type(eq_2_type), target :: eq_2                                         ! metric equilibrium variables
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
+        integer :: istat                                                        ! status
         
         ! initialize ierr
         ierr = 0
@@ -125,7 +129,8 @@ contains
             CHCKERR('')
         end if
         
-        ! jump to solution if requested
+        ! jump to solution if  requested (assuming that integrated X_2 variables
+        ! are present in the HDF5 file)
         if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
             call writo('Skipping rest to jump to solution')
         else
@@ -146,6 +151,9 @@ contains
             CHCKERR('')
         end if
         
+        ! possibly remove separate output for eq and X_1 variables
+        if (eq_style.eq.1) istat = delete_file(PB3D_name_eq)
+        
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
@@ -153,15 +161,17 @@ contains
         call grid_eq%dealloc()
         call grid_X%dealloc()
         call eq_1%dealloc()
-        call eq_2%dealloc()
-        if (eq_style.eq.2) then
-            call grid_eq_B%dealloc()
-            call grid_X_B%dealloc()
-            call eq_2_B%dealloc()
-            deallocate(grid_eq_B)
-            deallocate(grid_X_B)
-            deallocate(eq_2_B)
-        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call eq_2%dealloc()                                             ! eq_2 is changed for every equilibrium job for VMEC
+            case (2)                                                            ! HELENA
+                call grid_eq_B%dealloc()
+                call grid_X_B%dealloc()
+                call eq_2_B%dealloc()
+                deallocate(grid_eq_B)
+                deallocate(grid_X_B)
+                deallocate(eq_2_B)
+        end select
         nullify(grid_eq_B)
         nullify(grid_X_B)
         nullify(eq_2_B)
@@ -173,8 +183,7 @@ contains
     integer function run_driver_X_0(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
         &eq_2,eq_2_B) result(ierr)
         use num_vars, only: eq_style, rank, eq_job_nr, eq_jobs_lims
-        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
-            &reconstruct_PB3D_eq_2
+        use PB3D_ops, only: reconstruct_PB3D_grid 
         use grid_ops, only: calc_norm_range, setup_grid_X, print_output_grid
         use grid_vars, only: n_r_sol
         use rich_vars, only: rich_lvl
@@ -223,11 +232,6 @@ contains
         call lvl_ud(1)
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
             &lim_pos=lim_pos)
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
-        CHCKERR('')
-        ierr = reconstruct_PB3D_eq_2(grid_eq,eq_2,'eq_2',&
-            &rich_lvl=rich_lvl_name,lim_pos=lim_pos)
         CHCKERR('')
         select case (eq_style)
             case (1)                                                            ! VMEC
@@ -327,7 +331,6 @@ contains
         
         ! local variables
         integer :: arr_size                                                     ! size of array for jobs division
-        logical :: par_div                                                      ! calculations done in parallely divided grid
         type(X_1_type) :: X_1                                                   ! vectorial X variables
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
@@ -354,14 +357,6 @@ contains
         ierr = X_jobs_lock%init(11)
         CHCKERR('')
         
-        ! set up par_div
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                par_div = .true.
-            case (2)                                                            ! HELENA
-                par_div = .false.
-        end select
-        
         call lvl_ud(-1)
         call writo('Vectorial perturbation jobs set up')
         
@@ -385,7 +380,7 @@ contains
             
             ! write vectorial perturbation variables to output
             ierr = print_output_X(grid_X,X_1,'X_1',rich_lvl=rich_lvl_name,&
-                &par_div=par_div,lim_sec_X=X_jobs_lims(:,X_job_nr))
+                &par_div=.false.,lim_sec_X=X_jobs_lims(:,X_job_nr))
             CHCKERR('')
             
 #if ldebug
@@ -567,7 +562,7 @@ contains
         use MPI_vars, only: X_jobs_lock
         use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
-            &eq_job_nr, eq_jobs_lims
+            &eq_job_nr, eq_jobs_lims, magn_int_style
         use PB3D_ops, only: reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints
@@ -584,7 +579,6 @@ contains
         type(eq_2_type), intent(in), pointer :: eq_2_B                          ! field-aligned metric equilibrium variables
         
         ! local variables
-        integer :: lim_pos(3,2)                                                 ! position limits of current equilibrium job
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
         type(X_2_type) :: X_2_prev                                              ! previous tensorial X variables
@@ -605,18 +599,6 @@ contains
         call writo('Setting up Tensorial perturbation jobs')
         call lvl_ud(1)
         
-        ! set up lim_pos
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                lim_pos(1,:) = eq_jobs_lims(:,eq_job_nr)
-                lim_pos(2,:) = [1,-1]
-                lim_pos(3,:) = [1,-1]
-            case (2)                                                            ! HELENA
-                lim_pos(1,:) = [1,-1]
-                lim_pos(2,:) = [1,-1]
-                lim_pos(3,:) = [1,-1]
-        end select
-        
         ! divide perturbation jobs, tensor phase
         arr_size = grid_X_B%loc_n_r*product(grid_X_B%n(1:2))
         ierr = divide_X_jobs(arr_size,2)
@@ -625,6 +607,21 @@ contains
         ! create lock for perturbation jobs
         ierr = X_jobs_lock%init(12)
         CHCKERR('')
+        
+        ! user output
+        call writo('The interpolation method used for the magnetic integrals:')
+        call lvl_ud(1)
+        select case (magn_int_style)
+            case (1)
+                call writo('magnetic interpolation style: 1 (trapezoidal rule)')
+            case (2)
+                call writo('magnetic interpolation style: 2 (Simpson 3/8 rule)')
+        end select
+        call lvl_ud(-1)
+        call writo('The method for calculating the vacuum:')
+        call lvl_ud(1)
+        call writo('NOT YET IMPLEMENTED: SETTING TO ZERO')
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
         call writo('Tensorial perturbation jobs set up')
@@ -658,7 +655,7 @@ contains
                     
                     ! reconstruct PB3D X_1 quantities for this dimension
                     ierr = reconstruct_PB3D_X_1(grid_X,X_1(id),'X_1',&
-                        &rich_lvl=rich_lvl_name,lim_pos=lim_pos,lim_sec_X=&
+                        &rich_lvl=rich_lvl_name,lim_sec_X=&
                         &X_jobs_lims((id-1)*2+1:(id-1)*2+2,X_job_nr))
                     CHCKERR('')
                     

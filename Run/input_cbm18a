@@ -12,7 +12,7 @@
     use_pol_flux_F          = .true.
     use_normalization       = .true.
     prim_X                  = 10
-    n_mod_X                 = 20
+    n_mod_X                 = 10
     tol_rich                = 1.0E-4
     n_sol_requested         = 1
     max_it_inv              = 1

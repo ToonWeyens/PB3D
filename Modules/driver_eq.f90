@@ -21,12 +21,13 @@ module driver_eq
     
 contains
     ! Main driver of PB3D equilibrium part.
-    integer function run_driver_eq() result(ierr)
+    integer function run_driver_eq(eq_1_tot,eq_2_tot) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, eq_job_nr, eq_jobs_lims, jump_to_sol, &
-            &rich_restart_lvl
+            &rich_restart_lvl, PB3D_name_eq
         use MPI_utilities, only: wait_MPI
-        use eq_ops, only: calc_eq, print_output_eq, flux_q_plot
+        use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
+            &broadcast_output_eq
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, magn_grid_plot
@@ -34,9 +35,14 @@ contains
         use num_utilities, only: derivs
         use input_utilities, only: dealloc_in
         use rich_vars, only: rich_lvl
+        use HDF5_ops, only: create_output_HDF5
         !!use num_utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
+        
+        ! input / output
+        type(eq_1_type), intent(inout) :: eq_1_tot                              ! flux equilibrium variables in total grid
+        type(eq_2_type), intent(inout) :: eq_2_tot                              ! metric equilibrium variables in total grid
         
         ! local variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
@@ -70,6 +76,12 @@ contains
         
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
+        
+        ! possibly create separate output for eq and X_1 variables
+        if (eq_style.eq.1) then
+            ierr = create_output_HDF5(PB3D_name_eq)
+            CHCKERR('')
+        end if
         
         ! user output
         call writo('The equilibrium variables are processed')
@@ -129,6 +141,10 @@ contains
             end if
         end if
         
+        ! broadcast flux equilibrium variables to full variables
+        ierr = broadcast_output_eq(grid_eq,eq_1,eq_1_tot)
+        CHCKERR('')
+        
         ! Do actions depending on equilibrium style
         ! VMEC: The  equilibrium grid is  field-aligned and therefore has  to be
         ! recalculated for every  Richardson step. The output names  make use of
@@ -161,14 +177,16 @@ contains
                 end if
 #endif
                 
-                ! write metric equilibrium variables to output
-                ierr = print_output_eq(grid_eq,eq_2,'eq_2',rich_lvl=rich_lvl,&
-                    &par_div=.true.,dealloc_vars=dealloc_vars)
+                ! broadcast metric equilibrium variables to full variables
+                ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
                 CHCKERR('')
                 
                 ! clean up
                 call eq_2%dealloc()
             case (2)                                                            ! HELENA
+                ! For  first  Richardson  level,  calculate  metric  equilibrium
+                ! variables and then broadcast them to full normal grid. For the
+                ! next levels, keep the previously calculated variables.
                 if (rich_lvl.eq.1) then
                     ! write equilibrium grid variables to output
                     ierr = print_output_grid(grid_eq,'equilibrium','eq',&
@@ -187,8 +205,11 @@ contains
 #endif
                     
                     ! write metric equilibrium variables to output
-                    ierr = print_output_eq(grid_eq,eq_2,'eq_2',&
-                        &par_div=.false.,dealloc_vars=dealloc_vars)
+                    ierr = print_output_eq(grid_eq,eq_2,'eq_2',par_div=.false.)
+                    CHCKERR('')
+                    
+                    ! broadcast metric equilibrium variables to full variables
+                    ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
                     CHCKERR('')
                     
                     ! clean up
