@@ -13,8 +13,8 @@ module eq_utilities
     
     implicit none
     private
-    public calc_inv_met, calc_g, transf_deriv, calc_F_derivs, divide_eq_jobs, &
-        &do_eq, eq_info, print_info_eq
+    public calc_inv_met, calc_g, transf_deriv, calc_F_derivs, do_eq, eq_info, &
+        &print_info_eq, calc_memory_eq
 #if ldebug
     public debug_calc_inv_met_ind
 #endif
@@ -787,311 +787,60 @@ contains
         call lvl_ud(-1)
     end function calc_F_derivs_2
     
-    ! Divides the equilibrium jobs.
-    ! The entire parallel  range has to be calculated, but  due to memory limits
-    ! this has to be split up in pieces. In its most extreme form, this would be
-    ! the individual  calculation on a  fundamental integration integral  of the
-    ! parallel points:
-    !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
-    !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-    ! For HELENA, as the parallel derivatives are calculated discretely, and the
-    ! calculations for  the first Richardson  level happen on the  HELENA output
-    ! grid, followed  by an interpolation  that depends on the  Richardson level
-    ! and an  integral of the interpolated  X_2 values, the splitting  up of the
-    ! parallel range must  be understood in terms of splitting  up the different
-    ! parts of the  interpolated and integrated X_2 variables, though  it has no
-    ! direct influence on the equilibrium variables.
-    ! Therefore, the whole  load is divided into jobs depending  on the sizes of
-    ! the pieces  in memory. The  division of  equilibrium jobs forms  an "outer
-    ! loop" compared to the "inner loop" of the division of perturbation jobs.
-    ! This  function does  the  job of  dividing the  grids  setting the  global
-    ! variables 'eq_jobs_lims'.  In contrast  with "divide_X_jobs", there  is no
-    ! need for a variable such as "eq_jobs_taken". See note below.
-    ! Optionally, a  base number  can be  provided for  n_par_X, that  is always
-    ! added to the number of points in  the divided n_par_X. This is useful when
-    ! interpolation is  used on some  fundamental interval to another  range. In
-    ! this case  you always need to  store the fundamental interval,  as well as
-    ! the other range.
-    ! Also, optionally the total memory size per process is also returned.
-    ! Note: a  very important difference  between the equilibrium  parallel jobs
-    ! and the perturbation jobs is that  the parallel jobs are done serially, by
-    ! all processes. The perturbations jobs are individual asynchronous jobs for
-    ! each of the processes. Furthermore, perturbation jobs only comprise either
-    ! vectorial or  tensorial perturbation jobs  while parallel jobs  comprise a
-    ! whole equilibrium  and perturbation calculation, where  the integration of
-    ! the tensorial perturbation variables is possibly adjusted:
-    !   - If  the first job  of the parallel jobs  and not the  first Richardson
-    !   level: add half  of the integrated tensorial  perturbation quantities of
-    !   the previous level.
-    !   -  If  not the  first  job  of the  parallel  jobs,  add the  integrated
-    !   tensorial perturbation quantities to those of the previous parallel job,
-    !   same Richardson level.
-    ! In fact,  the equilibrium  jobs have  much in  common with  the Richardson
-    ! levels,  as is  attested  by the  existence of  the  routines "do_eq"  and
-    ! "eq_info", which are equivalent to "do_rich" and "rich_info".
-    ! Note: For PB3D,  only the variables g_FD, h_FD and  jac_FD are counted, as
-    ! the  equilibrium variables  and  the transformation  matrices are  deleted
-    ! after use. Also, S, sigma, kappa_n and kappa_g can be neglected as they do
-    ! not contain derivatives and are therefore much smaller.
-    ! These variables  are tabulated  in an equilibrium  normal grid.  For VMEC,
-    ! their angular grid is that of the perturbation quantities, but for HELENA,
-    ! it  is  the  input  grid  from HELENA.  Later,  the  quantities  are  then
-    ! interpolated  on  the perturbation  angular  grid.  This means  that  this
-    ! routine  should be  called with  the  perturbation angular  size for  both
-    ! cases, but  that for  HELENA, a base  size should be  added, equal  to the
-    ! input angular size (i.e. nchi).
-    ! In POST, finally, the situation is slightly different in two ways:
-    !   - As there are no perturbation jobs: All the requested variables have to
-    !   fit, including the D and DU variables. The parallel range to be taken is
-    !   then the  one of  the output  grid, including a  base range  for HELENA.
-    !   Also, for extended  output grids, the size of the  grid in the secondary
-    !   angle has to  be included in arr_size (i.e. toroidal  when poloidal flux
-    !   is used and vice versa).
-    !   -  Though  the perturbation  variables  are  tabulated  in a  grid  with
-    !   different normal  extent, their  angular variables do  match. Therefore,
-    !   the weighted sum can be used as arr_size.
-    integer function divide_eq_jobs(n_par_X_rich,arr_size,n_par_X_base,&
-        &tot_mem_size) result(ierr)
+    ! Calculate memory  in MB  necessary for variables  in equilibrium  job. The
+    ! size  of these  variables  is equal  to the  product  of the  non-parallel
+    ! dimensions (e.g. n_geo x loc_n_r), times the number of variables.
+    ! The latter should be:
+    !   - PB3D: only take into account  (2*6+1 = 13) equilibrium variables g_FD,
+    !   h_FD  and jac_FD,  as the  perturbation  variables are  divided in  jobs
+    !   occupying the remaning space.  These equilibrium variables are tabulated
+    !   on the  equilibrium grid.  Note that they  contain derivatives  in extra
+    !   dimensions, so that their size should be multiplied by (max_deriv+1)^3.
+    !   - POST: take  into account these 13 equilibrium variables,  as well as 4
+    !   variables  U and  DU, with  double size  due to  being complex,  and the
+    !   additional dimension equal to n_mod_X, but without derivatives.
+    integer function calc_memory_eq(arr_size,n_par,mem_size) result(ierr)
+        use ISO_C_BINDING
+        use num_vars, only: mem_scale_fac
         
-        use num_vars, only: max_tot_mem_per_proc, max_X_mem_per_proc, &
-            &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style
-        use rich_vars, only: rich_lvl
-        use MPI_utilities, only: wait_MPI
-        
-        character(*), parameter :: rout_name = 'divide_eq_jobs'
+        character(*), parameter :: rout_name = 'calc_memory_eq'
         
         ! input / output
-        integer, intent(in) :: n_par_X_rich                                     ! number of parallel points in this Richardson level
-        integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
-        real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
-        real(dp), intent(inout), optional :: tot_mem_size                       ! total memory size
+        integer, intent(in) :: arr_size                                         ! size of part of X array
+        integer, intent(in) :: n_par                                            ! number of parallel points
+        real(dp), intent(inout) :: mem_size                                     ! total size
         
         ! local variables
-        real(dp) :: mem_size                                                    ! approximation of memory required for X variables
-        real(dp) :: n_par_X_base_loc = 0._dp                                    ! local n_par_X_base
-        integer :: n_div                                                        ! factor by which to divide the total size
-        integer :: n_div_max                                                    ! maximum n_div
-        integer :: n_par_range                                                  ! nr. of points in range
-        integer :: fund_n_par                                                   ! fundamental interval width
-        integer, allocatable :: n_par_loc(:)                                    ! number of points per range
-        character(len=max_str_ln) :: range_message                              ! message about how many ranges
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer(C_SIZE_T) :: dp_size                                            ! size of dp
         
         ! initialize ierr
         ierr = 0
         
-        ! user output
-        call writo('Dividing the equilibrium jobs')
         call lvl_ud(1)
         
-        ! set up width of fundamental interval
-        select case (magn_int_style)
-            case (1)                                                            ! Trapezoidal rule
-                fund_n_par = 1   
-            case (2)                                                            ! Simpson's 3/8 rule
-                fund_n_par = 3   
-        end select
+        ! get size of real variable
+        dp_size = sizeof(1._dp)
         
-        ! set up local n_par_X_base
-        if (present(n_par_X_base)) n_par_X_base_loc = n_par_X_base
+        ! set memory size
+        mem_size = arr_size*1._dp
+        mem_size = mem_size*n_par
+        mem_size = mem_size*dp_size
         
-        ! calculate largest possible range of parallel points fitting in memory
-        n_div = 0
-        mem_size = huge(1._dp)
-        if (rich_lvl.eq.1) then
-            n_div_max = (n_par_X_rich-1)/fund_n_par
-        else
-            n_div_max = n_par_X_rich/fund_n_par
+        ! convert B to MB
+        mem_size = mem_size*1.E-6_dp
+        
+        ! scale memory to account for rough estimation
+        mem_size = mem_size*mem_scale_fac
+        
+        ! test overflow
+        if (mem_size.lt.0) then
+            ierr = 1
+            CHCKERR('Overflow occured')
         end if
-        do while (mem_size.gt.max_tot_mem_per_proc)
-            n_div = n_div + 1
-            n_par_range = ceiling(n_par_X_rich*1._dp/n_div + n_par_X_base_loc)
-            ierr = calc_memory(arr_size,n_par_range,mem_size)
-            CHCKERR('')
-            if (n_div.eq.n_div_max) then                                        ! reached the maximum n_div
-                if (mem_size.gt.max_tot_mem_per_proc) then                      ! still not enough memory
-                    ierr = 1
-                    err_msg = 'The memory limit is too low, need more than '//&
-                        &trim(i2str(ceiling(mem_size)))//'MB'
-                    CHCKERR(err_msg)
-                end if
-            end if
-        end do
-        if (n_div.gt.1) then
-            range_message = 'The '//trim(i2str(n_par_X_rich))//' parallel &
-                &points are split into '//trim(i2str(n_div))//' and '//&
-                &trim(i2str(n_div))//' collective jobs are done serially'
-        else
-            range_message = 'The '//trim(i2str(n_par_X_rich))//' parallel &
-                &points can be done without splitting them'
-        end if
-        call writo(range_message)
-        call writo('The memory per process is estimated to be about '//&
-            &trim(i2str(ceiling(mem_size)))//'MB (maximum: '//&
-            &trim(i2str(ceiling(max_tot_mem_per_proc)))//'MB)')
         
-        ! calculate max memory available for perturbation calculations
-        ! (mem_size was scaled by mem_scale_fac)
-        max_X_mem_per_proc = max_tot_mem_per_proc - mem_size/mem_scale_fac      ! don't need scale factor for eq vars as no operations are done on them, they are just stored
-        call writo('In the perturbation phase, the equilibrium variables are &
-            &not being operated on:')
-        call lvl_ud(1)
-        call writo('This translates to a scale factor 1/'//&
-            &trim(r2strt(mem_scale_fac)))
-        call writo('Therefore, the memory left for the perturbation phase is '&
-            &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB')
         call lvl_ud(-1)
+    end function calc_memory_eq
         
-        ! set total memory size if requested, reusing n_par_range
-        if (present(tot_mem_size)) then
-            n_par_range = ceiling(n_par_X_rich + n_par_X_base_loc)
-            ierr = calc_memory(arr_size,n_par_range,tot_mem_size)
-            CHCKERR('')
-            tot_mem_size = 1._dp*ceiling(tot_mem_size)                          ! round up
-        end if
-        
-        ! Set up jobs data (eq_jobs_lims).
-        ! Also initialize eq_job_nr to 0 as it is incremented by "do_eq".
-        allocate(n_par_loc(n_div))
-        n_par_loc = n_par_X_rich/n_div                                          ! number of parallel points on this processor
-        n_par_loc(1:mod(n_par_X_rich,n_div)) = &
-            &n_par_loc(1:mod(n_par_X_rich,n_div)) + 1                           ! add a point to if there is a remainder
-        ierr = calc_eq_jobs_lims(n_par_loc,eq_jobs_lims)
-        CHCKERR('')
-        eq_job_nr = 0
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Equilibrium jobs divided')
-    contains
-        ! Calculate memory in MB necessary for variables in equilibrium job. The
-        ! size of  these variables is equal  to the product of  the non-parallel
-        ! dimensions (e.g. n_geo x loc_n_r), times the number of variables.
-        ! The latter should be:
-        !   - PB3D:  only take into  account (2*6+1 = 13)  equilibrium variables
-        !   g_FD, h_FD and jac_FD, as  the perturbation variables are divided in
-        !   jobs  occupying  the  remaning space.  These  equilibrium  variables
-        !   are  tabulated  on the  equilibrium  grid.  Note that  they  contain
-        !   derivatives  in  extra dimensions,  so  that  their size  should  be
-        !   multiplied by (max_deriv+1)^3.
-        !   - POST: take into account these 13 equilibrium variables, as well as
-        !   4 variables U and DU, with double size due to being complex, and the
-        !   additional dimension equal to n_mod_X, but without derivatives.
-        integer function calc_memory(arr_size,n_par,mem_size) result(ierr)
-            use ISO_C_BINDING
-            
-            character(*), parameter :: rout_name = 'calc_memory'
-            
-            ! input / output
-            integer, intent(in) :: arr_size                                     ! size of part of X array
-            integer, intent(in) :: n_par                                        ! number of parallel points
-            real(dp), intent(inout) :: mem_size                                 ! total size
-            
-            ! local variables
-            integer(C_SIZE_T) :: dp_size                                        ! size of dp
-            
-            ! initialize ierr
-            ierr = 0
-            
-            call lvl_ud(1)
-            
-            ! get size of real variable
-            dp_size = sizeof(1._dp)
-            
-            ! set memory size
-            mem_size = arr_size*1._dp
-            mem_size = mem_size*n_par
-            mem_size = mem_size*dp_size
-            
-            ! convert B to MB
-            mem_size = mem_size*1.E-6_dp
-            
-            ! scale memory to account for rough estimation
-            mem_size = mem_size*mem_scale_fac
-            
-            ! test overflow
-            if (mem_size.lt.0) then
-                ierr = 1
-                CHCKERR('Overflow occured')
-            end if
-            
-            call lvl_ud(-1)
-        end function calc_memory
-        
-        ! Calculate eq_jobs_lims.
-        ! Take into account that every job has to start and end at the start and
-        ! end of a fundamental integration interval, as discussed in above:
-        !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
-        !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-        ! for POST, there are no Richardson  levels, and there has to be overlap
-        ! of one  always, in order  to have  correct composite integrals  of the
-        ! different regions.
-        integer function calc_eq_jobs_lims(n_par,res) result(ierr)
-            use num_vars, only: prog_style
-            
-            character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
-            
-            ! input / output
-            integer, intent(in) :: n_par(:)                                     ! eq jobs data
-            integer, allocatable :: res(:,:)                                    ! result
-            
-            ! local variables
-            integer :: n_div                                                    ! nr. of divisions of parallel ranges
-            integer :: id                                                       ! counter
-            integer :: ol_width                                                 ! overlap width
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set up nr. of divisions
-            n_div = size(n_par)
-            
-            ! (re)allocate result
-            if (allocated(res)) deallocate(res)
-            allocate(res(2,n_div))
-            
-            ! set overlap width
-            select case (prog_style)
-                case (1)                                                        ! PB3D
-                    if (rich_lvl.eq.1) then
-                        ol_width = 1
-                    else
-                        ol_width = 0
-                    end if
-                case (2)                                                        ! POST
-                    ol_width = 1
-            end select
-            
-            ! loop over divisions
-            do id = 1,n_div
-                ! setup first guess, without taking into account fundamental
-                ! integration intervals
-                if (id.eq.1) then
-                    res(1,id) = 1
-                else
-                    res(1,id) = res(2,id-1) + 1 - ol_width
-                end if
-                res(2,id) = sum(n_par(1:id))
-                
-                ! take into account fundamental interval
-                res(2,id) = res(1,id) - 1 + ol_width + fund_n_par * max(1,&
-                    &nint((res(2,id)-res(1,id)+1._dp-ol_width)/fund_n_par))
-            end do
-            
-            ! test whether end coincides with sum of n_par
-            if (res(2,n_div).ne.sum(n_par)) then
-                ierr = 1
-                err_msg = 'Limits don''t match, try with more memory or lower &
-                    &magn_int_style'
-                CHCKERR(err_msg)
-            end if
-        end function calc_eq_jobs_lims
-    end function divide_eq_jobs
-    
     ! if this equilibrium job should be done, also increment eq_job_nr
     logical function do_eq()
         use num_vars, only: eq_jobs_lims, eq_job_nr

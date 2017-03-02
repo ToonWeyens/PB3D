@@ -15,7 +15,7 @@ module X_ops
     implicit none
     private
     public calc_X, calc_magn_ints, print_output_X, resonance_plot, &
-        &calc_res_surf, check_X_modes, setup_nm_X
+        &calc_res_surf, check_X_modes, setup_nm_X, divide_X_jobs
 #if ldebug
     public debug_check_X_modes_2
 #endif
@@ -1115,9 +1115,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        
-        ! message
-        call writo('Calculating U up to order '//trim(i2str(U_style)))
         
         ! allocate variables
         ! helper variables
@@ -2599,4 +2596,165 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_X_2
+    
+    ! divides the perturbation jobs
+    ! The (k,m) pairs have to be calculated, but might have to be broken up into
+    ! pieces  due  to memory  constraints.  In  its  most  extreme case,  for  a
+    ! certain mode  number k, therefore, all  the pairs (k,m) can  be calculated
+    ! sequentially, saving  the values  for this  k in  the process  and cycling
+    ! through m.
+    ! This  can be  directly  scaled  up to  a  block of  k  and  m values,  and
+    ! ultimately, all the values simultaneously.
+    ! Therefore, the whole  load is divided into jobs depending  on the sizes of
+    ! the blocks of k  and m values in memory. These jobs  start with the vector
+    ! phase  by calculating  U and  DU, followed  in the  tensor phase  by their
+    ! combinations in  PV and  KV. Then,  these are  integrated in  the parallel
+    ! coordinate,  with  a  possible  interpolation  in  between.  Finally,  the
+    ! integrated values are saved and the next jobs starts.
+    ! This  function does  the  job of  dividing the  grids  setting the  global
+    ! variables 'X_jobs_lims'  and 'X_jobs_taken' for  data of a  certain order,
+    ! given by div_ord.  E.g. for the vector  phase, the order is 1  and for the
+    ! tensorial phase it is 2.
+    integer function divide_X_jobs(arr_size,div_ord) result(ierr)
+        use num_vars, only: max_X_mem_per_proc, n_procs, X_jobs_lims, rank, &
+            &X_jobs_file_name, X_jobs_taken, X_jobs_file_i
+        use X_vars, only: n_mod_X
+        use X_utilities, only: calc_memory_X
+        use MPI_utilities, only: wait_MPI
+        
+        character(*), parameter :: rout_name = 'divide_X_jobs'
+        
+        ! input / output
+        integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
+        integer, intent(in) :: div_ord                                          ! division order
+        
+        ! local variables
+        integer :: n_div                                                        ! factor by which to divide the total size
+        real(dp) :: mem_size                                                    ! approximation of memory required for X variables
+        integer :: n_mod_block                                                  ! nr. of modes in block
+        integer, allocatable :: n_mod_loc(:)                                    ! number of modes per block
+        character(len=max_str_ln) :: block_message                              ! message about how many blocks
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Dividing the perturbation jobs of order '//&
+            &trim(i2str(div_ord)))
+        call lvl_ud(1)
+        
+        ! calculate largest possible block of (k,m) values
+        n_div = 0
+        mem_size = huge(1._dp)
+        do while (mem_size.gt.max_X_mem_per_proc)
+            n_div = n_div + 1
+            n_mod_block = ceiling(n_mod_X*1._dp/n_div)
+            ierr = calc_memory_X(div_ord,arr_size,n_mod_block,mem_size)
+            CHCKERR('')
+            if (n_div.gt.n_mod_X) then
+                ierr = 1
+                err_msg = 'The memory limit is too low'
+                CHCKERR(err_msg)
+            end if
+        end do
+        if (n_div.gt.1) then
+            block_message = 'The '//trim(i2str(n_mod_X))//&
+                &' Fourier modes are split into '//trim(i2str(n_div))//&
+                &' and '//trim(i2str(n_div**div_ord))//&
+                &' jobs are done separately'
+            if (n_procs.lt.n_div**div_ord) then
+                block_message = trim(block_message)//', '//&
+                    &trim(i2str(n_procs))//' at a time'
+            else
+                block_message = trim(block_message)//', but simultaneously'
+            end if
+        else
+            block_message = 'The '//trim(i2str(n_mod_X))//' Fourier modes &
+                &can be done without splitting them'
+        end if
+        call writo(block_message)
+        call writo('The memory per process is estimated to be about '//&
+            &trim(i2str(ceiling(mem_size)))//'MB (maximum: '//&
+            &trim(i2str(ceiling(max_X_mem_per_proc)))//'MB)')
+        
+        ! set up jobs data as illustrated below for 3 divisions, order 1:
+        !   [1,2,3]
+        ! or order 2:
+        !   [1,4,7]
+        !   [2,5,8]
+        !   [3,6,9]
+        ! etc.
+        ! Also initialize the jobs taken to false.
+        allocate(n_mod_loc(n_div))
+        n_mod_loc = n_mod_X/n_div                                               ! number of radial points on this processor
+        n_mod_loc(1:mod(n_mod_X,n_div)) = n_mod_loc(1:mod(n_mod_X,n_div)) + 1   ! add a mode to if there is a remainder
+        call calc_X_jobs_lims(X_jobs_lims,n_mod_loc,div_ord)
+        if (allocated(X_jobs_taken)) deallocate(X_jobs_taken)
+        allocate(X_jobs_taken(n_div**div_ord))
+        X_jobs_taken = .false.
+        
+        ! initialize file with global variable
+        if (rank.eq.0) then
+            open(UNIT=X_jobs_file_i,STATUS='REPLACE',FILE=X_jobs_file_name,&
+                &IOSTAT=ierr)
+            CHCKERR('Cannot open perturbation jobs file')
+            write(UNIT=X_jobs_file_i,IOSTAT=ierr,FMT='(1X,A)') &
+                &'# Process, X job'
+            err_msg = 'Failed to write perturbation jobs file'
+            CHCKERR(err_msg)
+            close(X_jobs_file_i,IOSTAT=ierr)
+            CHCKERR('Failed to close file')
+        end if
+        
+        ! synchronize MPI
+        ierr = wait_MPI()
+        CHCKERR('')
+        
+        ! user output
+        call lvl_ud(-1)
+        call writo('Perturbation jobs divided')
+    contains
+        ! Calculate X_jobs_lims.
+        ! These are  stored as follows: The  job index is the  second one, while
+        ! the first index ranges from 1 to  2*ord. For every job in the range of
+        ! job indices, thee first index shows the limits of the different orders
+        ! sequentially. For example:
+        !   - for order 1: [3,4],
+        !       which corresponds to the 1-D range 3..4,
+        !   - for order 2: [3,4,1,5],
+        !       which corresponds to the 2-D range 3..4 x 1..5,
+        ! etc.
+        recursive subroutine calc_X_jobs_lims(res,n_mod,ord)
+            ! input / output
+            integer, intent(inout), allocatable :: res(:,:)                     ! result
+            integer, intent(in) :: n_mod(:)                                     ! X jobs data
+            integer, intent(in) :: ord                                          ! order of data
+            
+            ! local variables
+            integer, allocatable :: res_loc(:,:)                                ! local result
+            integer :: n_div                                                    ! nr. of divisions of modes
+            integer :: id                                                       ! counter
+            
+            ! set up nr. of divisions
+            n_div = size(n_mod)
+            
+            ! (re)allocate result
+            if (allocated(res)) deallocate(res)
+            allocate(res(2*ord,n_div**ord))
+            
+            ! loop over divisions
+            do id = 1,n_div
+                if (ord.gt.1) then                                              ! call lower order
+                    call calc_X_jobs_lims(res_loc,n_mod,ord-1)
+                    res(1:2*ord-2,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                        &res_loc
+                end if                                                          ! set for own order
+                res(2*ord-1,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                    &sum(n_mod(1:id-1))+1
+                res(2*ord,(id-1)*n_div**(ord-1)+1:id*n_div**(ord-1)) = &
+                    &sum(n_mod(1:id))
+            end do
+        end subroutine calc_X_jobs_lims
+    end function divide_X_jobs
 end module

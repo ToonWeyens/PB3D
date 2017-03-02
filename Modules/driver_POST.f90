@@ -67,8 +67,7 @@ contains
         use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
             &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
             &plot_grid_style, plot_sol, plot_E_rec, n_theta_plot, n_zeta_plot
-        use eq_ops, only: flux_q_plot
-        use eq_utilities, only: divide_eq_jobs
+        use eq_ops, only: flux_q_plot, divide_eq_jobs
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size

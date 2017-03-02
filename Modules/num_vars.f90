@@ -15,7 +15,7 @@ module num_vars
         &X_job_nr, X_jobs_file_name, eq_jobs_lims, &
         &eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
-        &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, &
+        &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, plot_B, &
         &plot_flux_q, plot_sol, plot_E_rec, ltest, use_pol_flux_E, &
         &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
         &norm_disc_prec_eq, K_style, norm_disc_prec_X, norm_disc_prec_sol, &
@@ -95,6 +95,7 @@ module num_vars
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_magn_grid                                                   ! whether to plot the grid in real coordinates
+    logical :: plot_B                                                           ! whether to plot the magnetic field in real coordinates
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates
     logical :: plot_sol                                                         ! whether to plot solution in POST
     logical :: plot_E_rec                                                       ! whether to plot energy reconstruction in POST

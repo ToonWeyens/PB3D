@@ -103,7 +103,7 @@ contains
         max_flux_E = dum_1D(18)
         max_flux_F = dum_1D(19)
         debug_version_PB3D = .false.
-        if (dum_1D(2).gt.0) debug_version_PB3D = .true.
+        if (dum_1D(20).gt.0) debug_version_PB3D = .true.
         call dealloc_var_1D(var_1D)
         
         ! variables depending on equilibrium style

@@ -13,7 +13,8 @@ module grid_ops
     implicit none
     private
     public calc_norm_range, calc_ang_grid_eq_B, magn_grid_plot, setup_grid_eq, &
-        &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid
+        &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid, &
+        &B_plot
 #if ldebug
     public debug_calc_ang_grid_eq_B
 #endif
@@ -803,6 +804,84 @@ contains
         
         call lvl_ud(-1)
     end function calc_ang_grid_eq_B
+    
+    ! Plots the  magnetic fields. If  multiple equilibrium parallel  jobs, every
+    ! job does its piece, and the results are joined automatically by plot_HDF5.
+    ! The  outputs are  given in  contra- and  covariant components  in multiple
+    ! coordinate systems:
+    !   - F: (alpha,psi,theta),
+    !   - H: (psi,theta,zeta),
+    !   - V: (psi,theta,zeta),
+    !   - C: (R,phi,Z),
+    !   - X: (X,Y,Z),
+    ! as well as  the magnitude. Note that the  components in X, Y and  Z can be
+    ! used to plot the real vector.
+    ! The starting point is the fact that the magnetic field is given by
+    !   B = e_theta/J
+    ! in F coordinates. The F covariant components are therefore given by
+    !   B_i = g_i3/J
+    ! and the only non-vanishing contravariant component is
+    !   B^3 = 1/J.
+    ! These can then  all be transformed to the other  coordinate systems by use
+    ! of the transformation matrices.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    integer function B_plot(grid_eq,grid_plot,eq) result(ierr)
+        use grid_vars, only: grid_type
+        use grid_utilities, only: calc_XYZ_grid, trim_grid
+        use eq_vars, only: eq_2_type
+        use num_vars, only: eq_jobs_lims, eq_job_nr
+        
+        character(*), parameter :: rout_name = 'B_plot'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid_plot                                ! plot grid
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        
+        ! local variables
+        type(grid_type) :: grid_trim                                            ! trimmed plot grid
+        real(dp), allocatable :: X(:,:,:), Y(:,:,:), Z(:,:,:)                   ! X, Y and Z of surface in cylindrical coordinates
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        logical :: cont_plot                                                    ! continued plot
+        character(len=max_str_ln) :: description(4)                             ! description of plots
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! trim plot grid
+        ierr = trim_grid(grid_plot,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! set up plot dimensions and local dimensions
+        plot_dim = [grid_plot%n,3]
+        plot_offset = [0,0,grid_trim%i_min-1,0]
+        
+        ! possibly modify if multiple equilibrium parallel jobs
+        if (size(eq_jobs_lims,2).gt.1) then
+            plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                &eq_jobs_lims(1,1) + 1
+            plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+        end if
+        
+        ! set up continued plot
+        cont_plot = eq_job_nr.gt.1
+        
+        ! calculate XYZ of grid
+        ierr = calc_XYZ_grid(grid_eq,grid_trim,X,Y,Z)
+        CHCKERR('')
+        
+        ! set up plot variables
+        !description(1) = 'contravariant components of the 
+        
+        ! plot the magnetic field in E(quilibrium) coordinates
+        !call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
+            !&rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
+            !&tot_dim=plot_dim,loc_offset=plot_offset,X=XYZ_plot(:,:,:,:,1),&
+            !&Y=XYZ_plot(:,:,:,:,2),Z=XYZ_plot(:,:,:,:,3),col=col,&
+            !&cont_plot=cont_plot,description=description(kd))
+    end function 
     
     ! plots the grid in real space
     ! The  equilibrium grid  should contain  the fieldline-oriented  angles with

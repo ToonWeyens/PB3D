@@ -316,9 +316,9 @@ contains
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
         use MPI_vars, only: X_jobs_lock
-        use X_utilities, only: divide_X_jobs
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style
-        use X_ops, only: calc_X, print_output_X
+        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
+            &no_output, U_style
+        use X_ops, only: calc_X, print_output_X, divide_X_jobs
         use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'run_driver_X_1'
@@ -330,8 +330,9 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         
         ! local variables
-        integer :: arr_size                                                     ! size of array for jobs division
+        logical :: no_output_loc                                                ! local copy of no_output
         type(X_1_type) :: X_1                                                   ! vectorial X variables
+        integer :: var_size_without_par                                         ! size of array for jobs division
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
@@ -349,8 +350,8 @@ contains
         call lvl_ud(1)
         
         ! divide perturbation jobs
-        arr_size = grid_X%loc_n_r*product(grid_X%n(1:2))
-        ierr = divide_X_jobs(arr_size,1)
+        var_size_without_par = ceiling(product(grid_X%n(1:3))*1._dp/n_procs)
+        ierr = divide_X_jobs(var_size_without_par,1)
         CHCKERR('')
         
         ! create lock for perturbation jobs
@@ -359,6 +360,9 @@ contains
         
         call lvl_ud(-1)
         call writo('Vectorial perturbation jobs set up')
+        
+        ! user output
+        call writo('Calculating U up to order '//trim(i2str(U_style)))
         
         ! main loop over vectorial jobs
         X_job_nr = 0
@@ -372,6 +376,8 @@ contains
             
             ! user output
             call print_info_X_1()
+            no_output_loc = no_output
+            no_output = .true.
             
             ! calc variables
             ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1,&
@@ -461,6 +467,7 @@ contains
             call X_1%dealloc()
             
             ! user output
+            no_output = no_output_loc
             call print_X_end()
         end do X_jobs_1
         call lvl_ud(-1)
@@ -560,12 +567,11 @@ contains
         use MPI_ops, only: get_next_job, print_jobs_info
         use MPI_utilities, only: wait_MPI
         use MPI_vars, only: X_jobs_lock
-        use X_utilities, only: divide_X_jobs
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
-            &eq_job_nr, eq_jobs_lims, magn_int_style
+            &eq_job_nr, magn_int_style, no_output
         use PB3D_ops, only: reconstruct_PB3D_X_1, reconstruct_PB3D_X_2
         use rich_vars, only: rich_lvl
-        use X_ops, only: calc_X, print_output_X, calc_magn_ints
+        use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
         use vac, only: calc_vac
         
@@ -579,12 +585,13 @@ contains
         type(eq_2_type), intent(in), pointer :: eq_2_B                          ! field-aligned metric equilibrium variables
         
         ! local variables
+        logical :: no_output_loc                                                ! local copy of no_output
         type(X_1_type) :: X_1(2)                                                ! vectorial X variables
         type(X_2_type) :: X_2                                                   ! tensorial X variables
         type(X_2_type) :: X_2_prev                                              ! previous tensorial X variables
         integer :: id                                                           ! counter
         integer :: rich_lvl_prev                                                ! rich_lvl of X_2_prev
-        integer :: arr_size                                                     ! size of array for jobs division
+        integer :: var_size_without_par                                         ! size of array for jobs division
         integer :: prev_style                                                   ! style to treat prev_X
         logical :: dim_reused(2)                                                ! wether dimension is reused
 #if ldebug
@@ -600,8 +607,8 @@ contains
         call lvl_ud(1)
         
         ! divide perturbation jobs, tensor phase
-        arr_size = grid_X_B%loc_n_r*product(grid_X_B%n(1:2))
-        ierr = divide_X_jobs(arr_size,2)
+        var_size_without_par = ceiling(product(grid_X_B%n(1:3))*1._dp/n_procs)
+        ierr = divide_X_jobs(var_size_without_par,2)
         CHCKERR('')
         
         ! create lock for perturbation jobs
@@ -638,6 +645,8 @@ contains
             
             ! user output
             call print_info_X_2()
+            no_output_loc = no_output
+            no_output = .true.
             
             ! retrieve vectorial perturbation if dimension not reused
             do id = 1,2
@@ -837,6 +846,7 @@ contains
             if (rich_lvl.gt.1 .or. eq_job_nr.gt.1) call X_2_prev%dealloc()
             
             ! user output
+            no_output = no_output_loc
             call print_X_end()
         end do X_jobs_2
         call lvl_ud(-1)

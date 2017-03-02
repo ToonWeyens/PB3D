@@ -952,6 +952,11 @@ contains
         end if
 #endif
         
+#if lwith_intel
+        ! set J to zero to avoid INTEL compiler bug
+        J = 0._dp
+#endif
+        
         ! iterate over all normal points in sol grid and interpolate
         do kd = 1,loc_dim(3)
             ierr = con2dis(grid_X%loc_r_F(kd),loc_r_eq,grid_eq%loc_r_F)

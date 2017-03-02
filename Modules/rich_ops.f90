@@ -297,7 +297,7 @@ contains
     integer function start_rich_lvl() result(ierr)
         use grid_utilities, only: calc_n_par_X_rich
         use grid_vars, only: n_r_eq
-        use eq_utilities, only: divide_eq_jobs
+        use eq_ops, only: divide_eq_jobs
         use HELENA_vars, only: nchi
         use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
             &max_deriv

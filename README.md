@@ -660,3 +660,10 @@ CHANGELOG
       - Vectorial perturbation variables are still written to HDF5 output, but for HELENA this is the full HDF5 output file, and for VMEC, this is the temporary HDF5 output file, so no parallel subset is needed. For HELENA, there are no equilibrium jobs for the first Richardson level, so nothing was changed there.
       - These changes aleviate the problem that existed with big simulations with a lot of equilibrium jobs. In these cases, the whole 1-D variable system does not work satisfactorily, as the storage order in these 1D variables is unfavorable. Note that if these systems are to be used at some point, this should be looked at.
       - Simplified perturbation driver somewhat.
+
+1.53: - The division of in parallel jobs now takes into account the fact that we have to be able to calculate the perturbation variables, which takes some memory as well.
+      - A bit less output for perturbation driver.
+      - Fixed a bug in the reconstruction of PB3D input variables.
+      - INTEL has a strange bug in "calc_E", which is solved by setting an allocated array to zero.
+      - Fixed a bug that had not yet appeared where loc_n_r was used in the calculation of the X jobs size. This must be something that is not dependent on the process.
+      - The first steps are taken for the plotting of the magnetic field.
