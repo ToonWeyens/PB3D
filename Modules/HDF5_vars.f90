@@ -25,7 +25,7 @@ module HDF5_vars
     character(len=max_str_ln) :: XDMF_format_types(2)                           ! possible XDMF format types
     character(len=max_str_ln) :: XDMF_geom_types(2)                             ! possible XDMF geometry types
     character(len=max_str_ln) :: XDMF_top_types(2)                              ! possible XDMF topology types
-    character(len=max_str_ln) :: XDMF_att_types(1)                              ! possible XDMF attribute types
+    character(len=max_str_ln) :: XDMF_att_types(2)                              ! possible XDMF attribute types
     character(len=max_str_ln) :: XDMF_center_types(2)                           ! possible XDMF attribute center types
     character(len=max_str_ln) :: XDMF_grid_types(3)                             ! possible XDMF grid types
     
@@ -81,6 +81,7 @@ contains
         
         ! XDMF_att_types
         XDMF_att_types(1) = "Scalar"
+        XDMF_att_types(2) = "Vector"
         
         ! XDMF_center_types
         XDMF_center_types(1) = "Node"

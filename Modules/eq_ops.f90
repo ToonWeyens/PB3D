@@ -4098,7 +4098,7 @@ contains
         integer :: n_div_max                                                    ! maximum n_div
         integer :: n_par_range                                                  ! nr. of points in range
         integer :: fund_n_par                                                   ! fundamental interval width
-        integer, parameter :: min_n_mod_X = 1                                   ! minimum n_mod_X to be done at the same time
+        integer, parameter :: min_n_mod_X = 5                                   ! minimum n_mod_X to be done at the same time (5x5 blocks in tensorial phase)
         integer, allocatable :: n_par_loc(:)                                    ! number of points per range
         character(len=max_str_ln) :: range_message                              ! message about how many ranges
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -4143,13 +4143,11 @@ contains
             ierr = calc_memory_X(2,ceiling(n_par_range*n_r_sol*1._dp/n_procs),&
                 &min_n_mod_X,min_X_mem_per_proc)                                ! order 2, n_r_sol/n_procs normal points, n_par_range parallel points, mode number
             CHCKERR('')
-            if (n_div.eq.n_div_max) then                                        ! reached the maximum n_div
-                if (mem_size.gt.max_tot_mem_per_proc) then                      ! still not enough memory
-                    ierr = 1
-                    err_msg = 'The memory limit is too low, need more than '//&
-                        &trim(i2str(ceiling(mem_size)))//'MB'
-                    CHCKERR(err_msg)
-                end if
+            if (n_div.ge.n_div_max) then                                        ! still not enough memory
+                ierr = 1
+                err_msg = 'The memory limit is too low, need more than '//&
+                    &trim(i2str(ceiling(mem_size)))//'MB'
+                CHCKERR(err_msg)
             end if
         end do
         if (n_div.gt.1) then
@@ -4162,8 +4160,11 @@ contains
         end if
         call writo(range_message)
         call writo('The memory per process is estimated to be about '//&
-            &trim(i2str(ceiling(mem_size)))//'MB (maximum: '//&
-            &trim(i2str(ceiling(max_tot_mem_per_proc)))//'MB user specified)')
+            &trim(i2str(ceiling(mem_size)))//'MB')
+        call lvl_ud(1)
+        call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem_per_proc)))//'&
+            &MB, user specified)')
+        call lvl_ud(-1)
         
         ! calculate max memory available for perturbation calculations
         ! (mem_size was scaled by mem_scale_fac)
@@ -4174,9 +4175,11 @@ contains
         call writo('This translates to a scale factor 1/'//&
             &trim(r2strt(mem_scale_fac)))
         call writo('Therefore, the memory left for the perturbation phase is '&
-            &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB (minimum: '//&
-            &trim(i2str(ceiling(min_X_mem_per_proc)))//'MB for all modes &
-            &separately)')
+            &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB')
+        call lvl_ud(1)
+        call writo('(minimum: '//trim(i2str(ceiling(min_X_mem_per_proc)))//&
+            &'MB, for all modes separately)')
+        call lvl_ud(-1)
         call lvl_ud(-1)
         
         ! set total memory size if requested, reusing n_par_range
@@ -4184,6 +4187,11 @@ contains
             n_par_range = ceiling(n_par_X_rich + n_par_X_base_loc)
             ierr = calc_memory_eq(arr_size,n_par_range,tot_mem_size)
             CHCKERR('')
+            ierr = calc_memory_X(2,ceiling(n_par_X_rich*n_r_sol*1._dp/n_procs),&
+                &min_n_mod_X,min_X_mem_per_proc)                                ! order 2, n_r_sol/n_procs normal points, n_par_X_rich parallel points, mode number
+            CHCKERR('')
+            tot_mem_size = max(tot_mem_size,&
+                &mem_scale_fac*(max_tot_mem_per_proc-min_X_mem_per_proc))       ! include the requirement on the perturbation jobs
             tot_mem_size = 1._dp*ceiling(tot_mem_size)                          ! round up
         end if
         
@@ -5133,6 +5141,7 @@ contains
                     CHCKERR('')
                     ierr = apply_disc(h_H_12(:,kd+grid_eq%i_min-1),&
                         &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
+                    CHCKERR('')
                 end do
                 res(:,:,kd-norm_id(1)+1,2) = &
                     &-eq_1%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1) * &

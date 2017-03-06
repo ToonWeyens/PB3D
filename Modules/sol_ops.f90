@@ -170,10 +170,6 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! user output
-        call writo('Plotting normal components')
-        call lvl_ud(1)
-        
         ! set up n_t
         ! if the  Eigenvalue is negative,  the Eigenfunction explodes,  so limit
         ! n_t(2) to 1. If it is positive, the Eigenfunction oscilates, so choose
@@ -396,8 +392,6 @@ contains
         
         ! clean up
         call grid_sol_trim%dealloc()
-        
-        call lvl_ud(-1)
     end function plot_sol_vec
     
     ! plots the harmonics and their maximum in 2D

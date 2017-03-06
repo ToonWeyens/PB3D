@@ -38,7 +38,7 @@ module HDF5_ops
     public print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
         &print_HDF5_att, print_HDF5_3D_data_item, open_HDF5_file, &
         &close_HDF5_file, reset_HDF5_item, add_HDF5_item, create_output_HDF5, &
-        &print_HDF5_arrs, read_HDF5_arr
+        &print_HDF5_arrs, read_HDF5_arr, merge_HDF5_3D_data_items
 #if ldebug
     public debug_HDF5_ops, debug_print_HDF5_arrs
 #endif
@@ -499,9 +499,9 @@ contains
                 ! set up dimensions string
                 dim_str = ''
                 do id = 1,size(dim_tot)
-                    if (dim_tot(id).gt.1) then
+                    !if (dim_tot(id).gt.1) then
                         dim_str = trim(dim_str)//' '//trim(i2str(dim_tot(id)))
-                    end if
+                    !end if
                 end do
                 dataitem_id%name = 'DataItem - '//trim(var_name)
                 allocate(dataitem_id%xml_str(3))
@@ -562,10 +562,101 @@ contains
         end function check_for_parallel_3D
     end function print_HDF5_3D_data_item
     
+    ! Joins dataitems in a vector.
+    subroutine merge_HDF5_3D_data_items(merged_id,dataitem_ids,var_name,&
+        &dim_tot,reset,ind_plot,cont_plot)
+        use num_vars, only: rank
+        
+        ! input / output
+        type(XML_str_type), intent(inout) :: merged_id                          ! ID of merged data item
+        type(XML_str_type), intent(inout) :: dataitem_ids(:)                       ! ID of data items
+        character(len=*), intent(in) :: var_name                                ! name of variable
+        integer, intent(in) :: dim_tot(3)                                       ! total dimensions of variable
+        logical, intent(in), optional :: reset                                  ! if .true., data items are reset
+        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        logical, intent(in), optional :: cont_plot                              ! continued plot
+        
+        ! local variables
+        integer :: dataitem_len                                                 ! length of data item
+        integer :: id, jd                                                       ! counters
+        integer :: jd_loc                                                       ! local jd
+        logical :: reset_loc = .false.                                          ! local copy of reset
+        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
+        character(len=max_str_ln) :: dim_str                                    ! string with dimensions
+        character(len=max_str_ln) :: fun_str                                    ! string with function
+#if ldebug
+        integer :: istat                                                        ! status
+#endif
+        
+        ! set up local ind_plot
+        if (present(ind_plot)) ind_plot_loc = ind_plot
+        
+        ! set up local cont_plot
+        if (present(cont_plot)) cont_plot_loc = cont_plot
+        
+        ! set local reset
+        if (present(reset)) reset_loc = reset
+        
+        ! only group master if parallel plot or current rank if individual plot,
+        ! if not continued plot
+        if (.not.cont_plot_loc) then
+            if (ind_plot_loc .or. .not.ind_plot_loc.and.rank.eq.0) then
+                ! set dataitem_len
+                dataitem_len = 0
+                do id = 1,size(dataitem_ids)
+                    dataitem_len = dataitem_len + size(dataitem_ids(id)%xml_str)
+                end do
+                
+                ! set XDMF attribute ID
+                merged_id%name = 'DataItem - '//trim(var_name)
+                allocate(merged_id%xml_str(dataitem_len+2))
+                
+                ! set up dimensions string
+                dim_str = ''
+                do id = 1,size(dim_tot)
+                    !if (dim_tot(id).gt.1) then
+                        dim_str = trim(dim_str)//' '//trim(i2str(dim_tot(id)))
+                    !end if
+                end do
+                dim_str = trim(dim_str)//' '//trim(i2str(size(dataitem_ids)))
+                
+                ! set up function string
+                fun_str = '"JOIN('
+                do id = 1,size(dataitem_ids)
+                    if (id.gt.1) fun_str = trim(fun_str)//','
+                    fun_str = trim(fun_str)//' $'//trim(i2str(id-1))
+                end do
+                fun_str = trim(fun_str)//')"'
+                
+                merged_id%xml_str(1) = '<DataItem Dimensions="'//&
+                    &trim(dim_str)//'" Function='//trim(fun_str)//&
+                        &' ItemType="Function" >'
+                jd_loc = 2
+                do id = 1,size(dataitem_ids)
+                    do jd = 1,size(dataitem_ids(id)%xml_str)
+                        merged_id%xml_str(jd_loc) = dataitem_ids(id)%xml_str(jd)
+                        jd_loc = jd_loc+1
+                    end do
+                end do
+                merged_id%xml_str(jd_loc) = '</DataItem>'
+                
+                ! reset if requested
+                if (reset_loc) call reset_HDF5_item(dataitem_ids,ind_plot_loc)
+                
+#if ldebug
+                if (debug_HDF5_ops) write(*,*,IOSTAT=istat) &
+                    &'merged data items into "'//trim(merged_id%name)//'"'
+#endif
+            end if
+        end if
+    end subroutine merge_HDF5_3D_data_items
+    
     ! prints an HDF5 attribute
     ! [MPI] Only group master
-    subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,reset,&
-        &ind_plot)
+    subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,att_type,&
+        &reset,ind_plot)
+        
         use num_vars, only: rank
         
         ! input / output
@@ -573,13 +664,14 @@ contains
         type(XML_str_type), intent(inout) :: att_dataitem                       ! dataitem of attribute
         character(len=*), intent(in) :: att_name                                ! name of attribute
         integer, intent(in) :: att_center                                       ! center of attribute
+        integer, intent(in) :: att_type                                         ! type of attribute
         logical, intent(in), optional :: reset                                  ! if .true., data items are reset
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
         integer :: dataitem_len                                                 ! length of data item
         integer :: id                                                           ! counter
-        logical :: reset_loc                                                    ! local copy of reset
+        logical :: reset_loc = .false.                                          ! local copy of reset
         logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
@@ -594,18 +686,14 @@ contains
             dataitem_len = size(att_dataitem%xml_str)
             
             ! set local reset
-            if (present(reset)) then
-                reset_loc = reset
-            else
-                reset_loc = .false.
-            end if
+            if (present(reset)) reset_loc = reset
             
             ! set XDMF attribute ID
             att_id%name = 'Attribute - '//trim(att_name)
             allocate(att_id%xml_str(dataitem_len+2))
             att_id%xml_str(1) = '<Attribute Name="'//trim(att_name)//&
-                &'" AttributeType="Scalar" Center="'//&
-                &trim(XDMF_center_types(att_center))//'">'
+                &'" AttributeType="'//trim(XDMF_att_types(att_type))//&
+                &'" Center="'//trim(XDMF_center_types(att_center))//'">'
             do id = 1,dataitem_len
                 att_id%xml_str(id+1) = att_dataitem%xml_str(id)
             end do
@@ -653,8 +741,9 @@ contains
             ! fill work string
             work_str = ''
             do id = n_dims,1,-1
-                if (top_n_elem(id).gt.1) work_str = &
-                    &trim(work_str)//' '//trim(i2str(top_n_elem(id)))
+                !if (top_n_elem(id).gt.1) then
+                    work_str = trim(work_str)//' '//trim(i2str(top_n_elem(id)))
+                !end if
             end do
             
             ! set XDMF topology ID

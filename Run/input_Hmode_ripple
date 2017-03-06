@@ -23,6 +23,7 @@
     max_it_slepc            = 500
     max_tot_mem_per_proc    = 500
     plot_magn_grid          = .false.
+    plot_B                  = .false.
     plot_flux_q             = .false.
     plot_resonance          = .false.
     matrix_SLEPC_style      = 1

@@ -131,6 +131,7 @@ grid_ops.o : \
     MPI_utilities.o \
     grid_utilities.o \
     rich_vars.o \
+    input_utilities.o \
 
 rich_vars.o : \
     str_utilities.o \

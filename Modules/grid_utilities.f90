@@ -476,7 +476,7 @@ contains
     ! this variable is not used.
     ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
     ! beforehand.
-    integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L) result(ierr)
+    integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L,R) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use num_utilities, only: round_with_tol
         use eq_vars, only: R_0
@@ -488,6 +488,7 @@ contains
         type(grid_type), intent(in) :: grid_XYZ                                 ! grid for which to calculate X, Y, Z and optionally L
         real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)                 ! X, Y and Z of grid
         real(dp), intent(inout), optional :: L(:,:,:)                           ! lambda of grid
+        real(dp), intent(inout), optional :: R(:,:,:)                           ! R of grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -528,10 +529,10 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L)
+                ierr = calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L=L,R=R)
                 CHCKERR('')
             case (2)                                                            ! HELENA
-                ierr = calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z)
+                ierr = calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z,R=R)
                 CHCKERR('')
         end select
         
@@ -540,10 +541,11 @@ contains
             X = X*R_0
             Y = Y*R_0
             Z = Z*R_0
+            if (present(R)) R = R*R_0
         end if
     contains
         ! VMEC version
-        integer function calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L) &
+        integer function calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L,R) &
             &result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use VMEC, only: fourier2real, &
@@ -556,12 +558,13 @@ contains
             type(grid_type), intent(in) :: grid_XYZ                             ! grid for which to calculate X, Y, Z and optionally L
             real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)             ! X, Y and Z of grid
             real(dp), intent(inout), optional :: L(:,:,:)                       ! lambda of grid
+            real(dp), intent(inout), optional :: R(:,:,:)                       ! R of grid
             
             ! local variables
             real(dp), allocatable :: R_V_c_int(:,:), R_V_s_int(:,:)             ! interpolated version of R_V_c and R_V_s
             real(dp), allocatable :: Z_V_c_int(:,:), Z_V_s_int(:,:)             ! interpolated version of Z_V_c and Z_V_s
             real(dp), allocatable :: L_V_c_int(:,:), L_V_s_int(:,:)             ! interpolated version of L_V_c and L_V_s
-            real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
+            real(dp), allocatable :: R_loc(:,:,:)                               ! R in Cylindrical coordinates
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
@@ -601,12 +604,12 @@ contains
             ! clean up
             call norm_interp_data%dealloc()
             
-            ! allocate R
-            allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
+            ! allocate local R
+            allocate(R_loc(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
             
             ! inverse fourier transform with trigonometric factors
-            ierr = fourier2real(R_V_c_int,R_V_s_int,grid_XYZ%trigon_factors,R,&
-                &sym=[.true.,is_asym_V])
+            ierr = fourier2real(R_V_c_int,R_V_s_int,grid_XYZ%trigon_factors,&
+                &R_loc,sym=[.true.,is_asym_V])
             CHCKERR('')
             ierr = fourier2real(Z_V_c_int,Z_V_s_int,grid_XYZ%trigon_factors,Z,&
                 &sym=[is_asym_V,.true.])
@@ -616,20 +619,21 @@ contains
                     &grid_XYZ%trigon_factors,L,sym=[is_asym_V,.true.])
                 CHCKERR('')
             end if
+            if (present(R)) R = R_loc
             
             ! transform cylindrical to cartesian
-            ! (the geometrical zeta is the inverse of VMEC zeta)
-            X = R*cos(-grid_XYZ%zeta_E)
-            Y = R*sin(-grid_XYZ%zeta_E)
+            X = R_loc*cos(grid_XYZ%zeta_E)
+            Y = R_loc*sin(grid_XYZ%zeta_E)
             
             ! deallocate
             deallocate(R_V_c_int,R_V_s_int,Z_V_c_int,Z_V_s_int)
             if (present(L)) deallocate(L_V_c_int,L_V_s_int)
-            deallocate(R)
+            deallocate(R_loc)
         end function calc_XYZ_grid_VMEC
         
         ! HELENA version
-        integer function calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z) result(ierr)
+        integer function calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z,R) &
+            &result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
             use num_vars, only: norm_disc_prec_eq
             
@@ -639,12 +643,13 @@ contains
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
             type(grid_type), intent(in) :: grid_XYZ                             ! grid for which to calculate X, Y, Z and optionally L
             real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)             ! X, Y and Z of grid
+            real(dp), intent(inout), optional :: R(:,:,:)                       ! R of grid
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
             integer :: pmone                                                    ! plus or minus one
             real(dp), allocatable :: R_H_int(:,:), Z_H_int(:,:)                 ! R and Z at interpolated normal value
-            real(dp), allocatable :: R(:,:,:)                                   ! R in Cylindrical coordinates
+            real(dp), allocatable :: R_loc(:,:,:)                               ! R in Cylindrical coordinates
             real(dp) :: theta_loc                                               ! local copy of theta_E
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             type(disc_type) :: pol_interp_data                                  ! data for poloidal interpolation
@@ -652,8 +657,8 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! allocate R
-            allocate(R(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
+            ! allocate local R
+            allocate(R_loc(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
             
             ! set up interpolated R and Z
             allocate(R_H_int(nchi,grid_XYZ%loc_n_r))
@@ -709,7 +714,7 @@ contains
                         
                         ! interpolate  the HELENA  variables poloidally
                         ierr = apply_disc(R_H_int(:,kd),pol_interp_data,&
-                            &R(id:id,jd,kd))
+                            &R_loc(id:id,jd,kd))
                         CHCKERR('')
                         ierr = apply_disc(pmone*Z_H_int(:,kd),pol_interp_data,&
                             &Z(id:id,jd,kd))
@@ -717,13 +722,15 @@ contains
                     end do
                 end do
             end do
+            if (present(R)) R = R_loc
             
             ! calculate X and Y, transforming cylindrical to cartesian
-            X = R*cos(grid_XYZ%zeta_E)
-            Y = R*sin(grid_XYZ%zeta_E)
+            ! (the geometrical zeta is the inverse of HELENA zeta)
+            X = R_loc*cos(-grid_XYZ%zeta_E)
+            Y = R_loc*sin(-grid_XYZ%zeta_E)
             
             ! deallocate
-            deallocate(R)
+            deallocate(R_loc)
             call norm_interp_data%dealloc()
             call pol_interp_data%dealloc()
         end function calc_XYZ_grid_HEL

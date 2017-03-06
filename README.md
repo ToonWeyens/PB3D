@@ -667,3 +667,8 @@ CHANGELOG
       - INTEL has a strange bug in "calc_E", which is solved by setting an allocated array to zero.
       - Fixed a bug that had not yet appeared where loc_n_r was used in the calculation of the X jobs size. This must be something that is not dependent on the process.
       - The first steps are taken for the plotting of the magnetic field.
+
+1.54: - "calc_XYZ_grid" now also optionally outputs R.
+      - Fixed a bug in "calc_XYZ_grid" where the inverse toroidal variable was taken wrongly.
+      - Previously in XDMF output, the dimensions and number of elements were only written if they were larger than 1. This was removed as it seemed not to work with ParaView.
+      - "plot_HDF5" can now also handle vector plots with col=4. The implementation could be generalized and made more elegant and robust.

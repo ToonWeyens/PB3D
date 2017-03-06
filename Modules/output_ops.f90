@@ -995,19 +995,23 @@ contains
     !   col = 1: no collection, just plots of different variables
     !   col = 2: time collection
     !   col = 3: spatial collection
+    !   col = 4: vector field
     ! Furthermore, using the variable "cont_plot",  a plot can be (over-)written
     ! in multiple writes. By this is meant that there should be an initial plot,
-    ! with collection type 1, 2 or 3, which can then be followed by an arbitrary
-    ! number of additional  writes. As these additional  writes currently cannot
-    ! modify  the  plot structure,  nor  the  XDMF variables,  their  collection
-    ! dimension should be complete from the  start. This has no implications for
-    ! single plots but means that for collection  types 2 and 3 all the elements
-    ! in the collection have to be present, though they do not necessary need to
-    ! have been  completely written in  the other dimensions.  Subsequent writes
-    ! with "cont_plot" can then, for instance,  write parts of the data that had
-    ! not yet been written,  or overwrite ones that had. This  can be useful for
-    ! post-processing where the  memory requirements are large so  that the work
-    ! has to be split.
+    ! with  collection  type 1,  2,  3  or 4,  which  can  then be  followed  by
+    ! an  arbitrary number  of  additional writes.  As  these additional  writes
+    ! currently cannot modify the plot  structure, nor the XDMF variables, their
+    ! collection  dimension should  be  complete  from the  start.  This has  no
+    ! implications for single  plots but means that for collection  types 2 to 4
+    ! all the elements in the collection have  to be present, though they do not
+    ! necessary need  to have been  completely written in the  other dimensions.
+    ! Subsequent writes with "cont_plot" can  then, for instance, write parts of
+    ! the data that had  not yet been written, or overwrite  ones that had. This
+    ! can be useful for post-processing  where the memory requirements are large
+    ! so that the work has to be split.
+    ! Note: For  a vector field,  the number  of variables has  to be 2  for 2-D
+    ! plots or 3 for 3-D plots. This  should be rewritten in the future, so that
+    ! collections can be used for vectors as well.
     ! Note: In  order to  merge collections in  their collection  dimension, the
     ! xdmf files can always easily be joined.
     ! Note: If necessary,  a lock system should be used  when multiple processes
@@ -1017,6 +1021,7 @@ contains
     !       names are ignored).
     !   - for spatial collections:  subset of blocks or pseudocolor using the 
     !       variable name (other names are ignored).
+    !   - for vector plot: Vector plot.
     !   - for without collections:  pseudocolor using the variable names.
     ! Note: Currently all of possibly multiple processes that write data have to
     ! cover the  entire range  of the  variables in  the dimension  indicated by
@@ -1029,7 +1034,7 @@ contains
         &X,Y,Z,col_id,col,sym_type,cont_plot,description)                       ! array version
         use HDF5_ops, only: open_HDF5_file, add_HDF5_item, print_HDF5_top, &
             &print_HDF5_geom, print_HDF5_3D_data_item, print_HDF5_att, &
-            &print_HDF5_grid, close_HDF5_file
+            &print_HDF5_grid, close_HDF5_file, merge_HDF5_3D_data_items
         use HDF5_vars, only: dealloc_XML_str, &
             &XML_str_type, HDF5_file_type
         use num_vars, only: n_procs
@@ -1059,6 +1064,7 @@ contains
         integer :: id, jd                                                       ! counter
         integer :: sym_type_loc                                                 ! local sym_type
         integer :: sym_pol, sym_tor                                             ! used to determine symmetry
+        integer :: att_id                                                       ! index in att
         integer, allocatable :: tot_sym_pol(:), tot_sym_tor(:)                  ! sym_pol and sym_tor for all processes
         integer :: tot_dim_loc(4)                                               ! local copy of tot_dim
         integer :: loc_offset_loc(4)                                            ! local copy of loc_offset
@@ -1068,12 +1074,14 @@ contains
         type(XML_str_type) :: col_grid                                          ! grid with collection
         type(XML_str_type), allocatable :: grids(:)                             ! the grids in the time collection
         type(XML_str_type) :: top                                               ! topology
-        type(XML_str_type), allocatable :: XYZ(:)                               ! data items for geometry
+        type(XML_str_type), allocatable :: dat(:)                               ! data items for geometry and attribute
+        type(XML_str_type) :: dat_vec                                           ! data items for merged attribute
         type(XML_str_type) :: geom                                              ! geometry
         type(XML_str_type) :: att(1)                                            ! attribute
         logical :: col_mask(4)                                                  ! to select out the collection dimension
         logical :: ind_plot                                                     ! individual plot
         logical :: cont_plot_loc                                                ! local cont_plot
+        logical :: first_vc, last_vc                                            ! first or last vector components (for the others, some XDMF operations can be skipped)
         real(dp), allocatable :: sym_ang(:,:,:)                                 ! angle to be checked for symmetry
         real(dp) :: tol_sym = 1.E-8_dp                                          ! tolerance for symmetry determination
         real(dp), pointer :: var_3D(:,:,:) => null()                            ! pointer to vars
@@ -1189,6 +1197,25 @@ contains
             ! possibly overwrite local symmetry type
             if (present(sym_type)) sym_type_loc = sym_type
             
+            ! tests
+            if (col_loc.eq.4) then
+                if (sym_type_loc.eq.1) then
+                    if (n_plot.ne.3) then
+                        istat = 1
+                        call writo('For vector field plots, need 3 dimensions',&
+                            &warning=.true.)
+                        CHCKSTT
+                    end if
+                else
+                    if (n_plot.ne.2) then
+                        istat = 1
+                        call writo('For symmetric vector field plots, need 2 &
+                            &dimensions',warning=.true.)
+                        CHCKSTT
+                    end if
+                end if
+            end if
+            
             ! set up local var_names
             allocate(grd_names(n_plot))
             allocate(att_names(n_plot))
@@ -1244,17 +1271,22 @@ contains
         ! create grid for collection if not continued plot
         if (.not.cont_plot_loc) allocate(grids(n_plot))
             
-        ! allocate geometry arrays
+        ! allocate data item arrays
         if (sym_type_loc.eq.1) then                                             ! 3D grid
-            allocate(XYZ(3))
+            allocate(dat(3))
         else                                                                    ! 2D grid
-            allocate(XYZ(2))
+            allocate(dat(2))
         end if
         
         ! loop over all plots
         do id = 1,n_plot
-            ! print topology if not continued plot
-            if (.not.cont_plot_loc) then
+            ! set up whether last vector component
+            ! (for scalar plots, this is always true)
+            first_vc = (id.eq.1 .or. col_loc.ne.4)
+            last_vc = (id.eq.n_plot .or. col_loc.ne.4)
+            
+            ! print topology if not continued plot and last vector components
+            if (.not.cont_plot_loc .and. last_vc) then
                 if (sym_type_loc.eq.1) then                                     ! 3D grid
                     call print_HDF5_top(top,2,tot_dim_3D,ind_plot=ind_plot)
                 else                                                            ! 2D grid
@@ -1266,77 +1298,100 @@ contains
             call assign_pointers(id)
             
             ! print data  item for X, Y  and Z (no symmetry),  R = sqrt(X^2+Y^2)
-            ! and Z (poloidal symmetry) or X and Y (toroidal symmetry)
-            select case (sym_type_loc)
-                case (1)                                                        ! no symmetry
-                    istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
-                        &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                    istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                        &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                    istat = print_HDF5_3D_data_item(XYZ(3),file_info,&
-                        &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                case (2)                                                        ! poloidal symmetry
-                    istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
-                        &'R_'//trim(i2str(id)),sqrt(X_3D**2+Y_3D**2),&
-                        &tot_dim_3D,loc_dim_3D,loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                    istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                        &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                case (3)                                                        ! toroidal symmetry
-                    istat = print_HDF5_3D_data_item(XYZ(1),file_info,&
-                        &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                    istat = print_HDF5_3D_data_item(XYZ(2),file_info,&
-                        &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
-                        &loc_offset_3D,ind_plot=ind_plot,&
-                        &cont_plot=cont_plot_loc)
-                    CHCKSTT
-                case default                                                    ! no symmetry
-                    istat = 1
-                    call writo('symmetry type '//trim(i2str(sym_type_loc))//&
-                        &' not recognized',persistent=.true.,warning=.true.)
-                    CHCKSTT
-            end select
+            ! and Z (poloidal symmetry) or X  and Y (toroidal symmetry) if first
+            ! vector component (afterwards, dat is overwritten)
+            if (first_vc) then
+                select case (sym_type_loc)
+                    case (1)                                                   ! no symmetry
+                        istat = print_HDF5_3D_data_item(dat(1),file_info,&
+                            &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                        istat = print_HDF5_3D_data_item(dat(2),file_info,&
+                            &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                        istat = print_HDF5_3D_data_item(dat(3),file_info,&
+                            &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                    case (2)                                                   ! poloidal symmetry
+                        istat = print_HDF5_3D_data_item(dat(1),file_info,&
+                            &'R_'//trim(i2str(id)),sqrt(X_3D**2+Y_3D**2),&
+                            &tot_dim_3D,loc_dim_3D,loc_offset_3D,&
+                            &ind_plot=ind_plot,cont_plot=cont_plot_loc)
+                        CHCKSTT
+                        istat = print_HDF5_3D_data_item(dat(2),file_info,&
+                            &'Z_'//trim(i2str(id)),Z_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                    case (3)                                                   ! toroidal symmetry
+                        istat = print_HDF5_3D_data_item(dat(1),file_info,&
+                            &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                        istat = print_HDF5_3D_data_item(dat(2),file_info,&
+                            &'Y_'//trim(i2str(id)),Y_3D,tot_dim_3D,loc_dim_3D,&
+                            &loc_offset_3D,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        CHCKSTT
+                    case default                                               ! no symmetry
+                        istat = 1
+                        call writo('symmetry type '//&
+                            &trim(i2str(sym_type_loc))//' not recognized',&
+                            &persistent=.true.,warning=.true.)
+                        CHCKSTT
+                end select
+            end if
             
-            ! print geometry with X, Y and Z data item if not continued plot
-            if (.not.cont_plot_loc) then
-                if (sym_type_loc.eq.1) then                                         ! no symmetry so 3D geometry
-                    call print_HDF5_geom(geom,2,XYZ,reset=.true.,&
+            ! print geometry with X, Y and Z data item if not continued plot and
+            ! first vector component
+            if (.not.cont_plot_loc .and. first_vc) then
+                if (sym_type_loc.eq.1) then                                     ! no symmetry so 3D geometry
+                    call print_HDF5_geom(geom,2,dat,reset=.true.,&
                         &ind_plot=ind_plot)
-                else                                                                ! symmetry so 2D geometry
-                    call print_HDF5_geom(geom,1,XYZ,reset=.true.,&
+                else                                                            ! symmetry so 2D geometry
+                    call print_HDF5_geom(geom,1,dat,reset=.true.,&
                         &ind_plot=ind_plot)
                 end if
             end if
             
             ! print data item for plot variable
-            istat = print_HDF5_3D_data_item(XYZ(1),file_info,'var_'//&
-                &trim(i2str(id)),var_3D,tot_dim_3D,loc_dim_3D,loc_offset_3D,&
-                &ind_plot=ind_plot,cont_plot=cont_plot_loc)                     ! reuse XYZ(1)
+            if (col_loc.eq.4) then
+                att_id = id
+            else
+                att_id = 1
+            end if
+            istat = print_HDF5_3D_data_item(dat(att_id),file_info,'var_'//&
+                &trim(i2str(id)),var_3D,tot_dim_3D,loc_dim_3D,&
+                &loc_offset_3D,ind_plot=ind_plot,cont_plot=cont_plot_loc)
             CHCKSTT
             
             ! print attribute with this data item if not continued plot
-            if (.not.cont_plot_loc) call print_HDF5_att(att(1),XYZ(1),&
-                &att_names(id),1,reset=.true.,ind_plot=ind_plot)
-            
-            ! create a  grid with the topology, the geometry,  the attribute and
-            ! time if time collection, if not continued plot
             if (.not.cont_plot_loc) then
+                if (col_loc.eq.4) then
+                    if (last_vc) then
+                        call merge_HDF5_3D_data_items(dat_vec,dat,'var_vec',&
+                            &tot_dim_3D,reset=.true.,ind_plot=ind_plot,&
+                            &cont_plot=cont_plot_loc)
+                        call print_HDF5_att(att(1),dat_vec,&
+                            &att_names(1),1,2,reset=.true.,ind_plot=ind_plot)
+                    end if
+                else
+                    call print_HDF5_att(att(1),dat(1),&
+                        &att_names(id),1,1,reset=.true.,ind_plot=ind_plot)
+                end if
+            end if
+            
+            ! create a grid  with the topology, the geometry,  the attribute and
+            ! time if  time collection,  if not continued  plot and  last vector
+            ! component
+            if (.not.cont_plot_loc .and. last_vc) then
                 if (col_loc.eq.2) then                                          ! time collection
                     istat = print_HDF5_grid(grids(id),grd_names(id),1,&
                         &grid_time=id*1._dp,grid_top=top,grid_geom=geom,&
@@ -1354,9 +1409,10 @@ contains
         ! either create collection or just use individual grids if not continued
         ! plot
         if (.not.cont_plot_loc) then
-            if (col_loc.eq.1) then
+            if (col_loc.eq.1 .or. col_loc.eq.4) then
                 ! add individual grids to HDF5 file and reset them
                 do id = 1,n_plot
+                    if (col_loc.eq.4 .and. id.lt.n_plot) cycle                  ! only plot last for vector
                     istat = add_HDF5_item(file_info,grids(id),reset=.true.,&
                     &ind_plot=ind_plot)
                     CHCKSTT
@@ -1382,7 +1438,7 @@ contains
         ! clean up
         nullify(var_3D)
         nullify(X_3D,Y_3D,Z_3D)
-        call dealloc_XML_str(XYZ)
+        call dealloc_XML_str(dat)
         if (.not.cont_plot_loc) then
             call dealloc_XML_str(grids)
             call dealloc_XML_str(top)
@@ -1472,7 +1528,7 @@ contains
         end subroutine assign_pointers
     end subroutine plot_HDF5_arr
     subroutine plot_HDF5_ind(var_name,file_name,var,tot_dim,loc_offset,&
-        &X,Y,Z,description)                                                     ! individual version
+        &X,Y,Z,cont_plot,description)                                           ! individual version
         
         ! input / output
         character(len=*), intent(in) :: var_name                                ! name of variable to be plot
@@ -1483,6 +1539,7 @@ contains
         real(dp), intent(in), target, optional :: X(:,:,:)                      ! curvlinear grid X points
         real(dp), intent(in), target, optional :: Y(:,:,:)                      ! curvlinear grid Y points
         real(dp), intent(in), target, optional :: Z(:,:,:)                      ! curvlinear grid Z points
+        logical, intent(in), optional :: cont_plot                              ! continued plot
         character(len=*), intent(in), optional :: description                   ! description
         
         ! local variables
@@ -1503,14 +1560,14 @@ contains
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 else
                     call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,loc_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 end if
             else
                 if (present(Z)) then
@@ -1519,13 +1576,13 @@ contains
                         &tot_dim_loc,loc_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 else
                     call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,loc_offset_loc,&
                         &X=reshape(X,[size(X,1),size(X,2),size(X,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 end if
             end if
         else
@@ -1536,13 +1593,13 @@ contains
                         &tot_dim_loc,loc_offset_loc,&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
                         &Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 else
                     call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,loc_offset_loc,&
                         &Y=reshape(Y,[size(Y,1),size(Y,2),size(Y,3),1]),&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 end if
             else
                 if (present(Z)) then
@@ -1550,12 +1607,12 @@ contains
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,loc_offset_loc,&
                         &col=1,Z=reshape(Z,[size(Z,1),size(Z,2),size(Z,3),1]),&
-                        &description=description)
+                        &cont_plot=cont_plot,description=description)
                 else
                     call plot_HDF5_arr([var_name],file_name,&
                         &reshape(var,[size(var,1),size(var,2),size(var,3),1]),&
                         &tot_dim_loc,loc_offset_loc,&
-                        &col=1,description=description)
+                        &col=1,cont_plot=cont_plot,description=description)
                 end if
             end if
         end if

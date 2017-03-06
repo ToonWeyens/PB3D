@@ -168,7 +168,7 @@ contains
                 CHCKERR('')
                 
                 ! Calculate the metric equilibrium quantities
-                ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
+                ierr = calc_eq(grid_eq,eq_1,eq_2)
                 CHCKERR('')
                 
 #if ldebug
@@ -181,9 +181,6 @@ contains
                 ! broadcast metric equilibrium variables to full variables
                 ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
                 CHCKERR('')
-                
-                ! clean up
-                call eq_2%dealloc()
             case (2)                                                            ! HELENA
                 ! For  first  Richardson  level,  calculate  metric  equilibrium
                 ! variables and then broadcast them to full normal grid. For the
@@ -195,7 +192,7 @@ contains
                     CHCKERR('')
                     
                     ! Calculate the metric equilibrium quantities
-                    ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
+                    ierr = calc_eq(grid_eq,eq_1,eq_2)
                     CHCKERR('')
                     
 #if ldebug
@@ -212,9 +209,6 @@ contains
                     ! broadcast metric equilibrium variables to full variables
                     ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
                     CHCKERR('')
-                    
-                    ! clean up
-                    call eq_2%dealloc()
                 end if
                 
                 ! set up field-aligned equilibrium grid
@@ -232,8 +226,8 @@ contains
         
         ! plot magnetic field if requested
         ! (done in parts, for every parallel job)
-        if (plot_B .and. rich_lvl.eq.1) then
-            ierr = B_plot(grid_eq,grid_eq,eq_2)
+        if (plot_B) then
+            ierr = B_plot(grid_eq,eq_2,rich_lvl=rich_lvl)
             CHCKERR('')
         else
             call writo('Magnetic field plot not requested')
@@ -244,14 +238,20 @@ contains
         call lvl_ud(1)
         call grid_eq%dealloc()
         call eq_1%dealloc()
-        if (eq_style.eq.2) then
-            call grid_eq_B%dealloc()
-            deallocate(grid_eq_B)
-        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                call eq_2%dealloc()
+            case (2)                                                            ! HELENA
+                if (rich_lvl.eq.1) call eq_2%dealloc()
+                call grid_eq_B%dealloc()
+                deallocate(grid_eq_B)
+        end select
         nullify(grid_eq_B)
         call lvl_ud(-1)
         
         ! plot full field-aligned grid if requested
+        ! Note: As  this needs a total  grid, it cannot be  easiliy created like
+        ! plot_B, where the output is updated for every equilibrium job.
         if (plot_magn_grid .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
             ! allocate
             allocate(grid_eq_B)

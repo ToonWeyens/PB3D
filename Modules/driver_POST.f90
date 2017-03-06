@@ -455,10 +455,12 @@ contains
         &result(ierr)
         
         use num_vars, only: no_output, no_plots, eq_style, plot_grid_style, &
-            &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr
+            &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr, &
+            &plot_B
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
+        use grid_ops, only: B_plot
         use eq_vars, only: max_flux_F
         use eq_ops, only: calc_eq, calc_derived_q
         use eq_utilities, only: calc_F_derivs
@@ -486,6 +488,7 @@ contains
         logical :: no_output_loc                                                ! local copy of no_output
         logical :: last_eq_job                                                  ! last parallel job
         real(dp), allocatable :: XYZ(:,:,:,:)                                   ! X, Y and Z on output grid
+        real(dp), allocatable :: R(:,:,:)                                       ! R on output grid
         complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! solution eigenvalue for requested solutions
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -597,18 +600,16 @@ contains
         end if
         
         ! set up XYZ
-        allocate(XYZ(grids(2)%n(1),grids(2)%n(2),&
-            &grids(2)%loc_n_r,3))
+        allocate(XYZ(grids(2)%n(1),grids(2)%n(2),grids(2)%loc_n_r,3))
         select case (plot_grid_style)
-            case (0,3)                                                          ! 3-D geometry
+            case (0)                                                            ! 3-D geometry
+                ! user output
+                call writo('Plots are done in 3-D geometry')
+                call lvl_ud(1)
+                
                 ierr = calc_XYZ_grid(grid_eq_XYZ,grids(2),&
                     &XYZ(:,:,:,1),XYZ(:,:,:,2),XYZ(:,:,:,3))
                 CHCKERR('')
-                if (plot_grid_style.eq.3) then
-                    call writo('Plots are done in an unwrapped torus')
-                    XYZ(:,:,:,1) = sqrt(XYZ(:,:,:,1)**2+XYZ(:,:,:,2)**2)        ! set X to R coordinate
-                    XYZ(:,:,:,2) = grids(2)%zeta_F                              ! set Y to toroidal coordinate
-                end if
                 !!! To plot the cross-section
                 !!call print_ex_2D(['cross_section'],'cross_section_'//&
                     !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
@@ -616,6 +617,27 @@ contains
                 !!call draw_ex(['cross_section'],'cross_section_'//&
                     !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
                     !!&size(XYZ,3),1,.false.)
+                
+                call lvl_ud(-1)
+            case (3)                                                            ! 3-D geometry with straightened toroidal coordinate
+                ! user output
+                call writo('Plots are done in an unwrapped torus')
+                
+                allocate(R(grids(2)%n(1),grids(2)%n(2),grids(2)%loc_n_r))
+                ierr = calc_XYZ_grid(grid_eq_XYZ,grids(2),&
+                    &XYZ(:,:,:,1),XYZ(:,:,:,2),XYZ(:,:,:,3),R=R)
+                CHCKERR('')
+                XYZ(:,:,:,1) = R                                                ! set X to R coordinate
+                XYZ(:,:,:,2) = grids(2)%zeta_F                                  ! set Y to toroidal coordinate
+                !!! To plot the cross-section
+                !!call print_ex_2D(['cross_section'],'cross_section_'//&
+                    !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
+                    !!&XYZ(:,1,:,3),x=XYZ(:,1,:,1),draw=.false.)
+                !!call draw_ex(['cross_section'],'cross_section_'//&
+                    !!&trim(i2str(eq_job_nr))//'_'//trim(i2str(rank)),&
+                    !!&size(XYZ,3),1,.false.)
+                
+                call lvl_ud(-1)
             case (1,2)                                                          ! slab geometry (with or without wrapping to fundamental interval)
                 ! user output
                 call writo('Plots are done in slab geometry')
@@ -653,7 +675,7 @@ contains
                         &max_flux_F*2*pi
                 end do
                 
-                ! limit to fundamental interval -1..1
+                ! limit to fundamental interval -1..1 if plot style 2
                 if (plot_grid_style.eq.2) XYZ(:,:,:,1:2) = &
                     &modulo(XYZ(:,:,:,1:2)+1._dp,2._dp)-1._dp
                 
@@ -704,6 +726,15 @@ contains
                     &trim(i2str(size(sol%val)))//', with eigenvalue '&
                     &//trim(c2strt(sol%val(id))))
                 call lvl_ud(1)
+                
+                ! plot magnetic field if requested
+                if (plot_B) then
+                    call writo('Plot the magnetic field')
+                    call lvl_ud(1)
+                    ierr = B_plot(grids(1),eq_2)
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                end if
                 
                 ! user output
                 call writo('Plot the Eigenvector')

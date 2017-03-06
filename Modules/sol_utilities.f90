@@ -377,10 +377,12 @@ contains
     ! Calculate  the Cartesian  components  of the  plasma  perturbation or  the
     ! magnetic perturbation.
     ! See calc_XUQ for a discussion on the grids.
+    ! Note:  currently only  supports VMEC.  See "B_plot"  for how  it could  be
+    ! extended to HELENA.
     integer function calc_pert_cart_comp_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,&
         &X_id,pert_style,time,ccomp) result(ierr)                               ! (time) array version
         use num_utilities, only: c
-        use num_vars, only: norm_disc_prec_X
+        use num_vars, only: norm_disc_prec_X, eq_style
         use grid_utilities, only: setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_pert_cart_comp'
@@ -407,6 +409,12 @@ contains
         real(dp), allocatable :: g_FD_int(:,:,:,:)                              ! interpolated g_FD
         real(dp), allocatable :: R_int(:,:,:)                                   ! interpolated R
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        
+        ! tests
+        if (eq_style.eq.2) then
+            ierr = 1
+            CHCKERR('Currently only VMEC supported')
+        end if
         
         ! setup normal interpolation data for equilibrium grid
         ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
