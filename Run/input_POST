@@ -6,20 +6,20 @@
     plot_sol                = .true.
     plot_E_rec              = .true.
     norm_disc_prec_sol      = 3
-    n_zeta_plot             = 10
+    n_zeta_plot             = 100
     min_zeta_plot           = 0.0
     max_zeta_plot           = 0.25
     min_r_plot              = 0.5
     max_r_plot              = 0.7
-    n_theta_plot            = 50
+    n_theta_plot            = 100
     min_theta_plot          = 0.0
     max_theta_plot          = 0.5
-    POST_style              = 1
+    POST_style              = 2
     plot_grid_style         = 0
     ex_plot_style           = 2
     PB3D_rich_lvl           = 1
-    pert_mult_factor_POST   = 0.0001
-    max_tot_mem_per_proc    = 2000
+    pert_mult_factor_POST   = 0.001
+    max_tot_mem_per_proc    = 400
 /
     PB3D_rich_lvl           = 1
     min_zeta_plot           = 0.0

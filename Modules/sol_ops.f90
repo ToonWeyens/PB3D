@@ -8,7 +8,7 @@ module sol_ops
     use str_utilities
     use output_ops
     use messages
-    use num_vars, only: dp, iu, max_str_ln, pi
+    use num_vars, only: dp, iu, max_str_ln, pi, rank
     use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
@@ -95,9 +95,10 @@ contains
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id) result(ierr)
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
-            &eq_job_nr, eq_jobs_lims, eq_job_nr
-        use grid_utilities, only: trim_grid
-        use sol_utilities, only: calc_XUQ, calc_pert_cart_comp
+            &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_sol
+        use grid_utilities, only: trim_grid, calc_vec_comp, setup_interp_data, &
+            &apply_disc
+        use sol_utilities, only: calc_XUQ
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
         use num_utilities, only: con2dis, c
@@ -120,7 +121,7 @@ contains
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: kd                                                           ! counter
+        integer :: id, kd                                                       ! counters
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
@@ -128,14 +129,20 @@ contains
         logical :: cont_plot                                                    ! continued plot
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
-        real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
+        real(dp), allocatable :: XYZ_vec(:,:,:,:,:)                             ! copies of XYZ for vector plot
+        real(dp), allocatable :: h_FD_int(:,:,:,:)                              ! interpolated h_FD on solution grid
+        real(dp), allocatable :: g_FD_int(:,:,:,:)                              ! interpolated g_FD on solution grid
+        real(dp), allocatable :: jac_FD_int(:,:,:)                              ! interpolated jac_FD on solution grid
         real(dp), allocatable :: f_plot_phase(:,:,:,:)                          ! phase of f_plot
+        real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
+        real(dp), allocatable :: f_mag(:,:,:)
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: var_name(2)                                ! name of variable that is plot
         character(len=max_str_ln) :: file_name(2)                               ! name of file
         character(len=max_str_ln) :: description(2)                             ! description
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
 #if ldebug
         real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
         type(disc_type) :: norm_deriv_data                                      ! normal derivative data
@@ -202,6 +209,9 @@ contains
             plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
         end if
         
+        ! set up continued plot
+        cont_plot = eq_job_nr.gt.1
+        
         ! For each time step, calculate the time (as fraction of Alfvén time)
         allocate(time(product(n_t)))
         do kd = 1,product(n_t)
@@ -213,36 +223,6 @@ contains
             end if
         end do
         
-        ! set up XYZ
-        allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
-            &size(time),3))
-        if (abs(pert_mult_factor_POST).lt.tol_zero) then
-            ! set up copies of XYZ for plot
-            do kd = 1,product(n_t)
-                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
-            end do
-        else
-            ! calculate Cartesian components of the perturbation
-            allocate(ccomp(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
-                &size(time),3))
-            ierr = calc_pert_cart_comp(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,1,&
-                &time,ccomp)
-            CHCKERR('')
-            
-            ! perturb the position vector (X,Y,Z)
-            call writo('Perturbing the position vector (X,Y,Z) with &
-                &multiplicative factor '//trim(r2strt(pert_mult_factor_POST)))
-            do kd = 1,product(n_t)
-                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:) + &
-                    &ccomp(:,:,norm_id(1):norm_id(2),kd,:)*pert_mult_factor_POST
-            end do
-        end if
-        
-        ! calculate omega =  sqrt(sol_val) and make sure to  select the decaying
-        ! solution
-        omega = sqrt(sol%val(X_id))
-        if (ip(omega).gt.0) omega = - omega                                     ! exploding solution, not the decaying one
-        
         ! calculate  the function  to  plot: normal  and  geodesic component  of
         ! perturbation X_F
         allocate(f_plot(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
@@ -253,6 +233,115 @@ contains
         ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,2,time,&
             &f_plot(:,:,:,:,2))
         CHCKERR('')
+        
+        ! set up XYZ
+        allocate(XYZ_plot(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
+            &size(time),3))
+        if (abs(pert_mult_factor_POST).lt.tol_zero) then
+            ! set up copies of XYZ for plot
+            do kd = 1,product(n_t)
+                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
+            end do
+        else
+            ! user output
+            call writo('Perturbing the position vector (X,Y,Z) with &
+                &multiplicative factor '//trim(r2strt(pert_mult_factor_POST)))
+            call lvl_ud(1)
+            
+            ! set up interpolated metric factors
+            allocate(h_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,&
+                &size(eq_2%h_FD,4)))
+            allocate(g_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,&
+                &size(eq_2%g_FD,4)))
+            allocate(jac_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+            
+            ! setup normally interpolated metric factors in solution grid
+            ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
+                &norm_interp_data,norm_disc_prec_sol)
+            CHCKERR('')
+            ierr = apply_disc(eq_2%h_FD(:,:,:,:,0,0,0),norm_interp_data,&
+                &h_FD_int,3)
+            CHCKERR('')
+            ierr = apply_disc(eq_2%g_FD(:,:,:,:,0,0,0),norm_interp_data,&
+                &g_FD_int,3)
+            CHCKERR('')
+            ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),norm_interp_data,&
+                &jac_FD_int,3)
+            CHCKERR('')
+            call norm_interp_data%dealloc()
+            
+            ! calculate  Flux components  of the  perturbation and  transform to
+            ! cartesian
+            allocate(ccomp(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,3,2))
+            allocate(f_mag(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+            allocate(XYZ_vec(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,3,3))
+            do kd = 1,product(n_t)
+                ! covariant components:
+                !   xi . e_alpha = U J^2 h22/g33
+                !   xi . e_psi   = X 1/h22 - U J^2 h12/g33
+                !   xi . e_theta = 0
+                ccomp(:,:,:,1,1) = rp(f_plot(:,:,:,kd,2)) * &
+                    &jac_FD_int**2*h_FD_int(:,:,:,c([2,2],.true.))/&
+                    &g_FD_int(:,:,:,c([3,3],.true.))
+                ccomp(:,:,:,2,1) = rp(f_plot(:,:,:,kd,1)) * &
+                    &1._dp/h_FD_int(:,:,:,c([2,2],.true.)) - &
+                    &rp(f_plot(:,:,:,kd,2)) * &
+                    &jac_FD_int**2*h_FD_int(:,:,:,c([1,2],.true.))/&
+                    &g_FD_int(:,:,:,c([3,3],.true.))
+                ccomp(:,:,:,3,1) = 0._dp
+                
+                ! contravariant components:
+                !   xi . nabla alpha = X h12/h22 + U
+                !   xi . nabla psi   = X
+                !   xi . nabla theta = X h23/h22 - U g13/g33
+                ccomp(:,:,:,1,2) = rp(f_plot(:,:,:,kd,1)) * &
+                    &h_FD_int(:,:,:,c([1,2],.true.))/&
+                    &h_FD_int(:,:,:,c([2,2],.true.)) + &
+                    &rp(f_plot(:,:,:,kd,2))
+                ccomp(:,:,:,2,2) = rp(f_plot(:,:,:,kd,1))
+                ccomp(:,:,:,3,2) = rp(f_plot(:,:,:,kd,1)) * &
+                    &h_FD_int(:,:,:,c([3,2],.true.))/&
+                    &h_FD_int(:,:,:,c([2,2],.true.)) - &
+                    &rp(f_plot(:,:,:,kd,2)) * &
+                    &g_FD_int(:,:,:,c([3,1],.true.))/&
+                    &g_FD_int(:,:,:,c([3,3],.true.)) 
+                
+                ! multiplication factor
+                ccomp = ccomp*pert_mult_factor_POST
+                
+                ! transform to Cartesian components
+                ierr = calc_vec_comp(grid_X,grid_eq,eq_2,ccomp,&
+                    &norm_disc_prec_sol)
+                CHCKERR('')
+                
+                ! vector plot
+                do id = 1,3
+                    XYZ_vec(:,:,:,id,:) = XYZ(:,:,norm_id(1):norm_id(2),:)
+                end do
+                call plot_HDF5(['xi'],'xi_T_'//trim(i2str(kd)),&
+                    &ccomp(:,:,norm_id(1):norm_id(2),:,1),&
+                    &tot_dim=[plot_dim(1:3),3],loc_offset=[plot_offset(1:3),0],&
+                    &X=XYZ_vec(:,:,:,:,1),Y=XYZ_vec(:,:,:,:,2),&
+                    &Z=XYZ_vec(:,:,:,:,3),col=4,cont_plot=cont_plot,description=&
+                    &'perturbation for time t = '//trim(r2strt(time(kd))))
+                
+                ! perturb position vector; it does not matter whether we take
+                ! covariant or contravariant components
+                XYZ_plot(:,:,:,kd,:) = XYZ(:,:,norm_id(1):norm_id(2),:) + &
+                    &ccomp(:,:,norm_id(1):norm_id(2),:,1)
+            end do
+            
+            ! clean up
+            deallocate(g_FD_int,h_FD_int,jac_FD_int)
+            deallocate(XYZ_vec)
+            
+            call lvl_ud(-1)
+        end if
+        
+        ! calculate omega =  sqrt(sol_val) and make sure to  select the decaying
+        ! solution
+        omega = sqrt(sol%val(X_id))
+        if (ip(omega).gt.0) omega = - omega                                     ! exploding solution, not the decaying one
         
 #if ldebug
         if (debug_plot_sol_vec) then
@@ -355,9 +444,6 @@ contains
         allocate(f_plot_phase(grid_eq%n(1),grid_eq%n(2),grid_sol_trim%loc_n_r,&
             &product(n_t)))
         
-        ! set up continued plot
-        cont_plot = eq_job_nr.gt.1
-        
         do kd = 1,2
             call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
                 &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
@@ -379,16 +465,6 @@ contains
                 &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
                 &description=description(kd))
         end do
-        
-        if (abs(pert_mult_factor_POST).ge.tol_zero) then
-            call plot_HDF5(['total perturbation'],trim(i2str(X_id))//&
-                &'_sol_pert',norm2(ccomp(:,:,norm_id(1):norm_id(2),:,:),5),&
-                &tot_dim=plot_dim,loc_offset=plot_offset,&
-                &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
-                &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
-                &description='Norm of solution perturbation for Eigenvalue '//&
-                &trim(i2str(X_id))//' with omega = '//trim(r2str(rp(omega))))
-        end if
         
         ! clean up
         call grid_sol_trim%dealloc()

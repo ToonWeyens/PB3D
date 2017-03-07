@@ -692,9 +692,6 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        ! deallocate memory-thirsty trigonometric factors
-        if (eq_style.eq.1) deallocate(grids(2)%trigon_factors)
-        
         call lvl_ud(-1)
         
         ! open decomposition log file if first parallel job

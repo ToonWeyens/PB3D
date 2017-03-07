@@ -677,3 +677,8 @@ CHANGELOG
       - Fixed bugs in the plotting of B for HELENA.
       - The routines in "calc_B" have been generalized for any vector in "calc_vec_comp" in grid_utilities and are called by "B_plot".
       - "calc_pert_cart_comp" should be replaced by "calc_vec_comp" but for this, the calc_vec_comp needs to interpolate transformation matrices.
+
+1.56: - Extended "calc_vec_comp" to include arbitrary grids.
+      - "calc_pert_cart_comp" is not used any more.
+      - "plot_HDF5" needs to be rewritten for general vectors, not using collection type 4, so that it can also take into account the possible projection of a vector on the symmetry plane. This is for the future.
+      - "adapt_inoutput_POST" is removed, as also the solution grid can be perturbed for field-aligned grids as well.

@@ -476,15 +476,24 @@ contains
         if (present(deriv)) deriv_loc = deriv
         if (present(sym)) sym_loc = sym
         
+        ! set dimensions
+        dims = shape(varr)
+        
         ! test
         if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
             ierr = 1
             err_msg = 'Need at least the cosine or the sine factor'
             CHCKERR(err_msg)
         end if
-        
-        ! set dimensions
-        dims = shape(varr)
+        if (size(trigon_factors,1).ne.mnmax_V .and. &
+            &size(trigon_factors,2).ne.dims(1) .and. &
+            &size(trigon_factors,3).ne.dims(2) .and. &
+            &size(trigon_factors,4).ne.dims(3) .and. &
+            &size(trigon_factors,5).ne.2) then
+            ierr = 1
+            err_msg = 'Trigonometric factors are not set up'
+            CHCKERR(err_msg)
+        end if
         
         ! initialize
         varr = 0.0_dp

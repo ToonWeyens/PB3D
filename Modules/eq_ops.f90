@@ -3483,10 +3483,9 @@ contains
             &apply_disc, calc_vec_comp
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
-            &norm_disc_prec_eq, ltest
+        use num_vars, only: eq_style, norm_disc_prec_eq
         use num_utilities, only: c
-        use eq_vars, only: R_0, B_0
+        use eq_vars, only: B_0
         use VMEC, only: calc_trigon_factors
         use input_utilities, only: get_log
         
@@ -3506,11 +3505,10 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! if VMEC, calculate trigonometric factors of output grid
+        ! tests
         if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
-            ierr = calc_trigon_factors(grid_eq%theta_E,&
-                &grid_eq%zeta_E,grid_eq%trigon_factors)
-            CHCKERR('')
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
         end if
         
         ! set up components and magnitude of B
@@ -3532,7 +3530,8 @@ contains
         end if
         
         ! transform coordinates
-        ierr = calc_vec_comp(grid_eq,eq,B_com,B_mag,base_name)
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq,B_com,norm_disc_prec_eq,&
+            &v_mag=B_mag,base_name=base_name)
         CHCKERR('')
     end function B_plot
     

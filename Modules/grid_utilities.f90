@@ -2152,14 +2152,13 @@ contains
     ! [0,0,0].
     ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
     ! beforehand.
-    integer function calc_vec_comp(grid_eq,eq,B_com,B_mag,base_name,&
-        &max_transf) result(ierr)
+    integer function calc_vec_comp(grid,grid_eq,eq,v_com,norm_disc_prec,v_mag,&
+        &base_name,max_transf) result(ierr)
         
         use grid_vars, only: grid_type, disc_type
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
-            &norm_disc_prec_eq
+        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style
         use num_utilities, only: c
         use eq_vars, only: R_0
         use VMEC, only: calc_trigon_factors
@@ -2167,10 +2166,12 @@ contains
         character(*), parameter :: rout_name = 'calc_vec_comp'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(grid_type), intent(in) :: grid                                     ! grid on which vector is calculated
+        type(grid_type), intent(in) :: grid_eq                                  ! grid on which equilibrium variables are calculated
         type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
-        real(dp), intent(inout) :: B_com(:,:,:,:,:)                             ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
-        real(dp), intent(inout) :: B_mag(:,:,:)                                 ! magnitude of B (dim1,dim2,dim3)
+        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             ! covariant and contravariant components of v (dim1,dim2,dim3,3,2)
+        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
+        real(dp), intent(inout), optional :: v_mag(:,:,:)                       ! magnitude of v (dim1,dim2,dim3)
         character(len=*), intent(in), optional :: base_name                     ! base name for output plotting
         integer, intent(in), optional :: max_transf                             ! maximum transformation level (1: Flux, 2: Equilibrium, 3: Cylindrical, 4: Cartesian [def])
         
@@ -2182,19 +2183,21 @@ contains
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         logical :: cont_plot                                                    ! continued plot
-        logical :: do_plot = .false.                                            ! perform plotting
+        logical :: do_plot                                                      ! perform plotting
         character(len=max_str_ln) :: description(3)                             ! description of plots
         character(len=max_str_ln) :: file_names(3)                              ! plot file names
         character(len=max_str_ln) :: var_names(3,2)                             ! variable names
         character(len=5) :: coord_names(3)                                      ! name of coordinates
+        character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: XYZR(:,:,:,:)                                  ! X, Y, Z and R of surface in cylindrical coordinates, untrimmed grid
         real(dp), allocatable :: X(:,:,:,:), Y(:,:,:,:), Z(:,:,:,:)             ! copy of X, Y and Z, trimmed grid
-        real(dp), allocatable :: B_temp(:,:,:,:,:)                              ! temporary variable for B
+        real(dp), allocatable :: v_temp(:,:,:,:,:)                              ! temporary variable for v
         real(dp), allocatable :: T_BA(:,:,:,:,:,:,:), T_AB(:,:,:,:,:,:,:)       ! transformation matrices from A to B
         real(dp), allocatable :: D1R(:,:,:), D2R(:,:,:)                         ! dR/dpsi, dR/dtheta in HELENA coords.
         real(dp), allocatable :: D1Z(:,:,:), D2Z(:,:,:)                         ! dZ/dpsi, dZ/dtheta in HELENA coords.
         type(disc_type) :: norm_deriv_data                                      ! data for normal derivation
         type(disc_type) :: pol_deriv_data                                       ! data for poloidal derivation
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -2204,14 +2207,26 @@ contains
             if (max_transf.ge.1 .and. max_transf.le.4) &
                 &max_transf_loc = max_transf
         end if
+        do_plot = .false.
         if (present(base_name)) then
             if (trim(base_name).ne.'') do_plot = .true.
         end if
         
+        ! setup normal interpolation data for equilibrium grid
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid%loc_r_F,&
+            &norm_interp_data,norm_disc_prec)
+        CHCKERR('')
+        
+        ! set up X, Y, Z and R in grid
+        allocate(XYZR(grid%n(1),grid%n(2),grid%loc_n_r,4))
+        ierr = calc_XYZ_grid(grid_eq,grid,XYZR(:,:,:,1),XYZR(:,:,:,2),&
+            &XYZR(:,:,:,3),R=XYZR(:,:,:,4))
+        CHCKERR('')
+        
         ! if plotting is required
         if (do_plot) then
             ! trim plot grid
-            ierr = trim_grid(grid_eq,grid_trim,norm_id)
+            ierr = trim_grid(grid,grid_trim,norm_id)
             CHCKERR('')
             
             ! set up plot dimensions and local dimensions
@@ -2225,11 +2240,14 @@ contains
                 plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
             end if
             
-            ! calculate XYZR of equilibrium grid, copy to trimmed grid copies
-            allocate(XYZR(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,4))
-            ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZR(:,:,:,1),XYZR(:,:,:,2),&
-                &XYZR(:,:,:,3),R=XYZR(:,:,:,4))
-            CHCKERR('')
+            ! tests
+            if (eq_style.eq.1 .and. .not.allocated(grid%trigon_factors)) then
+                ierr = 1
+                err_msg = 'trigonometric factors not allocated'
+                CHCKERR(err_msg)
+            end if
+            
+            ! copy X, Y and Z to trimmed grid copies
             allocate(X(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
             allocate(Y(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
             allocate(Z(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
@@ -2240,17 +2258,19 @@ contains
             end do
         end if
         
-        ! set up B, T_BA and T_AB
-        allocate(B_temp(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        allocate(T_BA(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,9,0:0,0:0,0:0))
-        allocate(T_AB(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,9,0:0,0:0,0:0))
+        ! set up temporal copy of  v, T_BA and T_AB
+        allocate(v_temp(grid%n(1),grid%n(2),grid%loc_n_r,3,2))
+        allocate(T_BA(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
+        allocate(T_AB(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
         
         ! 1. Flux coordinates (alpha,psi,theta)
-        B_mag = 0._dp
-        do id = 1,3
-            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
-        end do
-        B_mag = sqrt(B_mag)
+        if (present(v_mag)) then
+            v_mag = 0._dp
+            do id = 1,3
+                v_mag = v_mag + v_com(:,:,:,id,1)*v_com(:,:,:,id,2)
+            end do
+            v_mag = sqrt(v_mag)
+        end if
         
         ! set up plot variables
         if (do_plot) then
@@ -2280,12 +2300,13 @@ contains
             file_names(3) = trim(base_name)//'_F_mag'
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
                     &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
                     &description=description(id))
             end do
-            call plot_HDF5('B',trim(file_names(3)),&
-                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+            if (present(v_mag)) &
+                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
                 &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
@@ -2294,25 +2315,33 @@ contains
         
         ! 2.   HELENA   coordinates   (psi,theta,zeta)   or   VMEC   coordinates
         ! (r,theta,phi), by converting using transformation matrices
-        !   (B_i)_H = T_H^F (B_i)_F
-        !   (B^i)_H = (B^i)_F T_F^H
-        B_temp = B_com
-        B_com = 0._dp
+        !   (v_i)_H = T_H^F (v_i)_F
+        !   (v^i)_H = (v^i)_F T_F^H
+        ierr = apply_disc(eq%T_FE(:,:,:,:,0,0,0),norm_interp_data,&
+            &T_AB(:,:,:,:,0,0,0),3)
+        CHCKERR('')
+        ierr = apply_disc(eq%T_EF(:,:,:,:,0,0,0),norm_interp_data,&
+            &T_BA(:,:,:,:,0,0,0),3)
+        CHCKERR('')
+        v_temp = v_com
+        v_com = 0._dp
         do jd = 1,3
             do id = 1,3
-                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + &
-                    &eq%T_EF(:,:,:,c([jd,id],.false.),0,0,0) * &
-                    &B_temp(:,:,:,id,1)
-                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + &
-                    &eq%T_FE(:,:,:,c([id,jd],.false.),0,0,0) * &
-                    &B_temp(:,:,:,id,2)
+                v_com(:,:,:,jd,1) = v_com(:,:,:,jd,1) + &
+                    &T_BA(:,:,:,c([jd,id],.false.),0,0,0) * &
+                    &v_temp(:,:,:,id,1)
+                v_com(:,:,:,jd,2) = v_com(:,:,:,jd,2) + &
+                    &T_AB(:,:,:,c([id,jd],.false.),0,0,0) * &
+                    &v_temp(:,:,:,id,2)
             end do
         end do
-        B_mag = 0._dp
-        do id = 1,3
-            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
-        end do
-        B_mag = sqrt(B_mag)
+        if (present(v_mag)) then
+            v_mag = 0._dp
+            do id = 1,3
+                v_mag = v_mag + v_com(:,:,:,id,1)*v_com(:,:,:,id,2)
+            end do
+            v_mag = sqrt(v_mag)
+        end if
         
         ! set up plot variables
         if (do_plot) then
@@ -2353,12 +2382,13 @@ contains
             end do
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
                     &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
                     &description=description(id))
             end do
-            call plot_HDF5('B',trim(file_names(3)),&
-                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+            if (present(v_mag)) &
+                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
                 &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
@@ -2367,8 +2397,8 @@ contains
         
         ! 3.   cylindrical    coordinates   (R,phi,Z)   by    converting   using
         ! transformation matrices:
-        !   (B_i)_C = T_H^E (B_i)_E
-        !   (B^i)_C = (B^i)_E T_F^X
+        !   (v_i)_C = T_H^E (v_i)_E
+        !   (v^i)_C = (v^i)_E T_F^X
         ! where for VMEC (E=V), the transformation matrix T_VC is tabulated, and
         ! its inverse  is calculate,  and for  HELENA (E=H),  the transformation
         ! matrix T_HC is given by
@@ -2380,26 +2410,28 @@ contains
         T_AB = 0._dp
         select case (eq_style)
             case (1)                                                            ! VMEC
-                T_AB = eq%T_VC(:,:,:,:,0:0,0:0,0:0)
+                ierr = apply_disc(eq%T_VC(:,:,:,:,0,0,0),norm_interp_data,&
+                    &T_AB(:,:,:,:,0,0,0),3)
+                CHCKERR('')
             case (2)                                                            ! HELENA
                 ! setup D1R and D2R, and same thing for Z
-                ! (use untrimmed grid_eq, with ghost region)
-                allocate(D1R(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                allocate(D2R(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                allocate(D1Z(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                allocate(D2Z(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                    &norm_disc_prec_eq)
+                ! (use untrimmed grid, with ghost region)
+                allocate(D1R(grid%n(1),grid%n(2),grid%loc_n_r))
+                allocate(D2R(grid%n(1),grid%n(2),grid%loc_n_r))
+                allocate(D1Z(grid%n(1),grid%n(2),grid%loc_n_r))
+                allocate(D2Z(grid%n(1),grid%n(2),grid%loc_n_r))
+                ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
+                    &norm_disc_prec)
                 CHCKERR('')
                 ierr = apply_disc(XYZR(:,:,:,4)/R_0,norm_deriv_data,D1R,3)
                 CHCKERR('')
                 ierr = apply_disc(XYZR(:,:,:,3)/R_0,norm_deriv_data,D1Z,3)
                 CHCKERR('')
                 call norm_deriv_data%dealloc()
-                do kd = 1,grid_eq%loc_n_r
-                    do jd = 1,grid_eq%n(2)
-                        ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                            &pol_deriv_data,1,norm_disc_prec_eq)
+                do kd = 1,grid%loc_n_r
+                    do jd = 1,grid%n(2)
+                        ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
+                            &pol_deriv_data,1,norm_disc_prec)
                         CHCKERR('')
                         ierr = apply_disc(XYZR(:,jd,kd,4)/R_0,pol_deriv_data,&
                             &D2R(:,jd,kd))
@@ -2419,21 +2451,23 @@ contains
         end select
         ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
         CHCKERR('')
-        B_temp = B_com
-        B_com = 0._dp
+        v_temp = v_com
+        v_com = 0._dp
         do jd = 1,3
             do id = 1,3
-                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + T_BA(:,:,:,&
-                    &c([jd,id],.false.),0,0,0) * B_temp(:,:,:,id,1)
-                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + T_AB(:,:,:,&
-                    &c([id,jd],.false.),0,0,0) * B_temp(:,:,:,id,2)
+                v_com(:,:,:,jd,1) = v_com(:,:,:,jd,1) + T_BA(:,:,:,&
+                    &c([jd,id],.false.),0,0,0) * v_temp(:,:,:,id,1)
+                v_com(:,:,:,jd,2) = v_com(:,:,:,jd,2) + T_AB(:,:,:,&
+                    &c([id,jd],.false.),0,0,0) * v_temp(:,:,:,id,2)
             end do
         end do
-        B_mag = 0._dp
-        do id = 1,3
-            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
-        end do
-        B_mag = sqrt(B_mag)
+        if (present(v_mag)) then
+            v_mag = 0._dp
+            do id = 1,3
+                v_mag = v_mag + v_com(:,:,:,id,1)*v_com(:,:,:,id,2)
+            end do
+            v_mag = sqrt(v_mag)
+        end if
         
         ! set up plot variables
         if (do_plot) then
@@ -2458,12 +2492,13 @@ contains
             end do
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
                     &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
                     &description=description(id))
             end do
-            call plot_HDF5('B',trim(file_names(3)),&
-                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+            if (present(v_mag)) &
+                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
                 &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
@@ -2479,30 +2514,32 @@ contains
         ! components, the factor R becomes 1/R and the transpose is taken.
         T_BA = 0._dp
         T_AB = 0._dp
-        T_AB(:,:,:,c([1,1],.false.),0,0,0) = cos(-grid_eq%zeta_F)
-        T_AB(:,:,:,c([1,2],.false.),0,0,0) = sin(-grid_eq%zeta_F)
+        T_AB(:,:,:,c([1,1],.false.),0,0,0) = cos(-grid%zeta_F)
+        T_AB(:,:,:,c([1,2],.false.),0,0,0) = sin(-grid%zeta_F)
         T_AB(:,:,:,c([2,1],.false.),0,0,0) = -XYZR(:,:,:,4)/R_0*&
-            &sin(-grid_eq%zeta_F)
+            &sin(-grid%zeta_F)
         T_AB(:,:,:,c([2,2],.false.),0,0,0) = XYZR(:,:,:,4)/R_0*&
-            &cos(-grid_eq%zeta_F)
+            &cos(-grid%zeta_F)
         T_AB(:,:,:,c([3,3],.false.),0,0,0) = 1._dp
         ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
         CHCKERR('')
-        B_temp = B_com
-        B_com = 0._dp
+        v_temp = v_com
+        v_com = 0._dp
         do jd = 1,3
             do id = 1,3
-                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + T_BA(:,:,:,&
-                    &c([jd,id],.false.),0,0,0) * B_temp(:,:,:,id,1)
-                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + T_AB(:,:,:,&
-                    &c([id,jd],.false.),0,0,0) * B_temp(:,:,:,id,2)
+                v_com(:,:,:,jd,1) = v_com(:,:,:,jd,1) + T_BA(:,:,:,&
+                    &c([jd,id],.false.),0,0,0) * v_temp(:,:,:,id,1)
+                v_com(:,:,:,jd,2) = v_com(:,:,:,jd,2) + T_AB(:,:,:,&
+                    &c([id,jd],.false.),0,0,0) * v_temp(:,:,:,id,2)
             end do
         end do
-        B_mag = 0._dp
-        do id = 1,3
-            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
-        end do
-        B_mag = sqrt(B_mag)
+        if (present(v_mag)) then
+            v_mag = 0._dp
+            do id = 1,3
+                v_mag = v_mag + v_com(:,:,:,id,1)*v_com(:,:,:,id,2)
+            end do
+            v_mag = sqrt(v_mag)
+        end if
         
         ! set up plot variables
         if (do_plot) then
@@ -2527,22 +2564,26 @@ contains
             end do
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
                     &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
                     &description=description(id))
             end do
-            call plot_HDF5('B',trim(file_names(3)),&
-                &B_mag(:,:,norm_id(1):norm_id(2)),&
+            if (present(v_mag)) &
+                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                &v_mag(:,:,norm_id(1):norm_id(2)),&
                 &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
                 &X=X(:,:,:,1),Y=Y(:,:,:,1),Z=Z(:,:,:,1),&
                 &cont_plot=cont_plot,description=description(3))
             
             ! plot vector as well
-            call plot_HDF5(['B'],'B_vec',B_com(:,:,norm_id(1):norm_id(2),:,1),&
-                &tot_dim=plot_dim,loc_offset=plot_offset,&
-                &X=X,Y=Y,Z=Z,col=4,cont_plot=cont_plot,&
+            call plot_HDF5([trim(base_name)],trim(base_name)//'_vec',&
+                &v_com(:,:,norm_id(1):norm_id(2),:,1),tot_dim=plot_dim,&
+                &loc_offset=plot_offset,X=X,Y=Y,Z=Z,col=4,cont_plot=cont_plot,&
                 &description='magnetic field vector')
         end if
+        
+        ! clean up
+        call norm_interp_data%dealloc()
     end function  calc_vec_comp
     
     ! Calculates the  local number of  parallel grid points for  this Richardson

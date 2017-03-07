@@ -299,8 +299,7 @@ contains
         use grid_vars, only: n_r_eq
         use eq_ops, only: divide_eq_jobs
         use HELENA_vars, only: nchi
-        use num_vars, only: eq_jobs_lims, eq_style, rank, n_procs, &
-            &max_deriv
+        use num_vars, only: eq_style, n_procs, max_deriv
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
@@ -309,9 +308,6 @@ contains
         logical :: only_half_grid                                               ! calculate only half grid with even points
         integer :: n_par_X_loc                                                  ! local n_par_X
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
-        real(dp) :: tot_mem_size                                                ! total memory size per process
-        real(dp), allocatable :: tot_mem_size_full(:)                           ! tot_mem_size for all processes
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0

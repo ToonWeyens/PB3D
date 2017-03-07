@@ -1302,7 +1302,7 @@ contains
             ! vector component (afterwards, dat is overwritten)
             if (first_vc) then
                 select case (sym_type_loc)
-                    case (1)                                                   ! no symmetry
+                    case (1)                                                    ! no symmetry
                         istat = print_HDF5_3D_data_item(dat(1),file_info,&
                             &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
                             &loc_offset_3D,ind_plot=ind_plot,&
@@ -1318,7 +1318,7 @@ contains
                             &loc_offset_3D,ind_plot=ind_plot,&
                             &cont_plot=cont_plot_loc)
                         CHCKSTT
-                    case (2)                                                   ! poloidal symmetry
+                    case (2)                                                    ! poloidal symmetry
                         istat = print_HDF5_3D_data_item(dat(1),file_info,&
                             &'R_'//trim(i2str(id)),sqrt(X_3D**2+Y_3D**2),&
                             &tot_dim_3D,loc_dim_3D,loc_offset_3D,&
@@ -1329,7 +1329,7 @@ contains
                             &loc_offset_3D,ind_plot=ind_plot,&
                             &cont_plot=cont_plot_loc)
                         CHCKSTT
-                    case (3)                                                   ! toroidal symmetry
+                    case (3)                                                    ! toroidal symmetry
                         istat = print_HDF5_3D_data_item(dat(1),file_info,&
                             &'X_'//trim(i2str(id)),X_3D,tot_dim_3D,loc_dim_3D,&
                             &loc_offset_3D,ind_plot=ind_plot,&
@@ -1340,7 +1340,7 @@ contains
                             &loc_offset_3D,ind_plot=ind_plot,&
                             &cont_plot=cont_plot_loc)
                         CHCKSTT
-                    case default                                               ! no symmetry
+                    case default                                                ! no symmetry
                         istat = 1
                         call writo('symmetry type '//&
                             &trim(i2str(sym_type_loc))//' not recognized',&

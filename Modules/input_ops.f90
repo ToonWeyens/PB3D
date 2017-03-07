@@ -199,9 +199,6 @@ contains
                         ! adapt plotting variables if needed
                         call adapt_plot
                         
-                        ! adapt input / output variables if needed
-                        call adapt_inoutput_POST()
-                        
                         ! adapt plot grid and save to solution variable
                         ierr = adapt_sol_grid(min_r_plot,max_r_plot,'plot')
                         CHCKERR('')
@@ -440,21 +437,6 @@ contains
                 end if
             end if
         end function adapt_inoutput
-        
-        ! Checks  whether the variables  concerning output are  chosen correctly
-        ! for POST
-        !   pert_mult_factor_POST can only be nonzero for POST style 1 (extended
-        !   grid) and for VMEC equilbria.
-        ! Note: it uses general tolerance tol_zero
-        subroutine adapt_inoutput_POST()
-            if (abs(pert_mult_factor_POST).ge.tol_zero) then
-                if (POST_style.ne.1 .or. eq_style.ne.1) then
-                    call writo('pert_mult_factor_POST can only be nonzero for &
-                        &VMEC equilibria with POST style 1',warning=.true.)
-                    pert_mult_factor_POST = 0._dp
-                end if
-            end if
-        end subroutine adapt_inoutput_POST
         
         ! Checks whether the variables concerning plotting are chosen correctly:
         !   n_theta_plot and n_zeta_plot have to be positive,
