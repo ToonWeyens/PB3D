@@ -672,3 +672,8 @@ CHANGELOG
       - Fixed a bug in "calc_XYZ_grid" where the inverse toroidal variable was taken wrongly.
       - Previously in XDMF output, the dimensions and number of elements were only written if they were larger than 1. This was removed as it seemed not to work with ParaView.
       - "plot_HDF5" can now also handle vector plots with col=4. The implementation could be generalized and made more elegant and robust.
+
+1.55: - Fixed a bug in the calculation of required memory.
+      - Fixed bugs in the plotting of B for HELENA.
+      - The routines in "calc_B" have been generalized for any vector in "calc_vec_comp" in grid_utilities and are called by "B_plot".
+      - "calc_pert_cart_comp" should be replaced by "calc_vec_comp" but for this, the calc_vec_comp needs to interpolate transformation matrices.

@@ -460,10 +460,9 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
-        use grid_ops, only: B_plot
         use eq_vars, only: max_flux_F
-        use eq_ops, only: calc_eq, calc_derived_q
-        use eq_utilities, only: calc_F_derivs
+        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot
+        use eq_utilities, only: calc_F_derivs, calc_inv_met
         use sol_vars, only: alpha
         use grid_utilities, only: calc_XYZ_grid, setup_interp_data, &
             &apply_disc, copy_grid
@@ -566,6 +565,12 @@ contains
                 CHCKERR('')
                 ierr = interp_HEL_on_grid(grid_X_HEL,grids(2),X_1=X_HEL,&
                     &X_1_out=X,grid_name='output perturbation grid')
+                CHCKERR('')
+                
+                ! also set up transformation matrices if B_plot
+                ierr = calc_T_HF(grids(1),eq_1,eq_2,[0,0,0])
+                CHCKERR('')
+                ierr = calc_inv_met(eq_2%T_FE,eq_2%T_EF,[0,0,0])
                 CHCKERR('')
                 
                 ! synchronize processes

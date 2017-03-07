@@ -342,29 +342,18 @@ contains
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! divide equilibrium jobs
-                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
-                    &n_par_X_base=nchi*1._dp,tot_mem_size=tot_mem_size)         ! everything is tabulated on nchi poloidal points
-                CHCKERR('')
-                
-                ! check whether  calculation for  first Richardson level  can be
-                ! done,  as this  is  the calculation  where  the variables  are
-                ! calculated that are interpolated in all levels.
+                ! Note: calculations for first Richardson  level have to be done
+                ! without  multiple parallel  jobs, as  this is  the calculation
+                ! where the  variables are  calculated that are  interpolated in
+                ! all levels.
                 ! Note: This could be changed, and HELENA could be calculated by
                 ! dividing up  the parallel grid.  However, this is very  low on
                 ! the list of priorities as  it would required ghost regions and
                 ! all those things. For now: use more memory per process or more
                 ! processes.
-                if (rich_lvl.eq.1 .and. size(eq_jobs_lims,2).gt.1) then
-                    ierr = get_ser_var([tot_mem_size],tot_mem_size_full)
-                    CHCKERR('')
-                    if (rank.eq.0) then
-                        ierr = 1
-                        err_msg = 'Need at least '//&
-                            &trim(i2str(ceiling(sum(tot_mem_size_full))))//&
-                            &'MB for HELENA calculations'
-                        CHCKERR(err_msg)
-                    end if
-                end if
+                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
+                    &n_par_X_base=nchi*1._dp,n_div_max=1)                       ! everything is tabulated on nchi poloidal points
+                CHCKERR('')
         end select
         
         ! set use_guess to .false. if user sets no_guess

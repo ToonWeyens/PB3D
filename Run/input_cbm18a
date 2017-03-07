@@ -21,7 +21,7 @@
     norm_style              = 1
     U_style                 = 3
     max_it_slepc            = 500
-    max_tot_mem_per_proc    = 500
+    max_tot_mem_per_proc    = 2000
     plot_magn_grid          = .false.
     plot_B                  = .true.
     plot_flux_q             = .false.

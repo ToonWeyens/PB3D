@@ -14,7 +14,8 @@ module eq_ops
     implicit none
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
-        &print_output_eq, flux_q_plot, broadcast_output_eq, divide_eq_jobs
+        &print_output_eq, flux_q_plot, broadcast_output_eq, divide_eq_jobs, &
+        &calc_T_HF, B_plot
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
@@ -3462,6 +3463,79 @@ contains
         end if
     end subroutine normalize_input
     
+    ! Plots the  magnetic fields. If  multiple equilibrium parallel  jobs, every
+    ! job does its piece, and the results are joined automatically by plot_HDF5.
+    ! The outputs are given in contra- and covariant components and magnitude in
+    ! multiple coordinate systems, as indicated in "calc_vec_comp".
+    ! The starting point is the fact that the magnetic field is given by
+    !   B = e_theta/J
+    ! in F coordinates. The F covariant components are therefore given by
+    !   B_i = g_i3/J
+    ! and the only non-vanishing contravariant component is
+    !   B^3 = 1/J.
+    ! These are then all be transformed to the other coordinate systems.
+    ! Note  that plots for different  Richardson levels can be  combined to show
+    ! the total grid by just plotting them all individually.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    integer function B_plot(grid_eq,eq,rich_lvl) result(ierr)
+        use grid_vars, only: grid_type, disc_type
+        use grid_utilities, only: calc_XYZ_grid, trim_grid, setup_deriv_data, &
+            &apply_disc, calc_vec_comp
+        use eq_vars, only: eq_2_type
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
+            &norm_disc_prec_eq, ltest
+        use num_utilities, only: c
+        use eq_vars, only: R_0, B_0
+        use VMEC, only: calc_trigon_factors
+        use input_utilities, only: get_log
+        
+        character(*), parameter :: rout_name = 'B_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        
+        ! local variables
+        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: B_mag(:,:,:)                                   ! magnitude of B (dim1,dim2,dim3)
+        character(len=10) :: base_name                                          ! base name
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! if VMEC, calculate trigonometric factors of output grid
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = calc_trigon_factors(grid_eq%theta_E,&
+                &grid_eq%zeta_E,grid_eq%trigon_factors)
+            CHCKERR('')
+        end if
+        
+        ! set up components and magnitude of B
+        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(B_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        B_com = 0._dp
+        B_mag = 0._dp
+        do id = 1,3
+            B_com(:,:,:,id,1) = B_0*eq%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq%jac_FD(:,:,:,0,0,0)
+            B_com(:,:,:,3,2) = B_0/eq%jac_FD(:,:,:,0,0,0)
+        end do
+        
+        ! set plot variables
+        base_name = 'B'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates
+        ierr = calc_vec_comp(grid_eq,eq,B_com,B_mag,base_name)
+        CHCKERR('')
+    end function B_plot
+    
     ! Print equilibrium quantities to an output file:
     !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
     !               kappa_n, kappa_g, sigma
@@ -4071,8 +4145,8 @@ contains
     !   -  Though  the perturbation  variables  are  tabulated  in a  grid  with
     !   different normal  extent, their  angular variables do  match. Therefore,
     !   the weighted sum can be used as arr_size.
-    integer function divide_eq_jobs(n_par_X_rich,arr_size,n_par_X_base,&
-        &tot_mem_size) result(ierr)
+    integer function divide_eq_jobs(n_par_X_rich,arr_size,n_div_max,&
+        &n_par_X_base,tot_mem_size) result(ierr)
         
         use num_vars, only: max_tot_mem_per_proc, max_X_mem_per_proc, &
             &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style, n_procs
@@ -4087,6 +4161,7 @@ contains
         ! input / output
         integer, intent(in) :: n_par_X_rich                                     ! number of parallel points in this Richardson level
         integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
+        integer, intent(in), optional :: n_div_max                              ! maximum n_div
         real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
         real(dp), intent(inout), optional :: tot_mem_size                       ! total memory size
         
@@ -4094,8 +4169,9 @@ contains
         real(dp) :: mem_size                                                    ! approximation of memory required for eq variables
         real(dp) :: min_X_mem_per_proc                                          ! approximation of minimum possible memory required for X variables
         real(dp) :: n_par_X_base_loc = 0._dp                                    ! local n_par_X_base
+        integer :: max_mem_req                                                  ! maximum memory required
         integer :: n_div                                                        ! factor by which to divide the total size
-        integer :: n_div_max                                                    ! maximum n_div
+        integer :: n_div_max_loc                                                ! maximum n_div
         integer :: n_par_range                                                  ! nr. of points in range
         integer :: fund_n_par                                                   ! fundamental interval width
         integer, parameter :: min_n_mod_X = 5                                   ! minimum n_mod_X to be done at the same time (5x5 blocks in tensorial phase)
@@ -4130,12 +4206,13 @@ contains
         n_div = 0
         mem_size = huge(1._dp)
         if (rich_lvl.eq.1) then
-            n_div_max = (n_par_X_rich-1)/fund_n_par
+            n_div_max_loc = (n_par_X_rich-1)/fund_n_par
         else
-            n_div_max = n_par_X_rich/fund_n_par
+            n_div_max_loc = n_par_X_rich/fund_n_par
         end if
-        do while (mem_size.gt.min(max_tot_mem_per_proc,&
-            &mem_scale_fac*(max_tot_mem_per_proc-min_X_mem_per_proc)))          ! mem_size has to be smaller than total memory and at the same time the X jobs need enough memory
+        if (present(n_div_max)) n_div_max_loc = n_div_max
+        do while (max_tot_mem_per_proc.lt.mem_size .or. max_tot_mem_per_proc&
+            &.lt.(mem_size/mem_scale_fac+min_X_mem_per_proc))                   ! mem_size has to be smaller than total memory and at the same time the X jobs need enough memory
             n_div = n_div + 1
             n_par_range = ceiling(n_par_X_rich*1._dp/n_div + n_par_X_base_loc)
             ierr = calc_memory_eq(arr_size,n_par_range,mem_size)
@@ -4143,12 +4220,14 @@ contains
             ierr = calc_memory_X(2,ceiling(n_par_range*n_r_sol*1._dp/n_procs),&
                 &min_n_mod_X,min_X_mem_per_proc)                                ! order 2, n_r_sol/n_procs normal points, n_par_range parallel points, mode number
             CHCKERR('')
-            if (n_div.ge.n_div_max) then                                        ! still not enough memory
+            if (n_div.gt.n_div_max_loc) then                                    ! still not enough memory
                 ierr = 1
                 err_msg = 'The memory limit is too low, need more than '//&
-                    &trim(i2str(ceiling(mem_size)))//'MB'
+                    &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
+            max_mem_req = ceiling(max(&
+                &mem_size,mem_size/mem_scale_fac+min_X_mem_per_proc))
         end do
         if (n_div.gt.1) then
             range_message = 'The '//trim(i2str(n_par_X_rich))//' parallel &

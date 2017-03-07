@@ -112,6 +112,7 @@ grid_utilities.o : \
     num_ops.o \
     MPI_utilities.o \
     rich_vars.o \
+    eq_utilities.o \
 
 grid_ops.o : \
     str_utilities.o \
@@ -303,7 +304,6 @@ eq_ops.o : \
     VMEC.o \
     HELENA_vars.o \
     HELENA_ops.o \
-    grid_ops.o \
     HDF5_ops.o \
     eq_utilities.o \
     rich_vars.o \
@@ -316,7 +316,6 @@ eq_utilities.o : \
     grid_vars.o \
     eq_vars.o \
     num_utilities.o \
-    grid_utilities.o \
     rich_vars.o \
     
 messages.o : \

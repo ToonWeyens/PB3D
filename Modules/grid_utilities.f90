@@ -14,7 +14,7 @@ module grid_utilities
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc, calc_n_par_X_rich, nufft
+        &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, nufft
 #if ldebug
     public debug_calc_int_vol
 #endif
@@ -622,6 +622,7 @@ contains
             if (present(R)) R = R_loc
             
             ! transform cylindrical to cartesian
+            ! (the geometrical zeta is equal to the VMEC zeta)
             X = R_loc*cos(grid_XYZ%zeta_E)
             Y = R_loc*sin(grid_XYZ%zeta_E)
             
@@ -2129,6 +2130,420 @@ contains
         grid_out%r_e = grid_in%r_e
         grid_out%r_f = grid_in%r_f
     end function untrim_grid
+    
+    ! Calculates  contra-  and covariant  components  of  a vector  in  multiple
+    ! coordinate systems:
+    !   1. F: (alpha,psi,theta),
+    !   2. - H: (psi,theta,phi) if HELENA is used,
+    !      - V: (r,theta,zeta) if VMEC is used,
+    !   3. C: (R,phi,Z),
+    !   4. X: (X,Y,Z),
+    ! as well  as the magnitude,  starting from  the input in  Flux coordinates.
+    ! Note that the components in X, Y and Z can be used to plot the real vector
+    ! and that covariant components should  be equal to contravariant components
+    ! in this coordinate system.
+    ! By  default,  the cartesian  components  are  returned,  but this  can  be
+    ! indicated differently.  Furthermore, the results for  different coordinate
+    ! systems can be plotted by providing a base name.
+    ! Note  that plots for different  Richardson levels can be  combined to show
+    ! the total grid by just plotting them all individually.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    ! They  can be  calculated  using  the routines  from  eq_ops,  for deriv  =
+    ! [0,0,0].
+    ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
+    ! beforehand.
+    integer function calc_vec_comp(grid_eq,eq,B_com,B_mag,base_name,&
+        &max_transf) result(ierr)
+        
+        use grid_vars, only: grid_type, disc_type
+        use eq_vars, only: eq_2_type
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
+            &norm_disc_prec_eq
+        use num_utilities, only: c
+        use eq_vars, only: R_0
+        use VMEC, only: calc_trigon_factors
+        
+        character(*), parameter :: rout_name = 'calc_vec_comp'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        real(dp), intent(inout) :: B_com(:,:,:,:,:)                             ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
+        real(dp), intent(inout) :: B_mag(:,:,:)                                 ! magnitude of B (dim1,dim2,dim3)
+        character(len=*), intent(in), optional :: base_name                     ! base name for output plotting
+        integer, intent(in), optional :: max_transf                             ! maximum transformation level (1: Flux, 2: Equilibrium, 3: Cylindrical, 4: Cartesian [def])
+        
+        ! local variables
+        type(grid_type) :: grid_trim                                            ! trimmed plot grid
+        integer :: max_transf_loc = 4                                           ! local max_transf
+        integer :: id, jd, kd                                                   ! counter
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        logical :: cont_plot                                                    ! continued plot
+        logical :: do_plot = .false.                                            ! perform plotting
+        character(len=max_str_ln) :: description(3)                             ! description of plots
+        character(len=max_str_ln) :: file_names(3)                              ! plot file names
+        character(len=max_str_ln) :: var_names(3,2)                             ! variable names
+        character(len=5) :: coord_names(3)                                      ! name of coordinates
+        real(dp), allocatable :: XYZR(:,:,:,:)                                  ! X, Y, Z and R of surface in cylindrical coordinates, untrimmed grid
+        real(dp), allocatable :: X(:,:,:,:), Y(:,:,:,:), Z(:,:,:,:)             ! copy of X, Y and Z, trimmed grid
+        real(dp), allocatable :: B_temp(:,:,:,:,:)                              ! temporary variable for B
+        real(dp), allocatable :: T_BA(:,:,:,:,:,:,:), T_AB(:,:,:,:,:,:,:)       ! transformation matrices from A to B
+        real(dp), allocatable :: D1R(:,:,:), D2R(:,:,:)                         ! dR/dpsi, dR/dtheta in HELENA coords.
+        real(dp), allocatable :: D1Z(:,:,:), D2Z(:,:,:)                         ! dZ/dpsi, dZ/dtheta in HELENA coords.
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivation
+        type(disc_type) :: pol_deriv_data                                       ! data for poloidal derivation
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up maximum level up to which to transform and whether to plot
+        if (present(max_transf)) then
+            if (max_transf.ge.1 .and. max_transf.le.4) &
+                &max_transf_loc = max_transf
+        end if
+        if (present(base_name)) then
+            if (trim(base_name).ne.'') do_plot = .true.
+        end if
+        
+        ! if plotting is required
+        if (do_plot) then
+            ! trim plot grid
+            ierr = trim_grid(grid_eq,grid_trim,norm_id)
+            CHCKERR('')
+            
+            ! set up plot dimensions and local dimensions
+            plot_dim = [grid_trim%n,3]
+            plot_offset = [0,0,grid_trim%i_min-1,0]
+            
+            ! possibly modify if multiple equilibrium parallel jobs
+            if (size(eq_jobs_lims,2).gt.1) then
+                plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                    &eq_jobs_lims(1,1) + 1
+                plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+            end if
+            
+            ! calculate XYZR of equilibrium grid, copy to trimmed grid copies
+            allocate(XYZR(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,4))
+            ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZR(:,:,:,1),XYZR(:,:,:,2),&
+                &XYZR(:,:,:,3),R=XYZR(:,:,:,4))
+            CHCKERR('')
+            allocate(X(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
+            allocate(Y(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
+            allocate(Z(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
+            do id = 1,3
+                X(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),1)
+                Y(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),2)
+                Z(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),3)
+            end do
+        end if
+        
+        ! set up B, T_BA and T_AB
+        allocate(B_temp(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(T_BA(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,9,0:0,0:0,0:0))
+        allocate(T_AB(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,9,0:0,0:0,0:0))
+        
+        ! 1. Flux coordinates (alpha,psi,theta)
+        B_mag = 0._dp
+        do id = 1,3
+            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
+        end do
+        B_mag = sqrt(B_mag)
+        
+        ! set up plot variables
+        if (do_plot) then
+            cont_plot = eq_job_nr.gt.1
+            coord_names(1) = 'alpha'
+            coord_names(2) = 'psi'
+            if (use_pol_flux_F) then
+                coord_names(3) = 'theta'
+            else
+                coord_names(3) = 'zeta'
+            end if
+            var_names = trim(base_name)
+            do id = 1,3
+                var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
+                    &trim(coord_names(id))
+                var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
+                    &trim(coord_names(id))
+            end do
+            description(1) = 'covariant components of the magnetic field in &
+                &Flux coordinates'
+            description(2) = 'contravariant components of the magnetic field &
+                &in Flux coordinates'
+            description(3) = 'magnitude of the magnetic field in Flux &
+                &coordinates'
+            file_names(1) = trim(base_name)//'_F_sub'
+            file_names(2) = trim(base_name)//'_F_sup'
+            file_names(3) = trim(base_name)//'_F_mag'
+            do id = 1,2
+                call plot_HDF5(var_names(:,id),trim(file_names(id)),&
+                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
+                    &description=description(id))
+            end do
+            call plot_HDF5('B',trim(file_names(3)),&
+                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
+                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+        end if
+        
+        if (max_transf_loc.eq.1) return
+        
+        ! 2.   HELENA   coordinates   (psi,theta,zeta)   or   VMEC   coordinates
+        ! (r,theta,phi), by converting using transformation matrices
+        !   (B_i)_H = T_H^F (B_i)_F
+        !   (B^i)_H = (B^i)_F T_F^H
+        B_temp = B_com
+        B_com = 0._dp
+        do jd = 1,3
+            do id = 1,3
+                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + &
+                    &eq%T_EF(:,:,:,c([jd,id],.false.),0,0,0) * &
+                    &B_temp(:,:,:,id,1)
+                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + &
+                    &eq%T_FE(:,:,:,c([id,jd],.false.),0,0,0) * &
+                    &B_temp(:,:,:,id,2)
+            end do
+        end do
+        B_mag = 0._dp
+        do id = 1,3
+            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
+        end do
+        B_mag = sqrt(B_mag)
+        
+        ! set up plot variables
+        if (do_plot) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    coord_names(1) = 'r'
+                    coord_names(2) = 'theta'
+                    coord_names(3) = 'phi'
+                    description(1) = 'covariant components of the magnetic &
+                        &field in VMEC coordinates'
+                    description(2) = 'contravariant components of the magnetic &
+                        &field in VMEC coordinates'
+                    description(3) = 'magnitude of the magnetic field in VMEC &
+                        &coordinates'
+                    file_names(1) = trim(base_name)//'_V_sub'
+                    file_names(2) = trim(base_name)//'_V_sup'
+                    file_names(3) = trim(base_name)//'_V_mag'
+                case (2)                                                        ! HELENA
+                    coord_names(1) = 'psi'
+                    coord_names(2) = 'theta'
+                    coord_names(3) = 'phi'
+                    description(1) = 'covariant components of the magnetic &
+                        &field in HELENA coordinates'
+                    description(2) = 'contravariant components of the magnetic &
+                        &field in HELENA coordinates'
+                    description(3) = 'magnitude of the magnetic field in &
+                        &HELENA coordinates'
+                    file_names(1) = trim(base_name)//'_H_sub'
+                    file_names(2) = trim(base_name)//'_H_sup'
+                    file_names(3) = trim(base_name)//'_H_mag'
+            end select
+            var_names = trim(base_name)
+            do id = 1,3
+                var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
+                    &trim(coord_names(id))
+                var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
+                    &trim(coord_names(id))
+            end do
+            do id = 1,2
+                call plot_HDF5(var_names(:,id),trim(file_names(id)),&
+                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
+                    &description=description(id))
+            end do
+            call plot_HDF5('B',trim(file_names(3)),&
+                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
+                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+        end if
+        
+        if (max_transf_loc.eq.2) return
+        
+        ! 3.   cylindrical    coordinates   (R,phi,Z)   by    converting   using
+        ! transformation matrices:
+        !   (B_i)_C = T_H^E (B_i)_E
+        !   (B^i)_C = (B^i)_E T_F^X
+        ! where for VMEC (E=V), the transformation matrix T_VC is tabulated, and
+        ! its inverse  is calculate,  and for  HELENA (E=H),  the transformation
+        ! matrix T_HC is given by
+        !             (    R'    0    Z'   )
+        !   T_HC    = ( R_theta  0 Z_theta )
+        !             (    0    -1    0    )
+        ! and its inverse can be calculated as well.
+        T_BA = 0._dp
+        T_AB = 0._dp
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                T_AB = eq%T_VC(:,:,:,:,0:0,0:0,0:0)
+            case (2)                                                            ! HELENA
+                ! setup D1R and D2R, and same thing for Z
+                ! (use untrimmed grid_eq, with ghost region)
+                allocate(D1R(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                allocate(D2R(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                allocate(D1Z(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                allocate(D2Z(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                    &norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = apply_disc(XYZR(:,:,:,4)/R_0,norm_deriv_data,D1R,3)
+                CHCKERR('')
+                ierr = apply_disc(XYZR(:,:,:,3)/R_0,norm_deriv_data,D1Z,3)
+                CHCKERR('')
+                call norm_deriv_data%dealloc()
+                do kd = 1,grid_eq%loc_n_r
+                    do jd = 1,grid_eq%n(2)
+                        ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                            &pol_deriv_data,1,norm_disc_prec_eq)
+                        CHCKERR('')
+                        ierr = apply_disc(XYZR(:,jd,kd,4)/R_0,pol_deriv_data,&
+                            &D2R(:,jd,kd))
+                        CHCKERR('')
+                        ierr = apply_disc(XYZR(:,jd,kd,3)/R_0,pol_deriv_data,&
+                            &D2Z(:,jd,kd))
+                        CHCKERR('')
+                        call pol_deriv_data%dealloc()
+                    end do
+                end do
+                T_AB(:,:,:,c([1,1],.false.),0,0,0) = D1R
+                T_AB(:,:,:,c([1,3],.false.),0,0,0) = D1Z
+                T_AB(:,:,:,c([2,1],.false.),0,0,0) = D2R
+                T_AB(:,:,:,c([2,3],.false.),0,0,0) = D2Z
+                T_AB(:,:,:,c([3,2],.false.),0,0,0) = -1._dp
+                deallocate(D1R,D2R,D1Z,D2Z)
+        end select
+        ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
+        CHCKERR('')
+        B_temp = B_com
+        B_com = 0._dp
+        do jd = 1,3
+            do id = 1,3
+                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + T_BA(:,:,:,&
+                    &c([jd,id],.false.),0,0,0) * B_temp(:,:,:,id,1)
+                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + T_AB(:,:,:,&
+                    &c([id,jd],.false.),0,0,0) * B_temp(:,:,:,id,2)
+            end do
+        end do
+        B_mag = 0._dp
+        do id = 1,3
+            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
+        end do
+        B_mag = sqrt(B_mag)
+        
+        ! set up plot variables
+        if (do_plot) then
+            description(1) = 'covariant components of the magnetic field in &
+                &cylindrical coordinates'
+            description(2) = 'contravariant components of the magnetic field &
+                &in cylindrical coordinates'
+            description(3) = 'magnitude of the magnetic field in cylindrical &
+                &coordinates'
+            file_names(1) = trim(base_name)//'_C_sub'
+            file_names(2) = trim(base_name)//'_C_sup'
+            file_names(3) = trim(base_name)//'_C_mag'
+            coord_names(1) = 'R'
+            coord_names(2) = 'phi'
+            coord_names(3) = 'Z'
+            var_names = trim(base_name)
+            do id = 1,3
+                var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
+                    &trim(coord_names(id))
+                var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
+                    &trim(coord_names(id))
+            end do
+            do id = 1,2
+                call plot_HDF5(var_names(:,id),trim(file_names(id)),&
+                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
+                    &description=description(id))
+            end do
+            call plot_HDF5('B',trim(file_names(3)),&
+                &B_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
+                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+        end if
+        
+        if (max_transf_loc.eq.3) return
+        
+        ! 4. Cartesian  coordinates (X,Y,Z)  by converting  using transformation
+        ! matrices
+        !    (e_R)    (   cos(phi)   sin(phi)  0 ) (e_X)
+        !   (e_phi) = ( -R sin(phi) R cos(phi) 0 ) (e_Y)
+        !    (e_Z)    (     0          0       1 ) (e_Z)
+        ! with  phi  =  -  zeta_F.   For  the  transformation  of  contravariant
+        ! components, the factor R becomes 1/R and the transpose is taken.
+        T_BA = 0._dp
+        T_AB = 0._dp
+        T_AB(:,:,:,c([1,1],.false.),0,0,0) = cos(-grid_eq%zeta_F)
+        T_AB(:,:,:,c([1,2],.false.),0,0,0) = sin(-grid_eq%zeta_F)
+        T_AB(:,:,:,c([2,1],.false.),0,0,0) = -XYZR(:,:,:,4)/R_0*&
+            &sin(-grid_eq%zeta_F)
+        T_AB(:,:,:,c([2,2],.false.),0,0,0) = XYZR(:,:,:,4)/R_0*&
+            &cos(-grid_eq%zeta_F)
+        T_AB(:,:,:,c([3,3],.false.),0,0,0) = 1._dp
+        ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
+        CHCKERR('')
+        B_temp = B_com
+        B_com = 0._dp
+        do jd = 1,3
+            do id = 1,3
+                B_com(:,:,:,jd,1) = B_com(:,:,:,jd,1) + T_BA(:,:,:,&
+                    &c([jd,id],.false.),0,0,0) * B_temp(:,:,:,id,1)
+                B_com(:,:,:,jd,2) = B_com(:,:,:,jd,2) + T_AB(:,:,:,&
+                    &c([id,jd],.false.),0,0,0) * B_temp(:,:,:,id,2)
+            end do
+        end do
+        B_mag = 0._dp
+        do id = 1,3
+            B_mag = B_mag + B_com(:,:,:,id,1)*B_com(:,:,:,id,2)
+        end do
+        B_mag = sqrt(B_mag)
+        
+        ! set up plot variables
+        if (do_plot) then
+            description(1) = 'covariant components of the magnetic field in &
+                &cartesian coordinates'
+            description(2) = 'contravariant components of the magnetic field &
+                &in cartesian coordinates'
+            description(3) = 'magnitude of the magnetic field in cartesian &
+                &coordinates'
+            file_names(1) = trim(base_name)//'_X_sub'
+            file_names(2) = trim(base_name)//'_X_sup'
+            file_names(3) = trim(base_name)//'_X_mag'
+            coord_names(1) = 'X'
+            coord_names(2) = 'Y'
+            coord_names(3) = 'Z'
+            var_names = trim(base_name)
+            do id = 1,3
+                var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
+                    &trim(coord_names(id))
+                var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
+                    &trim(coord_names(id))
+            end do
+            do id = 1,2
+                call plot_HDF5(var_names(:,id),trim(file_names(id)),&
+                    &B_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
+                    &description=description(id))
+            end do
+            call plot_HDF5('B',trim(file_names(3)),&
+                &B_mag(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                &X=X(:,:,:,1),Y=Y(:,:,:,1),Z=Z(:,:,:,1),&
+                &cont_plot=cont_plot,description=description(3))
+            
+            ! plot vector as well
+            call plot_HDF5(['B'],'B_vec',B_com(:,:,norm_id(1):norm_id(2),:,1),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,&
+                &X=X,Y=Y,Z=Z,col=4,cont_plot=cont_plot,&
+                &description='magnetic field vector')
+        end if
+    end function  calc_vec_comp
     
     ! Calculates the  local number of  parallel grid points for  this Richardson
     ! level, taking into account that it ould be half the actual number.

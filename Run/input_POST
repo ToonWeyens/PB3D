@@ -6,12 +6,14 @@
     plot_sol                = .true.
     plot_E_rec              = .true.
     norm_disc_prec_sol      = 3
-    n_zeta_plot             = 50
+    n_zeta_plot             = 10
     min_zeta_plot           = 0.0
-    max_zeta_plot           = 1.0
+    max_zeta_plot           = 0.25
     min_r_plot              = 0.5
     max_r_plot              = 0.7
     n_theta_plot            = 50
+    min_theta_plot          = 0.0
+    max_theta_plot          = 0.5
     POST_style              = 1
     plot_grid_style         = 0
     ex_plot_style           = 2

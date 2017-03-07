@@ -27,11 +27,11 @@ contains
             &rich_restart_lvl, PB3D_name_eq
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
-            &broadcast_output_eq
+            &broadcast_output_eq, B_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, &
-            &magn_grid_plot, B_plot
+            &magn_grid_plot
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid
         use num_utilities, only: derivs
         use input_utilities, only: dealloc_in
@@ -227,8 +227,16 @@ contains
         ! plot magnetic field if requested
         ! (done in parts, for every parallel job)
         if (plot_B) then
-            ierr = B_plot(grid_eq,eq_2,rich_lvl=rich_lvl)
-            CHCKERR('')
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = B_plot(grid_eq,eq_2,rich_lvl=rich_lvl)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    if (rich_lvl.eq.1) then
+                        ierr = B_plot(grid_eq,eq_2)
+                        CHCKERR('')
+                    end if
+            end select
         else
             call writo('Magnetic field plot not requested')
         end if
