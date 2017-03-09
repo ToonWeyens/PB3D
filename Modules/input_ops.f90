@@ -21,17 +21,17 @@ contains
             &max_it_zero, tol_zero, max_it_rich, input_i, use_pol_flux_F, &
             &EV_style, max_tot_mem_per_proc, plot_resonance, tol_rich, &
             &n_sol_requested, rank, plot_magn_grid, plot_B, plot_flux_q, &
-            &plot_sol, plot_E_rec, use_normalization, n_sol_plotted, &
-            &n_theta_plot, n_zeta_plot, EV_BC, rho_style, retain_all_sol, &
-            &prog_style, norm_disc_prec_X, norm_disc_prec_eq, &
-            &norm_disc_prec_sol, BC_style, max_it_inv, tol_norm, &
-            &tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, pi, plot_size, &
-            &U_style, norm_style, X_style, matrix_SLEPC_style, input_name, &
-            &rich_restart_lvl, eq_style, relax_fac_HH, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
-            &max_r_plot, max_nr_tries_HH, POST_style, plot_grid_style, &
-            &def_relax_fac_HH, magn_int_style, K_style, ex_plot_style, &
-            &pert_mult_factor_POST
+            &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
+            &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
+            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, &
+            &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
+            &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
+            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
+            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
+            &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
+            &ex_plot_style, pert_mult_factor_POST
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -53,23 +53,24 @@ contains
         ! input options
         namelist /inputdata_PB3D/ min_par_X, max_par_X, alpha, min_r_sol, &
             &max_r_sol, max_it_zero, tol_zero, use_pol_flux_F, rho_style, &
-            &rho_0, plot_magn_grid, plot_B, plot_flux_q, prim_X, min_sec_X, &
-            &max_sec_X, n_mod_X, use_normalization, n_theta_plot, n_zeta_plot, &
-            &norm_disc_prec_eq, tol_norm, max_tot_mem_per_proc, n_r_sol, &
-            &max_it_rich, tol_rich, EV_style, plot_resonance, n_sol_requested, &
-            &EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, &
-            &norm_disc_prec_X, BC_style, max_it_inv, max_it_slepc, &
-            &norm_disc_prec_sol, plot_size, U_style, norm_style, K_style, &
-            &matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, relax_fac_HH, &
-            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_tries_HH, magn_int_style, ex_plot_style
+            &rho_0, plot_magn_grid, plot_B, plot_flux_q, plot_kappa, prim_X, &
+            &min_sec_X, max_sec_X, n_mod_X, use_normalization, n_theta_plot, &
+            &n_zeta_plot, norm_disc_prec_eq, tol_norm, max_tot_mem_per_proc, &
+            &n_r_sol, max_it_rich, tol_rich, EV_style, plot_resonance, &
+            &n_sol_requested, EV_BC, tol_SLEPC, retain_all_sol, pres_0, R_0, &
+            &psi_0, B_0, T_0, norm_disc_prec_X, BC_style, max_it_inv, &
+            &max_it_slepc, norm_disc_prec_sol, plot_size, U_style, norm_style, &
+            &K_style, matrix_SLEPC_style, rich_restart_lvl, min_n_par_X, &
+            &relax_fac_HH, min_theta_plot, max_theta_plot, min_zeta_plot, &
+            &max_zeta_plot, max_nr_tries_HH, magn_int_style, ex_plot_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
-            &plot_resonance, plot_flux_q, plot_magn_grid, plot_B, plot_sol, &
-            &plot_E_rec, norm_disc_prec_sol, plot_size, PB3D_rich_lvl, &
-            &max_it_zero, tol_zero, relax_fac_HH, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
-            &max_r_plot, max_nr_tries_HH, POST_style, plot_grid_style, &
-            &max_tot_mem_per_proc, ex_plot_style, pert_mult_factor_POST
+            &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
+            &plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
+            &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
+            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
+            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
+            &plot_grid_style, max_tot_mem_per_proc, ex_plot_style, &
+            &pert_mult_factor_POST
         
         ! initialize ierr
         ierr = 0
@@ -253,6 +254,7 @@ contains
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_magn_grid = .false.                                            ! do not plot the magnetic grid
+            plot_kappa = .false.                                                ! do not plot the curvature
             plot_B = .false.                                                    ! do not plot the magnetic field
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             
@@ -310,9 +312,11 @@ contains
             ! runtime variables
             plot_resonance = .true.                                             ! plot the q-profile with nq-m = 0
             plot_flux_q = .true.                                                ! plot the flux quantities
+            plot_kappa = .true.                                                 ! plot the curvature
             plot_magn_grid = .true.                                             ! plot the magnetic grid
             plot_B = .true.                                                     ! plot the magnetic field
-            plot_sol = .true.                                                   ! plot solution
+            plot_sol_xi = .true.                                                ! plot plasma perturbation of solution
+            plot_sol_Q = .true.                                                 ! plot magnetic perturbation of solution
             plot_E_rec = .true.                                                 ! plot energy reconstruction
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             POST_style = 1                                                      ! process on extended plot grid

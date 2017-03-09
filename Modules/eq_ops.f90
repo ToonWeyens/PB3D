@@ -15,7 +15,7 @@ module eq_ops
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
         &print_output_eq, flux_q_plot, broadcast_output_eq, divide_eq_jobs, &
-        &calc_T_HF, B_plot
+        &calc_T_HF, B_plot, kappa_plot
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
@@ -3474,20 +3474,18 @@ contains
     ! and the only non-vanishing contravariant component is
     !   B^3 = 1/J.
     ! These are then all be transformed to the other coordinate systems.
-    ! Note  that plots for different  Richardson levels can be  combined to show
-    ! the total grid by just plotting them all individually.
+    ! Note that vector plots for different  Richardson levels can be combined to
+    ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
     integer function B_plot(grid_eq,eq,rich_lvl) result(ierr)
         use grid_vars, only: grid_type, disc_type
-        use grid_utilities, only: calc_XYZ_grid, trim_grid, setup_deriv_data, &
-            &apply_disc, calc_vec_comp
+        use grid_utilities, only: calc_vec_comp
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_style, norm_disc_prec_eq
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
         use eq_vars, only: B_0
         use VMEC, only: calc_trigon_factors
-        use input_utilities, only: get_log
         
         character(*), parameter :: rout_name = 'B_plot'
         
@@ -3497,10 +3495,10 @@ contains
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
         
         ! local variables
+        integer :: id                                                           ! counter
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: B_mag(:,:,:)                                   ! magnitude of B (dim1,dim2,dim3)
         character(len=10) :: base_name                                          ! base name
-        integer :: id                                                           ! counter
         
         ! initialize ierr
         ierr = 0
@@ -3517,10 +3515,13 @@ contains
         B_com = 0._dp
         B_mag = 0._dp
         do id = 1,3
-            B_com(:,:,:,id,1) = B_0*eq%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+            B_com(:,:,:,id,1) = eq%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
                 &eq%jac_FD(:,:,:,0,0,0)
-            B_com(:,:,:,3,2) = B_0/eq%jac_FD(:,:,:,0,0,0)
+            B_com(:,:,:,3,2) = 1._dp/eq%jac_FD(:,:,:,0,0,0)
         end do
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) B_com = B_com * B_0
         
         ! set plot variables
         base_name = 'B'
@@ -3534,6 +3535,201 @@ contains
             &v_mag=B_mag,base_name=base_name)
         CHCKERR('')
     end function B_plot
+    
+    ! Plots the curvature. If multiple equilibrium parallel jobs, every job does
+    ! its  piece, and  the results  are joined  automatically by  plot_HDF5. The
+    ! outputs are  given in  contra- and covariant  components and  magnitude in
+    ! multiple coordinate systems, as indicated in "calc_vec_comp".
+    ! The starting point is the curvature, given by
+    !   kappa = kappa_n nabla psi / |nabla psi|^2 + kappa_g nabla psi x B / B^2
+    ! which can  be used to find  the covariant and contravariant  components in
+    ! Flux coordinates. These are then  transformed to Cartesian coordinates and
+    ! plotted.
+    ! Note that vector plots for different  Richardson levels can be combined to
+    ! show the total grid by just plotting them all individually.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    integer function kappa_plot(grid_eq,eq,rich_lvl) result(ierr)
+        use grid_vars, only: grid_type, disc_type
+        use grid_utilities, only: calc_vec_comp
+        use eq_vars, only: eq_2_type
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
+        use num_utilities, only: c
+        use eq_vars, only: R_0
+        use VMEC, only: calc_trigon_factors
+#if ldebug
+        use num_vars, only: ltest, eq_jobs_lims, eq_job_nr
+        use input_utilities, only: get_log
+        use grid_utilities, only: trim_grid, calc_XYZ_grid
+#endif
+        
+        character(*), parameter :: rout_name = 'kappa_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        
+        ! local variables
+        real(dp), allocatable :: k_com(:,:,:,:,:)                               ! covariant and contravariant components of kappa (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: k_mag(:,:,:)                                   ! magnitude of kappa (dim1,dim2,dim3)
+        character(len=15) :: base_name                                          ! base name
+#if ldebug
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        integer :: id                                                           ! counter
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        real(dp), allocatable :: XYZ(:,:,:,:,:)                                 ! X, Y and Z of surface in cylindrical coordinates, trimmed grid
+        real(dp), allocatable :: k_com_inv(:,:,:,:)                             ! inverted cartesian components of curvature
+        logical, save :: asked_for_testing = .false.                            ! whether we have been asked to test
+        logical, save :: testing = .false.                                      ! whether we are testing
+#endif
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! set up components and magnitude of kappa
+        allocate(k_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(k_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        k_com = 0._dp
+        k_mag = 0._dp
+        
+        ! covariant components:
+        !   kappa . e_alpha = kappa_g 
+        !   kappa . e_psi   = kappa_n - kappa_g h12/h22
+        !   kappa . e_theta = 0
+        ! and similar for Q
+        k_com(:,:,:,1,1) = eq%kappa_g
+        k_com(:,:,:,2,1) = eq%kappa_n - &
+            &eq%kappa_g * &
+            &eq%h_FD(:,:,:,c([1,2],.true.),0,0,0)/&
+            &eq%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,3,1) = 0._dp
+        
+        ! contravariant components:
+        !   kappa . nabla alpha = kappa_n h12 + kappa_g g33/(J^2 h22)
+        !   kappa . nabla psi   = kappa_n h22
+        !   kappa . nabla theta = kappa_n h23 - kappa_g g13/(J^2 h22)
+        ! and similar for Q
+        k_com(:,:,:,1,2) = eq%kappa_n * &
+            &eq%h_FD(:,:,:,c([1,2],.true.),0,0,0) + &
+            &eq%kappa_g * &
+            &eq%g_FD(:,:,:,c([3,3],.true.),0,0,0) / &
+            &(eq%jac_FD(:,:,:,0,0,0)**2*eq%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        k_com(:,:,:,2,2) = eq%kappa_n * &
+            &eq%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,3,2) = eq%kappa_n * &
+            &eq%h_FD(:,:,:,c([3,2],.true.),0,0,0) - &
+            &eq%kappa_g * &
+            &eq%g_FD(:,:,:,c([3,1],.true.),0,0,0) / &
+            &(eq%jac_FD(:,:,:,0,0,0)**2*eq%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) k_com = k_com / R_0
+        
+        ! set plot variables
+        base_name = 'kappa'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq,k_com,norm_disc_prec_eq,&
+            &v_mag=k_mag,base_name=base_name)
+        CHCKERR('')
+        
+#if ldebug
+        if (ltest) then
+            if (.not.asked_for_testing) then
+                call writo('Do you want to plot the inversion in kappa?')
+                call lvl_ud(1)
+                testing = get_log(.false.)
+                asked_for_testing = .true.
+                call lvl_ud(-1)
+            end if
+            if (testing) then
+                call writo('Every point in the grid is transformed by &
+                    &displacing it in the direction of the curvature,')
+                call writo('by a distance equal to half the curvature. I.e. &
+                    &the point is displaced to the center of curvature.')
+                call lvl_ud(1)
+                
+                ! trim equilibrium grid
+                ierr = trim_grid(grid_eq,grid_trim,norm_id)
+                CHCKERR('')
+                
+                ! set up plot dimensions and local dimensions
+                plot_dim = [grid_trim%n,3]
+                plot_offset = [0,0,grid_trim%i_min-1,0]
+                
+                ! possibly modify if multiple equilibrium parallel jobs
+                if (size(eq_jobs_lims,2).gt.1) then
+                    plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                        &eq_jobs_lims(1,1) + 1
+                    plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+                end if
+                
+                ! set up inverted cartesian components
+                allocate(k_com_inv(grid_trim%n(1),grid_trim%n(2),&
+                    &grid_trim%loc_n_r,3))
+                do id = 1,3
+                    k_com_inv(:,:,:,id) = &
+                        &k_com(:,:,norm_id(1):norm_id(2),id,1)/&
+                        &(k_mag(:,:,norm_id(1):norm_id(2))**2)
+                end do
+                
+                ! if VMEC, calculate trigonometric factors of trimmed grid
+                if (eq_style.eq.1) then
+                    ierr = calc_trigon_factors(grid_trim%theta_E,&
+                        &grid_trim%zeta_E,grid_trim%trigon_factors)
+                    CHCKERR('')
+                end if
+                
+                ! calculate X, Y and Z
+                allocate(XYZ(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3,&
+                    &3))
+                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ(:,:,:,1,1),&
+                    &XYZ(:,:,:,1,2),XYZ(:,:,:,1,3))
+                CHCKERR('')
+                
+                ! produce a plot of center of curvature for every point
+                call plot_HDF5(['cen_of_curv'],'TEST_cen_of_curv_vec',&
+                    &k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=XYZ(:,:,:,:,1),Y=XYZ(:,:,:,:,2),Z=XYZ(:,:,:,:,3),&
+                    &col=4,cont_plot=eq_job_nr.gt.1,&
+                    &description='center of curvature')
+                
+                ! displace the points to the center of curvature
+                do id = 1,3
+                    XYZ(:,:,:,1,id) = XYZ(:,:,:,1,id) + k_com_inv(:,:,:,id)
+                end do
+                XYZ(:,:,:,2,:) = XYZ(:,:,:,1,:)
+                XYZ(:,:,:,3,:) = XYZ(:,:,:,3,:)
+                
+                ! produce an inverted plot
+                call plot_HDF5(['cen_of_curv_inv'],'TEST_cen_of_curv_inv_vec',&
+                    &-k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=XYZ(:,:,:,:,1),Y=XYZ(:,:,:,:,2),Z=XYZ(:,:,:,:,3),&
+                    &col=4,cont_plot=eq_job_nr.gt.1,&
+                    &description='center of curvature')
+                
+                ! clean up
+                call grid_trim%dealloc()
+                
+                call lvl_ud(-1)
+            end if
+        end if
+#endif
+    end function kappa_plot
+
     
     ! Print equilibrium quantities to an output file:
     !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
@@ -4210,6 +4406,7 @@ contains
             n_div_max_loc = n_par_X_rich/fund_n_par
         end if
         if (present(n_div_max)) n_div_max_loc = n_div_max
+        n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
         do while (max_tot_mem_per_proc.lt.mem_size .or. max_tot_mem_per_proc&
             &.lt.(mem_size/mem_scale_fac+min_X_mem_per_proc))                   ! mem_size has to be smaller than total memory and at the same time the X jobs need enough memory
             n_div = n_div + 1
@@ -4347,8 +4544,10 @@ contains
                 res(2,id) = sum(n_par(1:id))
                 
                 ! take into account fundamental interval
-                res(2,id) = res(1,id) - 1 + ol_width + fund_n_par * max(1,&
-                    &nint((res(2,id)-res(1,id)+1._dp-ol_width)/fund_n_par))
+                if (n_div.gt.1) then
+                    res(2,id) = res(1,id) - 1 + ol_width + fund_n_par * max(1,&
+                        &nint((res(2,id)-res(1,id)+1._dp-ol_width)/fund_n_par))
+                end if
             end do
             
             ! test whether end coincides with sum of n_par

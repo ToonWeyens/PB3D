@@ -66,7 +66,8 @@ contains
         use grid_vars, only: disc_type
         use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
             &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
-            &plot_grid_style, plot_sol, plot_E_rec, n_theta_plot, n_zeta_plot
+            &plot_grid_style, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, &
+            &plot_kappa, n_theta_plot, n_zeta_plot
         use eq_ops, only: flux_q_plot, divide_eq_jobs
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -107,7 +108,8 @@ contains
         CHCKERR('')
         
         ! set up whether full output is possible
-        full_output = plot_sol .or. plot_E_rec
+        full_output = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec .or. plot_B &
+            &.or. plot_kappa
         
         ! set up whether Richardson level has to be appended to the name
         select case (eq_style) 
@@ -456,12 +458,12 @@ contains
         
         use num_vars, only: no_output, no_plots, eq_style, plot_grid_style, &
             &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr, &
-            &plot_B
+            &plot_B, plot_sol_xi, plot_sol_Q, plot_kappa
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
         use eq_vars, only: max_flux_F
-        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot
+        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot, kappa_plot
         use eq_utilities, only: calc_F_derivs, calc_inv_met
         use sol_vars, only: alpha
         use grid_utilities, only: calc_XYZ_grid, setup_interp_data, &
@@ -472,6 +474,9 @@ contains
         use VMEC, onLy: calc_trigon_factors
         use num_utilities, only: calc_aux_utilities
         use MPI_utilities, only: wait_MPI
+#if ldebug
+        use num_vars, only: ltest
+#endif
         
         character(*), parameter :: rout_name = 'run_driver_POST'
         
@@ -490,6 +495,9 @@ contains
         real(dp), allocatable :: R(:,:,:)                                       ! R on output grid
         complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! solution eigenvalue for requested solutions
         character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
+        logical :: ltest_loc                                                    ! local copy of ltest
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -525,6 +533,9 @@ contains
                 ! back up no_plots and no_output and set to .true.
                 no_plots_loc = no_plots; no_plots = .true.
                 no_output_loc = no_output; no_output = .true.
+#if ldebug
+                ltest_loc = ltest; ltest = .false.
+#endif
                 
                 ! Calculate the metric equilibrium quantitities
                 ierr = calc_eq(grids(1),eq_1,eq_2)
@@ -544,6 +555,9 @@ contains
                 ! reset no_plots and no_output
                 no_plots = no_plots_loc
                 no_output = no_output_loc
+#if ldebug
+                ltest = ltest_loc
+#endif
                 
                 ! synchronize processes
                 ierr = wait_MPI()
@@ -738,13 +752,19 @@ contains
                     call lvl_ud(-1)
                 end if
                 
-                ! user output
-                call writo('Plot the Eigenvector')
-                call lvl_ud(1)
+                ! plot magnetic field if requested
+                if (plot_kappa) then
+                    call writo('Plot the curvature')
+                    call lvl_ud(1)
+                    ierr = kappa_plot(grids(1),eq_2)
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                end if
+                
+                ! plot solution vector
                 ierr = plot_sol_vec(grids(1),grids(2),grids(3),&
-                    &eq_1,eq_2,X,sol,XYZ,id)
+                    &eq_1,eq_2,X,sol,XYZ,id,[plot_sol_xi,plot_sol_Q])
                 CHCKERR('')
-                call lvl_ud(-1)
                 
                 ! user output
                 call writo('Decompose the energy into its terms')
@@ -1176,6 +1196,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call writo('Set up output grid')
+        call lvl_ud(1)
+        
         select case (POST_style)
             case (1)                                                            ! extended grid
                 ! limits to exclude angular part
@@ -1206,8 +1229,13 @@ contains
                 CHCKERR('')
                 
                 ! theta limits
-                lim_theta = min_theta_plot + (eq_jobs_lims(:,eq_job_nr)-1._dp)*&
-                    &(max_theta_plot-min_theta_plot)/(n_par_tot-1._dp)
+                if (n_par_tot.gt.1) then
+                    lim_theta = min_theta_plot + &
+                        &(eq_jobs_lims(:,eq_job_nr)-1._dp)*&
+                        &(max_theta_plot-min_theta_plot)/(n_par_tot-1._dp)
+                else
+                    lim_theta = min_theta_plot
+                end if
                 
                 ! extend eq and X grid
                 n_theta = eq_jobs_lims(2,eq_job_nr)-eq_jobs_lims(1,eq_job_nr)+1
@@ -1249,5 +1277,7 @@ contains
                     &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
                 CHCKERR('')
         end select
+        
+        call lvl_ud(-1)
     end function setup_out_grids
 end module driver_POST

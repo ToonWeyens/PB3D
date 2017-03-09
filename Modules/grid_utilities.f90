@@ -476,6 +476,8 @@ contains
     ! this variable is not used.
     ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
     ! beforehand.
+    ! Note: The  normalization factor R_0 for  length is taken into  account and
+    ! the output is transformed back to unnormalized values:
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L,R) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use num_utilities, only: round_with_tol
@@ -885,6 +887,14 @@ contains
         if (present(lim_theta_plot)) lim_theta_plot_loc = lim_theta_plot
         lim_zeta_plot_loc = [min_zeta_plot,max_zeta_plot]
         if (present(lim_zeta_plot)) lim_zeta_plot_loc = lim_zeta_plot
+        
+        ! user ouput
+#if ldebug
+        call writo('Theta limits: '//trim(r2strt(lim_theta_plot_loc(1)))//&
+            &'pi .. '//trim(r2strt(lim_theta_plot_loc(2)))//'pi')
+        call writo('Zeta limits: '//trim(r2strt(lim_zeta_plot_loc(1)))//&
+            &'pi .. '//trim(r2strt(lim_zeta_plot_loc(2)))//'pi')
+#endif
         
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in E coordinates
@@ -2152,15 +2162,18 @@ contains
     ! [0,0,0].
     ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
     ! beforehand.
+    ! Note: The normalization  factors are taken into account and  the output is
+    ! transformed back to unnormalized values.
     integer function calc_vec_comp(grid,grid_eq,eq,v_com,norm_disc_prec,v_mag,&
         &base_name,max_transf) result(ierr)
         
         use grid_vars, only: grid_type, disc_type
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style
+        use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
+            &use_normalization
         use num_utilities, only: c
-        use eq_vars, only: R_0
+        use eq_vars, only: R_0, B_0
         use VMEC, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'calc_vec_comp'
@@ -2189,6 +2202,7 @@ contains
         character(len=max_str_ln) :: var_names(3,2)                             ! variable names
         character(len=5) :: coord_names(3)                                      ! name of coordinates
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp) :: norm_len                                                    ! normalization factor for lengths, to cancel the one introduced in "calc_XYZ"
         real(dp), allocatable :: XYZR(:,:,:,:)                                  ! X, Y, Z and R of surface in cylindrical coordinates, untrimmed grid
         real(dp), allocatable :: X(:,:,:,:), Y(:,:,:,:), Z(:,:,:,:)             ! copy of X, Y and Z, trimmed grid
         real(dp), allocatable :: v_temp(:,:,:,:,:)                              ! temporary variable for v
@@ -2211,6 +2225,10 @@ contains
         if (present(base_name)) then
             if (trim(base_name).ne.'') do_plot = .true.
         end if
+        
+        ! set up normalization factor
+        norm_len = 1._dp
+        if (use_normalization) norm_len = R_0
         
         ! setup normal interpolation data for equilibrium grid
         ierr = setup_interp_data(grid_eq%loc_r_F,grid%loc_r_F,&
@@ -2256,6 +2274,9 @@ contains
                 Y(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),2)
                 Z(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),3)
             end do
+            
+            ! clean up grid
+            call grid_trim%dealloc()
         end if
         
         ! set up temporal copy of  v, T_BA and T_AB
@@ -2271,6 +2292,9 @@ contains
             end do
             v_mag = sqrt(v_mag)
         end if
+        
+        ! save temporary copy, normalized
+        v_temp = v_com
         
         ! set up plot variables
         if (do_plot) then
@@ -2298,6 +2322,14 @@ contains
             file_names(1) = trim(base_name)//'_F_sub'
             file_names(2) = trim(base_name)//'_F_sup'
             file_names(3) = trim(base_name)//'_F_mag'
+            if (use_normalization) then
+                v_com(:,:,:,1,1) = v_com(:,:,:,1,1) * R_0                       ! norm factor for e_alpha
+                v_com(:,:,:,2,1) = v_com(:,:,:,2,1) / (R_0*B_0)                 ! norm factor for e_psi
+                v_com(:,:,:,3,1) = v_com(:,:,:,3,1) * R_0                       ! norm factor for e_theta
+                v_com(:,:,:,1,2) = v_com(:,:,:,1,2) / R_0                       ! norm factor for e^alpha
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2) * (R_0*B_0)                 ! norm factor for e^psi
+                v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^theta
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
@@ -2323,7 +2355,6 @@ contains
         ierr = apply_disc(eq%T_EF(:,:,:,:,0,0,0),norm_interp_data,&
             &T_BA(:,:,:,:,0,0,0),3)
         CHCKERR('')
-        v_temp = v_com
         v_com = 0._dp
         do jd = 1,3
             do id = 1,3
@@ -2342,6 +2373,9 @@ contains
             end do
             v_mag = sqrt(v_mag)
         end if
+        
+        ! save temporary copy, normalized
+        v_temp = v_com
         
         ! set up plot variables
         if (do_plot) then
@@ -2380,6 +2414,14 @@ contains
                 var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
                     &trim(coord_names(id))
             end do
+            if (use_normalization) then
+                v_com(:,:,:,1,1) = v_com(:,:,:,1,1) * R_0                       ! norm factor for e_r or e_psi
+                v_com(:,:,:,2,1) = v_com(:,:,:,2,1) * R_0                       ! norm factor for e_theta
+                v_com(:,:,:,3,1) = v_com(:,:,:,3,1) * R_0                       ! norm factor for e_zeta or e_phi
+                v_com(:,:,:,1,2) = v_com(:,:,:,1,2) / R_0                       ! norm factor for e^r or e^psi
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
+                v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta or e^phi
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
@@ -2423,9 +2465,9 @@ contains
                 ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
                     &norm_disc_prec)
                 CHCKERR('')
-                ierr = apply_disc(XYZR(:,:,:,4)/R_0,norm_deriv_data,D1R,3)
+                ierr = apply_disc(XYZR(:,:,:,4)/norm_len,norm_deriv_data,D1R,3)
                 CHCKERR('')
-                ierr = apply_disc(XYZR(:,:,:,3)/R_0,norm_deriv_data,D1Z,3)
+                ierr = apply_disc(XYZR(:,:,:,3)/norm_len,norm_deriv_data,D1Z,3)
                 CHCKERR('')
                 call norm_deriv_data%dealloc()
                 do kd = 1,grid%loc_n_r
@@ -2433,11 +2475,11 @@ contains
                         ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
                             &pol_deriv_data,1,norm_disc_prec)
                         CHCKERR('')
-                        ierr = apply_disc(XYZR(:,jd,kd,4)/R_0,pol_deriv_data,&
-                            &D2R(:,jd,kd))
+                        ierr = apply_disc(XYZR(:,jd,kd,4)/norm_len,&
+                            &pol_deriv_data,D2R(:,jd,kd))
                         CHCKERR('')
-                        ierr = apply_disc(XYZR(:,jd,kd,3)/R_0,pol_deriv_data,&
-                            &D2Z(:,jd,kd))
+                        ierr = apply_disc(XYZR(:,jd,kd,3)/norm_len,&
+                            &pol_deriv_data,D2Z(:,jd,kd))
                         CHCKERR('')
                         call pol_deriv_data%dealloc()
                     end do
@@ -2451,7 +2493,6 @@ contains
         end select
         ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
         CHCKERR('')
-        v_temp = v_com
         v_com = 0._dp
         do jd = 1,3
             do id = 1,3
@@ -2468,6 +2509,9 @@ contains
             end do
             v_mag = sqrt(v_mag)
         end if
+        
+        ! save temporary copy, normalized
+        v_temp = v_com
         
         ! set up plot variables
         if (do_plot) then
@@ -2490,6 +2534,14 @@ contains
                 var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
                     &trim(coord_names(id))
             end do
+            if (use_normalization) then
+                !v_com(:,:,:,1,1) = v_com(:,:,:,1,1)                             ! norm factor for e_R
+                v_com(:,:,:,2,1) = v_com(:,:,:,2,1) * R_0                       ! norm factor for e_phi
+                !v_com(:,:,:,3,1) = v_com(:,:,:,3,1)                             ! norm factor for e_Z
+                !v_com(:,:,:,1,2) = v_com(:,:,:,1,2)                             ! norm factor for e^R
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^phi
+                !v_com(:,:,:,3,2) = v_com(:,:,:,3,2)                             ! norm factor for e^Z
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
@@ -2516,14 +2568,13 @@ contains
         T_AB = 0._dp
         T_AB(:,:,:,c([1,1],.false.),0,0,0) = cos(-grid%zeta_F)
         T_AB(:,:,:,c([1,2],.false.),0,0,0) = sin(-grid%zeta_F)
-        T_AB(:,:,:,c([2,1],.false.),0,0,0) = -XYZR(:,:,:,4)/R_0*&
+        T_AB(:,:,:,c([2,1],.false.),0,0,0) = -XYZR(:,:,:,4)/norm_len*&
             &sin(-grid%zeta_F)
-        T_AB(:,:,:,c([2,2],.false.),0,0,0) = XYZR(:,:,:,4)/R_0*&
+        T_AB(:,:,:,c([2,2],.false.),0,0,0) = XYZR(:,:,:,4)/norm_len*&
             &cos(-grid%zeta_F)
         T_AB(:,:,:,c([3,3],.false.),0,0,0) = 1._dp
         ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
         CHCKERR('')
-        v_temp = v_com
         v_com = 0._dp
         do jd = 1,3
             do id = 1,3

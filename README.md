@@ -682,3 +682,9 @@ CHANGELOG
       - "calc_pert_cart_comp" is not used any more.
       - "plot_HDF5" needs to be rewritten for general vectors, not using collection type 4, so that it can also take into account the possible projection of a vector on the symmetry plane. This is for the future.
       - "adapt_inoutput_POST" is removed, as also the solution grid can be perturbed for field-aligned grids as well.
+
+1.57: - "plot_sol" is now split in two parts, "plot_sol_xi" and "plot_sol_Q" that can be used to indicate that the plasma perturbation and the magnetic perturbation have to be plotted.
+      - "plot_kappa" can now be used to plot the curvature.
+      - Fixed bug in "plot_sol_vec", where the normalization constants were not taken into account.
+      - The output routines now should produce output that has been transformed back to unnormalized values and so does "calc_XYZ_grid". 
+      - In "plot_kappa" there is the debug option to show the center of gravity, as a curiosity.
