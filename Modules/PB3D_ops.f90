@@ -68,6 +68,7 @@ contains
         real(dp), parameter :: tol_version = 1.E-4_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
         logical :: debug_version_PB3D                                           ! debug version of in
+        character(len=max_str_ln) :: use_debug_str(2)                           ! using debug or not
         
         ! initialize ierr
         ierr = 0
@@ -105,6 +106,46 @@ contains
         debug_version_PB3D = .false.
         if (dum_1D(20).gt.0) debug_version_PB3D = .true.
         call dealloc_var_1D(var_1D)
+        
+        ! tests
+        select case (prog_style)
+            case (1)                                                            ! PB3D
+                ! do nothing
+            case (2)                                                            ! POST
+                call writo('Run tests')
+                call lvl_ud(1)
+                
+                call writo('PB3D version '//trim(r2strt(PB3D_version)))
+                if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
+                    ierr = 1
+                    err_msg = 'Need at least PB3D version '//&
+                        &trim(r2strt(min_PB3D_version))
+                    CHCKERR(err_msg)
+                end if
+                
+                if (debug_version_PB3D) call writo('debug version')
+                
+                if (debug_version_PB3D.neqv.debug_version) then
+                    ierr = 1
+                    if (debug_version_PB3D) then
+                        use_debug_str(1) = 'uses debug version'
+                    else
+                        use_debug_str(1) = 'uses release version'
+                    end if
+                    if (debug_version) then
+                        use_debug_str(2) = 'uses debug version'
+                    else
+                        use_debug_str(2) = 'uses release version'
+                    end if
+                    call writo('The PB3D output '//trim(use_debug_str(1))//&
+                        &' but POST '//trim(use_debug_str(2)))
+                    err_msg = 'Need to use debug version for both, or not for &
+                        &both'
+                    CHCKERR(err_msg)
+                end if
+                
+                call lvl_ud(-1)
+        end select
         
         ! variables depending on equilibrium style
         select case (eq_style)
@@ -374,33 +415,6 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Input variables from PB3D output reconstructed')
-        
-        ! tests
-        select case (prog_style)
-            case (1)                                                            ! PB3D
-                ! do nothing
-            case (2)                                                            ! POST
-                call writo('Run tests')
-                call lvl_ud(1)
-                
-                call writo('PB3D version '//trim(r2strt(PB3D_version)))
-                if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
-                    ierr = 1
-                    err_msg = 'Need at least PB3D version '//&
-                        &trim(r2strt(min_PB3D_version))
-                    CHCKERR(err_msg)
-                end if
-                
-                if (debug_version_PB3D) call writo('debug version')
-                if (debug_version_PB3D.neqv.debug_version) then
-                    ierr = 1
-                    err_msg = 'Need to use debug version for both, or not for &
-                        &both'
-                    CHCKERR(err_msg)
-                end if
-                
-                call lvl_ud(-1)
-        end select
         
         ! clean up
         deallocate(dum_1D)

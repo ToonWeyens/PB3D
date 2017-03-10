@@ -112,6 +112,7 @@ contains
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
         use num_utilities, only: c
+        use MPI_utilities, only: get_ser_var
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
         use num_utilities, only: con2dis
@@ -143,6 +144,8 @@ contains
         logical :: cont_plot                                                    ! continued plot
         logical :: plot_var_loc(2)                                              ! local plot_var
         logical :: XYZ_plot_setup                                               ! XYZ_plot_setup has been set up
+        real(dp) :: X_0                                                         ! X at theta = zeta = 0
+        real(dp), allocatable :: X_0_ser(:)                                     ! X_0 for all processes
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
         real(dp), allocatable :: XYZ_vec(:,:,:,:,:)                             ! copies of XYZ for vector plot
@@ -179,6 +182,15 @@ contains
         if (count(plot_var).eq.0) return
         plot_var_loc = plot_var
         if (abs(pert_mult_factor_POST).ge.tol_zero) then
+            ! set up X_0
+            X_0 = 0._dp
+            do kd = 1,grid_sol%loc_n_r
+                X_0 = max(X_0,abs(sum(sol%vec(:,kd,X_id))))
+            end do
+            ierr = get_ser_var([X_0],X_0_ser,scatter=.true.)
+            CHCKERR('')
+            X_0 = maxval(X_0_ser)
+            
             ! user output
             call writo('Perturbing the position vector (X,Y,Z) with &
                 &multiplicative factor '//trim(r2strt(pert_mult_factor_POST)))
@@ -367,7 +379,7 @@ contains
                     &g_FD_int(:,:,:,c([3,3],.true.)) 
                 
                 ! multiplication factor if xi
-                if (jd.eq.1) ccomp = ccomp*pert_mult_factor_POST
+                if (jd.eq.1) ccomp = ccomp*pert_mult_factor_POST/X_0
                 
                 ! transform normalized quantities to unnormalized
                 if (use_normalization) then

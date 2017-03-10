@@ -691,3 +691,6 @@ CHANGELOG
 
 1.58: - Fixed some small bugs concerning the non-debug version.
       - Implemented "J_plot" that serves to plot the current, similar to "B_plot" that plotted the magnetic field.
+
+1.59: - Fixed a bug for the tests on input variables. They were called too late.
+      - Added a normalization to be used with "pert_mult_factor_POST" to provide X_0.

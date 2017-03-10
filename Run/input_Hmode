@@ -11,8 +11,8 @@
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X  =  15
-     n_mod_X  =  30
+    prim_X                  = 20
+    n_mod_X                 = 30
     tol_rich                = 1.0E-4
     n_sol_requested         = 2
     max_it_inv              = 1
