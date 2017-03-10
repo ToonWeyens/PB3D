@@ -688,3 +688,6 @@ CHANGELOG
       - Fixed bug in "plot_sol_vec", where the normalization constants were not taken into account.
       - The output routines now should produce output that has been transformed back to unnormalized values and so does "calc_XYZ_grid". 
       - In "plot_kappa" there is the debug option to show the center of gravity, as a curiosity.
+
+1.58: - Fixed some small bugs concerning the non-debug version.
+      - Implemented "J_plot" that serves to plot the current, similar to "B_plot" that plotted the magnetic field.

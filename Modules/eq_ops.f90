@@ -15,7 +15,7 @@ module eq_ops
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
         &print_output_eq, flux_q_plot, broadcast_output_eq, divide_eq_jobs, &
-        &calc_T_HF, B_plot, kappa_plot
+        &calc_T_HF, B_plot, J_plot, kappa_plot
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
@@ -3480,7 +3480,6 @@ contains
     integer function B_plot(grid_eq,eq,rich_lvl) result(ierr)
         use grid_vars, only: grid_type, disc_type
         use grid_utilities, only: calc_vec_comp
-        use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
@@ -3517,8 +3516,8 @@ contains
         do id = 1,3
             B_com(:,:,:,id,1) = eq%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
                 &eq%jac_FD(:,:,:,0,0,0)
-            B_com(:,:,:,3,2) = 1._dp/eq%jac_FD(:,:,:,0,0,0)
         end do
+        B_com(:,:,:,3,2) = 1._dp/eq%jac_FD(:,:,:,0,0,0)
         
         ! transform back to unnormalized quantity
         if (use_normalization) B_com = B_com * B_0
@@ -3535,6 +3534,90 @@ contains
             &v_mag=B_mag,base_name=base_name)
         CHCKERR('')
     end function B_plot
+    
+    ! Plots the current.  If multiple equilibrium parallel jobs,  every job does
+    ! its  piece, and  the results  are joined  automatically by  plot_HDF5. The
+    ! outputs are  given in  contra- and covariant  components and  magnitude in
+    ! multiple coordinate systems, as indicated in "calc_vec_comp".
+    ! The starting point is the pressure balance
+    !   nabla p = J x B,
+    ! which, using B = e_theta/J, reduces to
+    !   J^alpha = -p'.
+    ! Furthermore, the current has to lie in the magnetic flux surfaces:
+    !   J^psi = 0.
+    ! Finally,  the parallel  current sigma  gives  an expression  for the  last
+    ! contravariant component:
+    !   J^theta = sigma/J + p' B_alpha/B_theta.
+    ! From these, the contravariant components can be calculated as
+    !   J_i = J^alpha g_alpha,i + J^theta g_theta,i.
+    ! These are then all be transformed to the other coordinate systems.
+    ! Note that vector plots for different  Richardson levels can be combined to
+    ! show the total grid by just plotting them all individually.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl) result(ierr)
+        use grid_vars, only: grid_type, disc_type
+        use grid_utilities, only: calc_vec_comp
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
+        use num_utilities, only: c
+        use eq_vars, only: B_0, R_0, pres_0
+        use VMEC, only: calc_trigon_factors
+        
+        character(*), parameter :: rout_name = 'J_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        real(dp), allocatable :: J_com(:,:,:,:,:)                               ! covariant and contravariant components of J (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: J_mag(:,:,:)                                   ! magnitude of J (dim1,dim2,dim3)
+        character(len=10) :: base_name                                          ! base name
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! set up components and magnitude of J
+        allocate(J_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(J_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        J_com = 0._dp
+        J_mag = 0._dp
+        do kd = 1,grid_eq%loc_n_r
+            J_com(:,:,kd,1,2) = -eq_1%pres_FD(kd,1)
+            J_com(:,:,kd,3,2) = eq_2%sigma(:,:,kd)/eq_2%jac_FD(:,:,kd,0,0,0) + &
+                &eq_1%pres_FD(kd,1)*eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) / &
+                &eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0)
+        end do
+        do id = 1,3
+            J_com(:,:,:,id,1) = &
+                &J_com(:,:,:,1,2)*eq_2%g_FD(:,:,:,c([1,id],.true.),0,0,0) + &
+                &J_com(:,:,:,3,2)*eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)
+        end do
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) J_com = J_com * pres_0/(R_0*B_0)
+        
+        ! set plot variables
+        base_name = 'J'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_2,J_com,norm_disc_prec_eq,&
+            &v_mag=J_mag,base_name=base_name)
+        CHCKERR('')
+    end function J_plot
     
     ! Plots the curvature. If multiple equilibrium parallel jobs, every job does
     ! its  piece, and  the results  are joined  automatically by  plot_HDF5. The

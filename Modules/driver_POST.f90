@@ -67,7 +67,7 @@ contains
         use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
             &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
             &plot_grid_style, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, &
-            &plot_kappa, n_theta_plot, n_zeta_plot
+            &plot_J, plot_kappa, n_theta_plot, n_zeta_plot
         use eq_ops, only: flux_q_plot, divide_eq_jobs
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -109,7 +109,7 @@ contains
         
         ! set up whether full output is possible
         full_output = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec .or. plot_B &
-            &.or. plot_kappa
+            &.or. plot_J .or. plot_kappa
         
         ! set up whether Richardson level has to be appended to the name
         select case (eq_style) 
@@ -458,12 +458,13 @@ contains
         
         use num_vars, only: no_output, no_plots, eq_style, plot_grid_style, &
             &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr, &
-            &plot_B, plot_sol_xi, plot_sol_Q, plot_kappa
+            &plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
         use eq_vars, only: max_flux_F
-        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot, kappa_plot
+        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot, J_plot, &
+            &kappa_plot
         use eq_utilities, only: calc_F_derivs, calc_inv_met
         use sol_vars, only: alpha
         use grid_utilities, only: calc_XYZ_grid, setup_interp_data, &
@@ -581,7 +582,7 @@ contains
                     &X_1_out=X,grid_name='output perturbation grid')
                 CHCKERR('')
                 
-                ! also set up transformation matrices if B_plot
+                ! also set up transformation matrices for plots
                 ierr = calc_T_HF(grids(1),eq_1,eq_2,[0,0,0])
                 CHCKERR('')
                 ierr = calc_inv_met(eq_2%T_FE,eq_2%T_EF,[0,0,0])
@@ -748,6 +749,15 @@ contains
                     call writo('Plot the magnetic field')
                     call lvl_ud(1)
                     ierr = B_plot(grids(1),eq_2)
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                end if
+                
+                ! plot current if requested
+                if (plot_J) then
+                    call writo('Plot the current')
+                    call lvl_ud(1)
+                    ierr = J_plot(grids(1),eq_1,eq_2)
                     CHCKERR('')
                     call lvl_ud(-1)
                 end if

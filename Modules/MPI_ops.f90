@@ -300,9 +300,9 @@ contains
         use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
             &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
             &tol_rich, max_nr_tries_HH, &
-            &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_kappa, &
-            &plot_sol_xi, plot_sol_Q, plot_E_rec, no_plots, plot_grid_style, &
-            &n_sol_plotted, n_theta_plot, n_zeta_plot, &
+            &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
+            &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, no_plots, &
+            &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
             &prog_style, POST_style, jump_to_sol, export_HEL, &
@@ -348,6 +348,8 @@ contains
             call MPI_Bcast(plot_magn_grid,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_B,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(plot_J,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_resonance,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

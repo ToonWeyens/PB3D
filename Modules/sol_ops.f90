@@ -111,9 +111,10 @@ contains
             &apply_disc
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
+        use num_utilities, only: c
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
-        use num_utilities, only: con2dis, c
+        use num_utilities, only: con2dis
         use grid_utilities, only: setup_deriv_data, apply_disc
 #endif
         

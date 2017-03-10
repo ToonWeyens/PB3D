@@ -16,10 +16,10 @@ module num_vars
         &eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, plot_B, &
-        &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, ltest, &
-        &use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, &
-        &max_it_slepc, norm_disc_prec_eq, K_style, norm_disc_prec_X, &
-        &norm_disc_prec_sol, POST_style, magn_int_style, &
+        &plot_J, plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
+        &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
+        &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, &
+        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
@@ -52,7 +52,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.57_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.58_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.52_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -96,6 +96,7 @@ module num_vars
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
     logical :: plot_magn_grid                                                   ! whether to plot the grid in real coordinates
     logical :: plot_B                                                           ! whether to plot the magnetic field in real coordinates
+    logical :: plot_J                                                           ! whether to plot the current in real coordinates
     logical :: plot_flux_q                                                      ! whether to plot flux quantities in real coordinates
     logical :: plot_kappa                                                       ! whether to plot curvature
     logical :: plot_sol_xi                                                      ! whether to plot plasma perturbation of solution in POST

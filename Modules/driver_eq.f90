@@ -23,11 +23,11 @@ contains
     ! Main driver of PB3D equilibrium part.
     integer function run_driver_eq(eq_1_tot,eq_2_tot) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
-            &plot_magn_grid, plot_B, plot_kappa, eq_job_nr, eq_jobs_lims, &
-            &jump_to_sol, rich_restart_lvl, PB3D_name_eq
+            &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
+            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, PB3D_name_eq
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
-            &broadcast_output_eq, B_plot, kappa_plot
+            &broadcast_output_eq, B_plot, J_plot, kappa_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, &
@@ -49,8 +49,8 @@ contains
         character(len=8) :: flux_name                                           ! toroidal or poloidal
         type(grid_type), target :: grid_eq                                      ! equilibrium grid
         type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
-        type(eq_1_type) :: eq_1                                                 ! equilibrium for
-        type(eq_2_type) :: eq_2                                                 ! equilibrium for
+        type(eq_1_type) :: eq_1                                                 ! equilibrium for divided grid
+        type(eq_2_type) :: eq_2                                                 ! equilibrium for divided grid
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
         logical :: only_half_grid                                               ! calculate only half grid
         logical :: dealloc_vars = .true.                                        ! whether to deallocate variables to save memory
@@ -239,6 +239,23 @@ contains
             end select
         else
             call writo('Magnetic field plot not requested')
+        end if
+        
+        ! plot current if requested
+        ! (done in parts, for every parallel job)
+        if (plot_J) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = J_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    if (rich_lvl.eq.1) then
+                        ierr = J_plot(grid_eq,eq_1,eq_2)
+                        CHCKERR('')
+                    end if
+            end select
+        else
+            call writo('Current plot not requested')
         end if
         
         ! plot curvature if requested

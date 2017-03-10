@@ -1,12 +1,13 @@
 &INPUTDATA_POST
     n_sol_plotted           = -1,-1,-1,0
     plot_resonance          = .false.
-    plot_flux_q             = .false.
     plot_magn_grid          = .false.
+    plot_flux_q             = .true.
     plot_sol_xi             = .true.
     plot_sol_Q              = .true.
     plot_E_rec              = .true.
     plot_B                  = .true.
+    plot_J                  = .true.
     plot_kappa              = .true.
     norm_disc_prec_sol      = 3
     n_zeta_plot             = 25

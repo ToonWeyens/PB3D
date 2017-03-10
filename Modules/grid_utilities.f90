@@ -2167,7 +2167,7 @@ contains
     integer function calc_vec_comp(grid,grid_eq,eq,v_com,norm_disc_prec,v_mag,&
         &base_name,max_transf) result(ierr)
         
-        use grid_vars, only: grid_type, disc_type
+        use grid_vars, only: disc_type
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
