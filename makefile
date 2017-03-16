@@ -84,8 +84,8 @@ LINK = -llapack -lblas \
 
 #LINK = -L$(BLASLAPACK_DIR)/lib -lblas -llapack \
   #$(LIBSTELL_DIR)/libstell.a \
-  #-L$(HDF5_DIR)/lib -lhdf5_fortran -lhdf5 \
-  #-L$(NETCDF_DIR)/lib -lnetcdf -lnetcdff \
+  #-L$(NETCDF_DIR)/lib -lnetcdff -lnetcdf \
+  #-L$(HDF5_DIR)/lib -lhdf5_hl -lhdf5 -lhdf5_fortran -ldl -lm -lz \
   #$(PETSC_LIB) \
   #$(SLEPC_LIB) \
   #libdfftpack.a libfoul.a# 2. ITER
@@ -124,11 +124,11 @@ LINKER=mpifort
 #   note: INTEL warning 6536 is suppressed, which informs about extra "USE".
 #   note: INTEL warning 6843 is suppressed, which informs about empty intent(out) variables
 ##############################################################################
-COMP_FLAGS = -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
-#COMP_FLAGS = -O3 -fbacktrace -g -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
+#COMP_FLAGS = -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
+COMP_FLAGS = -O3 -fbacktrace -g -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
 
-#COMP_FLAGS = -O0 -DlIB -Dldebug -g -recursive -ftrapuv -check bounds -check uninit -traceback -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# debug, profiling with gprof2dot, INTEL
-#COMP_FLAGS = -O3 -DlIB -traceback -g -recursive -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# optimized, INTEL
+#COMP_FLAGS = -O0 -DlIB -Dldebug -g -heap-arrays 100 -recursive -ftrapuv -check bounds -check uninit -traceback -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# debug, profiling with gprof2dot, INTEL
+#COMP_FLAGS = -O3 -DlIB -traceback -g -heap-arrays 100 -recursive -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# optimized, INTEL
 
 COMP_FLAGS_EX= -O2 -w
 

@@ -249,7 +249,7 @@ contains
                 CHCKERR('')
                 
                 ! interpolate field-aligned metric equilibrium variables
-                call eq_2_B%init(grid_eq_B)
+                call eq_2_B%init(grid_eq_B,setup_E=.false.,setup_F=.true.)
                 ierr = interp_HEL_on_grid(grid_eq,grid_eq_B,eq_2=eq_2,&
                     &eq_2_out=eq_2_B,eq_1=eq_1,grid_name='field-aligned &
                     &equilibrium grid')

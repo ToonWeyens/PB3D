@@ -694,3 +694,8 @@ CHANGELOG
 
 1.59: - Fixed a bug for the tests on input variables. They were called too late.
       - Added a normalization to be used with "pert_mult_factor_POST" to provide X_0.
+
+1.60: - Intel makefile now specifies that the heap should be used for arrays larger than 100kB, to avoid overflowing the stack.
+      - "dealloc_vars" is back in use for the metric equilibrium routines, and has been extended to "broadcast_output_eq_2", where it is most critical.
+      - The initialization of equilibrium variables is done more carefully now, avoiding unnecessary E variables where possible.
+      - The calculation of memory in "divide_eq_jobs" was wrong in assuming that the normal perturbation range would be divided. Also, total memory usage is not available any more.

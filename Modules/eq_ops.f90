@@ -1410,7 +1410,7 @@ contains
         ! local variables
         integer :: id
         integer :: pmone                                                        ! plus or minus one
-        logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        logical :: dealloc_vars_loc = .false.                                   ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -1421,7 +1421,6 @@ contains
         call lvl_ud(1)
         
         ! set up local dealloc_vars
-        dealloc_vars_loc = .false.
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! create metric equilibrium variables
@@ -3478,7 +3477,6 @@ contains
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
     integer function B_plot(grid_eq,eq,rich_lvl) result(ierr)
-        use grid_vars, only: grid_type, disc_type
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
@@ -3555,7 +3553,6 @@ contains
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
     integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl) result(ierr)
-        use grid_vars, only: grid_type, disc_type
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
@@ -3632,7 +3629,6 @@ contains
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
     integer function kappa_plot(grid_eq,eq,rich_lvl) result(ierr)
-        use grid_vars, only: grid_type, disc_type
         use grid_utilities, only: calc_vec_comp
         use eq_vars, only: eq_2_type
         use eq_utilities, only: calc_inv_met
@@ -3990,7 +3986,7 @@ contains
         integer :: id                                                           ! counter
         logical :: par_div_loc = .false.                                        ! local par_div
         integer :: loc_size                                                     ! local size
-        logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        logical :: dealloc_vars_loc = .false.                                   ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -4015,7 +4011,6 @@ contains
         end if
         
         ! set up local dealloc_vars
-        dealloc_vars_loc = .false.
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! set up the 1D equivalents of the equilibrium variables
@@ -4150,8 +4145,7 @@ contains
     end function print_output_eq_2
     
     ! Broadcast equilibrium variables to all processes
-    integer function broadcast_output_eq_1(grid,eq,eq_tot) &
-        &result(ierr)                                                           ! flux version
+    integer function broadcast_output_eq_1(grid,eq,eq_tot) result(ierr)         ! flux version
         use grid_utilities, only: trim_grid
         use MPI_utilities, only: get_ser_var
         
@@ -4159,7 +4153,7 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
+        type(eq_1_type), intent(inout) :: eq                                    ! flux equilibrium variables
         type(eq_1_type), intent(inout) :: eq_tot                                ! flux equilibrium variables in total grid
         
         ! local variables
@@ -4183,7 +4177,7 @@ contains
         CHCKERR('')
         
         ! create full flux equilibrium variables
-        call eq_tot%init(grid_tot)
+        call eq_tot%init(grid_tot,setup_E=.false.,setup_F=.true.)
         
         ! clean up
         call grid_tot%dealloc()
@@ -4196,8 +4190,8 @@ contains
         allocate(temp(grid_trim%loc_n_r))
         allocate(temp_tot(grid_trim%n(3)))
         
+        ! pres_FD
         do id = lbound(eq%pres_FD,2),ubound(eq%pres_FD,2)
-            ! pres_FD
             temp = eq%pres_FD(norm_id(1):norm_id(2),id)
             ierr = get_ser_var(temp,temp_tot,scatter=.true.)
             CHCKERR('')
@@ -4240,7 +4234,7 @@ contains
         ! user output
         call lvl_ud(-1)
     end function broadcast_output_eq_1
-    integer function broadcast_output_eq_2(grid,eq,eq_tot) &
+    integer function broadcast_output_eq_2(grid,eq,eq_tot,dealloc_vars) &
         &result(ierr)                                                           ! metric version
         use grid_utilities, only: trim_grid
         use MPI_utilities, only: get_ser_var
@@ -4249,8 +4243,9 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
         type(eq_2_type), intent(inout) :: eq_tot                                ! metric equilibrium variables in total grid
+        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -4259,6 +4254,7 @@ contains
         integer :: id, jd, kd, ld                                               ! counters
         real(dp), allocatable :: temp(:)                                        ! temporary variable
         real(dp), allocatable :: temp_tot(:)                                    ! temporary variable
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -4268,12 +4264,15 @@ contains
             &grid')
         call lvl_ud(1)
         
+        ! set up local dealloc_vars
+        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
+        
         ! create full grid
         ierr = grid_tot%init(grid%n)
         CHCKERR('')
         
         ! create full metric equilibrium variables
-        call eq_tot%init(grid_tot)
+        call eq_tot%init(grid_tot,setup_E=.false.,setup_F=.true.)
         
         ! clean up
         call grid_tot%dealloc()
@@ -4298,7 +4297,16 @@ contains
                         CHCKERR('')
                         eq_tot%g_FD(:,:,:,id,jd,kd,ld) = reshape(&
                             &temp_tot,grid_trim%n)
-                        
+                    end do
+                end do
+            end do
+        end do
+        if (dealloc_vars_loc) deallocate(eq%g_FD)
+        
+        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
+            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
+                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
+                    do id = lbound(eq%g_FD,4),ubound(eq%g_FD,4)
                         ! h_FD
                         temp = reshape(&
                             &eq%h_FD(:,:,norm_id(1):norm_id(2),id,jd,kd,ld),&
@@ -4308,7 +4316,14 @@ contains
                         eq_tot%h_FD(:,:,:,id,jd,kd,ld) = reshape(&
                             &temp_tot,grid_trim%n)
                     end do
-                    
+                end do
+            end do
+        end do
+        if (dealloc_vars_loc) deallocate(eq%h_FD)
+        
+        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
+            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
+                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
                     ! jac_FD
                     temp = reshape(&
                         &eq%jac_FD(:,:,norm_id(1):norm_id(2),jd,kd,ld),&
@@ -4320,6 +4335,7 @@ contains
                 end do
             end do
         end do
+        if (dealloc_vars_loc) deallocate(eq%jac_FD)
         
         ! S
         temp = reshape(&
@@ -4328,6 +4344,7 @@ contains
         ierr = get_ser_var(temp,temp_tot,scatter=.true.)
         CHCKERR('')
         eq_tot%S = reshape(temp_tot,grid_trim%n)
+        if (dealloc_vars_loc) deallocate(eq%S)
         
         ! kappa_n
         temp = reshape(&
@@ -4336,6 +4353,7 @@ contains
         ierr = get_ser_var(temp,temp_tot,scatter=.true.)
         CHCKERR('')
         eq_tot%kappa_n = reshape(temp_tot,grid_trim%n)
+        if (dealloc_vars_loc) deallocate(eq%kappa_n)
         
         ! kappa_g
         temp = reshape(&
@@ -4344,6 +4362,7 @@ contains
         ierr = get_ser_var(temp,temp_tot,scatter=.true.)
         CHCKERR('')
         eq_tot%kappa_g = reshape(temp_tot,grid_trim%n)
+        if (dealloc_vars_loc) deallocate(eq%kappa_g)
         
         ! sigma
         temp = reshape(&
@@ -4352,9 +4371,11 @@ contains
         ierr = get_ser_var(temp,temp_tot,scatter=.true.)
         CHCKERR('')
         eq_tot%sigma = reshape(temp_tot,grid_trim%n)
+        if (dealloc_vars_loc) deallocate(eq%sigma)
         
         ! clean up
         call grid_trim%dealloc()
+        if (dealloc_vars_loc) call eq%dealloc()
         
         ! user output
         call lvl_ud(-1)
@@ -4424,10 +4445,10 @@ contains
     !   different normal  extent, their  angular variables do  match. Therefore,
     !   the weighted sum can be used as arr_size.
     integer function divide_eq_jobs(n_par_X_rich,arr_size,n_div_max,&
-        &n_par_X_base,tot_mem_size) result(ierr)
+        &n_par_X_base) result(ierr)
         
         use num_vars, only: max_tot_mem_per_proc, max_X_mem_per_proc, &
-            &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style, n_procs
+            &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style
         use rich_vars, only: rich_lvl
         use MPI_utilities, only: wait_MPI
         use eq_utilities, only: calc_memory_eq
@@ -4441,7 +4462,6 @@ contains
         integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
         integer, intent(in), optional :: n_div_max                              ! maximum n_div
         real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
-        real(dp), intent(inout), optional :: tot_mem_size                       ! total memory size
         
         ! local variables
         real(dp) :: mem_size                                                    ! approximation of memory required for eq variables
@@ -4476,8 +4496,9 @@ contains
         if (present(n_par_X_base)) n_par_X_base_loc = n_par_X_base
         
         ! calculate minimum memory size for tensorial perturbation part
-        ierr = calc_memory_X(2,ceiling(n_par_X_rich*n_r_sol*1._dp/n_procs),&
-            &min_n_mod_X,min_X_mem_per_proc)                                    ! order 2, n_r_sol/n_procs normal points, n_par_X_rich parallel points, mode number
+        ! (Note: perturbation part uses entire normal perturbation range)
+        ierr = calc_memory_X(2,n_par_X_rich*n_r_sol,min_n_mod_X,&
+            &min_X_mem_per_proc)                                                ! order 2, n_r_sol normal points, n_par_X_rich parallel points, mode number
         CHCKERR('')
         
         ! calculate largest possible range of parallel points fitting in memory
@@ -4496,8 +4517,8 @@ contains
             n_par_range = ceiling(n_par_X_rich*1._dp/n_div + n_par_X_base_loc)
             ierr = calc_memory_eq(arr_size,n_par_range,mem_size)
             CHCKERR('')
-            ierr = calc_memory_X(2,ceiling(n_par_range*n_r_sol*1._dp/n_procs),&
-                &min_n_mod_X,min_X_mem_per_proc)                                ! order 2, n_r_sol/n_procs normal points, n_par_range parallel points, mode number
+            ierr = calc_memory_X(2,n_par_range*n_r_sol,min_n_mod_X,&
+                &min_X_mem_per_proc)                                            ! order 2, n_r_sol normal points, n_par_range parallel points, mode number
             CHCKERR('')
             if (n_div.gt.n_div_max_loc) then                                    ! still not enough memory
                 ierr = 1
@@ -4536,22 +4557,10 @@ contains
             &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB')
         call lvl_ud(1)
         call writo('(minimum: '//trim(i2str(ceiling(min_X_mem_per_proc)))//&
-            &'MB, for all modes separately)')
+            &'MB, for '//trim(i2str(min_n_mod_X))//&
+            &' mode(s) at the same time)')
         call lvl_ud(-1)
         call lvl_ud(-1)
-        
-        ! set total memory size if requested, reusing n_par_range
-        if (present(tot_mem_size)) then
-            n_par_range = ceiling(n_par_X_rich + n_par_X_base_loc)
-            ierr = calc_memory_eq(arr_size,n_par_range,tot_mem_size)
-            CHCKERR('')
-            ierr = calc_memory_X(2,ceiling(n_par_X_rich*n_r_sol*1._dp/n_procs),&
-                &min_n_mod_X,min_X_mem_per_proc)                                ! order 2, n_r_sol/n_procs normal points, n_par_X_rich parallel points, mode number
-            CHCKERR('')
-            tot_mem_size = max(tot_mem_size,&
-                &mem_scale_fac*(max_tot_mem_per_proc-min_X_mem_per_proc))       ! include the requirement on the perturbation jobs
-            tot_mem_size = 1._dp*ceiling(tot_mem_size)                          ! round up
-        end if
         
         ! Set up jobs data (eq_jobs_lims).
         ! Also initialize eq_job_nr to 0 as it is incremented by "do_eq".

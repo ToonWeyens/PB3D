@@ -5,7 +5,7 @@
     alpha                   = 0.0
     min_r_sol               = 0.3
     max_r_sol               = 1.0
-    n_r_sol                 = 1000
+    n_r_sol                 = 2000
     norm_disc_prec_sol      = 3
     norm_disc_prec_eq       = 5
     max_it_zero             = 500
@@ -14,7 +14,7 @@
     prim_X                  = 20
     n_mod_X                 = 30
     tol_rich                = 1.0E-4
-    n_sol_requested         = 2
+    n_sol_requested         = 1
     max_it_inv              = 1
     BC_style                = 1 1
     K_style                 = 1

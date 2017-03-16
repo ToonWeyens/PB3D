@@ -368,7 +368,7 @@ contains
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
                     ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,&
-                        &n_par_X_base=nchi*1._dp/n_out(2,1))                    ! everything is tabulated on nchi poloidal points, but only on one toroidal point
+                        &n_par_X_base=nchi*1._dp/n_out(2,1))                    ! everything is tabulated on nchi poloidal points, but only on one toroidal point, hence n_out(2,1)
                     CHCKERR('')
             end select
             n_par_tot = maxval(eq_jobs_lims(2,:))-minval(eq_jobs_lims(1,:))+1
@@ -572,7 +572,7 @@ contains
                 call writo('Interpolate variables on output grid')
                 call lvl_ud(1)
                 
-                call eq_2%init(grids(1))
+                call eq_2%init(grids(1),setup_E=.false.,setup_F=.true.)
                 call X%init(grids(2))
                 ierr = interp_HEL_on_grid(grid_eq_HEL,grids(1),&
                     &eq_2=eq_2_HEL,eq_2_out=eq_2,eq_1=eq_1,&

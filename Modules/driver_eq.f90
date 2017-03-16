@@ -68,6 +68,7 @@ contains
 #if ldebug
         if (plot_info) dealloc_vars = .false.
 #endif
+        if (plot_B .or. plot_J .or. plot_kappa) dealloc_vars = .false.          ! need transformation matrices
         
         ! some preliminary things
         ierr = wait_MPI()
@@ -142,10 +143,6 @@ contains
             end if
         end if
         
-        ! broadcast flux equilibrium variables to full variables
-        ierr = broadcast_output_eq(grid_eq,eq_1,eq_1_tot)
-        CHCKERR('')
-        
         ! Do actions depending on equilibrium style
         ! VMEC: The  equilibrium grid is  field-aligned and therefore has  to be
         ! recalculated for every  Richardson step. The output names  make use of
@@ -168,7 +165,7 @@ contains
                 CHCKERR('')
                 
                 ! Calculate the metric equilibrium quantities
-                ierr = calc_eq(grid_eq,eq_1,eq_2)
+                ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
                 CHCKERR('')
                 
 #if ldebug
@@ -177,10 +174,6 @@ contains
                     call plot_info_for_VMEC_HEL_comparision()
                 end if
 #endif
-                
-                ! broadcast metric equilibrium variables to full variables
-                ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
-                CHCKERR('')
             case (2)                                                            ! HELENA
                 ! For  first  Richardson  level,  calculate  metric  equilibrium
                 ! variables and then broadcast them to full normal grid. For the
@@ -192,7 +185,7 @@ contains
                     CHCKERR('')
                     
                     ! Calculate the metric equilibrium quantities
-                    ierr = calc_eq(grid_eq,eq_1,eq_2)
+                    ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
                     CHCKERR('')
                     
 #if ldebug
@@ -204,10 +197,6 @@ contains
                     
                     ! write metric equilibrium variables to output
                     ierr = print_output_eq(grid_eq,eq_2,'eq_2',par_div=.false.)
-                    CHCKERR('')
-                    
-                    ! broadcast metric equilibrium variables to full variables
-                    ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot)
                     CHCKERR('')
                 end if
                 
@@ -275,19 +264,24 @@ contains
             call writo('Magnetic field plot not requested')
         end if
         
+        ! broadcast metric equilibrium variables (also deallocates)
+        if (eq_style.eq.1 .or. eq_style.eq.2.and.rich_lvl.eq.1) then
+            ierr = broadcast_output_eq(grid_eq,eq_1,eq_1_tot)
+            CHCKERR('')
+            ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot,dealloc_vars=&
+                &.true.)
+            CHCKERR('')
+        end if
+        
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
         call grid_eq%dealloc()
         call eq_1%dealloc()
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                call eq_2%dealloc()
-            case (2)                                                            ! HELENA
-                if (rich_lvl.eq.1) call eq_2%dealloc()
-                call grid_eq_B%dealloc()
-                deallocate(grid_eq_B)
-        end select
+        if (eq_style.eq.2) then
+            call grid_eq_B%dealloc()
+            deallocate(grid_eq_B)
+        end if
         nullify(grid_eq_B)
         call lvl_ud(-1)
         
