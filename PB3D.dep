@@ -306,6 +306,7 @@ eq_ops.o : \
     HELENA_ops.o \
     HDF5_ops.o \
     eq_utilities.o \
+    X_utilities.o \
     rich_vars.o \
 
 eq_utilities.o : \

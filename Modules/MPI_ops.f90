@@ -84,7 +84,9 @@ contains
         use sol_vars, only: sol_type
         use num_vars, only: eq_style
 #if ldebug
-        use num_vars, only: rank
+        use MPI_utilities, only: get_ser_var, &
+            &n_waits
+        use num_vars, only: rank, n_procs
         use grid_vars, only: n_alloc_grids, n_alloc_discs
         use eq_vars, only: n_alloc_eq_1s, n_alloc_eq_2s
         use X_vars, only: n_alloc_X_1s, n_alloc_X_2s
@@ -104,6 +106,12 @@ contains
         type(X_1_type), intent(inout), optional :: X_1                          ! vectorial perturbation variables
         type(X_2_type), intent(inout), optional :: X_2                          ! integrated tensorial perturbation variables
         type(sol_type), intent(inout), optional :: sol                          ! solution variables
+        
+        ! local variables
+#if ldebug
+        integer :: id                                                           ! counter
+        integer, allocatable :: ser_n_waits(:)                                  ! serial n_waits
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -171,6 +179,20 @@ contains
             &', n_alloc_X_2s = '//trim(i2str(n_alloc_X_2s)))
         if (n_alloc_sols.ne.0) call writo('For rank '//trim(i2str(rank))//&
             &', n_alloc_sols = '//trim(i2str(n_alloc_sols)))
+        
+        ! information about synchronization of wait_MPI
+        ierr = get_ser_var([n_waits],ser_n_waits) 
+        CHCKERR('')
+        if (rank.eq.0 .and. (minval(ser_n_waits).ne.n_waits .or. &
+            &maxval(ser_n_waits).ne.n_waits)) then
+            call writo('The number of wait_MPI commands was not consistent')
+            call lvl_ud(1)
+            do id = 1,n_procs
+                call writo('For rank '//trim(i2str(id-1))//': '//&
+                    &trim(i2str(ser_n_waits(id))))
+            end do
+            call lvl_ud(-1)
+        end if
 #endif
         
         ! deallocate HDF5 lock

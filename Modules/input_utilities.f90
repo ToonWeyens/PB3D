@@ -18,7 +18,7 @@ contains
     ! [MPI] All ranks, but only master can give input
     function get_log(yes,ind) result(val)
         use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: broadcast_var
         
         ! input / output
         logical :: val                                                          ! output value
@@ -71,7 +71,7 @@ contains
     ! [MPI] All ranks, but only global rank can give input
     function get_real(lim_lo,lim_hi,ind) result(val)
         use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: broadcast_var
         
         ! input / output
         real(dp) :: val                                                         ! output value
@@ -144,7 +144,7 @@ contains
     ! [MPI] All ranks, but only global rank can give input
     function get_int(lim_lo,lim_hi,ind) result(val)
         use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI, broadcast_var
+        use MPI_utilities, only: broadcast_var
         
         ! input / output
         integer :: val                                                          ! output value

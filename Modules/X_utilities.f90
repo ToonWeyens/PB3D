@@ -189,7 +189,6 @@ contains
     ! as well
     integer function calc_memory_X(ord,arr_size,n_mod,mem_size) result(ierr)
         use ISO_C_BINDING
-        use num_vars, only: mem_scale_fac
         
         character(*), parameter :: rout_name = 'calc_memory_X'
         
@@ -232,8 +231,8 @@ contains
         ! convert B to MB
         mem_size = mem_size*1.E-6_dp
         
-        ! scale memory to account for rough estimation
-        mem_size = mem_size*mem_scale_fac
+        ! apply 50% safety factor (empirical)
+        mem_size = mem_size*1.5_dp
         
         ! test overflow
         if (mem_size.lt.0) then

@@ -41,7 +41,6 @@ contains
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
             &eq_jobs_lims, jump_to_sol, rich_restart_lvl
-        use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
             &redistribute_output_eq, B_plot, J_plot, kappa_plot
         use sol_vars, only: alpha
@@ -128,10 +127,6 @@ contains
 #endif
         if (plot_B .or. plot_J .or. plot_kappa) dealloc_vars = .false.          ! need transformation matrices
         
-        ! some preliminary things
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
@@ -205,8 +200,9 @@ contains
         ! grid_eq and grid_eq_B
         ! VMEC: The equilibrium grid is  field-aligned but its angular variables
         ! need to be set up still.
-        ! HELENA: The equilibrium  grid is not field-aligned but  taken from the
-        ! equilibrium output.  The field-aligned grid has to be set up separately.
+        ! HELENA:  The equilibrium  grid  is not  field-aligned  but taken  from
+        ! the  equilibrium output.  The  field-aligned  grid has  to  be set  up
+        ! separately.
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! calculate angular grid points for equilibrium grid
@@ -380,10 +376,6 @@ contains
         else
             if (eq_job_nr.eq.1) call writo('Magnetic grid plot not requested')
         end if
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
 #if ldebug
     contains
         subroutine plot_info_for_VMEC_HEL_comparision()

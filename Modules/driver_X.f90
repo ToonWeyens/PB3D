@@ -49,7 +49,6 @@ contains
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
             &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr
         use rich_vars, only: n_par_X, rich_lvl
-        use MPI_utilities, only: wait_MPI
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_X_1, &
             &reconstruct_PB3D_X_2
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
@@ -333,7 +332,6 @@ contains
     ! Note: everything  is  done  here in  the original  grids, not  necessarily
     ! field-aligned.
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2,X_1) result(ierr)
-        use MPI_utilities, only: wait_MPI
         use num_vars, only: rank, n_procs, eq_style, U_style, eq_job_nr, &
             &rich_restart_lvl
         use X_ops, only: calc_X, print_output_X
@@ -467,10 +465,6 @@ contains
             call plot_info_for_VMEC_HEL_comparison(grid_X,X_1)
         end if
 #endif
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
 #if ldebug
     contains
         subroutine plot_info_for_VMEC_HEL_comparison(grid_X,X)
@@ -549,10 +543,10 @@ contains
     integer function run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B,X_1,&
         &X_2_int) &
         &result(ierr)
-        use MPI_utilities, only: wait_MPI
         use PB3D_ops, only: reconstruct_PB3D_X_2
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
-            &eq_job_nr, magn_int_style, no_output, rich_restart_lvl
+            &eq_job_nr, eq_jobs_lims, magn_int_style, no_output, &
+            &rich_restart_lvl
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
@@ -592,7 +586,7 @@ contains
         
         ! divide perturbation jobs, tensor phase
         var_size_without_par = ceiling(product(grid_X_B%n(1:3))*1._dp)
-        ierr = divide_X_jobs(var_size_without_par,2)
+        ierr = divide_X_jobs(var_size_without_par)
         CHCKERR('')
         
         ! if first equilibrium job of  first Richardson level, set up integrated
@@ -814,13 +808,11 @@ contains
         call writo('Tensorial perturbation jobs finished')
         
         ! write field-averaged tensorial perturbation variables to output
-        ierr = print_output_X(grid_X_B,X_2_int,'X_2_int',rich_lvl=rich_lvl,&
-            &is_field_averaged=.true.)
-        CHCKERR('')
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
+        if (eq_job_nr.eq.size(eq_jobs_lims,2)) then
+            ierr = print_output_X(grid_X_B,X_2_int,'X_2_int',rich_lvl=rich_lvl,&
+                &is_field_averaged=.true.)
+            CHCKERR('')
+        end if
     end function run_driver_X_2
     
     ! prints information for tensorial perturbation job

@@ -446,6 +446,7 @@ contains
             call writo('Do you want to perturb the equilibrium?')
             pert_eq = get_log(.false.)
             
+            zero_N_pert = .false.
             if (pert_eq) then
                 call writo('How do you want to prescribe the perturbation?')
                 call lvl_ud(1)
@@ -565,7 +566,6 @@ contains
                 allocate(nr_m(tot_nr_pert+1))
                 nr_n = 0
                 nr_m = 0
-                zero_N_pert = .false.
                 do jd = 1,tot_nr_pert
                     select case (pert_type)
                         case (1)                                                ! from file
@@ -4316,17 +4316,20 @@ contains
     ! able to contain the equilibrium variables (see note below), as well as the
     ! vectorial perturbation variables. These  are later combined into tensorial
     ! variables and integrated.
-    ! Therefore,  in its  most extreme  form, the  division in  equilibrium jobs
-    ! would be the individual calculation  on a fundamental integration integral
-    ! of the parallel points:
+    ! The equilibrium variables have to be  operated on to calculate them, which
+    ! translates to a scale factor "mem_scale_fac". However, in the perturbation
+    ! phase, when they are just used, this scale factor is not needed.
+    ! In its  most extreme form, the  division in equilibrium jobs  would be the
+    ! individual  calculation  on  a  fundamental integration  integral  of  the
+    ! parallel points:
     !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
     !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-    ! For HELENA,  as the  parallel derivatives  are calculated  discretely, the
+    ! For  HELENA,  the  parallel  derivatives are  calculated  discretely,  the
     ! equilibrium and  vectorial perturbation  variables are tabulated  first in
     ! this  HELENA grid.  This happens  in the  first Richardson  level. In  all
     ! Richardson  levels, afterwards,  these variables  are interpolated  in the
     ! angular directions. In  this case, therefore, there can be  no division of
-    ! this HELENA output interval.
+    ! this HELENA output interval for the first Richardson level.
     ! This  procedure does  the job  of dividing  the grids  setting the  global
     ! variables 'eq_jobs_lims'.
     ! The integration of the tensorial perturbation variables is adjusted:
@@ -4340,39 +4343,44 @@ contains
     ! levels,  as is  attested  by the  existence of  the  routines "do_eq"  and
     ! "eq_info", which are equivalent to "do_rich" and "rich_info".
     ! In POST, finally,  the situation is slightly different for  HELENA, as all
-    ! the requested variables have to fit, including the D and DU variables. The
-    ! parallel range to be taken is then the one of the output grid, including a
-    ! base range  for HELENA. Also, for  extended output grids, the  size of the
-    ! grid in the secondary angle has  to be included in arr_size (i.e. toroidal
-    ! when poloidal flux is used and vice versa).
+    ! the requested variables have to fit, including the interpolated variables,
+    ! as they are stored whereas in PB3D  they are not. The parallel range to be
+    ! taken is then the  one of the output grid, including a  base range for the
+    ! variables tabulated on  the HELENA grid. Also, for  extended output grids,
+    ! the size of the grid in the  secondary angle has to be included in n_par_X
+    ! (i.e. toroidal  when poloidal flux  is used and vice  versa). Furthermore,
+    ! multiple equilibrium jobs are allowed.
     ! To this end,  optionally, a base number can be  provided for n_par_X, that
     ! is always added to the number of points in the divided n_par_X.
     ! Note: For PB3D,  only the variables g_FD, h_FD and  jac_FD are counted, as
     ! the  equilibrium variables  and  the transformation  matrices are  deleted
     ! after use. Also, S, sigma, kappa_n and kappa_g can be neglected as they do
-    ! not contain derivatives and are therefore much smaller.
+    ! not  contain  derivatives   and  are  therefore  much   smaller.  in  both
+    ! "calc_memory" routines,  however, a 50%  safety factor is used  to account
+    ! for this somewhat.
     integer function divide_eq_jobs(n_par_X,arr_size,n_div,n_div_max,&
         &n_par_X_base,range_name) result(ierr)
         
         use num_vars, only: max_tot_mem, max_X_mem, magn_int_style, &
-            &mem_scale_fac
+            &mem_scale_fac, prog_style
         use rich_vars, only: rich_lvl
-        use MPI_utilities, only: wait_MPI
         use eq_utilities, only: calc_memory_eq
+        use X_utilities, only: calc_memory_X
+        use X_vars, only: n_mod_X
         
         character(*), parameter :: rout_name = 'divide_eq_jobs'
         
         ! input / output
         integer, intent(in) :: n_par_X                                          ! number of parallel points to be divided
-        integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
+        integer, intent(in) :: arr_size(2)                                      ! array size (using loc_n_r) for eq_2 and X_1 variables
         integer, intent(inout) :: n_div                                         ! final number of divisions
         integer, intent(in), optional :: n_div_max                              ! maximum n_div
-        real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
+        integer, intent(in), optional :: n_par_X_base                           ! base n_par_X, undivisible
         character(len=*), intent(in), optional :: range_name                    ! name of range
         
         ! local variables
-        real(dp) :: mem_size                                                    ! approximation of memory required for eq variables
-        real(dp) :: n_par_X_base_loc                                            ! local n_par_X_base
+        real(dp) :: mem_size(2)                                                 ! approximation of memory required for eq_2 and X_1 variables
+        integer :: n_par_X_base_loc                                             ! local n_par_X_base
         integer :: max_mem_req                                                  ! maximum memory required
         integer :: n_div_max_loc                                                ! maximum n_div
         integer :: n_par_range                                                  ! nr. of points in range
@@ -4396,7 +4404,7 @@ contains
         end select
         
         ! set up local n_par_X_base
-        n_par_X_base_loc = 0._dp
+        n_par_X_base_loc = 0
         if (present(n_par_X_base)) n_par_X_base_loc = n_par_X_base
         
         ! set up local range name
@@ -4415,10 +4423,13 @@ contains
         n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
         
         ! calculate largest possible range of parallel points fitting in memory
-        do while (max_tot_mem.lt.mem_size)                                      ! mem_size has to be smaller than total memory
+        do while (max_tot_mem.lt.sum(mem_size))                                 ! combined mem_size has to be smaller than total memory
             n_div = n_div + 1
             n_par_range = ceiling(n_par_X*1._dp/n_div + n_par_X_base_loc)
-            ierr = calc_memory_eq(arr_size,n_par_range,mem_size)
+            ierr = calc_memory_eq(arr_size(1),n_par_range,mem_size(1))
+            CHCKERR('')
+            mem_size(1) = mem_size(1)*mem_scale_fac                             ! operations have to be done on eq, it is not just stored.
+            ierr = calc_memory_X(1,arr_size(2)*n_par_range,n_mod_X,mem_size(2)) ! all modes have to be stored
             CHCKERR('')
             if (n_div.gt.n_div_max_loc) then                                    ! still not enough memory
                 ierr = 1
@@ -4426,7 +4437,7 @@ contains
                     &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
-            max_mem_req = ceiling(mem_size)
+            max_mem_req = ceiling(sum(mem_size))
         end do
         if (n_div.gt.1) then
             range_message = 'The '//trim(i2str(n_par_X))//' '//&
@@ -4439,27 +4450,25 @@ contains
         end if
         call writo(range_message)
         call writo('The total memory for all processes together is estimated &
-            &to be about '//trim(i2str(ceiling(mem_size)))//'MB')
+            &to be about '//trim(i2str(ceiling(sum(mem_size))))//'MB')
         call lvl_ud(1)
         call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem)))//'&
             &MB, user specified)')
         call lvl_ud(-1)
         
-        ! calculate max memory available for perturbation calculations
-        ! (mem_size was scaled by mem_scale_fac)
-        max_X_mem = max_tot_mem - mem_size/mem_scale_fac                        ! don't need scale factor for eq vars as no operations are done on them, they are just stored
-        call writo('In the perturbation phase, the equilibrium variables are &
-            &not being operated on:')
-        call lvl_ud(1)
-        call writo('This translates to a scale factor 1/'//&
-            &trim(r2strt(mem_scale_fac)))
-        call writo('Therefore, the memory left for the perturbation phase is '&
-            &//trim(i2str(ceiling(max_X_mem)))//'MB')
-        call lvl_ud(-1)
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
+        if (prog_style.eq.1) then
+            ! calculate max memory available for perturbation calculations
+            mem_size(1) = mem_size(1)/mem_scale_fac                             ! rescale by mem_scale_fac as eq is now just stored
+            max_X_mem = max_tot_mem - sum(mem_size)
+            call writo('In the perturbation phase, the equilibrium variables &
+                &are not being operated on:')
+            call lvl_ud(1)
+            call writo('This translates to a scale factor 1/'//&
+                &trim(r2strt(mem_scale_fac)))
+            call writo('Therefore, the memory left for the perturbation phase &
+                &is '//trim(i2str(ceiling(max_X_mem)))//'MB')
+            call lvl_ud(-1)
+        end if
         
         ! user output
         call lvl_ud(-1)

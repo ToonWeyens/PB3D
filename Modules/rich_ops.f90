@@ -25,7 +25,6 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: setup_nm_X
-        use MPI_utilities, only: wait_MPI
         use HDF5_utilities, only: probe_HDF5_group
         
         character(*), parameter :: rout_name = 'init_rich'
@@ -76,8 +75,6 @@ contains
         end if
         
         ! some preliminary things
-        ierr = wait_MPI()
-        CHCKERR('')
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
         
@@ -312,10 +309,10 @@ contains
     ! start a Richardson level
     integer function start_rich_lvl() result(ierr)
         use grid_utilities, only: calc_n_par_X_rich
-        use grid_vars, only: n_r_eq
+        use grid_vars, only: n_r_eq, n_r_sol
         use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
-        use num_vars, only: eq_style, max_deriv, jump_to_sol, rich_restart_lvl
+        use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
@@ -324,7 +321,7 @@ contains
         integer :: n_div                                                        ! number of divisions in equilibrium jobs
         logical :: only_half_grid                                               ! calculate only half grid with even points
         integer :: n_par_X_loc                                                  ! local n_par_X
-        integer :: var_size_without_par                                         ! size of variables without parallel dimension
+        integer :: var_size_without_par(2)                                      ! size without parallel dimension for eq_2 and X_1 variables
         
         ! initialize ierr
         ierr = 0
@@ -349,11 +346,13 @@ contains
             n_div = 1
         else
             ! Get local  n_par_X to divide  the equilibrium jobs. Note  that the
-            ! average size  for all process  together is n_r_eq, times  the size
-            ! due  to  the  dimensions  corresponding to  the  derivatives,  and
-            ! the  number  of  variables (see  subroutine  "calc_memory"  inside
-            ! "divide_eq_jobs")
-            var_size_without_par = 13*n_r_eq*(1+max_deriv)**3
+            ! average  size of  eq_2  varaibles for  all  processes together  is
+            ! n_r_eq,  times the  size due  to the  dimensions corresponding  to
+            ! the  derivatives,  and the  number  of  variables (see  subroutine
+            ! "calc_memory" inside  "divide_eq_jobs"), while  it is  n_r_sol for
+            ! the X_1 variables.
+            var_size_without_par(1) = n_r_eq
+            var_size_without_par(2) = n_r_sol
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs

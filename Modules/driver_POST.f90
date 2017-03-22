@@ -64,20 +64,18 @@ contains
     ! requested Eigenvalues if full_output.
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type
-        use num_vars, only: POST_style, eq_style, rank, max_deriv, &
-            &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
-            &plot_grid_style, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, &
-            &plot_J, plot_kappa, n_theta_plot, n_zeta_plot
+        use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
+            &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
+            &plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, plot_J, plot_kappa, &
+            &n_theta_plot, n_zeta_plot
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size
-        use X_vars, only: n_mod_X
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
         use grid_utilities, only: extend_grid_E, setup_interp_data, &
             &apply_disc, copy_grid
-        use MPI_utilities, only: wait_MPI
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
         
@@ -92,7 +90,7 @@ contains
         integer :: n_div                                                        ! number of divisions of parallel points
         integer :: n_out(3,2)                                                   ! total grid sizes for eq and X output grids
         integer :: id, jd                                                       ! counters
-        integer :: var_size_without_par                                         ! size of variables without parallel dimension
+        integer :: var_size_without_par(2)                                      ! size without parallel dimension for eq_2 and X_1 variables
         integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -158,10 +156,6 @@ contains
         ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
         CHCKERR('')
         
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         ! user output
         call lvl_ud(-1)
         call writo('Preliminary variables set up')
@@ -187,10 +181,6 @@ contains
             &trim(i2str(lims_norm(1,3)))//' .. '//trim(i2str(lims_norm(2,3))),&
             &persistent=.true.)
         call lvl_ud(-1)
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
         
         ! user output
         call lvl_ud(-1)
@@ -218,10 +208,6 @@ contains
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
         ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
-        CHCKERR('')
-        
-        ! synchronize processes
-        ierr = wait_MPI()
         CHCKERR('')
         
         ! user output
@@ -265,10 +251,6 @@ contains
         else
             call writo('Magnetic grid plot not requested')
         end if
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
         
         ! user output
         call lvl_ud(-1)
@@ -356,18 +338,19 @@ contains
             end if
             
             ! set size of all variables, without parallel dimension
-            var_size_without_par = 13*product(n_out(2:3,1))*(1+max_deriv)**3 + &
-                &8*product(n_out(2:3,2))*n_mod_X
+            var_size_without_par(1) = n_out(3,1)
+            var_size_without_par(2) = n_out(3,2)
             
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,n_div)
+                    ierr = divide_eq_jobs(product(n_out(1:2,1)),&
+                        &var_size_without_par,n_div)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,&
-                        &n_div,n_par_X_base=nchi*1._dp/n_out(2,1))              ! everything is tabulated on nchi poloidal points, but only on one toroidal point, hence n_out(2,1)
+                    ierr = divide_eq_jobs(product(n_out(1:2,1)),&
+                        &var_size_without_par,n_div,n_par_X_base=nchi)
                     CHCKERR('')
             end select
             
@@ -416,13 +399,9 @@ contains
             CHCKERR('')
             
             ! user output
-            call writo('Full eq grid reconstructed for XYZ reconstruction')
             call lvl_ud(-1)
+            call writo('Full eq grid reconstructed for XYZ reconstruction')
         end if
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
         
         ! user output
         call lvl_ud(-1)
@@ -479,7 +458,6 @@ contains
         use HELENA_ops, only: interp_HEL_on_grid
         use VMEC, onLy: calc_trigon_factors
         use num_utilities, only: calc_aux_utilities
-        use MPI_utilities, only: wait_MPI
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -565,10 +543,6 @@ contains
                 ltest = ltest_loc
 #endif
                 
-                ! synchronize processes
-                ierr = wait_MPI()
-                CHCKERR('')
-                
                 ! user output
                 call lvl_ud(-1)
                 call writo('Variables calculated on output grid')
@@ -591,10 +565,6 @@ contains
                 ierr = calc_T_HF(grids(1),eq_1,eq_2,[0,0,0])
                 CHCKERR('')
                 ierr = calc_inv_met(eq_2%T_FE,eq_2%T_EF,[0,0,0])
-                CHCKERR('')
-                
-                ! synchronize processes
-                ierr = wait_MPI()
                 CHCKERR('')
                 
                 ! user output
@@ -625,6 +595,10 @@ contains
         end if
         
         ! set up XYZ
+        ! Note:  plot_grid_style is  only applied  for the  quantities that  are
+        ! tabulated  on the  perturbation grid,  i.e. the  perturbation and  the
+        ! magnetic perturbation, as well as the energy terms that are calculated
+        ! from them.
         allocate(XYZ(grids(2)%n(1),grids(2)%n(2),grids(2)%loc_n_r,3))
         select case (plot_grid_style)
             case (0)                                                            ! 3-D geometry
@@ -720,10 +694,6 @@ contains
             CHCKERR('')
         end if
         
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         ! user output
         call lvl_ud(-1)
         call writo('Plots prepared')
@@ -807,10 +777,6 @@ contains
                 ! increment counter
                 i_EV_out = i_EV_out + 1
                 
-                ! synchronize processes
-                ierr = wait_MPI()
-                CHCKERR('')
-                
                 ! user output
                 call lvl_ud(-1)
                 call writo('Mode '//trim(i2str(id))//'/'//&
@@ -828,10 +794,6 @@ contains
             call plot_sol_val_comp(sol_val_comp)
         end if
         
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         ! user output
         call lvl_ud(-1)
         call writo('Variables for different ranges plotted')
@@ -846,10 +808,6 @@ contains
         call eq_2%dealloc()
         call X%dealloc()
         call lvl_ud(-1)
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
     end function run_driver_POST
     
     ! Cleans up main driver for postprocessing.

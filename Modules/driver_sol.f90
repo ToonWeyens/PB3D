@@ -38,7 +38,6 @@ contains
     integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,sol) result(ierr)
         use num_vars, only: EV_style, eq_style, rich_restart_lvl
         use grid_vars, only: n_r_sol
-        use MPI_utilities, only: wait_MPI
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
         use grid_ops, only: calc_norm_range, setup_grid_sol, print_output_grid
@@ -193,9 +192,5 @@ contains
         
         ! calculate Richardson extrapolation factors if necessary
         call calc_rich_ex(sol%val)
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
     end function run_driver_sol
 end module driver_sol

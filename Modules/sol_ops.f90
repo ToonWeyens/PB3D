@@ -34,7 +34,6 @@ contains
     ! plots Eigenvalues
     integer function plot_sol_vals(sol,last_unstable_id) result(ierr)
         use num_vars, only: rank
-        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'plot_sol_vals'
         
@@ -84,10 +83,6 @@ contains
                 call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             end if
         end if
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
     end function plot_sol_vals
     
     ! Plots Eigenvectors using the angular  part of the the provided equilibrium
@@ -560,7 +555,7 @@ contains
     
     ! plots the harmonics and their maximum in 2D
     integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
-        use MPI_utilities, only: wait_MPI, get_ser_var
+        use MPI_utilities, only: get_ser_var
         use num_vars, only: ex_max_size, rank, no_plots
         use eq_vars, only: max_flux_F
         use X_vars, only: sec_X_ind
@@ -667,10 +662,6 @@ contains
                 &[1,grid_sol_trim%n(3),n_mod_tot]))
         end if
         
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         ! master plots imaginary part at midplane
         if (rank.eq.0) then
             ! set up file name of this rank and plot title
@@ -699,10 +690,6 @@ contains
                 &[1,grid_sol_trim%n(3),n_mod_tot]),y=reshape(x_plot,&
                 &[1,grid_sol_trim%n(3),n_mod_tot]))
         end if
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
         
         ! master plots phase at midplane
         if (rank.eq.0) then
@@ -741,10 +728,6 @@ contains
             deallocate(x_plot)
             deallocate(sol_vec_phase)
         end if
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
         
         ! only plot maximum if resonant surfaces found
         if (rank.eq.0 .and. size(res_surf,1).gt.0) then
@@ -794,10 +777,6 @@ contains
         
         ! clean up
         call grid_sol_trim%dealloc()
-        
-        ! synchronize processes
-        ierr = wait_MPI()
-        CHCKERR('')
     end function plot_harmonics
     
     ! Decomposes  the  plasma potential  and  kinetic energy  in its  individual
@@ -1035,7 +1014,7 @@ contains
         use num_utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
         use sol_vars, only: alpha
-        use MPI_utilities, only: get_ser_var, wait_MPI
+        use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ
 #if ldebug
         use grid_utilities, only: setup_deriv_data, apply_disc

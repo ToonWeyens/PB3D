@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.61                                                              !
+!   Version: 1.62                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -38,7 +38,6 @@ program PB3D
     use input_ops, only: read_input_opts, read_input_eq, print_output_in
     use input_utilities, only: dealloc_in
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, sudden_stop
-    use MPI_utilities, only: wait_MPI
     use eq_ops, only: calc_normalization_const, normalize_input
     use eq_utilities, only: do_eq, eq_info
     use rich_ops, only: init_rich, term_rich, do_rich, start_rich_lvl, &
@@ -84,8 +83,6 @@ program PB3D
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
-    ierr = wait_MPI()
-    CHCKERR
     if (rank.eq.0) then                                                         ! only master
         ierr = parse_args()                                                     ! parse argument (options are used in open_input)
         CHCKERR

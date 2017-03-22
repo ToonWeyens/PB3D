@@ -61,7 +61,6 @@ contains
     integer function insert_block_mat(block,mat,r_id,ind,n_sol,transp,&
         &overwrite) result(ierr)
         use X_vars, only: n_X, m_X, n_mod_X
-        use MPI_utilities, only: wait_MPI
         use num_vars, only: use_pol_flux_F
 #if ldebug
         use input_utilities, only: pause_prog

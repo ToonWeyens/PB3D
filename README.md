@@ -711,3 +711,9 @@ CHANGELOG
       - The maximum memory in total is now passed as input variable "max_tot_mem".
       - Started usin Valgrind again, in stead of Dr. Memory.
       - Fixed a bug where "pert_mult_factor_POST" was wrongly used when it was zero.
+
+1.62: - Well-functioning version.
+      - Fixed bug: X_2 output is only written to HDF5 for last equilibrium job.
+      - Updated and cleaned up the job distribution procedures.
+      - Threw away many unnecessairy "wait_MPI" commands.
+      - Updated the runtime parameters for SLEPC.

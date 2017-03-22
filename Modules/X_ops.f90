@@ -2696,33 +2696,23 @@ contains
     end function print_output_X_2
     
     ! divides the perturbation jobs
-    ! The (k,m) pairs have to be calculated, but might have to be broken up into
-    ! pieces  due  to memory  constraints.  In  its  most  extreme case,  for  a
-    ! certain mode  number k, therefore, all  the pairs (k,m) can  be calculated
-    ! sequentially, saving  the values  for this  k in  the process  and cycling
-    ! through m.
-    ! This  can be  directly  scaled  up to  a  block of  k  and  m values,  and
-    ! ultimately, all the values simultaneously.
-    ! Therefore, the whole  load is divided into jobs depending  on the sizes of
-    ! the blocks of k  and m values in memory. These jobs  start with the vector
-    ! phase  by calculating  U and  DU, followed  in the  tensor phase  by their
-    ! combinations in  PV and  KV. Then,  these are  integrated in  the parallel
-    ! coordinate,  with  a  possible  interpolation  in  between.  Finally,  the
-    ! integrated values are saved and the next jobs starts.
-    ! This  function does  the  job of  dividing the  grids  setting the  global
-    ! variable 'X_jobs_lims' for data of a certain order, given by div_ord. E.g.
-    ! for the vector phase, the order is 1 and for the tensorial phase it is 2.
-    integer function divide_X_jobs(arr_size,div_ord) result(ierr)
+    ! This  concerns the  calculation of  the  magnetic integrals  of blocks  of
+    ! tensorial perturbation variables.  These are set up  using the equilibrium
+    ! and vectorial perturbation  variables that are stored in  memory, but only
+    ! the  integrated tensorial  result  is stored  in  memory, with  negligible
+    ! variables size.
+    ! The size of the  (k,m) pairs to be calculated is  determined by looking at
+    ! what  fits  in memory  when  the  equilibrium and  vectorial  perturbation
+    ! variables are stored in memory first.
+    integer function divide_X_jobs(arr_size) result(ierr)
         use num_vars, only: max_X_mem, n_procs, X_jobs_lims
         use X_vars, only: n_mod_X
         use X_utilities, only: calc_memory_X
-        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'divide_X_jobs'
         
         ! input / output
         integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
-        integer, intent(in) :: div_ord                                          ! division order
         
         ! local variables
         integer :: n_div                                                        ! factor by which to divide the total size
@@ -2736,8 +2726,7 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Dividing the perturbation jobs of order '//&
-            &trim(i2str(div_ord)))
+        call writo('Dividing the perturbation jobs')
         call lvl_ud(1)
         
         ! calculate largest possible block of (k,m) values
@@ -2746,7 +2735,7 @@ contains
         do while (mem_size.gt.max_X_mem)
             n_div = n_div + 1
             n_mod_block = ceiling(n_mod_X*1._dp/n_div)
-            ierr = calc_memory_X(div_ord,arr_size,n_mod_block,mem_size)
+            ierr = calc_memory_X(2,arr_size,n_mod_block,mem_size)
             CHCKERR('')
             if (n_div.gt.n_mod_X) then
                 ierr = 1
@@ -2757,9 +2746,8 @@ contains
         if (n_div.gt.1) then
             block_message = 'The '//trim(i2str(n_mod_X))//&
                 &' Fourier modes are split into '//trim(i2str(n_div))//&
-                &' and '//trim(i2str(n_div**div_ord))//&
-                &' jobs are done separately'
-            if (n_procs.lt.n_div**div_ord) then
+                &' and '//trim(i2str(n_div**2))//' jobs are done separately'
+            if (n_procs.lt.n_div**2) then
                 block_message = trim(block_message)//', '//&
                     &trim(i2str(n_procs))//' at a time'
             else
@@ -2788,11 +2776,7 @@ contains
         allocate(n_mod_loc(n_div))
         n_mod_loc = n_mod_X/n_div                                               ! number of radial points on this processor
         n_mod_loc(1:mod(n_mod_X,n_div)) = n_mod_loc(1:mod(n_mod_X,n_div)) + 1   ! add a mode to if there is a remainder
-        call calc_X_jobs_lims(X_jobs_lims,n_mod_loc,div_ord)
-        
-        ! synchronize MPI
-        ierr = wait_MPI()
-        CHCKERR('')
+        call calc_X_jobs_lims(X_jobs_lims,n_mod_loc,2)
         
         ! user output
         call lvl_ud(-1)

@@ -985,6 +985,14 @@ contains
         ! dealloc grid
         call grid_plot%dealloc()
         
+        ! get pointers to full X, Y and Z
+        ! The reason for this is that the plot  is not as simple as usual, so no
+        ! divided  plots  are used,  and  also  efficiency  is not  the  biggest
+        ! priority. Therefore,  all the plotting  of the  local is handled  by a
+        ! single process, the master.
+        call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
+        deallocate(X_1,Y_1,Z_1)
+        
         ! 2. plot field lines
         call writo('writing field lines')
         
@@ -1015,8 +1023,8 @@ contains
         ! divided  plots  are used,  and  also  efficiency  is not  the  biggest
         ! priority. Therefore,  all the plotting  of the  local is handled  by a
         ! single process, the master.
-        call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
         call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
+        deallocate(X_2,Y_2,Z_2)
         
         ierr = magn_grid_plot_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
             &Z_1_tot,Z_2_tot,anim_name)
@@ -1042,8 +1050,8 @@ contains
             character(len=*) :: merge_name                                      ! name of variable to be merged
             
             ! local variables
-            real(dp), allocatable :: loc_XYZ(:)                                 ! local copy of X, Y or Z in an angular point
-            real(dp), allocatable :: ser_loc_XYZ(:)                             ! serial copy of loc_XYZ
+            real(dp), allocatable :: XYZ_loc(:)                                 ! local copy of X, Y or Z in an angular point
+            real(dp), allocatable :: ser_XYZ_loc(:)                             ! serial copy of XYZ_loc
             integer, allocatable :: tot_dim(:)                                  ! total dimensions for plot 
             
             ! merge plots for flux surfaces if more than one process
@@ -1062,21 +1070,21 @@ contains
                     allocate(Z_tot(size(X,1),size(X,2),sum(tot_dim)))
                 end if
                 
-                allocate(loc_XYZ(sum(tot_dim)))
+                allocate(XYZ_loc(sum(tot_dim)))
                 do jd = 1,size(X,2)
                     do id = 1,size(X,1)
-                        loc_XYZ = X(id,jd,:)
-                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        XYZ_loc = X(id,jd,:)
+                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
                         CHCKERR('')
-                        if (rank.eq.0) X_tot(id,jd,:) = ser_loc_XYZ
-                        loc_XYZ = Y(id,jd,:)
-                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        if (rank.eq.0) X_tot(id,jd,:) = ser_XYZ_loc
+                        XYZ_loc = Y(id,jd,:)
+                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
                         CHCKERR('')
-                        if (rank.eq.0) Y_tot(id,jd,:) = ser_loc_XYZ
-                        loc_XYZ = Z(id,jd,:)
-                        ierr = get_ser_var(loc_XYZ,ser_loc_XYZ)
+                        if (rank.eq.0) Y_tot(id,jd,:) = ser_XYZ_loc
+                        XYZ_loc = Z(id,jd,:)
+                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
                         CHCKERR('')
-                        if (rank.eq.0) Z_tot(id,jd,:) = ser_loc_XYZ
+                        if (rank.eq.0) Z_tot(id,jd,:) = ser_XYZ_loc
                     end do
                 end do
             else                                                                ! just point
@@ -1097,7 +1105,7 @@ contains
             use rich_vars, only: rich_lvl
             
             character(*), parameter :: rout_name = 'magn_grid_plot_HDF5'
-            
+          
             ! input / output
             real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
             real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates

@@ -15,13 +15,14 @@ module MPI_utilities
         &wait_MPI, lock_req_acc, lock_return_acc
 #if ldebug
     public lock_header, lock_wl_change, &
-        &debug_lock
+        &debug_lock, n_waits
 #endif
     
 #if ldebug
     ! global variables
     ! Note: use "sort -nk1 [output file]" to get output sorted by time.
     logical :: debug_lock = .false.                                             ! print debug information about lock operations
+    integer :: n_waits = 0
 #endif
     
     ! interfaces
@@ -601,6 +602,10 @@ contains
         ! set barrier
         call MPI_Barrier(MPI_Comm_world,ierr)
         CHCKERR('MPI Barrier failed')
+        
+#if ldebug
+        n_waits = n_waits + 1
+#endif
     end function wait_MPI
     
     ! Request access to lock of a BL or optionally a NB type.

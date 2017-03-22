@@ -801,7 +801,6 @@ contains
     !   additional dimension equal to n_mod_X, but without derivatives.
     integer function calc_memory_eq(arr_size,n_par,mem_size) result(ierr)
         use ISO_C_BINDING
-        use num_vars, only: mem_scale_fac
         
         character(*), parameter :: rout_name = 'calc_memory_eq'
         
@@ -821,16 +820,16 @@ contains
         ! get size of real variable
         dp_size = sizeof(1._dp)
         
-        ! set memory size
-        mem_size = arr_size*1._dp
-        mem_size = mem_size*n_par
+        ! set memory size for metric equilibrium variables
+        mem_size = 13._dp*arr_size
+        mem_size = mem_size*n_par*(1+max_deriv)**3
         mem_size = mem_size*dp_size
         
         ! convert B to MB
         mem_size = mem_size*1.E-6_dp
         
-        ! scale memory to account for rough estimation
-        mem_size = mem_size*mem_scale_fac
+        ! apply 50%percent safety factor (empirical)
+        mem_size = mem_size*1.5_dp
         
         ! test overflow
         if (mem_size.lt.0) then

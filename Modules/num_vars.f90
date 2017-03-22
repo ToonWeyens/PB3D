@@ -51,7 +51,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.61_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.62_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.61_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -71,7 +71,7 @@ module num_vars
     integer, allocatable :: eq_jobs_lims(:,:)                                   ! data about eq jobs: [min_theta,max_theta] for all jobs
     integer :: X_job_nr                                                         ! nr. of X job
     integer :: eq_job_nr                                                        ! nr. of eq job
-    real(dp), parameter :: mem_scale_fac = 1.5                                  ! empirical scale factor of memory (because operations are done)
+    real(dp), parameter :: mem_scale_fac = 6.0                                  ! empirical scale factor of memory to calculate eq compared to just storing it 
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                ! pi
