@@ -64,11 +64,11 @@ contains
     ! requested Eigenvalues if full_output.
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type
-        use num_vars, only: n_procs, POST_style, eq_style, rank, max_deriv, &
+        use num_vars, only: POST_style, eq_style, rank, max_deriv, &
             &plot_magn_grid, plot_resonance, plot_flux_q, eq_jobs_lims, &
             &plot_grid_style, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, &
             &plot_J, plot_kappa, n_theta_plot, n_zeta_plot
-        use eq_ops, only: flux_q_plot, divide_eq_jobs
+        use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size
@@ -89,6 +89,7 @@ contains
         type(grid_type) :: grid_X                                               ! perturbation grid
         type(grid_type) :: grid_sol                                             ! solution grid
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
+        integer :: n_div                                                        ! number of divisions of parallel points
         integer :: n_out(3,2)                                                   ! total grid sizes for eq and X output grids
         integer :: id, jd                                                       ! counters
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
@@ -355,22 +356,26 @@ contains
             end if
             
             ! set size of all variables, without parallel dimension
-            var_size_without_par = (&
-                &13*product(n_out(2:3,1))*(1+max_deriv)**3 + &
-                &8*product(n_out(2:3,2))*n_mod_X)&
-                &/n_procs
+            var_size_without_par = 13*product(n_out(2:3,1))*(1+max_deriv)**3 + &
+                &8*product(n_out(2:3,2))*n_mod_X
             
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par)
+                    ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,n_div)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
                     ierr = divide_eq_jobs(n_out(1,1),var_size_without_par,&
-                        &n_par_X_base=nchi*1._dp/n_out(2,1))                    ! everything is tabulated on nchi poloidal points, but only on one toroidal point, hence n_out(2,1)
+                        &n_div,n_par_X_base=nchi*1._dp/n_out(2,1))              ! everything is tabulated on nchi poloidal points, but only on one toroidal point, hence n_out(2,1)
                     CHCKERR('')
             end select
+            
+            ! calculate equilibrium job limits
+            ierr = calc_eq_jobs_lims(n_out(1,1),n_div)
+            CHCKERR('')
+            
+            ! set up total number of parallel points
             n_par_tot = maxval(eq_jobs_lims(2,:))-minval(eq_jobs_lims(1,:))+1
         else
             allocate(eq_jobs_lims(2,0))
@@ -572,7 +577,7 @@ contains
                 call writo('Interpolate variables on output grid')
                 call lvl_ud(1)
                 
-                call eq_2%init(grids(1),setup_E=.false.,setup_F=.true.)
+                call eq_2%init(grids(1),setup_E=.true.,setup_F=.true.)
                 call X%init(grids(2))
                 ierr = interp_HEL_on_grid(grid_eq_HEL,grids(1),&
                     &eq_2=eq_2_HEL,eq_2_out=eq_2,eq_1=eq_1,&

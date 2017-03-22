@@ -11,7 +11,7 @@ module MPI_vars
     private
     public init_lock, dealloc_lock, &
         &lock_type, &
-        &HDF5_lock, X_jobs_lock
+        &HDF5_lock
 
     ! lock type
     ! There is a  blocking (BL) and a nonblocking (NB)  version where the former
@@ -65,7 +65,6 @@ module MPI_vars
     
     ! global variables
     type(lock_type) :: HDF5_lock                                                ! HDF5 lock
-    type(lock_type) :: X_jobs_lock                                              ! X_jobs lock
     
 contains
     ! Initializes a lock.

@@ -7,13 +7,12 @@ module MPI_ops
     use messages
     use MPI
     use num_vars, only: dp, max_str_ln, pi
-    use grid_vars, only: grid_type
     use MPI_vars, only: lock_type
     
     implicit none
     private
     public start_MPI, stop_MPI, abort_MPI, broadcast_input_opts, &
-        &sudden_stop, get_next_job, print_jobs_info
+        &sudden_stop
     
 contains
     ! start MPI and gather information
@@ -63,9 +62,27 @@ contains
     
     ! stop MPI
     ! [MPI] Collective call
-    integer function stop_MPI() result(ierr)
+    ! deallocates:
+    !   - grid_eq
+    !   - grid_eq_B
+    !   - grid_X
+    !   - grid_X_B
+    !   - grid_sol
+    !   - eq_1
+    !   - eq_2
+    !   - X_1
+    !   - X_2
+    !   - sol
+    integer function stop_MPI(grid_eq,grid_eq_B,grid_X,grid_X_B,grid_sol,eq_1,&
+        &eq_2,X_1,X_2,sol) result(ierr)
+        
         use MPI_vars, only: dealloc_lock, &
             &HDF5_lock
+        use grid_vars, only: grid_type
+        use eq_vars, only: eq_1_type, eq_2_type
+        use X_vars, only: X_1_type, X_2_type
+        use sol_vars, only: sol_type
+        use num_vars, only: eq_style
 #if ldebug
         use num_vars, only: rank
         use grid_vars, only: n_alloc_grids, n_alloc_discs
@@ -76,11 +93,67 @@ contains
         
         character(*), parameter :: rout_name = 'stop_MPI'
         
+        ! input / output
+        type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid
+        type(grid_type), intent(inout), pointer, optional :: grid_eq_B          ! field-aligned equilibrium grid
+        type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid
+        type(grid_type), intent(inout), pointer, optional :: grid_X_B           ! field-aligned perturbation grid
+        type(grid_type), intent(inout), optional :: grid_sol                    ! solution grid
+        type(eq_1_type), intent(inout), optional :: eq_1                        ! Flux equilibrium variables
+        type(eq_2_type), intent(inout), optional :: eq_2                        ! metric equilibrium variables
+        type(X_1_type), intent(inout), optional :: X_1                          ! vectorial perturbation variables
+        type(X_2_type), intent(inout), optional :: X_2                          ! integrated tensorial perturbation variables
+        type(sol_type), intent(inout), optional :: sol                          ! solution variables
+        
         ! initialize ierr
         ierr = 0
         
         ! user output
         call writo('Stopping MPI')
+        
+        ! clean up variables
+        if (present(grid_eq)) then
+            if (associated(grid_eq%r_F)) call grid_eq%dealloc()
+        end if
+        if (present(grid_eq_B)) then
+            if (associated(grid_eq_B)) then
+                if (eq_style.eq.2) then
+                    call grid_eq_B%dealloc()
+                    deallocate(grid_eq_B)
+                end if
+                nullify(grid_eq_B)
+            end if
+        end if
+        if (present(grid_X)) then
+            if (associated(grid_X%r_F)) call grid_X%dealloc()
+        end if
+        if (present(grid_X_B)) then
+            if (associated(grid_X_B)) then
+                if (eq_style.eq.2) then
+                    call grid_X_B%dealloc()
+                    deallocate(grid_X_B)
+                end if
+                nullify(grid_X_B)
+            end if
+        end if
+        if (present(grid_sol)) then
+            if (associated(grid_sol%r_F)) call grid_sol%dealloc()
+        end if
+        if (present(eq_1)) then
+            if (allocated(eq_1%pres_FD)) call eq_1%dealloc()
+        end if
+        if (present(eq_2))then
+            if (allocated(eq_2%jac_FD)) call eq_2%dealloc()
+        end if
+        if (present(X_1)) then
+            if (allocated(X_1%U_0)) call X_1%dealloc()
+        end if
+        if (present(X_2)) then
+            if (allocated(X_2%PV_0)) call X_2%dealloc()
+        end if
+        if (present(sol)) then
+            if (allocated(sol%val)) call sol%dealloc()
+        end if
         
 #if ldebug
         ! information about allocated variables
@@ -121,176 +194,6 @@ contains
         CHCKERR('MPI abort failed')
     end function abort_MPI
     
-    ! Finds a  suitable next job. If  none are left, set X_job_nr  to a negative
-    ! value.
-    ! Optionally an array of logicals can be  passed to see whether the modes of
-    ! the next job are the same as the previous job.
-    integer function get_next_job(X_job_nr,same_modes) result(ierr)
-        use num_vars, only: X_jobs_taken, X_jobs_lims, X_jobs_file_name, &
-            &rank, X_jobs_file_i
-        use MPI_vars, only: X_jobs_lock
-        use MPI_utilities, only: lock_req_acc, lock_return_acc
-        
-        character(*), parameter :: rout_name = 'get_next_job'
-        
-        ! input / output
-        integer, intent(inout) :: X_job_nr                                      ! perturbation job nr.
-        logical, intent(inout), optional :: same_modes(:)                       ! whether the modes are the same
-        
-        ! local variables
-        integer :: current_job                                                  ! current job when calling this routine
-        integer :: n_jobs                                                       ! nr. of jobs
-        integer :: id                                                           ! counter
-        integer :: read_stat                                                    ! read status
-        integer :: proc                                                         ! process that did a job
-        integer :: X_job_done                                                   ! X_job done already
-        character :: dummy_char                                                 ! first char of text
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set n_jobs
-        n_jobs = size(X_jobs_taken)
-        
-        ! initialize same modes
-        if (present(same_modes)) same_modes = .false.
-        
-        ! save current job and reset next job to some negative value
-        current_job = X_job_nr
-        X_job_nr = -1
-        
-        ! get access to X jobs lock
-        ierr = lock_req_acc(X_jobs_lock)
-        CHCKERR('')
-        open(X_jobs_file_i,STATUS='old',ACTION ='readwrite',&
-            &FILE=X_jobs_file_name,IOSTAT=ierr)
-        CHCKERR('Failed to open X jobs file')
-        
-        ! read X_jobs file and update X_jobs_taken
-        read(X_jobs_file_i,*,iostat=ierr) dummy_char
-        if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                         ! even if good read, first char must be #
-        CHCKERR('X_job file corrupt')
-        read_stat = 0
-        do while(read_stat.eq.0) 
-            read(X_jobs_file_i,*,iostat=read_stat) proc, X_job_done
-            if (read_stat.eq.0) X_jobs_taken(X_job_done) = .true.
-        end do
-        
-        ! determine a suitable  next job by finding a job  whose columns or rows
-        ! match the previous one
-        do id = 1,n_jobs
-            if (.not.X_jobs_taken(id) .and. current_job.gt.0) then              ! only if there was a previous job (current job > 0)
-                if (matching_job(X_jobs_lims,current_job,id,same_modes)) then
-                    X_job_nr = id
-                    exit
-                end if
-            end if
-        end do
-        
-        ! if no easy job found, look for any job
-        if (X_job_nr.lt.1) then
-            do id = 1,n_jobs
-                if (.not.X_jobs_taken(id)) then
-                    X_job_nr= id
-                    exit
-                end if
-            end do
-        end if
-        
-        ! if new job found, put back X_jobs_taken
-        if (X_job_nr.ge.1) then
-            backspace(UNIT=X_jobs_file_i)
-            write(UNIT=X_jobs_file_i,FMT='(A)',IOSTAT=ierr) &
-                &trim(i2str(rank))//' '//trim(i2str(X_job_nr))
-            CHCKERR('Failed to write')
-        end if
-        
-        ! close X_jobs file and return access to lock
-        close(X_jobs_file_i,iostat=ierr)
-        CHCKERR('Failed to close X jobs file')
-        ierr = lock_return_acc(X_jobs_lock)
-        CHCKERR('')
-    contains
-        ! checks whether there is a  job with matching mode numbers. Optionally,
-        ! a logical is  returned indicating in which dimension  the matching job
-        ! was found.
-        logical function matching_job(X_jobs_lims,prev_id,next_id,match_dim) &
-            &result(res)
-            ! input / output
-            integer, intent(in) :: X_jobs_lims(:,:)                             ! limits of X jobs
-            integer, intent(in) :: prev_id, next_id                             ! id's of previous and possible next jobs
-            logical, intent(inout), optional :: match_dim(:)                    ! dimensions in which match was found
-            
-            ! local variables
-            integer :: id                                                       ! counter
-            
-            ! initialize result
-            res = .false.
-            
-            ! initialize same modes
-            if (present(match_dim)) match_dim = .false.
-            
-            ! loop over all orders
-            do id = 1,size(X_jobs_lims,1)/2
-                if (X_jobs_lims((id-1)*2+1,next_id).eq.&
-                    &X_jobs_lims((id-1)*2+1,prev_id) .and. &                    ! minimum matches
-                    &X_jobs_lims((id-1)*2+2,next_id).eq.&
-                    &X_jobs_lims((id-1)*2+2,prev_id)) then                      ! maximum matches
-                    res = .true.
-                    if (present(match_dim)) match_dim(id) = .true.
-                end if
-            end do
-        end function matching_job
-    end function get_next_job
-    
-    ! outputs job information from other processors.
-    integer function print_jobs_info() result(ierr)
-        use num_vars, only: X_jobs_file_name, rank, X_jobs_file_i
-        
-        character(*), parameter :: rout_name = 'print_jobs_info'
-        
-        ! local variables
-        integer :: read_stat                                                    ! read status
-        integer :: proc                                                         ! process that did a job
-        integer :: X_job_done                                                   ! X_job done already
-        character :: dummy_char                                                 ! first char of text
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! only if master
-        if (rank.eq.0) then
-            ! open X_jobs file
-            open(X_jobs_file_i,STATUS='old',ACTION='readwrite',&
-                &FILE=X_jobs_file_name,IOSTAT=ierr)
-            CHCKERR('Failed to open X jobs file')
-            
-            ! read  X_jobs  file  and  output message  for  jobs  done by  other
-            ! processes
-            read(X_jobs_file_i,*,iostat=ierr) dummy_char
-            if (ierr.eq.0 .and. dummy_char.ne.'#') ierr = 1                     ! even if good read, first char must be #
-            CHCKERR('X_job file corrupt')
-            read_stat = 0
-            do while(read_stat.eq.0) 
-                read(X_jobs_file_i,*,iostat=read_stat) proc, X_job_done
-                if (read_stat.eq.0 .and. proc.ne.rank) then
-                    call writo('Job '//trim(i2str(X_job_done))//&
-                        &' was done by process '//trim(i2str(proc)))
-                    call lvl_ud(1)
-#if ldebug
-                    call writo('The output can be found in ¡¡¡OUTPUT SHOULD &
-                        &BE CAPTURED!!!')
-#endif
-                    call lvl_ud(-1)
-                end if
-            end do
-            
-            ! close X_jobs file
-            close(X_jobs_file_i,status='DELETE',iostat=ierr)
-            CHCKERR('Failed to delete X jobs file')
-        end if
-    end function print_jobs_info
-    
     ! Broadcasts options (e.g. user-prescribed) that  are not passed through the
     ! HDF5 output file (i.e. ltest, no_plots, ...).
     ! Note that  some variables (e.g.  eq_style, ...)  are not passed  over MPI.
@@ -309,10 +212,10 @@ contains
             &ex_plot_style, &
             &pert_mult_factor_POST, &
             &max_it_inv, tol_norm, max_it_slepc, &
-            &max_tot_mem_per_proc, max_X_mem_per_proc, plot_size, &
+            &max_tot_mem, max_X_mem, plot_size, &
             &do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
-            &PB3D_name, PB3D_name_eq
+            &PB3D_name
         use grid_vars, only: min_par_X, max_par_X
         use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
@@ -377,7 +280,7 @@ contains
             call MPI_Bcast(max_r_plot,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_tot_mem_per_proc,1,MPI_DOUBLE_PRECISION,0,&
+            call MPI_Bcast(max_tot_mem,1,MPI_DOUBLE_PRECISION,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -393,9 +296,6 @@ contains
             call MPI_Bcast(max_nr_tries_HH,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
-                &MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(PB3D_name_eq,len(PB3D_name_eq),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(ex_plot_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -441,7 +341,7 @@ contains
                         &MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
-                    call MPI_Bcast(max_X_mem_per_proc,1,MPI_DOUBLE_PRECISION,&
+                    call MPI_Bcast(max_X_mem,1,MPI_DOUBLE_PRECISION,&
                         &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(tol_rich,1,MPI_DOUBLE_PRECISION,0,&

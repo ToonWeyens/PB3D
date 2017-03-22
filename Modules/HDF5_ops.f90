@@ -87,16 +87,18 @@ contains
         integer :: disable_rw                                                   ! MPI info to disable read and write
         integer :: i_st(2)                                                      ! indices of sym_type in read string
         integer :: id                                                           ! counter
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
+        logical :: cont_plot_loc                                                ! local version of cont_plot
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set up local cont_plot
+        cont_plot_loc = .false.
         if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set up MPI Communicator
@@ -249,16 +251,18 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=max_str_ln) :: full_file_name                             ! full file name
         integer(HID_T) :: HDF5_i                                                ! file identifier 
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
+        logical :: cont_plot_loc                                                ! local version of cont_plot
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set up local cont_plot
+        cont_plot_loc = .false.
         if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set full file name and HDF5_i (converting integers)
@@ -322,12 +326,13 @@ contains
         integer :: id                                                           ! counter
         integer :: item_len                                                     ! length of item
         logical :: reset_loc                                                    ! local copy of reset
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
         
         ! initialize ierr
         ierr = 0
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
@@ -394,8 +399,8 @@ contains
         integer(HSIZE_T) :: mem_count(3)                                        ! nr. of repetitions of block in memory
         character(len=max_str_ln) :: dim_str                                    ! string with dimensions
         character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
+        logical :: cont_plot_loc                                                ! local version of cont_plot
         integer(HID_T) :: HDF5_kind_64                                          ! HDF5 type corresponding to dp
 #if ldebug
         integer :: istat                                                        ! status
@@ -405,9 +410,11 @@ contains
         ierr = 0
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set up local cont_plot
+        cont_plot_loc = .false.
         if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set HDF5 type corresponding to dp
@@ -580,9 +587,9 @@ contains
         integer :: dataitem_len                                                 ! length of data item
         integer :: id, jd                                                       ! counters
         integer :: jd_loc                                                       ! local jd
-        logical :: reset_loc = .false.                                          ! local copy of reset
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
-        logical :: cont_plot_loc = .false.                                      ! local version of cont_plot
+        logical :: reset_loc                                                    ! local copy of reset
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
+        logical :: cont_plot_loc                                                ! local version of cont_plot
         character(len=max_str_ln) :: dim_str                                    ! string with dimensions
         character(len=max_str_ln) :: fun_str                                    ! string with function
 #if ldebug
@@ -590,12 +597,15 @@ contains
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set up local cont_plot
+        cont_plot_loc = .false.
         if (present(cont_plot)) cont_plot_loc = cont_plot
         
         ! set local reset
+        reset_loc = .false.
         if (present(reset)) reset_loc = reset
         
         ! only group master if parallel plot or current rank if individual plot,
@@ -671,13 +681,14 @@ contains
         ! local variables
         integer :: dataitem_len                                                 ! length of data item
         integer :: id                                                           ! counter
-        logical :: reset_loc = .false.                                          ! local copy of reset
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: reset_loc                                                    ! local copy of reset
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
@@ -686,6 +697,7 @@ contains
             dataitem_len = size(att_dataitem%xml_str)
             
             ! set local reset
+            reset_loc = .false.
             if (present(reset)) reset_loc = reset
             
             ! set XDMF attribute ID
@@ -725,12 +737,13 @@ contains
         integer :: id                                                           ! counter
         integer :: n_dims                                                       ! nr. of dimensions
         character(len=max_str_ln) :: work_str                                   ! work string
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
@@ -778,12 +791,13 @@ contains
         integer, allocatable :: dataitem_len(:)                                 ! length of data item
         integer :: n_dataitems                                                  ! nr. of data items
         logical :: reset_loc                                                    ! local copy of reset
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
@@ -865,7 +879,7 @@ contains
         integer, allocatable :: grids_len(:)                                    ! lengths of grids
         logical :: reset_loc                                                    ! local copy of reset
         character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
@@ -874,6 +888,7 @@ contains
         ierr = 0
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot
@@ -1319,7 +1334,7 @@ contains
             call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,dimsf,ierr,&
                 &file_space_id=filespace,mem_space_id=memspace,&
                 &xfer_prp=x_plist_id)
-            if (ierr.ne.0) call writo('Did you increase max_tot_mem_per_proc &
+            if (ierr.ne.0) call writo('Did you increase max_tot_mem &
                 &while restarting Richardson? If so, must start from 1...',&
                 &alert=.true.)
             CHCKERR('Failed to write data data set')
@@ -1716,12 +1731,13 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         integer :: n_items                                                      ! nr. of items
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! set n_items
@@ -1752,12 +1768,13 @@ contains
         logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
         
         ! local variables
-        logical :: ind_plot_loc = .false.                                       ! local version of ind_plot
+        logical :: ind_plot_loc                                                 ! local version of ind_plot
 #if ldebug
         integer :: istat                                                        ! status
 #endif
         
         ! set up local ind_plot
+        ind_plot_loc = .false.
         if (present(ind_plot)) ind_plot_loc = ind_plot
         
         ! only group master if parallel plot or current rank if individual plot

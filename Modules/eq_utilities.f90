@@ -840,7 +840,7 @@ contains
         
         call lvl_ud(-1)
     end function calc_memory_eq
-        
+    
     ! if this equilibrium job should be done, also increment eq_job_nr
     logical function do_eq()
         use num_vars, only: eq_jobs_lims, eq_job_nr

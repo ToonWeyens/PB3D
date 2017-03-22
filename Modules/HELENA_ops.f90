@@ -303,6 +303,7 @@ contains
         ! test whether normal sizes compatible
         if (grid_in%loc_n_r.ne.grid_out%loc_n_r) then
             ierr = 1
+            write(*,*) grid_in%loc_n_r, grid_out%loc_n_r
             err_msg = 'Grids are not compatible in normal direction'
             CHCKERR(err_msg)
         end if

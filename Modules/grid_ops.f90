@@ -13,7 +13,8 @@ module grid_ops
     implicit none
     private
     public calc_norm_range, calc_ang_grid_eq_B, magn_grid_plot, setup_grid_eq, &
-        &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid
+        &setup_grid_eq_B, setup_grid_X, setup_grid_sol, print_output_grid, &
+        &redistribute_output_grid
 #if ldebug
     public debug_calc_ang_grid_eq_B
 #endif
@@ -94,16 +95,16 @@ contains
         end select
     contains
         ! The normal  range is calculated by  finding the tightest range  of the
-        ! input variables encompassing the  entire solution range, including the
-        ! tolerance "tol_norm". Additionally, the  global max_flux variables are
-        ! set as well..
+        ! input variables encompassing the  entire solution range. Additionally,
+        ! the global max_flux variables are set as well..
         ! Note: this is the global, undivided range. The division information is
         ! calculated in 'eq_limits'. Furthermore, the input variables have to be
-        ! tabulated on the full grid provided by the equilibrium code.
+        ! tabulated on the full grid provided by the equilibrium code to be able
+        ! to be used in PB3D and POST.
         integer function calc_norm_range_PB3D_in(in_limits) &
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
-                &tol_norm, norm_disc_prec_eq
+                &norm_disc_prec_eq
             use num_utilities, only: con2dis, dis2con, calc_int, round_with_tol
             use grid_utilities, only: setup_deriv_data, setup_interp_data, &
                 &apply_disc
@@ -186,9 +187,9 @@ contains
             flux_F = flux_F/max_flux_F
             
             ! get lower and upper bound of total solution range
-            ! 1. include tolerance
-            tot_min_r_in_F_con = max(min_r_sol-tol_norm,0._dp)
-            tot_max_r_in_F_con = min(max_r_sol+tol_norm,1._dp)
+            ! 1. start
+            tot_min_r_in_F_con = min_r_sol
+            tot_max_r_in_F_con = max_r_sol
             ! 2. round with tolerance
             ierr = round_with_tol(tot_min_r_in_F_con,0._dp,1._dp)
             CHCKERR('')
@@ -227,6 +228,10 @@ contains
         
         ! The normal range is calculated  by dividing the full equilibrium range
         ! passed from the input phase between the processes.
+        ! Note  that at  the end  of  the equilibrium  phase, there  will be  an
+        ! exchange of  data from each process  to each process so  that they all
+        ! have the tightest  possible fit of data of  the corresponding solution
+        ! limits.
         subroutine calc_norm_range_PB3D_eq(eq_limits)                           ! PB3D version for equilibrium grid
             use num_vars, only: n_procs, rank, norm_disc_prec_eq
             use grid_vars, only: n_r_eq
@@ -247,9 +252,7 @@ contains
         end subroutine calc_norm_range_PB3D_eq
         
         ! The normal range is determined by duplicating the normal range for the
-        ! solution.  A divided  grid is  not necessary  as the  division in  the
-        ! perturbation phase  is in the mode  numbers rather than in  the normal
-        ! range.
+        ! solution.
         integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
             &result(ierr)                                                       ! PB3D version for perturbation grid
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
@@ -261,9 +264,6 @@ contains
             ! call the version for solution range
             ierr = calc_norm_range_PB3D_sol(X_limits,r_F_X)
             CHCKERR('')
-            
-            ! undivided grid
-            X_limits = [1,size(r_F_X)]
         end function calc_norm_range_PB3D_X
         
         ! The normal range is determined  by simply dividing the solution range,
@@ -274,6 +274,7 @@ contains
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
             use num_utilities, only: round_with_tol
+            use grid_vars, only: n_r_sol
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_sol'
             
@@ -282,7 +283,6 @@ contains
             real(dp), intent(inout) :: r_F_sol(:)                               ! solution r_F
             
             ! local variables
-            integer :: n_r_sol                                                  ! total nr. of normal points in solution grid
             integer :: id                                                       ! counter
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             
@@ -290,7 +290,6 @@ contains
             ierr = 0
             
             ! set loc_n_r_sol
-            n_r_sol = size(r_F_sol)
             allocate(loc_n_r_sol(n_procs))
             loc_n_r_sol = n_r_sol/n_procs                                       ! number of radial points on this processor
             loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
@@ -319,6 +318,7 @@ contains
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
                 &min_r_plot, max_r_plot
             use eq_vars, only: max_flux_F
+            use grid_utilities, only: find_compr_range
             
             ! input / output
             integer, intent(inout) :: eq_limits(2), X_limits(2), sol_limits(2)  ! min. and max. index of eq, X and sol grid for this process
@@ -365,40 +365,9 @@ contains
             ! copy solution range to perturbation range
             X_limits = sol_limits
         end subroutine calc_norm_range_POST
-        
-        ! finds smallest range that comprises a minimum and maximum value
-        subroutine find_compr_range(r_F,lim_r,lim_id)
-            ! input / output
-            real(dp), intent(in) :: r_F(:)                                      ! all values of coordinate
-            real(dp), intent(in) :: lim_r(2)                                    ! limiting range
-            integer, intent(inout) :: lim_id(2)                                 ! limiting indices
-            
-            ! local variables
-            integer :: id                                                       ! counter
-            integer :: n_r                                                      ! number of points in coordinate
-            real(dp), parameter :: tol = 1.E-6                                  ! tolerance for grids
-            
-            ! set n_r
-            n_r = size(r_F)
-            
-            lim_id = [1,n_r]                                                    ! initialize with full range
-            if (r_F(1).lt.r_F(n_r)) then                                        ! ascending r_F
-                do id = 1,n_r
-                    if (r_F(id).le.lim_r(1)-tol) lim_id(1) = id                 ! move lower limit up
-                    if (r_F(n_r-id+1).ge.lim_r(2)+tol) &
-                        &lim_id(2) = n_r-id+1                                   ! move upper limit down
-                end do
-            else                                                                ! descending r_F
-                do id = 1,n_r
-                    if (r_F(id).ge.lim_r(2)+tol) lim_id(1) = id                 ! move lower limit up
-                    if (r_F(n_r-id+1).le.lim_r(1)-tol) &
-                        &lim_id(2) = n_r-id+1                                   ! move upper limit down
-                end do
-            end if
-        end subroutine find_compr_range
     end function calc_norm_range
 
-    ! Sets up the general equilibrium grid, in which the following variables are
+    ! Sets  up  the equilibrium  grid,  in  which  the following  variables  are
     ! calculated:
     !   - equilibrium variables (eq)
     !   - perturbation variables (X)
@@ -536,11 +505,119 @@ contains
         end select
     end function setup_grid_eq_B
     
+    ! Redistribute  the equilibrium variables,  but only the Flux  variables are
+    ! saved. See "redistribute_output_grid" for more information.
+    ! Note: the redistributed grid has trimmed outer limits, i.e. it starts at 1
+    ! and ends at  the upper limit of  the last process. This can  be turned off
+    ! optionally.
+    integer function redistribute_output_grid(grid,grid_out,no_outer_trim) &
+        &result(ierr)
+        use grid_utilities, only: find_compr_range
+        use MPI_utilities, only: redistribute_var, get_ser_var
+        use grid_vars, only: n_r_sol
+        use num_vars, only: n_procs
+        
+        character(*), parameter :: rout_name = 'redistribute_output_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
+        type(grid_type), intent(inout) :: grid_out                              ! redistributed equilibrium grid variables
+        logical, intent(in), optional :: no_outer_trim                          ! do not trim the outer limits
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: eq_limits(2)                                                 ! normal limits for equilibrium variables
+        integer :: X_limits(2)                                                  ! normal limits for perturbation variables
+        integer :: n_out(3)                                                     ! n of grid_out
+        integer :: i_lim_tot(2)                                                 ! total limits of grid
+        integer :: i_lim_out(2)                                                 ! limits of grid_out
+        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
+        real(dp), allocatable :: r_F_X(:)                                       ! perturbation r_F
+        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
+        integer, allocatable :: temp_lim(:)                                     ! temporary limit
+        integer, allocatable :: eq_limits_tot(:,:)                              ! total equilibrium limits
+        logical :: no_outer_trim_loc                                            ! local no_outer_trim
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! calculate normal range for perturbation
+        allocate(r_F_X(n_r_sol))
+        ierr = calc_norm_range(X_limits=X_limits,r_F_X=r_F_X)
+        CHCKERR('')
+        
+        ! determine eq_limits: smallest eq range comprising X range
+        call find_compr_range(grid%r_F,r_F_X(X_limits),eq_limits)
+        
+        ! get lowest equilibrium limits to be  able to setup an output grid that
+        ! starts at index 1
+        allocate(eq_limits_tot(2,n_procs))
+        do id = 1,2
+            ierr = get_ser_var(eq_limits(id:id),temp_lim,scatter=.true.)
+            CHCKERR('')
+            eq_limits_tot(id,:) = temp_lim
+        end do
+        
+        ! set up redistributed grid
+        no_outer_trim_loc = .false.
+        if (present(no_outer_trim)) no_outer_trim_loc = no_outer_trim
+        if (no_outer_trim_loc) then
+            n_out = grid%n
+            i_lim_tot = [1,n_out(3)]
+            i_lim_out = eq_limits
+        else
+            n_out(1:2) = grid%n(1:2)
+            n_out(3) = eq_limits_tot(2,n_procs)-eq_limits_tot(1,1)+1
+            i_lim_tot = [eq_limits_tot(1,1),eq_limits_tot(2,n_procs)]
+            i_lim_out = eq_limits-eq_limits_tot(1,1)+1
+        end if
+        ierr = grid_out%init(n_out,i_lim_out)
+        CHCKERR('')
+        
+        ! set up limits taking into account angular extent and temporary var
+        lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
+        lims(2) = product(grid%n(1:2))*grid%i_max
+        lims_dis(1) = product(grid%n(1:2))*(eq_limits(1)-1)+1
+        lims_dis(2) = product(grid%n(1:2))*eq_limits(2)
+        allocate(temp_var(lims_dis(2)-lims_dis(1)+1))
+        
+        ! copy total variables
+        ! r_F
+        grid_out%r_F = grid%r_F(i_lim_tot(1):i_lim_tot(2))
+        ! r_E
+        grid_out%r_E = grid%r_E(i_lim_tot(1):i_lim_tot(2))
+        
+        ! distribute local variables
+        ! theta_F
+        ierr = redistribute_var(reshape(grid%theta_F,[size(grid%theta_F)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%theta_F = reshape(temp_var,shape(grid_out%theta_F))
+        ! zeta_F
+        ierr = redistribute_var(reshape(grid%zeta_F,[size(grid%zeta_F)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%zeta_F = reshape(temp_var,shape(grid_out%zeta_F))
+        ! theta_E
+        ierr = redistribute_var(reshape(grid%theta_E,[size(grid%theta_E)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%theta_E = reshape(temp_var,shape(grid_out%theta_E))
+        ! zeta_E
+        ierr = redistribute_var(reshape(grid%zeta_E,[size(grid%zeta_E)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%zeta_E = reshape(temp_var,shape(grid_out%zeta_E))
+        ! loc_r_F and loc_R_E
+        if (grid_out%divided) then
+            grid_out%loc_r_F = grid_out%r_F(grid_out%i_min:grid_out%i_max)
+            grid_out%loc_r_E = grid_out%r_E(grid_out%i_min:grid_out%i_max)
+        end if
+    end function redistribute_output_grid
+    
     ! Sets up the general perturbation grid, in which the perturbation variables
     ! are calculated. This  grid has the same angular extent  as the equilibrium
     ! grid but with different normal points, indicated by the variable 'r_F_X'.
-    ! Note that no ghost  range is needed as the full normal  range is used: The
-    ! division is in the mode numbers
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X
         use grid_vars, only: disc_type
@@ -617,7 +694,9 @@ contains
         
         ! set Flux variables
         grid_sol%r_F = grid_X%r_F
+        grid_sol%r_E = grid_X%r_E
         grid_sol%loc_r_F = grid_X%loc_r_F
+        grid_sol%loc_r_E = grid_X%loc_r_E
     end function setup_grid_sol
     
     ! Calculate grid that follows magnetic field lines.
@@ -1194,7 +1273,7 @@ contains
         type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
         type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
         integer :: id                                                           ! counter
-        logical :: par_div_loc = .false.                                        ! local par_div
+        logical :: par_div_loc                                                  ! local par_div
         
         ! initialize ierr
         ierr = 0
@@ -1209,6 +1288,7 @@ contains
         CHCKERR('')
         
         ! set local par_div
+        par_div_loc = .false.
         if (present(par_div)) par_div_loc = par_div
         
         ! set total n and parallel interval

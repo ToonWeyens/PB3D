@@ -691,7 +691,7 @@ contains
     ! grid refer to the subset, as in "copy_grid".
     integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
         &tot_rich,lim_pos) result(ierr)                                         ! metric version
-        use num_vars, only: PB3D_name_eq
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         
@@ -754,7 +754,7 @@ contains
             end if
             
             ! g_FD
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),'g_FD',&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'g_FD',&
                 &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_7D)
@@ -762,7 +762,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! h_FD
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),'h_FD',&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'h_FD',&
                 &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_7D)
@@ -770,7 +770,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! jac_FD
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),'jac_FD',&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'jac_FD',&
                 &rich_lvl=id,lim_loc=lim_mem(1:6,:))
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_6D)
@@ -778,7 +778,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! S
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),'S',&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'S',&
                 &rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_3D)
@@ -786,7 +786,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! kappa_n
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'kappa_n',rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_3D)
@@ -794,7 +794,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! kappa_g
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'kappa_g',rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_3D)
@@ -802,7 +802,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! sigma
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),'sigma',&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'sigma',&
                 &rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_3D)
@@ -828,7 +828,7 @@ contains
     ! grid refer to the subset, as in "copy_grid".
     integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos) result(ierr)
-        use num_vars, only: PB3D_name_eq
+        use num_vars, only: PB3D_name
         use X_vars, only: n_mod_X
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
@@ -895,7 +895,7 @@ contains
             end if
             
             ! RE_U_0
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'RE_U_0',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -903,7 +903,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! IM_U_0
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'IM_U_0',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -912,7 +912,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! RE_U_1
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'RE_U_1',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -920,7 +920,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! IM_U_1
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'IM_U_1',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -929,7 +929,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! RE_DU_0
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'RE_DU_0',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -937,7 +937,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! IM_DU_0
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'IM_DU_0',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -946,7 +946,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! RE_DU_1
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'RE_DU_1',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)
@@ -954,7 +954,7 @@ contains
             call dealloc_var_1D(var_1D)
             
             ! IM_DU_1
-            ierr = read_HDF5_arr(var_1D,PB3D_name_eq,trim(data_name),&
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                 &'IM_DU_1',rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
             call conv_1D2ND(var_1D,dum_4D)

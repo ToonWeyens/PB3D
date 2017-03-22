@@ -249,8 +249,7 @@ contains
     !       files, which  are then read  by the  global master when  the group's
     !       work is done
     subroutine writo(input_str,persistent,error,warning,alert)
-        use num_vars, only: rank, output_i, no_output, max_tot_mem_per_proc, &
-            &max_X_mem_per_proc
+        use num_vars, only: rank, output_i, no_output, max_tot_mem, max_X_mem
 #if ldebug
         use MPI
         use num_vars, only: print_mem_usage, prog_name, mem_usage_name, &
@@ -328,7 +327,7 @@ contains
                     write(mem_usage_i,"(1X,2I10,I21,I10,2ES23.16)",&
                         &IOSTAT=istat) &
                         &rank, mem_usage_count, clock-time_start, mem_usage, &
-                        &max_tot_mem_per_proc*1000, max_X_mem_per_proc*1000
+                        &max_tot_mem*1000, max_X_mem*1000
                     close(UNIT=mem_usage_i,IOSTAT=istat)
                 end if
             end if

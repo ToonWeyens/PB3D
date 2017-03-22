@@ -379,7 +379,8 @@ contains
                     &g_FD_int(:,:,:,c([3,3],.true.)) 
                 
                 ! multiplication factor if xi
-                if (jd.eq.1) ccomp = ccomp*pert_mult_factor_POST/X_0
+                if (abs(pert_mult_factor_POST).ge.tol_zero .and. jd.eq.1) &
+                    &ccomp = ccomp*pert_mult_factor_POST/X_0
                 
                 ! transform normalized quantities to unnormalized
                 if (use_normalization) then

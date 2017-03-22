@@ -14,13 +14,14 @@ module eq_ops
     implicit none
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
-        &print_output_eq, flux_q_plot, broadcast_output_eq, divide_eq_jobs, &
-        &calc_T_HF, B_plot, J_plot, kappa_plot
+        &print_output_eq, flux_q_plot, redistribute_output_eq, divide_eq_jobs, &
+        &calc_eq_jobs_lims, calc_T_HF, B_plot, J_plot, kappa_plot
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
 #endif
     
     ! global variables
+    integer :: fund_n_par                                                       ! fundamental interval width
 #if ldebug
     logical :: debug_calc_derived_q = .false.                                   ! plot debug information for calc_derived_q
     logical :: debug_write_flux_q_in_file_for_VMEC = .false.                    ! plot debug information for write_flux_q_in_file_for_VMEC
@@ -33,8 +34,8 @@ module eq_ops
     interface print_output_eq
         module procedure print_output_eq_1, print_output_eq_2
     end interface
-    interface broadcast_output_eq
-        module procedure broadcast_output_eq_1, broadcast_output_eq_2
+    interface redistribute_output_eq
+        module procedure redistribute_output_eq_1, redistribute_output_eq_2
     end interface
     interface calc_RZL
         module procedure calc_RZL_ind, calc_RZL_arr
@@ -420,7 +421,7 @@ contains
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
             real(dp), allocatable :: prop_B_tor(:,:,:)                          ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_F_loc(:,:)                      ! local fourier coefficients of prop_B_tor
-            logical :: zero_N_pert = .false.                                    ! there is a perturbation with N = 0
+            logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
 #if ldebug
@@ -564,6 +565,7 @@ contains
                 allocate(nr_m(tot_nr_pert+1))
                 nr_n = 0
                 nr_m = 0
+                zero_N_pert = .false.
                 do jd = 1,tot_nr_pert
                     select case (pert_type)
                         case (1)                                                ! from file
@@ -1410,7 +1412,7 @@ contains
         ! local variables
         integer :: id
         integer :: pmone                                                        ! plus or minus one
-        logical :: dealloc_vars_loc = .false.                                   ! local dealloc_vars
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -1421,6 +1423,7 @@ contains
         call lvl_ud(1)
         
         ! set up local dealloc_vars
+        dealloc_vars_loc = .false.
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! create metric equilibrium variables
@@ -3737,8 +3740,9 @@ contains
             if (testing) then
                 call writo('Every point in the grid is transformed by &
                     &displacing it in the direction of the curvature,')
-                call writo('by a distance equal to half the curvature. I.e. &
-                    &the point is displaced to the center of curvature.')
+                call writo('by a distance equal to the inverse of the &
+                    &curvature. I.e. the point is displaced to the center &
+                    &of curvature.')
                 call lvl_ud(1)
                 
                 ! trim equilibrium grid
@@ -3960,7 +3964,7 @@ contains
     end function print_output_eq_1
     integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,par_div,&
         &dealloc_vars) result(ierr)                                             ! metric version
-        use num_vars, only: PB3D_name_eq, eq_jobs_lims, eq_job_nr
+        use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -3984,9 +3988,9 @@ contains
         type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
-        logical :: par_div_loc = .false.                                        ! local par_div
+        logical :: par_div_loc                                                  ! local par_div
         integer :: loc_size                                                     ! local size
-        logical :: dealloc_vars_loc = .false.                                   ! local dealloc_vars
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
         
         ! initialize ierr
         ierr = 0
@@ -4000,6 +4004,7 @@ contains
         CHCKERR('')
         
         ! set local par_div
+        par_div_loc = .false.
         if (present(par_div)) par_div_loc = par_div
         
         ! set total n and parallel interval
@@ -4011,6 +4016,7 @@ contains
         end if
         
         ! set up local dealloc_vars
+        dealloc_vars_loc = .false.
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! set up the 1D equivalents of the equilibrium variables
@@ -4131,7 +4137,7 @@ contains
         if (dealloc_vars_loc) deallocate(eq%sigma)
         
         ! write
-        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name_eq,trim(data_name),&
+        ierr = print_HDF5_arrs(eq_1D(1:id-1),PB3D_name,trim(data_name),&
             &rich_lvl=rich_lvl,ind_print=.not.grid_trim%divided)
         CHCKERR('')
         
@@ -4144,276 +4150,186 @@ contains
         call lvl_ud(-1)
     end function print_output_eq_2
     
-    ! Broadcast equilibrium variables to all processes
-    integer function broadcast_output_eq_1(grid,eq,eq_tot) result(ierr)         ! flux version
-        use grid_utilities, only: trim_grid
-        use MPI_utilities, only: get_ser_var
+    ! Redistribute  the equilibrium variables,  but only the Flux  variables are
+    ! saved. See "redistribute_output_grid" for more information.
+    integer function redistribute_output_eq_1(grid,grid_out,eq,eq_out) &
+        &result(ierr)                                                           ! flux version
+        use MPI_utilities, only: redistribute_var
         
-        character(*), parameter :: rout_name = 'broadcast_output_eq_1'
+        character(*), parameter :: rout_name = 'redistribute_output_eq_1'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_out                                 ! redistributed equilibrium grid variables
         type(eq_1_type), intent(inout) :: eq                                    ! flux equilibrium variables
-        type(eq_1_type), intent(inout) :: eq_tot                                ! flux equilibrium variables in total grid
+        type(eq_1_type), intent(inout) :: eq_out                                ! flux equilibrium variables in redistributed grid
         
         ! local variables
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(grid_type) :: grid_trim                                            ! trimmed grid
-        type(grid_type) :: grid_tot                                             ! total grid
         integer :: id                                                           ! counter
-        real(dp), allocatable :: temp(:)                                        ! temporary variable
-        real(dp), allocatable :: temp_tot(:)                                    ! temporary variable
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Broadcasting flux equilibrium variables to full normal &
-            &grid')
+        call writo('Redistribute flux equilibrium variables')
         call lvl_ud(1)
         
-        ! create full grid
-        ierr = grid_tot%init(grid%n)
-        CHCKERR('')
+        ! create redistributed flux equilibrium variables
+        call eq_out%init(grid_out,setup_E=.false.,setup_F=.true.)
         
-        ! create full flux equilibrium variables
-        call eq_tot%init(grid_tot,setup_E=.false.,setup_F=.true.)
-        
-        ! clean up
-        call grid_tot%dealloc()
-        
-        ! trim grids
-        ierr = trim_grid(grid,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! temporary variable to hold dimensions before divided dimension
-        allocate(temp(grid_trim%loc_n_r))
-        allocate(temp_tot(grid_trim%n(3)))
-        
-        ! pres_FD
-        do id = lbound(eq%pres_FD,2),ubound(eq%pres_FD,2)
-            temp = eq%pres_FD(norm_id(1):norm_id(2),id)
-            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ! for all derivatives
+        do id = 0,max_deriv
+            ! pres_FD
+            ierr = redistribute_var(eq%pres_FD(:,id),eq_out%pres_FD(:,id),&
+                &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
             CHCKERR('')
-            eq_tot%pres_FD(:,id) = temp_tot
             
             ! q_saf_FD
-            temp = eq%q_saf_FD(norm_id(1):norm_id(2),id)
-            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            ierr = redistribute_var(eq%q_saf_FD(:,id),eq_out%q_saf_FD(:,id),&
+                &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
             CHCKERR('')
-            eq_tot%q_saf_FD(:,id) = temp_tot
             
             ! rot_t_FD
-            temp = eq%rot_t_FD(norm_id(1):norm_id(2),id)
-            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            ierr = redistribute_var(eq%rot_t_FD(:,id),eq_out%rot_t_FD(:,id),&
+                &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
             CHCKERR('')
-            eq_tot%rot_t_FD(:,id) = temp_tot
             
             ! flux_p_FD
-            temp = eq%flux_p_FD(norm_id(1):norm_id(2),id)
-            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            ierr = redistribute_var(eq%flux_p_FD(:,id),eq_out%flux_p_FD(:,id),&
+                &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
             CHCKERR('')
-            eq_tot%flux_p_FD(:,id) = temp_tot
             
             ! flux_t_FD
-            temp = eq%flux_t_FD(norm_id(1):norm_id(2),id)
-            ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+            ierr = redistribute_var(eq%flux_t_FD(:,id),eq_out%flux_t_FD(:,id),&
+                &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
             CHCKERR('')
-            eq_tot%flux_t_FD(:,id) = temp_tot
         end do
         
         ! rho
-        temp = eq%rho(norm_id(1):norm_id(2))
-        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ierr = redistribute_var(eq%rho,eq_out%rho,&
+            &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
         CHCKERR('')
-        eq_tot%rho = temp_tot
-        
-        ! clean up
-        call grid_trim%dealloc()
         
         ! user output
         call lvl_ud(-1)
-    end function broadcast_output_eq_1
-    integer function broadcast_output_eq_2(grid,eq,eq_tot,dealloc_vars) &
+    end function redistribute_output_eq_1
+    integer function redistribute_output_eq_2(grid,grid_out,eq,eq_out) &
         &result(ierr)                                                           ! metric version
-        use grid_utilities, only: trim_grid
-        use MPI_utilities, only: get_ser_var
+        use MPI_utilities, only: redistribute_var
         
-        character(*), parameter :: rout_name = 'broadcast_output_eq_2'
+        character(*), parameter :: rout_name = 'redistribute_output_eq_2'
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
+        type(grid_type), intent(in) :: grid_out                                 ! redistributed equilibrium grid variables
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
-        type(eq_2_type), intent(inout) :: eq_tot                                ! metric equilibrium variables in total grid
-        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
+        type(eq_2_type), intent(inout) :: eq_out                                ! metric equilibrium variables in redistributed grid
         
         ! local variables
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(grid_type) :: grid_trim                                            ! trimmed grid
-        type(grid_type) :: grid_tot                                             ! total grid
         integer :: id, jd, kd, ld                                               ! counters
-        real(dp), allocatable :: temp(:)                                        ! temporary variable
-        real(dp), allocatable :: temp_tot(:)                                    ! temporary variable
-        logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
+        integer :: siz(3), siz_dis(3)                                           ! size for geometric part of variable
+        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Broadcasting metric equilibrium variables to full normal &
-            &grid')
+        call writo('Redistribute metric equilibrium variables')
         call lvl_ud(1)
         
-        ! set up local dealloc_vars
-        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
+        ! create redistributed metric equilibrium variables
+        call eq_out%init(grid_out,setup_E=.false.,setup_F=.true.)
         
-        ! create full grid
-        ierr = grid_tot%init(grid%n)
-        CHCKERR('')
+        ! set up limits taking into account angular extent and temporary var
+        lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
+        lims(2) = product(grid%n(1:2))*grid%i_max
+        lims_dis(1) = product(grid%n(1:2))*(grid_out%i_min-1)+1
+        lims_dis(2) = product(grid%n(1:2))*grid_out%i_max
+        siz = [grid%n(1:2),grid%loc_n_r]
+        siz_dis = [grid_out%n(1:2),grid_out%loc_n_r]
+        allocate(temp_var(product(siz_dis)))
         
-        ! create full metric equilibrium variables
-        call eq_tot%init(grid_tot,setup_E=.false.,setup_F=.true.)
-        
-        ! clean up
-        call grid_tot%dealloc()
-        
-        ! trim grids
-        ierr = trim_grid(grid,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! temporary variable to hold dimensions before divided dimension
-        allocate(temp(product(grid_trim%n(1:2))*grid_trim%loc_n_r))
-        allocate(temp_tot(product(grid_trim%n(1:3))))
-        
-        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
-            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
-                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
-                    do id = lbound(eq%g_FD,4),ubound(eq%g_FD,4)
+        ! for all derivatives and metric factors
+        do jd = 0,max_deriv
+            do kd = 0,max_deriv
+                do ld = 0,max_deriv
+                    do id = 1,size(eq%g_FD,4)
                         ! g_FD
-                        temp = reshape(&
-                            &eq%g_FD(:,:,norm_id(1):norm_id(2),id,jd,kd,ld),&
-                            &[size(temp)])
-                        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                        ierr = redistribute_var(reshape(&
+                            &eq%g_FD(:,:,:,id,jd,kd,ld),[product(siz)]),&
+                            &temp_var,lims,lims_dis)
                         CHCKERR('')
-                        eq_tot%g_FD(:,:,:,id,jd,kd,ld) = reshape(&
-                            &temp_tot,grid_trim%n)
-                    end do
-                end do
-            end do
-        end do
-        if (dealloc_vars_loc) deallocate(eq%g_FD)
-        
-        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
-            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
-                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
-                    do id = lbound(eq%g_FD,4),ubound(eq%g_FD,4)
+                        eq_out%g_FD(:,:,:,id,jd,kd,ld) = &
+                            &reshape(temp_var,siz_dis)
+                        
                         ! h_FD
-                        temp = reshape(&
-                            &eq%h_FD(:,:,norm_id(1):norm_id(2),id,jd,kd,ld),&
-                            &[size(temp)])
-                        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                        ierr = redistribute_var(reshape(&
+                            &eq%h_FD(:,:,:,id,jd,kd,ld),[product(siz)]),&
+                            &temp_var,lims,lims_dis)
                         CHCKERR('')
-                        eq_tot%h_FD(:,:,:,id,jd,kd,ld) = reshape(&
-                            &temp_tot,grid_trim%n)
+                        eq_out%h_FD(:,:,:,id,jd,kd,ld) = &
+                            &reshape(temp_var,siz_dis)
                     end do
-                end do
-            end do
-        end do
-        if (dealloc_vars_loc) deallocate(eq%h_FD)
-        
-        do ld = lbound(eq%g_FD,7),ubound(eq%g_FD,7)
-            do kd = lbound(eq%g_FD,6),ubound(eq%g_FD,6)
-                do jd = lbound(eq%g_FD,5),ubound(eq%g_FD,5)
                     ! jac_FD
-                    temp = reshape(&
-                        &eq%jac_FD(:,:,norm_id(1):norm_id(2),jd,kd,ld),&
-                        &[size(temp)])
-                    ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+                    ierr = redistribute_var(reshape(&
+                        &eq%jac_FD(:,:,:,jd,kd,ld),[product(siz)]),&
+                        &temp_var,lims,lims_dis)
                     CHCKERR('')
-                    eq_tot%jac_FD(:,:,:,jd,kd,ld) = reshape(&
-                        &temp_tot,grid_trim%n)
+                    eq_out%jac_FD(:,:,:,jd,kd,ld) = &
+                        &reshape(temp_var,siz_dis)
                 end do
             end do
         end do
-        if (dealloc_vars_loc) deallocate(eq%jac_FD)
         
         ! S
-        temp = reshape(&
-            &eq%S(:,:,norm_id(1):norm_id(2)),&
-            &[size(temp)])
-        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ierr = redistribute_var(reshape(eq%S,[product(siz)]),temp_var,&
+            &lims,lims_dis)
         CHCKERR('')
-        eq_tot%S = reshape(temp_tot,grid_trim%n)
-        if (dealloc_vars_loc) deallocate(eq%S)
+        eq_out%S = reshape(temp_var,siz_dis)
         
         ! kappa_n
-        temp = reshape(&
-            &eq%kappa_n(:,:,norm_id(1):norm_id(2)),&
-            &[size(temp)])
-        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ierr = redistribute_var(reshape(eq%kappa_n,[product(siz)]),temp_var,&
+            &lims,lims_dis)
         CHCKERR('')
-        eq_tot%kappa_n = reshape(temp_tot,grid_trim%n)
-        if (dealloc_vars_loc) deallocate(eq%kappa_n)
+        eq_out%kappa_n = reshape(temp_var,siz_dis)
         
         ! kappa_g
-        temp = reshape(&
-            &eq%kappa_g(:,:,norm_id(1):norm_id(2)),&
-            &[size(temp)])
-        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ierr = redistribute_var(reshape(eq%kappa_g,[product(siz)]),temp_var,&
+            &lims,lims_dis)
         CHCKERR('')
-        eq_tot%kappa_g = reshape(temp_tot,grid_trim%n)
-        if (dealloc_vars_loc) deallocate(eq%kappa_g)
+        eq_out%kappa_g = reshape(temp_var,siz_dis)
         
         ! sigma
-        temp = reshape(&
-            &eq%sigma(:,:,norm_id(1):norm_id(2)),&
-            &[size(temp)])
-        ierr = get_ser_var(temp,temp_tot,scatter=.true.)
+        ierr = redistribute_var(reshape(eq%sigma,[product(siz)]),temp_var,&
+            &lims,lims_dis)
         CHCKERR('')
-        eq_tot%sigma = reshape(temp_tot,grid_trim%n)
-        if (dealloc_vars_loc) deallocate(eq%sigma)
-        
-        ! clean up
-        call grid_trim%dealloc()
-        if (dealloc_vars_loc) call eq%dealloc()
+        eq_out%sigma = reshape(temp_var,siz_dis)
         
         ! user output
         call lvl_ud(-1)
-    end function broadcast_output_eq_2
+    end function redistribute_output_eq_2
 
     ! Divides the equilibrium jobs.
-    ! The entire parallel  range has to be calculated, but  due to memory limits
-    ! this has to be split up in pieces. In its most extreme form, this would be
-    ! the individual  calculation on a  fundamental integration integral  of the
-    ! parallel points:
+    ! For  PB3D, the  entire parallel  range has  to be  calculated, but  due to
+    ! memory limits  this has to be  split up in  pieces. Every piece has  to be
+    ! able to contain the equilibrium variables (see note below), as well as the
+    ! vectorial perturbation variables. These  are later combined into tensorial
+    ! variables and integrated.
+    ! Therefore,  in its  most extreme  form, the  division in  equilibrium jobs
+    ! would be the individual calculation  on a fundamental integration integral
+    ! of the parallel points:
     !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
     !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-    ! For HELENA, as the parallel derivatives are calculated discretely, and the
-    ! calculations for  the first Richardson  level happen on the  HELENA output
-    ! grid, followed  by an interpolation  that depends on the  Richardson level
-    ! and an  integral of the interpolated  X_2 values, the splitting  up of the
-    ! parallel range must  be understood in terms of splitting  up the different
-    ! parts of the  interpolated and integrated X_2 variables, though  it has no
-    ! direct influence on the equilibrium variables.
-    ! Therefore, the whole  load is divided into jobs depending  on the sizes of
-    ! the pieces  in memory. The  division of  equilibrium jobs forms  an "outer
-    ! loop" compared to the "inner loop" of the division of perturbation jobs.
-    ! This  function does  the  job of  dividing the  grids  setting the  global
-    ! variables 'eq_jobs_lims'.  In contrast  with "divide_X_jobs", there  is no
-    ! need for a variable such as "eq_jobs_taken". See note below.
-    ! Optionally, a  base number  can be  provided for  n_par_X, that  is always
-    ! added to the number of points in  the divided n_par_X. This is useful when
-    ! interpolation is  used on some  fundamental interval to another  range. In
-    ! this case  you always need to  store the fundamental interval,  as well as
-    ! the other range.
-    ! Also, optionally the total memory size per process is also returned.
-    ! Note: a  very important difference  between the equilibrium  parallel jobs
-    ! and the perturbation jobs is that  the parallel jobs are done serially, by
-    ! all processes. The perturbations jobs are individual asynchronous jobs for
-    ! each of the processes. Furthermore, perturbation jobs only comprise either
-    ! vectorial or  tensorial perturbation jobs  while parallel jobs  comprise a
-    ! whole equilibrium  and perturbation calculation, where  the integration of
-    ! the tensorial perturbation variables is possibly adjusted:
+    ! For HELENA,  as the  parallel derivatives  are calculated  discretely, the
+    ! equilibrium and  vectorial perturbation  variables are tabulated  first in
+    ! this  HELENA grid.  This happens  in the  first Richardson  level. In  all
+    ! Richardson  levels, afterwards,  these variables  are interpolated  in the
+    ! angular directions. In  this case, therefore, there can be  no division of
+    ! this HELENA output interval.
+    ! This  procedure does  the job  of dividing  the grids  setting the  global
+    ! variables 'eq_jobs_lims'.
+    ! The integration of the tensorial perturbation variables is adjusted:
     !   - If  the first job  of the parallel jobs  and not the  first Richardson
     !   level: add half  of the integrated tensorial  perturbation quantities of
     !   the previous level.
@@ -4423,59 +4339,46 @@ contains
     ! In fact,  the equilibrium  jobs have  much in  common with  the Richardson
     ! levels,  as is  attested  by the  existence of  the  routines "do_eq"  and
     ! "eq_info", which are equivalent to "do_rich" and "rich_info".
+    ! In POST, finally,  the situation is slightly different for  HELENA, as all
+    ! the requested variables have to fit, including the D and DU variables. The
+    ! parallel range to be taken is then the one of the output grid, including a
+    ! base range  for HELENA. Also, for  extended output grids, the  size of the
+    ! grid in the secondary angle has  to be included in arr_size (i.e. toroidal
+    ! when poloidal flux is used and vice versa).
+    ! To this end,  optionally, a base number can be  provided for n_par_X, that
+    ! is always added to the number of points in the divided n_par_X.
     ! Note: For PB3D,  only the variables g_FD, h_FD and  jac_FD are counted, as
     ! the  equilibrium variables  and  the transformation  matrices are  deleted
     ! after use. Also, S, sigma, kappa_n and kappa_g can be neglected as they do
     ! not contain derivatives and are therefore much smaller.
-    ! These variables  are tabulated  in an equilibrium  normal grid.  For VMEC,
-    ! their angular grid is that of the perturbation quantities, but for HELENA,
-    ! it  is  the  input  grid  from HELENA.  Later,  the  quantities  are  then
-    ! interpolated  on  the perturbation  angular  grid.  This means  that  this
-    ! routine  should be  called with  the  perturbation angular  size for  both
-    ! cases, but  that for  HELENA, a base  size should be  added, equal  to the
-    ! input angular size (i.e. nchi).
-    ! In POST, finally, the situation is slightly different in two ways:
-    !   - As there are no perturbation jobs: All the requested variables have to
-    !   fit, including the D and DU variables. The parallel range to be taken is
-    !   then the  one of  the output  grid, including a  base range  for HELENA.
-    !   Also, for extended  output grids, the size of the  grid in the secondary
-    !   angle has to  be included in arr_size (i.e. toroidal  when poloidal flux
-    !   is used and vice versa).
-    !   -  Though  the perturbation  variables  are  tabulated  in a  grid  with
-    !   different normal  extent, their  angular variables do  match. Therefore,
-    !   the weighted sum can be used as arr_size.
-    integer function divide_eq_jobs(n_par_X_rich,arr_size,n_div_max,&
-        &n_par_X_base) result(ierr)
+    integer function divide_eq_jobs(n_par_X,arr_size,n_div,n_div_max,&
+        &n_par_X_base,range_name) result(ierr)
         
-        use num_vars, only: max_tot_mem_per_proc, max_X_mem_per_proc, &
-            &eq_jobs_lims, mem_scale_fac, eq_job_nr, magn_int_style
+        use num_vars, only: max_tot_mem, max_X_mem, magn_int_style, &
+            &mem_scale_fac
         use rich_vars, only: rich_lvl
         use MPI_utilities, only: wait_MPI
         use eq_utilities, only: calc_memory_eq
-        use X_utilities, only: calc_memory_X
-        use grid_vars, only: n_r_sol
         
         character(*), parameter :: rout_name = 'divide_eq_jobs'
         
         ! input / output
-        integer, intent(in) :: n_par_X_rich                                     ! number of parallel points in this Richardson level
+        integer, intent(in) :: n_par_X                                          ! number of parallel points to be divided
         integer, intent(in) :: arr_size                                         ! array size (using loc_n_r)
+        integer, intent(inout) :: n_div                                         ! final number of divisions
         integer, intent(in), optional :: n_div_max                              ! maximum n_div
         real(dp), intent(in), optional :: n_par_X_base                          ! base n_par_X, undivisible
+        character(len=*), intent(in), optional :: range_name                    ! name of range
         
         ! local variables
         real(dp) :: mem_size                                                    ! approximation of memory required for eq variables
-        real(dp) :: min_X_mem_per_proc                                          ! approximation of minimum possible memory required for X variables
-        real(dp) :: n_par_X_base_loc = 0._dp                                    ! local n_par_X_base
+        real(dp) :: n_par_X_base_loc                                            ! local n_par_X_base
         integer :: max_mem_req                                                  ! maximum memory required
-        integer :: n_div                                                        ! factor by which to divide the total size
         integer :: n_div_max_loc                                                ! maximum n_div
         integer :: n_par_range                                                  ! nr. of points in range
-        integer :: fund_n_par                                                   ! fundamental interval width
-        integer, parameter :: min_n_mod_X = 5                                   ! minimum n_mod_X to be done at the same time (5x5 blocks in tensorial phase)
-        integer, allocatable :: n_par_loc(:)                                    ! number of points per range
         character(len=max_str_ln) :: range_message                              ! message about how many ranges
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: range_name_loc                             ! local range name
         
         ! initialize ierr
         ierr = 0
@@ -4493,32 +4396,29 @@ contains
         end select
         
         ! set up local n_par_X_base
+        n_par_X_base_loc = 0._dp
         if (present(n_par_X_base)) n_par_X_base_loc = n_par_X_base
         
-        ! calculate minimum memory size for tensorial perturbation part
-        ! (Note: perturbation part uses entire normal perturbation range)
-        ierr = calc_memory_X(2,n_par_X_rich*n_r_sol,min_n_mod_X,&
-            &min_X_mem_per_proc)                                                ! order 2, n_r_sol normal points, n_par_X_rich parallel points, mode number
-        CHCKERR('')
+        ! set up local range name
+        range_name_loc = 'parallel points'
+        if (present(range_name)) range_name_loc = trim(range_name)
         
-        ! calculate largest possible range of parallel points fitting in memory
+        ! setup auxilliary variables
         n_div = 0
         mem_size = huge(1._dp)
         if (rich_lvl.eq.1) then
-            n_div_max_loc = (n_par_X_rich-1)/fund_n_par
+            n_div_max_loc = (n_par_X-1)/fund_n_par
         else
-            n_div_max_loc = n_par_X_rich/fund_n_par
+            n_div_max_loc = n_par_X/fund_n_par
         end if
         if (present(n_div_max)) n_div_max_loc = n_div_max
         n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
-        do while (max_tot_mem_per_proc.lt.mem_size .or. max_tot_mem_per_proc&
-            &.lt.(mem_size/mem_scale_fac+min_X_mem_per_proc))                   ! mem_size has to be smaller than total memory and at the same time the X jobs need enough memory
+        
+        ! calculate largest possible range of parallel points fitting in memory
+        do while (max_tot_mem.lt.mem_size)                                      ! mem_size has to be smaller than total memory
             n_div = n_div + 1
-            n_par_range = ceiling(n_par_X_rich*1._dp/n_div + n_par_X_base_loc)
+            n_par_range = ceiling(n_par_X*1._dp/n_div + n_par_X_base_loc)
             ierr = calc_memory_eq(arr_size,n_par_range,mem_size)
-            CHCKERR('')
-            ierr = calc_memory_X(2,n_par_range*n_r_sol,min_n_mod_X,&
-                &min_X_mem_per_proc)                                            ! order 2, n_r_sol normal points, n_par_range parallel points, mode number
             CHCKERR('')
             if (n_div.gt.n_div_max_loc) then                                    ! still not enough memory
                 ierr = 1
@@ -4526,51 +4426,36 @@ contains
                     &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
-            max_mem_req = ceiling(max(&
-                &mem_size,mem_size/mem_scale_fac+min_X_mem_per_proc))
+            max_mem_req = ceiling(mem_size)
         end do
         if (n_div.gt.1) then
-            range_message = 'The '//trim(i2str(n_par_X_rich))//' parallel &
-                &points are split into '//trim(i2str(n_div))//' and '//&
-                &trim(i2str(n_div))//' collective jobs are done serially'
+            range_message = 'The '//trim(i2str(n_par_X))//' '//&
+                &trim(range_name_loc)//' are split into '//&
+                &trim(i2str(n_div))//' and '//trim(i2str(n_div))//&
+                &' collective jobs are done serially'
         else
-            range_message = 'The '//trim(i2str(n_par_X_rich))//' parallel &
-                &points can be done without splitting them'
+            range_message = 'The '//trim(i2str(n_par_X))//' '//&
+                &trim(range_name_loc)//' can be done without splitting them'
         end if
         call writo(range_message)
-        call writo('The memory per process is estimated to be about '//&
-            &trim(i2str(ceiling(mem_size)))//'MB')
+        call writo('The total memory for all processes together is estimated &
+            &to be about '//trim(i2str(ceiling(mem_size)))//'MB')
         call lvl_ud(1)
-        call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem_per_proc)))//'&
+        call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem)))//'&
             &MB, user specified)')
         call lvl_ud(-1)
         
         ! calculate max memory available for perturbation calculations
         ! (mem_size was scaled by mem_scale_fac)
-        max_X_mem_per_proc = max_tot_mem_per_proc - mem_size/mem_scale_fac      ! don't need scale factor for eq vars as no operations are done on them, they are just stored
+        max_X_mem = max_tot_mem - mem_size/mem_scale_fac                        ! don't need scale factor for eq vars as no operations are done on them, they are just stored
         call writo('In the perturbation phase, the equilibrium variables are &
             &not being operated on:')
         call lvl_ud(1)
         call writo('This translates to a scale factor 1/'//&
             &trim(r2strt(mem_scale_fac)))
         call writo('Therefore, the memory left for the perturbation phase is '&
-            &//trim(i2str(ceiling(max_X_mem_per_proc)))//'MB')
-        call lvl_ud(1)
-        call writo('(minimum: '//trim(i2str(ceiling(min_X_mem_per_proc)))//&
-            &'MB, for '//trim(i2str(min_n_mod_X))//&
-            &' mode(s) at the same time)')
+            &//trim(i2str(ceiling(max_X_mem)))//'MB')
         call lvl_ud(-1)
-        call lvl_ud(-1)
-        
-        ! Set up jobs data (eq_jobs_lims).
-        ! Also initialize eq_job_nr to 0 as it is incremented by "do_eq".
-        allocate(n_par_loc(n_div))
-        n_par_loc = n_par_X_rich/n_div                                          ! number of parallel points on this processor
-        n_par_loc(1:mod(n_par_X_rich,n_div)) = &
-            &n_par_loc(1:mod(n_par_X_rich,n_div)) + 1                           ! add a point to if there is a remainder
-        ierr = calc_eq_jobs_lims(n_par_loc,eq_jobs_lims)
-        CHCKERR('')
-        eq_job_nr = 0
         
         ! synchronize MPI
         ierr = wait_MPI()
@@ -4579,78 +4464,87 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Equilibrium jobs divided')
-    contains
-        ! Calculate eq_jobs_lims.
-        ! Take into account that every job has to start and end at the start and
-        ! end of a fundamental integration interval, as discussed in above:
-        !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
-        !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-        ! for POST, there are no Richardson  levels, and there has to be overlap
-        ! of one  always, in order  to have  correct composite integrals  of the
-        ! different regions.
-        integer function calc_eq_jobs_lims(n_par,res) result(ierr)
-            use num_vars, only: prog_style
-            
-            character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
-            
-            ! input / output
-            integer, intent(in) :: n_par(:)                                     ! eq jobs data
-            integer, allocatable :: res(:,:)                                    ! result
-            
-            ! local variables
-            integer :: n_div                                                    ! nr. of divisions of parallel ranges
-            integer :: id                                                       ! counter
-            integer :: ol_width                                                 ! overlap width
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set up nr. of divisions
-            n_div = size(n_par)
-            
-            ! (re)allocate result
-            if (allocated(res)) deallocate(res)
-            allocate(res(2,n_div))
-            
-            ! set overlap width
-            select case (prog_style)
-                case (1)                                                        ! PB3D
-                    if (rich_lvl.eq.1) then
-                        ol_width = 1
-                    else
-                        ol_width = 0
-                    end if
-                case (2)                                                        ! POST
-                    ol_width = 1
-            end select
-            
-            ! loop over divisions
-            do id = 1,n_div
-                ! setup first guess, without taking into account fundamental
-                ! integration intervals
-                if (id.eq.1) then
-                    res(1,id) = 1
-                else
-                    res(1,id) = res(2,id-1) + 1 - ol_width
-                end if
-                res(2,id) = sum(n_par(1:id))
-                
-                ! take into account fundamental interval
-                if (n_div.gt.1) then
-                    res(2,id) = res(1,id) - 1 + ol_width + fund_n_par * max(1,&
-                        &nint((res(2,id)-res(1,id)+1._dp-ol_width)/fund_n_par))
-                end if
-            end do
-            
-            ! test whether end coincides with sum of n_par
-            if (res(2,n_div).ne.sum(n_par)) then
-                ierr = 1
-                err_msg = 'Limits don''t match, try with more memory or lower &
-                    &magn_int_style'
-                CHCKERR(err_msg)
-            end if
-        end function calc_eq_jobs_lims
     end function divide_eq_jobs
+    
+    ! Calculate eq_jobs_lims.
+    ! Take into account that every job has to start and end at the start and end
+    ! of a fundamental integration interval, as discussed in above:
+    !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
+    !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
+    ! for POST, there are  no Richardson levels, and there has  to be overlap of
+    ! one always, in order to have  correct composite integrals of the different
+    ! regions.
+    integer function calc_eq_jobs_lims(n_par_X,n_div) result(ierr)
+        use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
+        use rich_vars, only: rich_lvl
+        
+        character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
+        
+        ! input / output
+        integer, intent(in) :: n_par_X                                          ! number of parallel points in this Richardson level
+        integer, intent(in) :: n_div                                            ! nr. of divisions of parallel ranges
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: ol_width                                                     ! overlap width
+        integer, allocatable :: n_par(:)                                        ! number of points per range
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! Also initialize eq_job_nr to 0 as it is incremented by "do_eq".
+        eq_job_nr = 0
+        
+        allocate(n_par(n_div))
+        n_par = n_par_X/n_div                                                   ! number of parallel points on this processor
+        n_par(1:mod(n_par_X,n_div)) = n_par(1:mod(n_par_X,n_div)) + 1           ! add a point to if there is a remainder
+        CHCKERR('')
+        
+        ! (re)allocate equilibrium jobs limits
+        if (allocated(eq_jobs_lims)) deallocate(eq_jobs_lims)
+        allocate(eq_jobs_lims(2,n_div))
+        
+        ! set overlap width
+        select case (prog_style)
+            case (1)                                                            ! PB3D
+                if (rich_lvl.eq.1) then
+                    ol_width = 1
+                else
+                    ol_width = 0
+                end if
+            case (2)                                                            ! POST
+                ol_width = 1
+        end select
+        
+        ! loop over divisions
+        do id = 1,n_div
+            ! setup  first  guess,  without   taking  into  account  fundamental
+            ! integration intervals
+            if (id.eq.1) then
+                eq_jobs_lims(1,id) = 1
+            else
+                eq_jobs_lims(1,id) = eq_jobs_lims(2,id-1) + 1 - ol_width
+            end if
+            eq_jobs_lims(2,id) = sum(n_par(1:id))
+            
+            ! take into account fundamental interval
+            if (n_div.gt.1) then
+                eq_jobs_lims(2,id) = eq_jobs_lims(1,id) - 1 + ol_width + &
+                    &fund_n_par * max(1,nint(&
+                    &(eq_jobs_lims(2,id)-eq_jobs_lims(1,id)+1._dp-ol_width)/&
+                    &fund_n_par))
+            end if
+        end do
+        
+        ! test whether end coincides with sum of n_par
+        if (eq_jobs_lims(2,n_div).ne.sum(n_par)) then
+            ierr = 1
+            err_msg = 'Limits don''t match, try with more memory or lower &
+                &magn_int_style'
+            CHCKERR(err_msg)
+        end if
+    end function calc_eq_jobs_lims
     
 #if ldebug
     ! See if T_EF it complies with the theory of [ADD REF]

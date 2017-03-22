@@ -11,8 +11,8 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, get_ghost_arr, broadcast_var, wait_MPI, lock_req_acc, &
-        &lock_return_acc
+    public get_ser_var, redistribute_var, get_ghost_arr, broadcast_var, &
+        &wait_MPI, lock_req_acc, lock_return_acc
 #if ldebug
     public lock_header, lock_wl_change, &
         &debug_lock
@@ -90,6 +90,7 @@ contains
         if (allocated(ser_var)) then
             if (size(ser_var).ne.sum(recvcounts)) then
                 ierr = 1
+                write(*,*) size(ser_var), sum(recvcounts)
                 err_msg = 'ser_var has wrong dimensions'
                 CHCKERR(err_msg)
             end if
@@ -162,6 +163,7 @@ contains
         if (allocated(ser_var)) then
             if (size(ser_var).ne.sum(recvcounts)) then
                 ierr = 1
+                write(*,*) size(ser_var), sum(recvcounts)
                 err_msg = 'ser_var has wrong dimensions'
                 CHCKERR(err_msg)
             end if
@@ -234,6 +236,7 @@ contains
         if (allocated(ser_var)) then
             if (size(ser_var).ne.sum(recvcounts)) then
                 ierr = 1
+                write(*,*) size(ser_var), sum(recvcounts)
                 err_msg = 'ser_var has wrong dimensions'
                 CHCKERR(err_msg)
             end if
@@ -259,6 +262,98 @@ contains
         err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
     end function get_ser_var_int
+    
+    ! redistribute variables
+    integer function redistribute_var(var,dis_var,lims,lims_dis) result(ierr)
+        use num_vars, only: n_procs, rank
+        
+        character(*), parameter :: rout_name = 'redistribute_var'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:)                                          ! parallel vector
+        real(dp), intent(inout) :: dis_var(:)                                   ! redistributed vector
+        integer, intent(in) :: lims(2)                                          ! indices of parallel vector
+        integer, intent(in) :: lims_dis(2)                                      ! indices of redistributed parallel vector
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        integer, allocatable :: lims_tot(:,:)                                   ! limits of all processes
+        integer, allocatable :: lims_dis_tot(:,:)                               ! redistributed limits of all processes
+        integer, allocatable :: temp_lim(:)                                     ! temporary variable
+        integer, allocatable :: n_vars(:,:)                                     ! number of values to be received and sent from each process (row: to, column: from)
+        integer, allocatable :: nr_sen(:)                                       ! number of values to be sent to each process from this process
+        integer, allocatable :: nr_rec(:)                                       ! number of values to be received from each process to this process
+        integer, allocatable :: id_rec(:)                                       ! starting position of variable to be received in local memory (starting at 0)
+        integer, allocatable :: id_sen(:)                                       ! starting position of variable to be sent in local memory (starting at 0)
+        integer :: max_loc                                                      ! local maximum
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! get limits and redistributed limits of all procs
+        allocate(lims_tot(2,n_procs))
+        allocate(lims_dis_tot(2,n_procs))
+        do id = 1,2
+            ierr = get_ser_var(lims(id:id),temp_lim,scatter=.true.)
+            CHCKERR('')
+            lims_tot(id,:) = temp_lim
+            ierr = get_ser_var(lims_dis(id:id),temp_lim,scatter=.true.)
+            CHCKERR('')
+            lims_dis_tot(id,:) = temp_lim
+        end do
+        
+        ! find  out how many  variables to send and  receive. A row  indicates a
+        ! receive and a column a send. E.g.:
+        !   (a b)
+        !   (c d)
+        ! means that  process 0  gets a  from process  0 and  b from  process 1.
+        ! Process 1 gets c from process 0 and d from process 1.
+        allocate(n_vars(n_procs,n_procs))
+        n_vars = 0
+        do jd = 1,n_procs
+            max_loc = lims_dis_tot(1,jd)
+            do id = 1,n_procs
+                if (lims_tot(2,id).ge.max_loc) then
+                    n_vars(jd,id) = min(lims_tot(2,id),lims_dis_tot(2,jd)) - &
+                        &max_loc + 1
+                    max_loc = max_loc + n_vars(jd,id)
+                end if
+            end do
+        end do
+        
+        ! set up how many are to be sent by each process and which memory index
+        !   - nr_rec is the row of n_vars corresponding to this process,
+        !   - nr_sen is the column of n_vars corresponding to this process,
+        !   -  id_rec  counts  the  number of  variables  gotten  from  previous
+        !   processes,
+        !   - id_sen counts the number  of variables sent to previous processes,
+        !   taking into account  the difference betweeen the lower  limit of the
+        !   process sending to and the current process.
+        allocate(nr_rec(n_procs))
+        allocate(nr_sen(n_procs))
+        allocate(id_rec(n_procs))
+        allocate(id_sen(n_procs))
+        do id = 1,n_procs
+            nr_rec(id) = n_vars(rank+1,id)
+            nr_sen(id) = n_vars(id,rank+1)
+            id_rec(id) = sum(n_vars(rank+1,1:id-1))
+            id_sen(id) = sum(n_vars(id,1:rank)) + lims_dis_tot(1,id) - lims(1)
+        end do
+        
+        call MPI_Alltoallv(var,nr_sen,id_sen,MPI_DOUBLE_PRECISION,&
+            &dis_var,nr_rec,id_rec,MPI_DOUBLE_PRECISION,MPI_Comm_world,ierr)
+        CHCKERR('')
+        
+        !call sleep(rank)
+        !write(*,*) 'rank', rank
+        !write(*,*) '    nr_rec', nr_rec
+        !write(*,*) '    id_rec', id_rec
+        !write(*,*) '    nr_sen', nr_sen
+        !write(*,*) '    id_sen', id_sen
+        !do id = 1,n_procs
+            !write(*,*) '    ', n_vars(id,:)
+        !end do
+    end function redistribute_var
     
     ! Fill the ghost regions in an array  by sending the first normal point of a
     ! process to  the left process. Every  message is identified by  its sending

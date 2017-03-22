@@ -14,7 +14,8 @@ module grid_utilities
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, nufft
+        &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
+        &nufft, find_compr_range
 #if ldebug
     public debug_calc_int_vol
 #endif
@@ -2057,11 +2058,11 @@ contains
         end if
         
         ! copy local arrays
-        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3d grid
-            grid_out%theta_e = grid_in%theta_e(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%zeta_e = grid_in%zeta_e(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%theta_f = grid_in%theta_f(:,:,i_lim_out(1):i_lim_out(2))
-            grid_out%zeta_f = grid_in%zeta_f(:,:,i_lim_out(1):i_lim_out(2))
+        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
+            grid_out%theta_E = grid_in%theta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_E = grid_in%zeta_E(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%theta_F = grid_in%theta_F(:,:,i_lim_out(1):i_lim_out(2))
+            grid_out%zeta_F = grid_in%zeta_F(:,:,i_lim_out(1):i_lim_out(2))
         end if
         if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
             grid_out%loc_r_E = grid_in%loc_r_E(i_lim_out(1):i_lim_out(2))
@@ -2753,4 +2754,35 @@ contains
             end if
         end if
     end function nufft
+    
+    ! finds smallest range that comprises a minimum and maximum value
+    subroutine find_compr_range(r_F,lim_r,lim_id)
+        ! input / output
+        real(dp), intent(in) :: r_F(:)                                              ! all values of coordinate
+        real(dp), intent(in) :: lim_r(2)                                            ! limiting range
+        integer, intent(inout) :: lim_id(2)                                         ! limiting indices
+        
+        ! local variables
+        integer :: id                                                               ! counter
+        integer :: n_r                                                              ! number of points in coordinate
+        real(dp), parameter :: tol = 1.E-6                                          ! tolerance for grids
+        
+        ! set n_r
+        n_r = size(r_F)
+        
+        lim_id = [1,n_r]                                                            ! initialize with full range
+        if (r_F(1).lt.r_F(n_r)) then                                                ! ascending r_F
+            do id = 1,n_r
+                if (r_F(id).le.lim_r(1)-tol) lim_id(1) = id                         ! move lower limit up
+                if (r_F(n_r-id+1).ge.lim_r(2)+tol) &
+                    &lim_id(2) = n_r-id+1                                           ! move upper limit down
+            end do
+        else                                                                        ! descending r_F
+            do id = 1,n_r
+                if (r_F(id).ge.lim_r(2)+tol) lim_id(1) = id                         ! move lower limit up
+                if (r_F(n_r-id+1).le.lim_r(1)-tol) &
+                    &lim_id(2) = n_r-id+1                                           ! move upper limit down
+            end do
+        end if
+    end subroutine find_compr_range
 end module grid_utilities

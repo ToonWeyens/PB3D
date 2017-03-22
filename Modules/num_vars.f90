@@ -11,9 +11,8 @@ module num_vars
         &debug_version, &
         &shell_commands_name, mem_usage_name, &
         &mem_usage_count, weight_dp, rank, n_procs, time_start, &
-        &max_tot_mem_per_proc, max_X_mem_per_proc, X_jobs_lims, X_jobs_taken, &
-        &X_job_nr, X_jobs_file_name, eq_jobs_lims, &
-        &eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
+        &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
+        &eq_jobs_lims, eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, plot_B, &
         &plot_J, plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
@@ -30,10 +29,10 @@ module num_vars
         &max_zeta_plot, min_r_plot, max_r_plot, n_sol_requested, &
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
-        &rich_restart_lvl, plot_size, PB3D_name_eq, jump_to_sol, &
+        &rich_restart_lvl, plot_size, jump_to_sol, &
         &export_HEL, ex_plot_style, pert_mult_factor_POST, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
-        &HEL_pert_file_i, HEL_export_file_i, X_jobs_file_i, input_i, PB3D_i, &
+        &HEL_pert_file_i, HEL_export_file_i, input_i, PB3D_i, &
         &PB3D_name, eq_i, output_i
 
     ! technical variables
@@ -52,8 +51,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.60_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.52_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.61_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.61_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
 #else
@@ -66,14 +65,12 @@ module num_vars
     integer(kind=8) :: time_start                                               ! start time of simulation
     
     ! job variables
-    real(dp) :: max_tot_mem_per_proc                                            ! maximum total memory per process [MB]
-    real(dp) :: max_X_mem_per_proc                                              ! maximum memory for perturbation calculations per process [MB]
+    real(dp) :: max_tot_mem                                                     ! maximum total memory for all processes [MB]
+    real(dp) :: max_X_mem                                                       ! maximum memory for perturbation calculations for all processes [MB]
     integer, allocatable :: X_jobs_lims(:,:)                                    ! data about X jobs: [min_k, max_k, min_m, max_m] for all jobs
-    logical, allocatable :: X_jobs_taken(:)                                     ! X jobs taken
     integer, allocatable :: eq_jobs_lims(:,:)                                   ! data about eq jobs: [min_theta,max_theta] for all jobs
     integer :: X_job_nr                                                         ! nr. of X job
     integer :: eq_job_nr                                                        ! nr. of eq job
-    character(len=10) :: X_jobs_file_name = 'X_jobs.txt'                        ! name of X jobs file
     real(dp), parameter :: mem_scale_fac = 1.5                                  ! empirical scale factor of memory (because operations are done)
 
     ! physical and mathematical variables
@@ -132,7 +129,6 @@ module num_vars
     integer, parameter :: ex_max_size = 300                                     ! maximum size of matrices for external plot
     character(len=max_str_ln) :: eq_name                                        ! name of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: PB3D_name                                      ! name of PB3D output file
-    character(len=max_str_ln) :: PB3D_name_eq                                   ! name of PB3D output file for vars on eq grid
     logical :: no_plots = .false.                                               ! no plots made
     logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: export_HEL = .false.                                             ! export HELENA
@@ -169,5 +165,4 @@ module num_vars
     integer, parameter :: decomp_i = 57                                         ! file number of output of EV decomposition
     integer, parameter :: HEL_pert_file_i = 58                                  ! file number of output of HELENA equilibrium perturbation file
     integer, parameter :: HEL_export_file_i = 59                                ! file number of output of HELENA equilibrium export file
-    integer, parameter :: X_jobs_file_i = 60                                    ! file number of X jobs file
 end module num_vars

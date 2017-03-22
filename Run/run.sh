@@ -359,7 +359,7 @@ init_vars() {
 
 # Catch options
 # input: all arguments "#@"
-# sets: d:  drmemory_location
+# sets: d:  valgrind_location
 #           debug_opt
 #       o:  out_loc
 #           use_out_loc
@@ -379,13 +379,13 @@ catch_options() {
             d)  # debug
                 case $machine_ID in
                     1)  # XPS-L501X
-                        drmemory_location="/opt/DrMemory-Linux-1.10.1-3/bin64"
+                        valgrind_location="/usr/bin/"
                     ;;
                     2)  # ITER
-                        drmemory_location="$COMPILE_DIR/DrMemory-Linux-1.11.0-2/bin64"
+                        valgrind_location="/usr/bin/"
                     ;;
                 esac
-                debug_opt="$drmemory_location/drmemory --"
+                debug_opt="$valgrind_location/valgrind --"
                 n_opt_args=$((n_opt_args+1))                                    # 1 argument
                 echo -e "Using Dr. Memory for debugging"
                 echo -e ""

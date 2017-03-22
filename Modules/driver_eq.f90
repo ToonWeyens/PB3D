@@ -21,20 +21,36 @@ module driver_eq
     
 contains
     ! Main driver of PB3D equilibrium part.
-    integer function run_driver_eq(eq_1_tot,eq_2_tot) result(ierr)
+    ! sets up ([out] means redistributed for output):
+    !   - grid_eq [out] (for HELENA, only first Richardson level)
+    !   - grid_eq_B [out] (for VMEC, equal to grid_eq_out)
+    !   - eq_1 [out] (only first Richardson level)
+    !   - eq_2 [out] (for HELENA, only first Richardson level)
+    ! writes to HDF5:
+    !   - grid_eq (for HELENA, only first Richardson level)
+    !   - grid_eq_B (for VMEC, equal to grid_eq)
+    !   - eq_1 (only first Richardson level)
+    !   - eq_2 (only for HELENA)
+    ! deallocates:
+    !   - grid_eq [out] before setting up
+    !   - grid_B_eq [out] before setting up
+    !   - eq_2 [out] before setting up
+    integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
+        &eq_2_out) result(ierr)
+        
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
-            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, PB3D_name_eq
+            &eq_jobs_lims, jump_to_sol, rich_restart_lvl
         use MPI_utilities, only: wait_MPI
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
-            &broadcast_output_eq, B_plot, J_plot, kappa_plot
+            &redistribute_output_eq, B_plot, J_plot, kappa_plot
         use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, &
-            &magn_grid_plot
-        use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid
+            &magn_grid_plot, redistribute_output_grid
+        use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
+            &reconstruct_PB3D_eq_2
         use num_utilities, only: derivs
-        use input_utilities, only: dealloc_in
         use rich_vars, only: rich_lvl
         use HDF5_ops, only: create_output_HDF5
         !!use num_utilities, only: calc_aux_utilities
@@ -42,29 +58,71 @@ contains
         character(*), parameter :: rout_name = 'run_driver_eq'
         
         ! input / output
-        type(eq_1_type), intent(inout) :: eq_1_tot                              ! flux equilibrium variables in total grid
-        type(eq_2_type), intent(inout) :: eq_2_tot                              ! metric equilibrium variables in total grid
+        type(grid_type), intent(inout), target :: grid_eq_out                   ! redistributed equilibrium grid
+        type(grid_type), intent(inout), pointer :: grid_eq_B_out                ! redistributed field-aligned equilibrium grid
+        type(eq_1_type), intent(inout) :: eq_1_out                              ! flux equilibrium variables in redistributed grid
+        type(eq_2_type), intent(inout) :: eq_2_out                              ! metric equilibrium variables in redistributed grid
         
         ! local variables
+        type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
+        type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
         character(len=8) :: flux_name                                           ! toroidal or poloidal
-        type(grid_type), target :: grid_eq                                      ! equilibrium grid
-        type(grid_type), pointer :: grid_eq_B => null()                         ! field-aligned equilibrium grid
-        type(eq_1_type) :: eq_1                                                 ! equilibrium for divided grid
-        type(eq_2_type) :: eq_2                                                 ! equilibrium for divided grid
+        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(grid_type) :: grid_eq_B                                            ! field-aligned equilibrium grid
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
+        integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
+        logical :: do_eq_1_ops                                                  ! whether specific calculations for eq_1 are necessary
+        logical :: do_eq_2_ops                                                  ! whether specific calculations for eq_2 are necessary
         logical :: only_half_grid                                               ! calculate only half grid
-        logical :: dealloc_vars = .true.                                        ! whether to deallocate variables to save memory
+        logical :: dealloc_vars                                                 ! whether to deallocate variables to save memory
         character(len=max_str_ln) :: grid_eq_B_name                             ! name of grid_eq_B
         
         ! initialize ierr
         ierr = 0
         
+        ! decide whether to append Richardson level to name
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                rich_lvl_name = rich_lvl                                        ! append richardson level
+            case (2)                                                            ! HELENA
+                rich_lvl_name = 0                                               ! do not append name
+        end select
+        
+        ! Divide equilibrium grid under  group processes, calculating the limits
+        ! and the normal coordinate.
+        ierr = calc_norm_range(eq_limits=eq_limits)
+        CHCKERR('')
+        
         ! jump to solution if requested
-        if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
-            call writo('Skipping to jump to solution')
+        if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
+            call writo('Prepare to jump to solution')
+            call lvl_ud(1)
+            
+            ! grid_eq_out
+            ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
+                &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
+            CHCKERR('')
+            ierr = redistribute_output_grid(grid_eq,grid_eq_out)
+            CHCKERR('')
+            call grid_eq%dealloc()
+            
+            ! eq_1_out
+            ierr = reconstruct_PB3D_eq_1(grid_eq_out,eq_1_out,'eq_1')
+            CHCKERR('')
+            
+            ! eq_2_out
+            if (eq_style.eq.2) then
+                ierr = reconstruct_PB3D_eq_2(grid_eq_out,eq_2_out,'eq_2')
+                CHCKERR('')
+            end if
+            
+            call lvl_ud(-1)
+            call writo('Skipping rest to jump to solution')
             return
         end if
         
+        ! set up whether to deallocate variables
+        dealloc_vars = .true.
 #if ldebug
         if (plot_info) dealloc_vars = .false.
 #endif
@@ -73,17 +131,9 @@ contains
         ! some preliminary things
         ierr = wait_MPI()
         CHCKERR('')
-        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
-        CHCKERR('')
         
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
-        ! possibly create separate output for eq and X_1 variables
-        if (eq_style.eq.1) then
-            ierr = create_output_HDF5(PB3D_name_eq)
-            CHCKERR('')
-        end if
         
         ! user output
         call writo('The equilibrium variables are processed')
@@ -100,20 +150,29 @@ contains
         
         call lvl_ud(-1)
         
-        ! Divide equilibrium grid under  group processes, calculating the limits
-        ! and the normal coordinate.
-        call writo('Calculate normal equilibrium ranges')
-        call lvl_ud(1)
-        ierr = calc_norm_range(eq_limits=eq_limits)
-        CHCKERR('')
-        call lvl_ud(-1)
-        
         ! set up whether half or full parallel grid has to be calculated
         if (rich_lvl.eq.1) then
             only_half_grid = .false.
         else
             only_half_grid = .true.
         end if
+        
+        ! decide whether to do certain equilibrium calculations
+        if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
+            do_eq_1_ops = .true.
+        else
+            do_eq_1_ops = .false.
+        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                do_eq_2_ops = .true.
+            case (2)                                                            ! HELENA
+                if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
+                    do_eq_2_ops = .true.
+                else
+                    do_eq_2_ops = .false.
+                end if
+        end select
         
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
@@ -122,15 +181,15 @@ contains
         call lvl_ud(-1)
         CHCKERR('')
         
-        ! Calculate the flux equilibrium quantities
-        ! Note: Only F quantities are saved, but E are needed in every level
+        ! Calculate the flux equilibrium quantities.
+        ! Note: There  are some E  quantities that are needed  in to set  up the
+        ! equilibrium grid and that are not present in eq_1_out.
         ierr = calc_eq(grid_eq,eq_1)
         CHCKERR('')
         
-        ! write  flux equilibrium variables to  output if first level  and first
-        ! equilibrium job
+        ! Write to HDF5 only for first calculation
         if (rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
-            ! print output
+            ! write flux equilibrium variables to output
             ierr = print_output_eq(grid_eq,eq_1,'eq_1')
             CHCKERR('')
             
@@ -143,14 +202,11 @@ contains
             end if
         end if
         
-        ! Do actions depending on equilibrium style
-        ! VMEC: The  equilibrium grid is  field-aligned and therefore has  to be
-        ! recalculated for every  Richardson step. The output names  make use of
-        ! the Richardson level.
+        ! grid_eq and grid_eq_B
+        ! VMEC: The equilibrium grid is  field-aligned but its angular variables
+        ! need to be set up still.
         ! HELENA: The equilibrium  grid is not field-aligned but  taken from the
-        ! equilibrium output.  The variables concerning this  is only calculated
-        ! and written for  the first Richardson level.  The variables concerning
-        ! the field-aligned grid is written at every Richardson level.
+        ! equilibrium output.  The field-aligned grid has to be set up separately.
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! calculate angular grid points for equilibrium grid
@@ -158,51 +214,9 @@ contains
                 ierr = calc_ang_grid_eq_B(grid_eq,eq_1,only_half_grid=&
                     &only_half_grid)
                 CHCKERR('')
-                
-                ! write equilibrium grid variables to output
-                ierr = print_output_grid(grid_eq,'equilibrium','eq',&
-                    &rich_lvl=rich_lvl,par_div=.true.)
-                CHCKERR('')
-                
-                ! Calculate the metric equilibrium quantities
-                ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
-                CHCKERR('')
-                
-#if ldebug
-                if (plot_info) then
-                    ! plot info for comparison between VMEC and HELENA
-                    call plot_info_for_VMEC_HEL_comparision()
-                end if
-#endif
             case (2)                                                            ! HELENA
-                ! For  first  Richardson  level,  calculate  metric  equilibrium
-                ! variables and then broadcast them to full normal grid. For the
-                ! next levels, keep the previously calculated variables.
-                if (rich_lvl.eq.1) then
-                    ! write equilibrium grid variables to output
-                    ierr = print_output_grid(grid_eq,'equilibrium','eq',&
-                        &par_div=.false.)
-                    CHCKERR('')
-                    
-                    ! Calculate the metric equilibrium quantities
-                    ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
-                    CHCKERR('')
-                    
-#if ldebug
-                    if (plot_info) then
-                        ! plot info for comparison between VMEC and HELENA
-                        call plot_info_for_VMEC_HEL_comparision()
-                    end if
-#endif
-                    
-                    ! write metric equilibrium variables to output
-                    ierr = print_output_eq(grid_eq,eq_2,'eq_2',par_div=.false.)
-                    CHCKERR('')
-                end if
-                
                 ! set up field-aligned equilibrium grid
                 call writo('Determine the field-aligned equilibrium grid')
-                allocate(grid_eq_B)
                 ierr = setup_grid_eq_B(grid_eq,grid_eq_B,eq_1,&
                     &only_half_grid=only_half_grid)
                 CHCKERR('')
@@ -212,6 +226,31 @@ contains
                     &'eq_B',rich_lvl=rich_lvl,par_div=.true.)
                 CHCKERR('')
         end select
+        
+        ! only do when needed
+        if (do_eq_2_ops) then
+            ! write equilibrium grid variables to output
+            ierr = print_output_grid(grid_eq,'equilibrium','eq',&
+                &rich_lvl=rich_lvl_name,par_div=size(eq_jobs_lims,2).gt.1)
+            CHCKERR('')
+            
+            ! Calculate the metric equilibrium quantities
+            ierr = calc_eq(grid_eq,eq_1,eq_2,dealloc_vars=dealloc_vars)
+            CHCKERR('')
+            
+#if ldebug
+            if (plot_info) then
+                ! plot info for comparison between VMEC and HELENA
+                call plot_info_for_VMEC_HEL_comparision()
+            end if
+#endif
+            
+            if (rich_lvl.eq.1 .and. eq_style.eq.2) then                         ! only if first Richardson level
+                ! write metric equilibrium variables to output
+                ierr = print_output_eq(grid_eq,eq_2,'eq_2',par_div=.false.)
+                CHCKERR('')
+            end if
+        end if
         
         ! plot magnetic field if requested
         ! (done in parts, for every parallel job)
@@ -227,7 +266,7 @@ contains
                     end if
             end select
         else
-            call writo('Magnetic field plot not requested')
+            if (eq_job_nr.eq.1) call writo('Magnetic field plot not requested')
         end if
         
         ! plot current if requested
@@ -244,7 +283,7 @@ contains
                     end if
             end select
         else
-            call writo('Current plot not requested')
+            if (eq_job_nr.eq.1) call writo('Current plot not requested')
         end if
         
         ! plot curvature if requested
@@ -261,67 +300,86 @@ contains
                     end if
             end select
         else
-            call writo('Magnetic field plot not requested')
+            if (eq_job_nr.eq.1) call writo('Curvature plot not requested')
         end if
         
-        ! broadcast metric equilibrium variables (also deallocates)
-        if (eq_style.eq.1 .or. eq_style.eq.2.and.rich_lvl.eq.1) then
-            ierr = broadcast_output_eq(grid_eq,eq_1,eq_1_tot)
-            CHCKERR('')
-            ierr = broadcast_output_eq(grid_eq,eq_2,eq_2_tot,dealloc_vars=&
-                &.true.)
+        ! redistribute equilibrium grid and variables and clean up
+        call writo('Redistribute the equilibrium grids')
+        call lvl_ud(1)
+        
+        ! grid_eq_out
+        if (do_eq_2_ops) then
+            if (associated(grid_eq_out%r_F)) call grid_eq_out%dealloc()         ! deallocate if necessary
+            ierr = redistribute_output_grid(grid_eq,grid_eq_out)
             CHCKERR('')
         end if
+        
+        ! eq_1_out
+        if (do_eq_1_ops) then
+            ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_1,eq_1_out)
+            CHCKERR('')
+        end if
+        
+        ! eq_2_out
+        if (do_eq_2_ops) then
+            if (allocated(eq_2_out%jac_FD)) call eq_2_out%dealloc()             ! deallocate if necessary
+            ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_2,eq_2_out)
+            CHCKERR('')
+        end if
+        
+        ! grid_eq_B_out
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                grid_eq_B_out => grid_eq_out
+            case (2)                                                            ! HELENA
+                if (associated(grid_eq_B_out)) then
+                    call grid_eq_B_out%dealloc()
+                    deallocate(grid_eq_B_out)
+                    nullify(grid_eq_B_out)
+                end if
+                allocate(grid_eq_B_out)
+                ierr = redistribute_output_grid(grid_eq_B,grid_eq_B_out)
+                CHCKERR('')
+                call grid_eq_B%dealloc()
+        end select
         
         ! clean up
-        call writo('Clean up')
-        call lvl_ud(1)
-        call grid_eq%dealloc()
         call eq_1%dealloc()
-        if (eq_style.eq.2) then
-            call grid_eq_B%dealloc()
-            deallocate(grid_eq_B)
+        if (do_eq_2_ops) then
+            call grid_eq%dealloc()
+            call eq_2%dealloc()
         end if
-        nullify(grid_eq_B)
+        
         call lvl_ud(-1)
         
         ! plot full field-aligned grid if requested
         ! Note: As  this needs a total  grid, it cannot be  easiliy created like
         ! plot_B, where the output is updated for every equilibrium job.
-        if (plot_magn_grid .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
-            ! allocate
-            allocate(grid_eq_B)
-            
-            ! set up the name of grid_eq_B and rich_lvl
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    grid_eq_B_name = 'eq'                                       ! already field-aligned
-                case (2)                                                        ! HELENA
-                    grid_eq_B_name = 'eq_B'                                     ! not already field-aligned
-            end select
-            
-            ! reconstruct the full field-aligned grid
-            ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
-                &rich_lvl=rich_lvl,tot_rich=.true.)
-            CHCKERR('')
-            
-            ! plot it
-            ierr = magn_grid_plot(grid_eq_B)
-            CHCKERR('')
-            
-            ! deallocate
-            call grid_eq_B%dealloc()
-            deallocate(grid_eq_B)
-            nullify(grid_eq_B)
+        if (plot_magn_grid) then
+            if (eq_job_nr.eq.size(eq_jobs_lims,2)) then
+                ! set up the name of grid_eq_B
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        grid_eq_B_name = 'eq'                                   ! already field-aligned
+                    case (2)                                                    ! HELENA
+                        grid_eq_B_name = 'eq_B'                                 ! not already field-aligned
+                end select
+                
+                ! reconstruct the full field-aligned grid
+                ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
+                    &rich_lvl=rich_lvl,tot_rich=.true.)
+                CHCKERR('')
+                
+                ! plot it
+                ierr = magn_grid_plot(grid_eq_B)
+                CHCKERR('')
+                
+                ! deallocate
+                call grid_eq_B%dealloc()
+            end if
         else
-            call writo('Magnetic grid plot not requested')
+            if (eq_job_nr.eq.1) call writo('Magnetic grid plot not requested')
         end if
-        
-        ! clean up
-        call writo('Clean up')
-        call lvl_ud(1)
-        call dealloc_in()
-        call lvl_ud(-1)
         
         ! synchronize MPI
         ierr = wait_MPI()
@@ -336,10 +394,11 @@ contains
             real(dp), allocatable :: x_plot(:,:,:), y_plot(:,:,:), z_plot(:,:,:)
             integer :: id
             integer :: d(3)
-            logical :: not_ready = .true.
+            logical :: not_ready            
             
             call writo('Plotting information for comparison between VMEC and &
                 &HELENA',alert=.true.)
+            not_ready = .true.
             do while (not_ready)
                 call writo('derivative in dim 1?')
                 d(1) =  get_int(lim_lo=0)

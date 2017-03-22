@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.60                                                              !
+!   Version: 1.61                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -25,7 +25,10 @@ program PB3D
     use num_vars, only: prog_name, prog_style, rank, rich_restart_lvl, eq_style
     use str_utilities, only: r2str, i2str
     use messages
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
+    use X_vars, only: X_1_type, X_2_type
+    use sol_vars, only: sol_type
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
     use driver_X, only: run_driver_X
@@ -51,8 +54,16 @@ program PB3D
 
     ! local variables
     integer :: ierr                                                             ! error
+    type(grid_type), target :: grid_eq                                          ! equilibrium grid
+    type(grid_type), pointer :: grid_eq_B => null()                             ! field-aligned equilibrium grid
+    type(grid_type), target :: grid_X                                           ! perturbation grid
+    type(grid_type), pointer :: grid_X_B => null()                              ! field-aligned perturbation grid
+    type(grid_type) :: grid_sol                                                 ! solution grid
     type(eq_1_type) :: eq_1                                                     ! flux equilibrium variables
     type(eq_2_type) :: eq_2                                                     ! metric equilibrium variables
+    type(X_1_type) :: X_1                                                       ! vectorial perturbation variables
+    type(X_2_type) :: X_2                                                       ! integrated tensorial perturbation variables
+    type(sol_type) :: sol                                                       ! solution
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -149,7 +160,7 @@ program PB3D
             call writo('Equilibrium driver'//trim(rich_info())//&
                 &trim(eq_info()))
             call lvl_ud(1)
-            ierr = run_driver_eq(eq_1,eq_2)                                     ! equilibrium driver
+            ierr = run_driver_eq(grid_eq,grid_eq_B,eq_1,eq_2)                   ! equilibrium driver
             CHCKERR
             call writo('')
             call passed_time
@@ -163,7 +174,8 @@ program PB3D
             call writo('Perturbation driver'//trim(rich_info())//&
                 &trim(eq_info()))
             call lvl_ud(1)
-            ierr = run_driver_X(eq_1,eq_2)                                      ! perturbation driver
+            ierr = run_driver_X(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,eq_2,&
+                &X_1,X_2)                                                       ! perturbation driver
             CHCKERR
             call writo('')
             call passed_time
@@ -177,7 +189,7 @@ program PB3D
         call start_time
         call writo('Solution driver'//trim(rich_info()))
         call lvl_ud(1)
-        ierr = run_driver_sol()                                                 ! solution driver
+        ierr = run_driver_sol(grid_X,grid_X_B,grid_sol,X_2,sol)                 ! solution driver
         CHCKERR
         call writo('')
         call passed_time
@@ -202,7 +214,16 @@ program PB3D
     call writo('Clean up')
     call lvl_ud(1)
     if (eq_style.eq.2) call eq_2%dealloc()
-    ierr = stop_MPI()
+    ierr = stop_MPI(grid_eq=grid_eq,&
+        &grid_eq_B=grid_eq_B,&
+        &grid_X=grid_X,&
+        &grid_X_B=grid_X_B,&
+        &grid_sol=grid_sol,&
+        &eq_1=eq_1,&
+        &eq_2=eq_2,&
+        &X_1=X_1,&
+        &X_2=X_2,&
+        &sol=sol)
     CHCKERR
     call close_output
     call lvl_ud(-1)

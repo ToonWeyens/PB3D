@@ -19,13 +19,13 @@ contains
     integer function read_input_opts() result(ierr)
         use num_vars, only: &
             &max_it_zero, tol_zero, max_it_rich, input_i, use_pol_flux_F, &
-            &EV_style, max_tot_mem_per_proc, plot_resonance, tol_rich, &
+            &EV_style, max_tot_mem, plot_resonance, tol_rich, &
             &n_sol_requested, rank, plot_magn_grid, plot_B, plot_J, &
             &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
-            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, n_procs, &
+            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
@@ -56,7 +56,7 @@ contains
             &rho_0, plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, &
             &prim_X, min_sec_X, max_sec_X, n_mod_X, use_normalization, &
             &n_theta_plot, n_zeta_plot, norm_disc_prec_eq, tol_norm, &
-            &max_tot_mem_per_proc, n_r_sol, max_it_rich, tol_rich, EV_style, &
+            &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
             &BC_style, max_it_inv, max_it_slepc, norm_disc_prec_sol, &
@@ -70,7 +70,7 @@ contains
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
-            &plot_grid_style, max_tot_mem_per_proc, ex_plot_style, &
+            &plot_grid_style, max_tot_mem, ex_plot_style, &
             &pert_mult_factor_POST
         
         ! initialize ierr
@@ -86,7 +86,7 @@ contains
             call lvl_ud(1)
             
             ! common variables for all program styles
-            max_tot_mem_per_proc = 6000_dp/n_procs                              ! count with 6GB total
+            max_tot_mem = 6000_dp                                               ! count with 6GB total
             plot_size = [10,5]                                                  ! size of plot in inch
             min_r_plot = 0._dp                                                  ! minimal plot normal range
             max_r_plot = 1._dp                                                  ! maximal plot normal range
@@ -104,6 +104,7 @@ contains
                     min_zeta_plot = 0
                     max_zeta_plot = min_zeta_plot
             end select
+            plot_grid_style = 0                                                 ! normal plots on 3D geometry
             relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
             max_nr_tries_HH = 6                                                 ! standard nr. of tries
             ex_plot_style = 1                                                   ! GNUPlot
@@ -325,7 +326,6 @@ contains
             POST_style = 1                                                      ! process on extended plot grid
             
             ! variables concerning input / output
-            plot_grid_style = 0                                                 ! normal plots on 3D geometry
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
             
             ! Richardson variables

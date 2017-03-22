@@ -50,8 +50,7 @@ contains
     ! technique,  using "get_norm_interp_data"  and  "interp_V" can  be seen  in
     ! builds previous to 1.06. These have been superseded by "setup_interp_data"
     ! followed by "apply_disc".
-    integer function solve_EV_system_SLEPC(grid_sol,X,sol,sol_prev,i_geo) &
-        &result(ierr)
+    integer function solve_EV_system_SLEPC(grid_sol,X,sol,i_geo) result(ierr)
         use num_vars, only: max_it_inv, norm_disc_prec_sol, matrix_SLEPC_style
         use num_utilities, only: calc_coeff_fin_diff
         use rich_vars, only: use_guess
@@ -64,9 +63,8 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(inout) :: X                                      ! field-averaged perturbation variables (so only first index)
+        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         type(sol_type), intent(inout) :: sol                                    ! solution variables
-        type(sol_type), intent(inout), optional :: sol_prev                     ! previous solution variables
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
         ! local variables
@@ -205,17 +203,13 @@ contains
             end if
 #endif
             
-            ! deallocate the X variables
-            call X%dealloc()
-            
             ! set up guess
-            if (present(sol_prev) .and. use_guess) then
+            if (use_guess) then
                 call writo('Set up guess')
                 call lvl_ud(1)
-                ierr = setup_guess(sol_prev,A,solver)
+                ierr = setup_guess(sol,A,solver)
                 CHCKERR('')
                 call lvl_ud(-1)
-                call sol_prev%dealloc()
             end if
             
             ! get solution
@@ -1604,6 +1598,7 @@ contains
         call lvl_ud(1)
         
         ! create solution variables
+        if (allocated(sol%val)) call sol%dealloc()
         call sol%init(grid_sol,max_n_EV)
         
         ! create solution vector

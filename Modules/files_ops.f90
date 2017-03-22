@@ -160,8 +160,8 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &do_execute_command_line, output_name, prog_name, PB3D_name_eq, &
-            &print_mem_usage, swap_angles, jump_to_sol, export_HEL
+            &do_execute_command_line, output_name, prog_name, print_mem_usage, &
+            &swap_angles, jump_to_sol, export_HEL
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -241,15 +241,8 @@ contains
                         CHCKERR('')
                     end if
                     
-                    ! set PB3D output name and equilibrium output name
+                    ! set PB3D output name 
                     PB3D_name = prog_name//'_'//trim(output_name)//'.h5'
-                    select case(eq_style)
-                        case (1)                                                ! VMEC
-                            PB3D_name_eq = prog_name//'_'//trim(output_name)//&
-                                &'_eq.h5'                                       ! eq and X_1 vars will be thrown away after every Richardson extrapolation
-                        case (2)                                                ! HELENA
-                            PB3D_name_eq = PB3D_name                            ! eq and X_1 vars will be saved, but only for first Richardson extrapolation
-                    end select
                 case(2)                                                         ! POST
                     ! check for correct input file and use default if needed
                     input_name = command_arg(1)                                 ! first argument is the name of the input file
@@ -268,7 +261,6 @@ contains
                     open(UNIT=PB3D_i,FILE=PB3D_name,STATUS='old',IOSTAT=ierr)
                     err_msg = 'No PB3D file found.'
                     CHCKERR(err_msg)
-                    PB3D_name_eq = trim(PB3D_name)                              ! is necessary for HELENA
                     
                     ! succeeded
                     call writo('PB3D output file "' // trim(PB3D_name) &

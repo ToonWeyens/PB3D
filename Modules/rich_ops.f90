@@ -21,12 +21,12 @@ module rich_ops
 contains
     integer function init_rich() result(ierr)
         use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, &
-            &rank
+            &rank, PB3D_name, jump_to_sol
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: setup_nm_X
         use MPI_utilities, only: wait_MPI
-        use input_utilities, only: dealloc_in
+        use HDF5_utilities, only: probe_HDF5_group
         
         character(*), parameter :: rout_name = 'init_rich'
         
@@ -35,9 +35,10 @@ contains
         type(grid_type) :: grid_X_B                                             ! field-aligned perturbation grid
         type(eq_1_type) :: eq                                                   ! flux equilibrium variables
         type(sol_type) :: sol                                                   ! solution variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=4) :: grid_eq_name                                        ! name of equilibrium grid
         character(len=4) :: grid_X_name                                         ! name of perturbation grid
+        logical :: group_exists                                                 ! whether probed group exists
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! set variables
         rich_lvl = 1
@@ -59,6 +60,20 @@ contains
             end if
         end if
         call lvl_ud(1)
+        
+        ! check whether we can indeed jump to solution
+        if (jump_to_sol) then
+            ierr = probe_HDF5_group(PB3D_name,'X_2_int_R_'//&
+                &trim(i2str(rich_restart_lvl)),group_exists)
+            CHCKERR('')
+            if (.not.group_exists) then
+                ierr = 1
+                call writo('No integrated tensorial perturbation quantitites &
+                    &found to jump over',alert=.true.)
+                err_msg = 'These quantitites need to be set up'
+                CHCKERR(err_msg)
+            end if
+        end if
         
         ! some preliminary things
         ierr = wait_MPI()
@@ -191,14 +206,12 @@ contains
             call writo('')
         end if
         
-        ! clean up
-        call dealloc_in()
-        
         call lvl_ud(-1)
     end function init_rich
     
     subroutine term_rich()
-        use num_vars, only: rank,norm_disc_prec_sol
+        use num_vars, only: rank, norm_disc_prec_sol
+        use input_utilities, only: dealloc_in
         
         ! local variables
         integer :: id                                                           ! counter
@@ -253,6 +266,9 @@ contains
             
             call lvl_ud(-1)
         end if
+        
+        ! clean up
+        call dealloc_in()
     contains
         ! Draws  the   Eigenvalues  for  the  different   levels  of  Richardson
         ! extrapolation as a function of the number of parallel points.
@@ -297,14 +313,15 @@ contains
     integer function start_rich_lvl() result(ierr)
         use grid_utilities, only: calc_n_par_X_rich
         use grid_vars, only: n_r_eq
-        use eq_ops, only: divide_eq_jobs
+        use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
-        use num_vars, only: eq_style, n_procs, max_deriv
+        use num_vars, only: eq_style, max_deriv, jump_to_sol, rich_restart_lvl
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
         
         ! local variables
+        integer :: n_div                                                        ! number of divisions in equilibrium jobs
         logical :: only_half_grid                                               ! calculate only half grid with even points
         integer :: n_par_X_loc                                                  ! local n_par_X
         integer :: var_size_without_par                                         ! size of variables without parallel dimension
@@ -326,31 +343,39 @@ contains
         ierr = calc_n_par_X_rich(n_par_X_loc,only_half_grid)
         CHCKERR('')
         
-        ! Get  local n_par_X  to  divide  the equilibrium  jobs.  Note that  the
-        ! average size  per process is n_r_eq  / n_procs, times the  size due to
-        ! the dimensions  corresponding to  the derivatives,  and the  number of
-        ! variables (see subroutine "calc_memory" inside "divide_eq_jobs")
-        var_size_without_par = 13*n_r_eq*(1+max_deriv)**3/n_procs
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! divide equilibrium jobs
-                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par)
-                CHCKERR('')
-            case (2)                                                            ! HELENA
-                ! divide equilibrium jobs
-                ! Note: calculations for first Richardson  level have to be done
-                ! without  multiple parallel  jobs, as  this is  the calculation
-                ! where the  variables are  calculated that are  interpolated in
-                ! all levels.
-                ! Note: This could be changed, and HELENA could be calculated by
-                ! dividing up  the parallel grid.  However, this is very  low on
-                ! the list of priorities as  it would required ghost regions and
-                ! all those things. For now: use more memory per process or more
-                ! processes.
-                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
-                    &n_par_X_base=nchi*1._dp,n_div_max=1)                       ! everything is tabulated on nchi poloidal points
-                CHCKERR('')
-        end select
+        if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
+            call writo('Jumping straight to solution, no need to divide into &
+                &equilibrium jobs')
+            n_div = 1
+        else
+            ! Get local  n_par_X to divide  the equilibrium jobs. Note  that the
+            ! average size  for all process  together is n_r_eq, times  the size
+            ! due  to  the  dimensions  corresponding to  the  derivatives,  and
+            ! the  number  of  variables (see  subroutine  "calc_memory"  inside
+            ! "divide_eq_jobs")
+            var_size_without_par = 13*n_r_eq*(1+max_deriv)**3
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ! divide equilibrium jobs
+                    ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
+                        &n_div)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    ! divide equilibrium jobs
+                    ! Note: calculations  for first Richardson level  have to be
+                    ! done without  a single  jobs, as  this is  the calculation
+                    ! where the  variables are calculated that  are interpolated
+                    ! in all levels.
+                    ierr = divide_eq_jobs(nchi,var_size_without_par,n_div,&
+                        &n_div_max=1,range_name='poloidal points in the &
+                        &axisymmetric HELENA cross-section')                    ! everything is tabulated on nchi poloidal points
+                    CHCKERR('')
+            end select
+        end if
+        
+        ! calculate equilibrium job limits
+        ierr = calc_eq_jobs_lims(n_par_X_loc,n_div)
+        CHCKERR('')
         
         ! set use_guess to .false. if user sets no_guess
         if (no_guess) use_guess = .false.
@@ -490,17 +515,17 @@ contains
         ! local variables
         integer :: ir                                                           ! counter
         character(len=max_str_ln) :: group_name                                 ! name of group to probe for
-        logical :: group_exists(2)                                              ! whether probed group exists
+        logical :: group_exists                                                 ! whether probed group exists
         
         ! initialize ierr
         ierr = 0
         
         ! try openining solution for different Richardson extrapolation levels
-        group_exists(1) = .true.                                                ! group_exists becomes stopping criterion
+        group_exists = .true.                                                   ! group_exists becomes stopping criterion
         ir = 1                                                                  ! initialize counter
-        do while (group_exists(1))
+        do while (group_exists)
             group_name = 'sol_R_'//trim(i2str(ir))
-            ierr = probe_HDF5_group(PB3D_name,group_name,group_exists(1))
+            ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)
             CHCKERR('')
             ir = ir + 1                                                         ! increment counter
         end do

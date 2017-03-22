@@ -699,3 +699,15 @@ CHANGELOG
       - "dealloc_vars" is back in use for the metric equilibrium routines, and has been extended to "broadcast_output_eq_2", where it is most critical.
       - The initialization of equilibrium variables is done more carefully now, avoiding unnecessary E variables where possible.
       - The calculation of memory in "divide_eq_jobs" was wrong in assuming that the normal perturbation range would be divided. Also, total memory usage is not available any more.
+
+1.61: - Extensive rewrite of the whole overarching system with drivers.
+      - Variables come from the main program and are passed through the drivers. They are deallocated finally in "stop_MPI".
+      - Input variables are now saved throughout the whole program, after reading them in "init_rich".
+      - X jobs do not longer exist. They are not done in a large batch as before, but by iterating over the individual modes, possibly in blocks.
+      - The normal grids in the perturbation phase are now also divided and equal to the trimmed equilibrium grids.
+      - Implemented procedures to redistribute grids and equilibrium variables over a new normal range.
+      - The division in equilibrium jobs is now different: For PB3D HELENA only nchi parallel values are calculated and their interpolation does not happen in batch.
+      - "tol_norm" is not used any more to calculate the normal extent of the input variables, so that they match with the grids used later.
+      - The maximum memory in total is now passed as input variable "max_tot_mem".
+      - Started usin Valgrind again, in stead of Dr. Memory.
+      - Fixed a bug where "pert_mult_factor_POST" was wrongly used when it was zero.

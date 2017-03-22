@@ -12,7 +12,8 @@ module X_utilities
     implicit none
     
     private
-    public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, calc_memory_X
+    public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, calc_memory_X, &
+        &do_X
     
     ! interfaces
     interface sec_ind_loc2tot
@@ -137,6 +138,20 @@ contains
                 &sym,n_mod_X)
         end do
     end subroutine get_sec_X_range
+    
+    ! if this perturbation job should be done, also increment X_job_nr
+    logical function do_X()
+        use num_vars, only: X_jobs_lims, X_job_nr
+        
+        ! increment perturbation job nr.
+        X_job_nr = X_job_nr + 1
+        
+        if (X_job_nr.le.size(X_jobs_lims,2)) then
+            do_X = .true.
+        else
+            do_X = .false.
+        end if
+    end function do_X
     
     ! Determines whether a variable needs to be  considered: Only if it is on or
     ! below the diagonal for symmetric quantities.
