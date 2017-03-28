@@ -717,3 +717,9 @@ CHANGELOG
       - Updated and cleaned up the job distribution procedures.
       - Threw away many unnecessairy "wait_MPI" commands.
       - Updated the runtime parameters for SLEPC.
+
+1.63: - In this version, the shell matrices were started to be implemented, but this is incomplete. Don't use this functionality.
+      - The solution grid does have a ghost region now. The older versions crash for too small solution grids.
+      - New file "SLEPC_vars.f90" that defines contexts for shell matrices as well as explicit interfaces.
+      - New routine "get_ghost_vec" in SLEPC_utilities that allows one to get the ghost regions to the left and right.
+      - The solution variables are now stored in trimmed grid.

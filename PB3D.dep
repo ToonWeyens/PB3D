@@ -236,9 +236,11 @@ SLEPC_ops.o : \
     sol_vars.o \
     num_utilities.o \
     files_ops.o \
+    grid_utilities.o \
     MPI_utilities.o \
     rich_vars.o \
     SLEPC_utilities.o \
+    SLEPC_vars.o \
     input_utilities.o \
 
 SLEPC_utilities.o: \
@@ -248,6 +250,9 @@ SLEPC_utilities.o: \
     output_ops.o \
     X_vars.o \
     input_utilities.o \
+
+SLEPC_vars.o: \
+    num_vars.o \
 
 X_ops.o : \
     num_vars.o \

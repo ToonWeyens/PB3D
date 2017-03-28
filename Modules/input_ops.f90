@@ -592,8 +592,10 @@ contains
         !   max_r should be lesser than 1
         !   min_r should be lesser than max_r
         ! The number of solution points should be large enough for the numerical
-        ! discretization scheme.
+        ! discretization scheme, and there should be enough points per process.
         integer function adapt_sol_grid(min_r,max_r,var_name) result(ierr)
+            use num_vars, only: n_procs
+            
             character(*), parameter :: rout_name = 'adapt_sol_grid'
             
             ! input / output
@@ -629,10 +631,17 @@ contains
             end if
             
             ! check n_r_sol
-            if (n_r_sol.lt.6*norm_disc_prec_X+2) then
-                n_r_sol = 6*norm_disc_prec_X+2
+            if (n_r_sol.lt.6*norm_disc_prec_sol+2) then
+                n_r_sol = 6*norm_disc_prec_sol+2
                 call writo('n_r_sol has been increased to '//&
-                    &trim(i2str(n_r_sol)),warning=.true.)
+                    &trim(i2str(n_r_sol))//' to have enough points for the &
+                    &normal discretization precision',warning=.true.)
+            end if
+            if (n_r_sol.lt.n_procs*(2*norm_disc_prec_sol+1)) then
+                n_r_sol = n_procs*(2*norm_disc_prec_sol+1)
+                call writo('n_r_sol has been increased to '//&
+                    &trim(i2str(n_r_sol))//' to have enough points per &
+                    &process',warning=.true.)
             end if
         end function adapt_sol_grid
         

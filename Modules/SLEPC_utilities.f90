@@ -20,7 +20,7 @@ module SLEPC_utilities
 
     implicit none
     private
-    public insert_block_mat
+    public insert_block_mat, get_ghost_vec
 #if ldebug
     public debug_insert_block_mat
 #endif
@@ -198,4 +198,72 @@ contains
         endif
 #endif
     end function insert_block_mat
+    
+    ! gets ghost region of a Petsc Vector.
+    !!!!! The ghost regions at the end of the total range are set to zero.
+    ! Note: Every process should have at  least a number of normal poins greater
+    ! than n_ghost. For performance, this is not checked.
+    integer function get_ghost_vec(V_ptr,V_ghost,n_ghost) result(ierr)
+        use num_vars, only: rank, n_procs
+        use MPI
+        
+        character(*), parameter :: rout_name = 'get_ghost_vec'
+        
+        ! input / output
+        PetscScalar, intent(in), pointer :: V_ptr(:)                            ! pointer to vector of which ghost zones are to be retrieved
+        PetscScalar, intent(inout), allocatable :: V_ghost(:,:)                 ! ghost zone for previous (1) and next process (2)
+        integer, intent(in) :: n_ghost                                          ! size of ghost region
+        
+        ! local variables
+        integer :: n_loc                                                        ! local size
+        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! ghost regions only make sense if there is more than 1 process
+        if (n_procs.gt.1) then
+            ! set up ghost regions
+            n_loc = size(V_ptr)
+            allocate(V_ghost(n_ghost,2))
+            
+            ! communicate with previous proc
+            if (rank.eq.0) then                                                 ! first rank only receives
+                call MPI_Recv(V_ghost(:,2),n_ghost,MPI_DOUBLE_COMPLEX,&
+                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
+                CHCKERR('Failed to receive')
+            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
+                !V_ghost(:,2) = 0._dp
+                V_ghost(:,2) = huge(1._dp)
+                call MPI_Send(V_ptr(1:n_ghost),n_ghost,MPI_DOUBLE_COMPLEX,&
+                    &rank-1,rank,MPI_Comm_world,ierr)
+                CHCKERR('Failed to send')
+            else                                                                ! middle ranks send and receive
+                call MPI_Sendrecv(V_ptr(1:n_ghost),n_ghost,&
+                    &MPI_DOUBLE_COMPLEX,rank-1,rank,&
+                    &V_ghost(:,2),n_ghost,MPI_DOUBLE_COMPLEX,rank+1,rank+1,&
+                    &MPI_Comm_world,istat,ierr)
+                CHCKERR('Failed to send and receive')
+            end if
+            
+            ! communicate with next proc
+            if (rank.eq.0) then                                                 ! first rank only sends
+                !V_ghost(:,1) = 0._dp
+                V_ghost(:,1) = huge(1._dp)
+                call MPI_Send(V_ptr(n_loc-n_ghost:n_loc-1),n_ghost,&
+                    &MPI_DOUBLE_COMPLEX,rank+1,rank,MPI_Comm_world,ierr)
+                CHCKERR('Failed to send')
+            else if (rank+1.eq.n_procs) then                                    ! last rank only receives
+                call MPI_Recv(V_ghost(:,1),n_ghost,MPI_DOUBLE_COMPLEX,&
+                    &rank-1,rank-1,MPI_Comm_world,istat,ierr)
+                CHCKERR('Failed to receive')
+            else                                                                ! middle ranks send and receive
+                call MPI_Sendrecv(V_ptr(n_loc-n_ghost:n_loc-1),n_ghost,&
+                    &MPI_DOUBLE_COMPLEX,rank+1,rank,&
+                    &V_ghost(:,1),n_ghost,MPI_DOUBLE_COMPLEX,rank-1,rank-1,&
+                    &MPI_Comm_world,istat,ierr)
+                CHCKERR('Failed to send and receive')
+            end if
+        end if
+    end function get_ghost_vec
 end module SLEPC_utilities

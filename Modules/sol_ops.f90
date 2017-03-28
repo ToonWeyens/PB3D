@@ -1310,7 +1310,6 @@ contains
         integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
         
         ! local variables
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables
         type(var_1D_type), pointer :: sol_1D_loc => null()                      ! local element in sol_1D
         type(grid_type) :: grid_trim                                            ! trimmed solution grid
@@ -1326,7 +1325,7 @@ contains
             call lvl_ud(1)
             
             ! trim grids
-            ierr = trim_grid(grid,grid_trim,norm_id)
+            ierr = trim_grid(grid,grid_trim)
             CHCKERR('')
             
             ! Set up the 1D equivalents of the solution variables
@@ -1367,10 +1366,8 @@ contains
             sol_1D_loc%loc_i_max = [sol%n_mod,grid_trim%i_max,size(sol%vec,3)]
             sol_1D_loc%tot_i_min = [1,1,1]
             sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
-            allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
-            sol_1D_loc%p = &
-                &reshape(rp(sol%vec(:,norm_id(1):norm_id(2),:)),&
-                &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
+            allocate(sol_1D_loc%p(size(sol%vec)))
+            sol_1D_loc%p = reshape(rp(sol%vec),[size(sol%vec)])
             
             ! IM_sol_vec
             sol_1D_loc => sol_1D(id); id = id+1
@@ -1381,10 +1378,8 @@ contains
             sol_1D_loc%loc_i_max = [sol%n_mod,grid_trim%i_max,size(sol%vec,3)]
             sol_1D_loc%tot_i_min = [1,1,1]
             sol_1D_loc%tot_i_max = [sol%n_mod,grid_trim%n(3),size(sol%vec,3)]
-            allocate(sol_1D_loc%p(size(sol%vec(:,norm_id(1):norm_id(2),:))))
-            sol_1D_loc%p = &
-                &reshape(ip(sol%vec(:,norm_id(1):norm_id(2),:)),&
-                &[size(sol%vec(:,norm_id(1):norm_id(2),:))])
+            allocate(sol_1D_loc%p(size(sol%vec)))
+            sol_1D_loc%p = reshape(ip(sol%vec),[size(sol%vec)])
             
             ! write
             ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name),&

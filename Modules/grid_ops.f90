@@ -267,10 +267,15 @@ contains
         end function calc_norm_range_PB3D_X
         
         ! The normal range is determined  by simply dividing the solution range,
-        ! no ghost range required.
+        ! a ghost range is required, depending on matrix_SLEPC_style:
+        !   - 1  (explicit storage  of SLEPC  matrices): need  1 point  to avoid
+        !   having holes in the grid.
+        !   - 2 (shell matrices): need  norm_disc_prec_sol points to get all the
+        !   information  of the  multiplication  of the  SLEPC  matrices with  a
+        !   vector on the local processor.
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
-            use num_vars, only: n_procs, rank
+            use num_vars, only: n_procs, rank, norm_disc_prec_sol
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
             use num_utilities, only: round_with_tol
@@ -297,6 +302,10 @@ contains
             
             ! set sol_limits
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
+            
+            ! ghost regions of width 2*norm_disc_prec_sol
+            sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
+            sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
             
             ! calculate r_F_sol in range from min_r_sol to max_r_sol
             r_F_sol = [(min_r_sol + (id-1.0_dp)/(n_r_sol-1.0_dp)*&
