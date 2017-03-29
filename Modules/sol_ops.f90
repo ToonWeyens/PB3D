@@ -1295,7 +1295,7 @@ contains
     ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
     ! it is > 0.
     integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
-        use num_vars, only: PB3D_name
+        use num_vars, only: PB3D_name, sol_n_procs, rank
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -1382,9 +1382,14 @@ contains
             sol_1D_loc%p = reshape(ip(sol%vec),[size(sol%vec)])
             
             ! write
-            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name),&
-                &rich_lvl=rich_lvl)
-            CHCKERR('')
+            ! Note: if processes that are not used  in the solve do not have the
+            ! solution  vector and  should therefore  not be  used to  write the
+            ! output.
+            if (sol_n_procs.gt.1 .or. rank.eq.0) then
+                ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name),&
+                    &rich_lvl=rich_lvl)
+                CHCKERR('')
+            end if
             
             ! clean up
             call grid_trim%dealloc()

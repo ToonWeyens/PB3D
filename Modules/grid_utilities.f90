@@ -1962,7 +1962,7 @@ contains
     ! by default, the routine assumes a  symmetric ghost region and cuts as many
     ! grid points from the end of the  previous process as from the beginning of
     ! the next process, but if the number of overlapping grid points is odd, the
-    ! previous process looses one more point.
+    ! next process looses one more point.
     ! optionally, the trimmed indices in the normal direction can be provided in
     ! "norm_id", i.e. the indices in the  old, untrimmed grid that correspond to
     ! the start and end indices of the trimmed grid. E.g. if
@@ -2010,16 +2010,20 @@ contains
             ! min)
             if (rank.gt.0) then
                 i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
-                    &floor((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
+                    &ceiling((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
             else
                 i_lim_out(1) = tot_i_min(1)
             end if
             if (rank.lt.n_procs-1) then
                 i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
-                    &ceiling((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
+                    &floor((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
             else
                 i_lim_out(2) = tot_i_max(n_procs)
             end if
+            
+            ! limit to input limits (necessary if a process has only one point)
+            i_lim_out(1) = max(min(i_lim_out(1),grid_in%i_max),grid_in%i_min)
+            i_lim_out(2) = max(min(i_lim_out(2),grid_in%i_max),grid_in%i_min)
             
             ! get  min_i's and max_i's  of the grid_out,  not shifted by  min of
             ! first process
@@ -2031,10 +2035,10 @@ contains
             ! set n of output grid
             n_out(1) = grid_in%n(1)
             n_out(2) = grid_in%n(2)
-            n_out(3) = sum(tot_i_max-tot_i_min+1)
+            n_out(3) = tot_i_max(n_procs)-tot_i_min(1)+1
             
             ! create new grid
-            ierr = grid_out%init(n_out,i_lim_out-tot_i_min(1)+1)                ! limits shifted by min of first process
+            ierr = grid_out%init(n_out,i_lim_out-tot_i_min(1)+1,divided=.true.) ! limits shifted by min of first process
             CHCKERR('')
             
             ! recycle  i_lim_out  for  shifted  array  indices, set  norm_id  if

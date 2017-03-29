@@ -240,7 +240,6 @@ SLEPC_ops.o : \
     MPI_utilities.o \
     rich_vars.o \
     SLEPC_utilities.o \
-    SLEPC_vars.o \
     input_utilities.o \
 
 SLEPC_utilities.o: \
@@ -250,9 +249,6 @@ SLEPC_utilities.o: \
     output_ops.o \
     X_vars.o \
     input_utilities.o \
-
-SLEPC_vars.o: \
-    num_vars.o \
 
 X_ops.o : \
     num_vars.o \
@@ -386,6 +382,7 @@ files_ops.o : \
     str_utilities.o \
     messages.o \
     MPI_utilities.o \
+    input_ops.o \
     HDF5_ops.o \
     HDF5_vars.o \
     grid_vars.o \

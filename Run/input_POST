@@ -6,14 +6,14 @@
     plot_sol_xi             = .false.
     plot_sol_Q              = .false.
     plot_E_rec              = .false.
-    plot_B                  = .true.
+    plot_B                  = .false.
     plot_J                  = .false.
-    plot_kappa              = .true.
+    plot_kappa              = .false.
     norm_disc_prec_sol      = 3
     n_zeta_plot             = 50
     min_zeta_plot           = 0.00
     max_zeta_plot           = 2.00
-    min_r_plot              = 0.3
+    min_r_plot              = 0.0
     max_r_plot              = 1.0
     n_theta_plot            = 50
     min_theta_plot          = 0.00

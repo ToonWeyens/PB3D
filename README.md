@@ -723,3 +723,14 @@ CHANGELOG
       - New file "SLEPC_vars.f90" that defines contexts for shell matrices as well as explicit interfaces.
       - New routine "get_ghost_vec" in SLEPC_utilities that allows one to get the ghost regions to the left and right.
       - The solution variables are now stored in trimmed grid.
+
+1.64: - Removed shell functionality again. In the future it might be restored and finalized.
+      - Removed SLEPC_vars.f90 and its routines, as well as "get_ghost_vec".
+      - Added new input variable "sol_n_procs" to control how many MPI processes are used for SLEPC. Often, 1 is better han multiple. A negative number sets it equal to all available.
+      - Started using block matrices in SLEPC, to improve legibility. No marked change in performance.
+      - By default, the generalized Davidson method is used. If there is convergence to a positive (stable) mode, maybe you should choose ncv higher.
+      - The run script has been changed somewhat, using only ncv=16 now.
+      - Checking whether the resulting eigenpairs are valid is now also done for the release version.
+      - Fixed a bug where the vacuum contribution was not copied to the integrated perturbation quantities.
+      - Changed the "calc_norm_range" procedures somewhat, to take into account that the solution grid might have a different number of processes.
+      - Added hard-coded option to use Hermiticity, but this does not work yet, as the SLEPC tolerance is much too low (see http://lists.mcs.anl.gov/pipermail/petsc-users/2016-October/030781.html). Forcing the matrix to be Hermitian artificially also does not work.

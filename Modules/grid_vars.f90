@@ -81,8 +81,16 @@ module grid_vars
 contains
     ! Initializes a new grid.
     ! Optionally, the local limits can be provided for a divided grid.
+    ! Optionally, it can be set whether the  grid is divided or not. A situation
+    ! where this  is useful is when  only a subset  of MPI processes is  used to
+    ! calculate the  solution in SLEPC. In  this case, the extra  ranks all only
+    ! contain the last grid point, and the  last used process has as upper limit
+    ! this same  grid point. This way,  all the procedures are  reusable, but in
+    ! this case if only one process is used, this procedure becomes confused and
+    ! sets this process to undivided. In most cases, this functionality probably
+    ! does not need to be used.
     ! Note: intent(out) automatically deallocates the variable
-    integer function init_grid(grid,n,i_lim) result(ierr)
+    integer function init_grid(grid,n,i_lim,divided) result(ierr)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
@@ -90,11 +98,13 @@ contains
         
         ! input / output
         class(grid_type), intent(out) :: grid                                   ! grid to be initialized
-        integer :: n(3)                                                         ! tot. nr. of points (par,r,alpha)
-        integer, optional :: i_lim(2)                                           ! min. and max. local normal index
+        integer, intent(in) :: n(3)                                             ! tot. nr. of points (par,r,alpha)
+        integer, intent(in), optional :: i_lim(2)                               ! min. and max. local normal index
+        logical, intent(in), optional :: divided                                ! divided grid or not
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: divided_loc                                                  ! local divided
         
         ! initialize ierr
         ierr = 0
@@ -114,10 +124,10 @@ contains
         if (print_mem_usage) grid%estim_mem_usage = 0._dp
 #endif
         
-        ! set divided and loc_n_r
-        grid%divided = .false.
+        ! set local divided and loc_n_r
+        divided_loc = .false.
         if (present(i_lim)) then                                                ! might be divided grid
-            if (i_lim(2).le.i_lim(1)) then
+            if (i_lim(2).lt.i_lim(1)) then
                 ierr = 1
                 write(*,*) 'i_lim = ', i_lim
                 err_msg = 'faulty i_lim'
@@ -126,18 +136,21 @@ contains
             grid%i_min = i_lim(1)
             grid%i_max = i_lim(2)
             grid%loc_n_r = i_lim(2)-i_lim(1)+1
-            if (i_lim(2)-i_lim(1)+1.lt.n(3)) grid%divided = .true.              ! only divided if difference between local and total
+            if (i_lim(2)-i_lim(1)+1.lt.n(3)) divided_loc = .true.               ! only divided if difference between local and total
         else                                                                    ! certainly not divided grid
             grid%i_min = 1
             grid%i_max = n(3)
             grid%loc_n_r = n(3)
         end if
+        if (present(divided)) divided_loc = divided
+        
+        grid%divided = divided_loc
         
         ! allocate normal variables
         grid%n = n
         allocate(grid%r_E(n(3)))
         allocate(grid%r_F(n(3)))
-        if (grid%divided) then
+        if (divided_loc) then
             allocate(grid%loc_r_E(grid%loc_n_r))
             allocate(grid%loc_r_F(grid%loc_n_r))
         else

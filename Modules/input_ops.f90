@@ -10,7 +10,11 @@ module input_ops
     
     implicit none
     private
-    public read_input_opts, read_input_eq, print_output_in
+    public read_input_opts, read_input_eq, print_output_in, &
+        &use_mumps
+    
+    ! global variables
+    logical :: use_mumps = .false.                                              ! to give a warning when mumps is used for multiple solution processes
     
 contains
     ! reads input options from user-provided input file
@@ -31,7 +35,7 @@ contains
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
             &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
-            &ex_plot_style, pert_mult_factor_POST
+            &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -57,7 +61,7 @@ contains
             &prim_X, min_sec_X, max_sec_X, n_mod_X, use_normalization, &
             &n_theta_plot, n_zeta_plot, norm_disc_prec_eq, tol_norm, &
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, &
-            &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
+            &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
             &BC_style, max_it_inv, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
@@ -86,6 +90,7 @@ contains
             call lvl_ud(1)
             
             ! common variables for all program styles
+            sol_n_procs = n_procs                                               ! use equal amount of processes for solution as for rest of program
             max_tot_mem = 6000_dp                                               ! count with 6GB total
             plot_size = [10,5]                                                  ! size of plot in inch
             min_r_plot = 0._dp                                                  ! minimal plot normal range
@@ -134,6 +139,9 @@ contains
                         call writo('Checking user-provided file')
                         
                         call lvl_ud(1)
+                        
+                        ! adapt MPI variables if needed
+                        call adapt_MPI()
                         
                         ! adapt run-time variables if needed
                         ierr = adapt_run_PB3D()
@@ -342,6 +350,33 @@ contains
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
         end function default_input_POST
+        
+        ! Checks  whether the  variables  concerning MPI  are chosen  correctly:
+        !   sol_n_procs cannot be greater than n_procs. If it is lower than 1,
+        !   the maximum amount of n_procs is used.
+        subroutine adapt_MPI()
+            use num_vars, only: n_procs
+            
+            if (sol_n_procs.lt.1) then
+                call writo('Using the maximum number of MPI processes '//&
+                    &trim(i2str(n_procs))//' for SLEPC')
+                sol_n_procs = n_procs
+            end if
+            if (sol_n_procs.gt.n_procs) then
+                call writo('Cannot use more than '//trim(i2str(n_procs))//&
+                    &' MPI processes for SLEPC',warning=.true.)
+                sol_n_procs = n_procs
+            end if
+            if (sol_n_procs.gt.1 .and. use_mumps) then
+                call writo('Mumps is best used as &
+                    &a preconditioner with only one processes for &
+                    &SLEPC, as it does not scale.',warning=.true.)
+                call lvl_ud(1)
+                call writo('It is therefore recommended to set "sol_n_procs" &
+                    &to 1 (currently '//trim(i2str(sol_n_procs))//').')
+                call lvl_ud(-1)
+            end if
+        end subroutine adapt_MPI
         
         ! Checks whether the variables concerning run-time are chosen correctly:
         !   rho_style has  to be 1  (constant rho = rho_0),

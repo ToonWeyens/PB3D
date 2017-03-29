@@ -28,7 +28,7 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(16), inc_args(16))
+                allocate(opt_args(22), inc_args(22))
                 opt_args = ''
                 inc_args = 0
                 opt_args(7) = '--no_guess'
@@ -37,11 +37,17 @@ contains
                 opt_args(10) = '-st_pc_factor_shift_type'
                 opt_args(11) = '-st_pc_type'
                 opt_args(12) = '-st_pc_factor_mat_solver_package'
-                opt_args(13) = '-eps_monitor'
-                opt_args(14) = '-eps_tol'
-                opt_args(15) = '-eps_ncv'
-                opt_args(16) = '-eps_mpd'
-                inc_args(7:16) = [0,0,0,1,1,1,0,1,1,1]
+                opt_args(13) = '-eps_type'
+                opt_args(14) = '-eps_monitor'
+                opt_args(15) = '-eps_tol'
+                opt_args(16) = '-eps_ncv'
+                opt_args(17) = '-eps_mpd'
+                opt_args(18) = '-eps_view'
+                opt_args(19) = '-st_type'
+                opt_args(20) = '-st_pc_type'
+                opt_args(21) = '-st_pc_factor_mat_solver_package'
+                opt_args(22) = '-log_view'
+                inc_args(7:22) = [0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0]
             case(2)                                                             ! POST
                 allocate(opt_args(7), inc_args(7))
                 opt_args = ''
@@ -368,9 +374,13 @@ contains
         
         ! apply chosen options for PB3D
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
+            use input_ops, only: use_mumps
+            
             ! input / output
+            integer :: id                                                       ! counter
             integer, intent(in) :: opt_nr                                       ! option number
             integer, intent(in) :: arg_nr                                       ! argument number
+            character(len=max_str_ln) :: opt_str                                ! string with option information
             
             select case(opt_nr)
                 case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
@@ -392,23 +402,19 @@ contains
                             &warning=.true.)
                         export_HEL = .false.
                     end if
-                case (10)
-                    call writo('option st_pc_factor_shift_type '//&
-                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (11)
-                    call writo('option st_pc_type '//&
-                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (12)
-                    call writo('option st_pc_factor_mat_solver_package '//&
-                        &trim(command_arg(arg_nr+1))//' passed to SLEPC')
-                case (13)
-                    call writo('option eps_monitor passed to SLEPC')
-                case (14)
-                    call writo('option eps_tol passed to SLEPC')
-                case (15)
-                    call writo('option eps_ncv passed to SLEPC')
-                case (16)
-                    call writo('option eps_mpd passed to SLEPC')
+                case (10:22)
+                    opt_str = ''
+                    do id = 1,inc_args(opt_nr)
+                        opt_str = trim(opt_str)//' '//&
+                            &trim(command_arg(arg_nr+id))
+                    end do
+                    call writo('option "'//trim(opt_args(opt_nr))//&
+                        &trim(opt_str)//'" passed to SLEPC')
+                    ! check for non-scaling MUMPS
+                    if (opt_nr.eq.12) then
+                        if (trim(command_arg(arg_nr+1)).eq.'mumps') &
+                            &use_mumps = .true.
+                    end if
                 case default
                     call writo('Invalid option number',warning=.true.)
             end select

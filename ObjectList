@@ -25,7 +25,6 @@ MPI_ops.o \
 MPI_vars.o \
 num_vars.o \
 output_ops.o \
-SLEPC_vars.o \
 SLEPC_ops.o \
 SLEPC_utilities.o \
 sol_ops.o \

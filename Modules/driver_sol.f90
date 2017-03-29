@@ -131,7 +131,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_sol,X,sol)
+                ierr = solve_EV_system_SLEPC(grid_X,grid_sol,X,sol)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&

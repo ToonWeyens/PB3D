@@ -178,6 +178,8 @@ main() {
     [[ $use_input_mods = true ]] && cp $base/$input_mod_file $base/$out_base/array_input
     
     # finish
+    echo -e ""
+    echo -e "work directory:    $out_full/"
     echo -e "Finished"
     exit 0
 }
@@ -347,10 +349,7 @@ init_vars() {
     use_input_mods=false
     case $prog_ID in
         1)  # PB3D
-            #slepc_opt="-st_pc_factor_shift_type NONZERO -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_view"
-            slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 20"
-            #slepc_opt="-st_pc_type jacobi -st_matmode shell -eps_monitor -eps_ncv 20"
-            #slepc_opt="-st_pc_type jacobi -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 100 -eps_mpd 100"
+            slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_type gd -eps_monitor -eps_ncv 16 -eps_view"
         ;;
         2)  # POST
             # nothing else

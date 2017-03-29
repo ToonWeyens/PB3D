@@ -10,7 +10,7 @@ module num_vars
         &output_name, prog_version, prog_style, min_PB3D_version, &
         &debug_version, &
         &shell_commands_name, mem_usage_name, &
-        &mem_usage_count, weight_dp, rank, n_procs, time_start, &
+        &mem_usage_count, weight_dp, rank, n_procs, sol_n_procs, time_start, &
         &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
         &eq_jobs_lims, eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
@@ -62,6 +62,7 @@ module num_vars
     ! MPI variables
     integer :: rank                                                             ! MPI rank
     integer :: n_procs                                                          ! nr. of MPI processes
+    integer :: sol_n_procs                                                      ! nr. of MPI processes for solution with SLEPC
     integer(kind=8) :: time_start                                               ! start time of simulation
     
     ! job variables

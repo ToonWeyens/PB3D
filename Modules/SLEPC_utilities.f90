@@ -20,7 +20,7 @@ module SLEPC_utilities
 
     implicit none
     private
-    public insert_block_mat, get_ghost_vec
+    public insert_block_mat
 #if ldebug
     public debug_insert_block_mat
 #endif
@@ -63,6 +63,7 @@ contains
         use X_vars, only: n_X, m_X, n_mod_X
         use num_vars, only: use_pol_flux_F
 #if ldebug
+        use num_vars, only: rank
         use input_utilities, only: pause_prog
 #endif
         
@@ -78,8 +79,6 @@ contains
         PetscBool, intent(in), optional :: overwrite                            ! overwrite
         
         ! local variables
-        PetscInt, allocatable :: loc_k(:), loc_m(:)                             ! the locations at which to add the blocks to the matrices
-        PetscInt :: kd                                                          ! counter
         PetscInt :: k, m                                                        ! counters
         PetscInt :: k_loc, m_loc                                                ! local k and m
         PetscBool :: transp_loc                                                 ! local copy of transp
@@ -97,12 +96,6 @@ contains
         overwrite_loc = .false.
         if (present(overwrite)) overwrite_loc = overwrite
         
-        ! set up local k and m
-        allocate(loc_k(size(block,1)))
-        allocate(loc_m(size(block,2)))
-        loc_k = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(1))*n_mod_X
-        loc_m = [(kd, kd = 0,n_mod_X-1)] + (r_id+ind(2))*n_mod_X
-        
         ! set operation
         if (overwrite_loc) then
             operation = INSERT_VALUES
@@ -113,8 +106,10 @@ contains
 #if ldebug
         ! user output
         if (debug_insert_block_mat) then
+            call sleep(rank)
             call writo('>>> at (k,m) = '//trim(i2str(r_id))//' + ('//&
-                &trim(i2str(ind(1)))//','//trim(i2str(ind(2)))//'):')
+                &trim(i2str(ind(1)))//','//trim(i2str(ind(2)))//'):',&
+                &persistent=.true.)
             call lvl_ud(1)
         end if
 #endif
@@ -153,28 +148,31 @@ contains
             
 #if ldebug
             if (debug_insert_block_mat) then
-                call writo('following local block is going to be added: ')
-                call writo('Re =')
+                call writo('following local block is going to be added by &
+                    &rank '//trim(i2str(rank))//':',persistent=.true.)
+                call writo('Re =',persistent=.true.)
                 call print_ar_2(rp(block_loc))
-                call writo('Im =')
+                call writo('Im =',persistent=.true.)
                 call print_ar_2(ip(block_loc))
                 if (transp_loc) call writo('as well as at the transposed place')
                 if (overwrite_loc) then
-                    call writo('(with operation INSERT_VALUES)')
+                    call writo('(with operation INSERT_VALUES)',&
+                        &persistent=.true.)
                 else
-                    call writo('(with operation INSERT_VALUES)')
+                    call writo('(with operation INSERT_VALUES)',&
+                        &persistent=.true.)
                 end if
             endif
 #endif
             
             ! set values
-            call MatSetValues(mat,n_mod_X,loc_k,n_mod_X,loc_m,&
+            call MatSetValuesBlocked(mat,1,r_id+ind(1),1,r_id+ind(2),&
                 &transpose(block_loc),operation,ierr)
             CHCKERR(err_msg)
             
             ! set transpose if wanted
             if (transp_loc) then
-                call MatSetValues(mat,n_mod_X,loc_m,n_mod_X,loc_k,&
+                call MatSetValuesBlocked(mat,1,r_id+ind(2),1,r_id+ind(1),&
                     &conjg(block_loc),operation,ierr)
                 CHCKERR(err_msg)
             end if
@@ -184,12 +182,10 @@ contains
         else
 #if ldebug
             if (debug_insert_block_mat) &
-                &call writo('Due to out of range no local block is added')
+                &call writo('Due to out of range no local block is added',&
+                &persistent=.true.)
 #endif
         end if
-        
-        ! clean up
-        deallocate(loc_k,loc_m)
         
 #if ldebug
         if (debug_insert_block_mat) then
@@ -198,72 +194,4 @@ contains
         endif
 #endif
     end function insert_block_mat
-    
-    ! gets ghost region of a Petsc Vector.
-    !!!!! The ghost regions at the end of the total range are set to zero.
-    ! Note: Every process should have at  least a number of normal poins greater
-    ! than n_ghost. For performance, this is not checked.
-    integer function get_ghost_vec(V_ptr,V_ghost,n_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        use MPI
-        
-        character(*), parameter :: rout_name = 'get_ghost_vec'
-        
-        ! input / output
-        PetscScalar, intent(in), pointer :: V_ptr(:)                            ! pointer to vector of which ghost zones are to be retrieved
-        PetscScalar, intent(inout), allocatable :: V_ghost(:,:)                 ! ghost zone for previous (1) and next process (2)
-        integer, intent(in) :: n_ghost                                          ! size of ghost region
-        
-        ! local variables
-        integer :: n_loc                                                        ! local size
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            ! set up ghost regions
-            n_loc = size(V_ptr)
-            allocate(V_ghost(n_ghost,2))
-            
-            ! communicate with previous proc
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(V_ghost(:,2),n_ghost,MPI_DOUBLE_COMPLEX,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                !V_ghost(:,2) = 0._dp
-                V_ghost(:,2) = huge(1._dp)
-                call MPI_Send(V_ptr(1:n_ghost),n_ghost,MPI_DOUBLE_COMPLEX,&
-                    &rank-1,rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(V_ptr(1:n_ghost),n_ghost,&
-                    &MPI_DOUBLE_COMPLEX,rank-1,rank,&
-                    &V_ghost(:,2),n_ghost,MPI_DOUBLE_COMPLEX,rank+1,rank+1,&
-                    &MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-            
-            ! communicate with next proc
-            if (rank.eq.0) then                                                 ! first rank only sends
-                !V_ghost(:,1) = 0._dp
-                V_ghost(:,1) = huge(1._dp)
-                call MPI_Send(V_ptr(n_loc-n_ghost:n_loc-1),n_ghost,&
-                    &MPI_DOUBLE_COMPLEX,rank+1,rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only receives
-                call MPI_Recv(V_ghost(:,1),n_ghost,MPI_DOUBLE_COMPLEX,&
-                    &rank-1,rank-1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(V_ptr(n_loc-n_ghost:n_loc-1),n_ghost,&
-                    &MPI_DOUBLE_COMPLEX,rank+1,rank,&
-                    &V_ghost(:,1),n_ghost,MPI_DOUBLE_COMPLEX,rank-1,rank-1,&
-                    &MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_vec
 end module SLEPC_utilities

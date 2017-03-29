@@ -2155,6 +2155,9 @@ contains
             end do
         end do
         
+        ! copy vacuum part (already integrated)
+        X_int%vac_res = X%vac_res
+        
         ! clean up
         nullify(ang_par_F)
         

@@ -255,6 +255,8 @@ contains
         ! solution.
         integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
             &result(ierr)                                                       ! PB3D version for perturbation grid
+            use num_vars, only: n_procs
+            
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
             
             ! input / output
@@ -262,7 +264,7 @@ contains
             real(dp), intent(inout) :: r_F_X(:)                                 ! perturbation r_F
             
             ! call the version for solution range
-            ierr = calc_norm_range_PB3D_sol(X_limits,r_F_X)
+            ierr = calc_norm_range_PB3D_sol(X_limits,r_F_X,n_procs=n_procs)
             CHCKERR('')
         end function calc_norm_range_PB3D_X
         
@@ -273,9 +275,11 @@ contains
         !   - 2 (shell matrices): need  norm_disc_prec_sol points to get all the
         !   information  of the  multiplication  of the  SLEPC  matrices with  a
         !   vector on the local processor.
-        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
+        ! By default, this routine uses "sol_n_procs" processes, but this can be
+        ! overruled.
+        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol,n_procs) &
             &result(ierr)                                                       ! PB3D version for solution grid
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol
+            use num_vars, only: sol_n_procs, rank, norm_disc_prec_sol
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
             use num_utilities, only: round_with_tol
@@ -286,26 +290,38 @@ contains
             ! input / output
             integer, intent(inout) :: sol_limits(2)                             ! min. and max. index of sol grid for this process
             real(dp), intent(inout) :: r_F_sol(:)                               ! solution r_F
+            integer, intent(in), optional :: n_procs                            ! how many processes used
             
             ! local variables
             integer :: id                                                       ! counter
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
+            integer :: n_procs_loc                                              ! local n_procs
             
             ! initialize ierr
             ierr = 0
             
+            ! set local n_procs
+            n_procs_loc = sol_n_procs
+            if (present(n_procs)) n_procs_loc = n_procs
+            
             ! set loc_n_r_sol
-            allocate(loc_n_r_sol(n_procs))
-            loc_n_r_sol = n_r_sol/n_procs                                       ! number of radial points on this processor
-            loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
-                &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
+            allocate(loc_n_r_sol(n_procs_loc))
+            loc_n_r_sol = n_r_sol/n_procs_loc                                   ! number of radial points on this processor
+            loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) = &
+                &loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) + 1                    ! add a mode to if there is a remainder
             
             ! set sol_limits
-            sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
-            
-            ! ghost regions of width 2*norm_disc_prec_sol
-            sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
-            sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
+            if (rank.lt.n_procs_loc) then
+                sol_limits = &
+                    &[sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
+                
+                ! ghost regions of width 2*norm_disc_prec_sol
+                sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
+                sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
+            else
+                sol_limits(1) = n_r_sol
+                sol_limits(2) = n_r_sol
+            end if
             
             ! calculate r_F_sol in range from min_r_sol to max_r_sol
             r_F_sol = [(min_r_sol + (id-1.0_dp)/(n_r_sol-1.0_dp)*&
@@ -315,7 +331,8 @@ contains
             ierr = round_with_tol(r_F_sol,0.0_dp,1.0_dp)
             CHCKERR('')
             
-            ! translate to the real normal variable in range from 0..flux/2pi
+            ! translate  to   the  real   normal  variable  in   range  from
+            ! 0..flux/2pi
             r_F_sol = r_F_sol*max_flux_F/(2*pi)
         end function calc_norm_range_PB3D_sol
         
@@ -685,6 +702,8 @@ contains
     ! calculated.
     integer function setup_grid_sol(grid_X,grid_sol,sol_limits) &
         &result(ierr)
+        
+        use num_vars, only: n_procs
         use grid_utilities, only: coord_F2E
         
         character(*), parameter :: rout_name = 'setup_grid_sol'
@@ -698,14 +717,14 @@ contains
         ierr = 0
         
         ! create grid
-        ierr = grid_sol%init([0,0,grid_X%n(3)],sol_limits)
+        ierr = grid_sol%init([0,0,grid_X%n(3)],sol_limits,divided=n_procs.gt.1)
         CHCKERR('')
         
         ! set Flux variables
         grid_sol%r_F = grid_X%r_F
         grid_sol%r_E = grid_X%r_E
-        grid_sol%loc_r_F = grid_X%loc_r_F
-        grid_sol%loc_r_E = grid_X%loc_r_E
+        grid_sol%loc_r_F = grid_sol%r_F(sol_limits(1):sol_limits(2))
+        grid_sol%loc_r_E = grid_sol%r_E(sol_limits(1):sol_limits(2))
     end function setup_grid_sol
     
     ! Calculate grid that follows magnetic field lines.
