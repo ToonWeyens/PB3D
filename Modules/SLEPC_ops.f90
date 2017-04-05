@@ -186,7 +186,8 @@ contains
             call lvl_ud(-1)
             
             ! set up solver
-            call writo('Set up EV solver')
+            call writo('Set up EV solver with defaults')
+            call lvl_ud(1)
 #if ldebug
             if (ltest) then
                 call writo('Test spectrum of A or B instead of solving &
@@ -211,6 +212,7 @@ contains
 #if ldebug
             end if
 #endif
+            call lvl_ud(-1)
             
             ! set up guess
             if (use_guess) then
@@ -912,8 +914,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(1)
-        
         call writo('Preparing variables')
         call lvl_ud(1)
         
@@ -1039,8 +1039,6 @@ contains
         CHCKERR('Coulnd''t end assembly of matrix')
         call MatAssemblyEnd(B,MAT_FINAL_ASSEMBLY,ierr)
         CHCKERR('Coulnd''t end assembly of matrix')
-        
-        call lvl_ud(-1)
         
         call lvl_ud(-1)
     contains
@@ -1359,7 +1357,8 @@ contains
     
     ! sets up EV solver
     integer function setup_solver(X,A,B,solver) result(ierr)
-        use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc
+        use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc, &
+            &EV_guess, solver_SLEPC_style
         use rich_vars, only: rich_lvl
         use X_vars, only: n_mod_X
         use grid_vars, only: n_r_sol
@@ -1372,13 +1371,13 @@ contains
         EPS, intent(inout) :: solver                                            ! EV solver
         
         ! local variables
+        PetscScalar :: one = 1.0                                                ! one
+        ST :: solver_st                                                         ! spectral transformation associated to the solver
         PetscInt :: n_sol                                                       ! how many solutions can be requested (normally n_sol_requested)
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
-        
-        call lvl_ud(1)
         
         ! check nr. of modes
         if (n_mod_X.ne.X%n_mod(1) .or. n_mod_X.ne.X%n_mod(2)) then
@@ -1395,18 +1394,69 @@ contains
         CHCKERR('EPSetOperators failed')
         
         if (use_hermitian) then
+            call writo('Set problem type to Generalized Hermitian')
             call EPSSetProblemType(solver,EPS_GHEP,ierr)
             CHCKERR('Set problem type failed')
         end if
         
-        call EPSSetType(solver,EPSGD,ierr)
-        err_msg = 'Failed to set type to generalized davidson'
-        CHCKERR(err_msg)
+        ! set some options depending on which default style
+        select case (solver_SLEPC_style)
+            case (1)                                                            ! Krylov-Schur with shift-invert
+                ! Krylov-Schur is the most robust
+                call writo('set algorithm to Krylov-Schur')
+                call EPSSetType(solver,EPSKRYLOVSCHUR,ierr)
+                err_msg = 'Failed to set type to Krylov-Schur'
+                CHCKERR(err_msg)
+                
+                ! get spectral transformation
+                call EPSGetST(solver,solver_st,ierr)
+                err_msg = 'Failed to get ST from solver'
+                CHCKERR(err_msg)
+                
+                ! shift-invert is  the best method for  generalized EV problems,
+                ! because a matrix needs to be inverted anyway
+                call writo('Use shift-invert')
+                call STSetType(solver_st,STSINVERT,ierr)
+                err_msg = 'Failed to set type to STSINVERT'
+                CHCKERR(err_msg)
+            case (2)                                                            ! generalized Davidson with preconditioner
+                ! GD might be faster than Krylov-Schur
+                call writo('set algorithm to Generalized Davidson')
+                call EPSSetType(solver,EPSGD,ierr)
+                err_msg = 'Failed to set type to Generalized Davidson'
+                CHCKERR(err_msg)
+                
+                ! warning
+                call lvl_ud(1)
+                call writo('This is often less robust than the Krylov-Schur &
+                    &method.',alert=.true.)
+                call lvl_ud(1)
+                call writo('If it converges to a strange result, try using &
+                    &that')
+                call lvl_ud(-1)
+                call lvl_ud(-1)
+                
+                ! get spectral transformation
+                call EPSGetST(solver,solver_st,ierr)
+                err_msg = 'Failed to get ST from solver'
+                CHCKERR(err_msg)
+                
+                ! GD works only with a preconditioner
+                call writo('Use preconditioner')
+                call STSetType(solver_st,STPRECOND,ierr)
+                err_msg = 'Failed to set type to STPRECOND'
+                CHCKERR(err_msg)
+            case default
+                call writo('SLEPC solver style '//&
+                    &trim(i2str(solver_SLEPC_style))//' not recognized',&
+                    &alert=.true.)
+        end select
         
-        ! search for  Eigenvalue with smallest real value (so  imaginary part of
-        ! sqrt(EV) = omega is largest)
-        call EPSSetWhichEigenpairs(solver,EPS_SMALLEST_REAL,ierr)
-        CHCKERR('Failed to set which eigenpairs')
+        ! set the guess as target
+        call writo('Set the target eigenvalue to '//trim(r2str(EV_guess)))
+        call EPSSetTarget(solver,EV_guess*one,ierr)
+        err_msg = 'Failed to set the target of solver'
+        CHCKERR(err_msg)
         
         ! request n_sol_requested Eigenpairs
         if (n_sol_requested.gt.n_r_sol*n_mod_X) then
@@ -1426,10 +1476,9 @@ contains
         CHCKERR('EPSSetTolerances failed')
         
         ! user output
-        call writo('tolerance: '//trim(r2str(tol_SLEPC(rich_lvl))))
-        call writo('maximum nr. of iterations: '//trim(i2str(max_it_slepc)))
-        
-        call lvl_ud(-1)
+        call writo('set tolerance to '//trim(r2str(tol_SLEPC(rich_lvl))))
+        call writo('set maximum nr. of iterations to '//&
+            &trim(i2str(max_it_slepc)))
     end function setup_solver
     
     ! sets up guess in solver

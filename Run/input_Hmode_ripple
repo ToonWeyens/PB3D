@@ -5,7 +5,7 @@
     alpha                   = 0.0
     min_r_sol               = 0.3
     max_r_sol               = 1.0
-    n_r_sol                 = 4000
+    n_r_sol                 = 2000
     norm_disc_prec_sol      = 3
     norm_disc_prec_eq       = 5
     max_it_zero             = 500
@@ -20,8 +20,8 @@
     K_style                 = 1
     norm_style              = 1
     U_style                 = 3
-    max_it_slepc            = 500
-    max_tot_mem_per_proc    = 2000
+    max_it_slepc            = 5000
+    max_tot_mem             = 6000
     plot_magn_grid          = .false.
     plot_B                  = .false.
     plot_flux_q             = .false.

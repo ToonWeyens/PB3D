@@ -1,5 +1,4 @@
 &inputdata_PB3D
-    sol_n_procs             = 0
     min_n_par_X             = 100
     min_par_X               = 0.0
     max_par_X               = 2.0

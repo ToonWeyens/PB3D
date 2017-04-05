@@ -1621,6 +1621,13 @@ contains
             CHCKERR('')
         end do
         
+        !!! limit Jacobian to small value to avoid infinities
+        !!if (maxval(eq_2%jac_F(:,:,:,0,0,0)).gt.0._dp) then
+            !!eq_2%jac_F(:,:,:,0,0,0) = max(eq_2%jac_F(:,:,:,0,0,0),tol_zero)
+        !!else
+            !!eq_2%jac_F(:,:,:,0,0,0) = min(eq_2%jac_F(:,:,:,0,0,0),-tol_zero)
+        !!end if
+        
         ! possibly deallocate
         if (dealloc_vars_loc) then
             deallocate(eq_2%g_E,eq_2%jac_E)
@@ -3082,7 +3089,7 @@ contains
         
         ! Calculate the parallel current sigma
         eq_2%sigma = 1._dp/vac_perm*&
-            &(D1g23/J - g23*D1J/J**2 - D2g13/J + g13*D2J/J**2)
+            &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
         do kd = 1,grid_eq%loc_n_r
             eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) - &
                 &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
@@ -3479,7 +3486,7 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function B_plot(grid_eq,eq,rich_lvl) result(ierr)
+    integer function B_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes) result(ierr)
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
@@ -3491,13 +3498,16 @@ contains
         
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
         
         ! local variables
         integer :: id                                                           ! counter
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: B_mag(:,:,:)                                   ! magnitude of B (dim1,dim2,dim3)
+        real(dp), allocatable, save :: B_flux_tor(:,:), B_flux_pol(:,:)         ! fluxes
         character(len=10) :: base_name                                          ! base name
         
         ! initialize ierr
@@ -3515,10 +3525,10 @@ contains
         B_com = 0._dp
         B_mag = 0._dp
         do id = 1,3
-            B_com(:,:,:,id,1) = eq%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
-                &eq%jac_FD(:,:,:,0,0,0)
+            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0)
         end do
-        B_com(:,:,:,3,2) = 1._dp/eq%jac_FD(:,:,:,0,0,0)
+        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
         
         ! transform back to unnormalized quantity
         if (use_normalization) B_com = B_com * B_0
@@ -3530,10 +3540,17 @@ contains
                 &trim(i2str(rich_lvl))
         end if
         
-        ! transform coordinates
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq,B_com,norm_disc_prec_eq,&
-            &v_mag=B_mag,base_name=base_name)
-        CHCKERR('')
+        ! transform coordinates, including the flux
+        if (plot_fluxes) then
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
+                &v_mag=B_mag,base_name=base_name,v_flux_tor=B_flux_tor,&
+                &v_flux_pol=B_flux_pol)
+            CHCKERR('')
+        else
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
+                &v_mag=B_mag,base_name=base_name)
+            CHCKERR('')
+        end if
     end function B_plot
     
     ! Plots the current.  If multiple equilibrium parallel jobs,  every job does
@@ -3555,7 +3572,7 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl) result(ierr)
+    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes) result(ierr)
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
@@ -3570,12 +3587,14 @@ contains
         type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
         
         ! local variables
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: J_com(:,:,:,:,:)                               ! covariant and contravariant components of J (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: J_mag(:,:,:)                                   ! magnitude of J (dim1,dim2,dim3)
         character(len=10) :: base_name                                          ! base name
+        real(dp), allocatable, save :: J_flux_tor(:,:), J_flux_pol(:,:)         ! fluxes
         
         ! initialize ierr
         ierr = 0
@@ -3613,10 +3632,17 @@ contains
                 &trim(i2str(rich_lvl))
         end if
         
-        ! transform coordinates
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq_2,J_com,norm_disc_prec_eq,&
-            &v_mag=J_mag,base_name=base_name)
-        CHCKERR('')
+        ! transform coordinates, including the flux
+        if (plot_fluxes) then
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,norm_disc_prec_eq,&
+                &v_mag=J_mag,base_name=base_name,v_flux_tor=J_flux_tor,&
+                &v_flux_pol=J_flux_pol)
+            CHCKERR('')
+        else
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,norm_disc_prec_eq,&
+                &v_mag=J_mag,base_name=base_name)
+            CHCKERR('')
+        end if
     end function J_plot
     
     ! Plots the curvature. If multiple equilibrium parallel jobs, every job does
@@ -3631,9 +3657,9 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function kappa_plot(grid_eq,eq,rich_lvl) result(ierr)
+    integer function kappa_plot(grid_eq,eq_1,eq_2,rich_lvl) result(ierr)
         use grid_utilities, only: calc_vec_comp
-        use eq_vars, only: eq_2_type
+        use eq_vars, only: eq_1_type, eq_2_type
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
@@ -3649,7 +3675,8 @@ contains
         
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium variables
+        type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
         
         ! local variables
@@ -3688,11 +3715,11 @@ contains
         !   kappa . e_psi   = kappa_n - kappa_g h12/h22
         !   kappa . e_theta = 0
         ! and similar for Q
-        k_com(:,:,:,1,1) = eq%kappa_g
-        k_com(:,:,:,2,1) = eq%kappa_n - &
-            &eq%kappa_g * &
-            &eq%h_FD(:,:,:,c([1,2],.true.),0,0,0)/&
-            &eq%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,1,1) = eq_2%kappa_g
+        k_com(:,:,:,2,1) = eq_2%kappa_n - &
+            &eq_2%kappa_g * &
+            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)/&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
         k_com(:,:,:,3,1) = 0._dp
         
         ! contravariant components:
@@ -3700,18 +3727,20 @@ contains
         !   kappa . nabla psi   = kappa_n h22
         !   kappa . nabla theta = kappa_n h23 - kappa_g g13/(J^2 h22)
         ! and similar for Q
-        k_com(:,:,:,1,2) = eq%kappa_n * &
-            &eq%h_FD(:,:,:,c([1,2],.true.),0,0,0) + &
-            &eq%kappa_g * &
-            &eq%g_FD(:,:,:,c([3,3],.true.),0,0,0) / &
-            &(eq%jac_FD(:,:,:,0,0,0)**2*eq%h_FD(:,:,:,c([2,2],.true.),0,0,0))
-        k_com(:,:,:,2,2) = eq%kappa_n * &
-            &eq%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        k_com(:,:,:,3,2) = eq%kappa_n * &
-            &eq%h_FD(:,:,:,c([3,2],.true.),0,0,0) - &
-            &eq%kappa_g * &
-            &eq%g_FD(:,:,:,c([3,1],.true.),0,0,0) / &
-            &(eq%jac_FD(:,:,:,0,0,0)**2*eq%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        k_com(:,:,:,1,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0) + &
+            &eq_2%kappa_g * &
+            &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0) / &
+            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        k_com(:,:,:,2,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,3,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([3,2],.true.),0,0,0) - &
+            &eq_2%kappa_g * &
+            &eq_2%g_FD(:,:,:,c([3,1],.true.),0,0,0) / &
+            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
         
         ! transform back to unnormalized quantity
         if (use_normalization) k_com = k_com / R_0
@@ -3724,8 +3753,8 @@ contains
         end if
         
         ! transform coordinates
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq,k_com,norm_disc_prec_eq,&
-            &v_mag=k_mag,base_name=base_name)
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,k_com,&
+            &norm_disc_prec_eq,v_mag=k_mag,base_name=base_name)
         CHCKERR('')
         
 #if ldebug

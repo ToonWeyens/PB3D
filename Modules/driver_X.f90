@@ -195,7 +195,7 @@ contains
             call writo('Skipping rest to jump to solution')
         else
             ! plot resonances if requested
-            if (plot_resonance .and. rich_lvl.eq.1) then
+            if (plot_resonance .and. rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
                 ierr = resonance_plot(grid_eq,eq_1)
                 CHCKERR('')
             else

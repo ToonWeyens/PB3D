@@ -31,7 +31,8 @@ NETCDF_DIR=/opt/NetCDF-4.4.0/NetCDF#  1. XPS-L501X
 #NETCDF_DIR=$(HOME)#  3. GEORGE
 
 # PETSC
-PETSC_ARCH = debug-complex
+#PETSC_ARCH = debug-complex
+PETSC_ARCH = arch-linux2-c-opt
 PETSC_DIR = /opt/petsc-3.6.4# 1. XPS-L501X
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
 #PETSC_DIR = $(HOME)/Programs/petsc-3.6.4# 3. GEORGE

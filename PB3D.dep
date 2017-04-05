@@ -213,6 +213,7 @@ driver_POST.o : \
     output_ops.o \
     messages.o \
     MPI_ops.o \
+    MPI_utilities.o \
     eq_vars.o \
     eq_utilities.o \
     X_vars.o \

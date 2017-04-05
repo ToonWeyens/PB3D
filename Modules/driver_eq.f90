@@ -253,11 +253,11 @@ contains
         if (plot_B) then
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    ierr = B_plot(grid_eq,eq_2,rich_lvl=rich_lvl)
+                    ierr = B_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     if (rich_lvl.eq.1) then
-                        ierr = B_plot(grid_eq,eq_2)
+                        ierr = B_plot(grid_eq,eq_1,eq_2)
                         CHCKERR('')
                     end if
             end select
@@ -287,11 +287,11 @@ contains
         if (plot_kappa) then
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    ierr = kappa_plot(grid_eq,eq_2,rich_lvl=rich_lvl)
+                    ierr = kappa_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     if (rich_lvl.eq.1) then
-                        ierr = kappa_plot(grid_eq,eq_2)
+                        ierr = kappa_plot(grid_eq,eq_1,eq_2)
                         CHCKERR('')
                     end if
             end select

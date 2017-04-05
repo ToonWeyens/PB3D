@@ -28,7 +28,7 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(22), inc_args(22))
+                allocate(opt_args(23), inc_args(23))
                 opt_args = ''
                 inc_args = 0
                 opt_args(7) = '--no_guess'
@@ -47,7 +47,8 @@ contains
                 opt_args(20) = '-st_pc_type'
                 opt_args(21) = '-st_pc_factor_mat_solver_package'
                 opt_args(22) = '-log_view'
-                inc_args(7:22) = [0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0]
+                opt_args(23) = '-st_ksp_type'
+                inc_args(7:23) = [0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0,1]
             case(2)                                                             ! POST
                 allocate(opt_args(7), inc_args(7))
                 opt_args = ''
@@ -374,8 +375,6 @@ contains
         
         ! apply chosen options for PB3D
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
-            use input_ops, only: use_mumps
-            
             ! input / output
             integer :: id                                                       ! counter
             integer, intent(in) :: opt_nr                                       ! option number
@@ -402,7 +401,7 @@ contains
                             &warning=.true.)
                         export_HEL = .false.
                     end if
-                case (10:22)
+                case (10:23)
                     opt_str = ''
                     do id = 1,inc_args(opt_nr)
                         opt_str = trim(opt_str)//' '//&
@@ -410,11 +409,6 @@ contains
                     end do
                     call writo('option "'//trim(opt_args(opt_nr))//&
                         &trim(opt_str)//'" passed to SLEPC')
-                    ! check for non-scaling MUMPS
-                    if (opt_nr.eq.12) then
-                        if (trim(command_arg(arg_nr+1)).eq.'mumps') &
-                            &use_mumps = .true.
-                    end if
                 case default
                     call writo('Invalid option number',warning=.true.)
             end select
@@ -445,6 +439,7 @@ contains
             &rich_restart_lvl, shell_commands_name, shell_commands_i, &
             &PB3D_name, jump_to_sol
         use HDF5_ops, only: create_output_HDF5
+        use HDF5_utilities, only: probe_HDF5_group
 #if ldebug
         use num_vars, only: print_mem_usage, mem_usage_name, mem_usage_i
 #endif
@@ -456,8 +451,11 @@ contains
         
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
-        character(len=max_str_ln) :: full_output_name                           ! full name
         integer :: istat                                                        ! status
+        logical :: file_exists                                                  ! whether file exists
+        logical :: group_exists                                                 ! whether probed group exists
+        character(len=max_str_ln) :: full_output_name                           ! full name
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -529,10 +527,48 @@ contains
         ! specific actions for program styles
         select case (prog_style)
             case (1)                                                            ! PB3D
-                ! create HDF5 file for output if no restart
-                if (rich_restart_lvl.eq.1 .and. .not. jump_to_sol) then
-                    ierr = create_output_HDF5(PB3D_name)
+                ! set up whether group exists
+                inquire(FILE=PB3D_name,EXIST=file_exists,IOSTAT=ierr)
+                CHCKERR('Failed to inquire about file')
+                if (file_exists) then
+                    ierr = probe_HDF5_group(PB3D_name,'X_2_int_R_'//&
+                        &trim(i2str(rich_restart_lvl)),group_exists)
                     CHCKERR('')
+                else
+                    group_exists = .false.
+                end if
+                
+                if (jump_to_sol) then
+                    if (.not.group_exists) then
+                        ierr = 1
+                        call writo('No integrated tensorial perturbation &
+                            &quantitites found to jump over',alert=.true.)
+                        err_msg = 'These quantitites need to be set up'
+                        CHCKERR(err_msg)
+                    end if
+                else
+                    ! give warning
+                    if (group_exists) then
+                        call writo('Integrated tensorial perturbation &
+                            &quantitites were found for Richardson level '&
+                            &//trim(i2str(rich_restart_lvl))//'.',&
+                            &alert=.true.)
+                        call lvl_ud(1)
+                        call writo('Have you already calculated them and &
+                            &are you re-running these simulations')
+                        call writo('because you want to change the solution?')
+                        call writo('If the solution method is the only &
+                            &thing you are changing, you should')
+                        call writo('consider using the command-line option &
+                            &"--jump_to_sol"')
+                        call lvl_ud(-1)
+                    end if
+                    
+                    ! create HDF5 file for output if no restart
+                    if (rich_restart_lvl.eq.1) then
+                        ierr = create_output_HDF5(PB3D_name)
+                        CHCKERR('')
+                    end if
                 end if
             case (2)                                                            ! POST
                 ! do nothing

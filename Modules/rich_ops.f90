@@ -20,12 +20,10 @@ module rich_ops
     
 contains
     integer function init_rich() result(ierr)
-        use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, &
-            &rank, PB3D_name, jump_to_sol
+        use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, rank
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: setup_nm_X
-        use HDF5_utilities, only: probe_HDF5_group
         
         character(*), parameter :: rout_name = 'init_rich'
         
@@ -36,7 +34,6 @@ contains
         type(sol_type) :: sol                                                   ! solution variables
         character(len=4) :: grid_eq_name                                        ! name of equilibrium grid
         character(len=4) :: grid_X_name                                         ! name of perturbation grid
-        logical :: group_exists                                                 ! whether probed group exists
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! set variables
@@ -59,20 +56,6 @@ contains
             end if
         end if
         call lvl_ud(1)
-        
-        ! check whether we can indeed jump to solution
-        if (jump_to_sol) then
-            ierr = probe_HDF5_group(PB3D_name,'X_2_int_R_'//&
-                &trim(i2str(rich_restart_lvl)),group_exists)
-            CHCKERR('')
-            if (.not.group_exists) then
-                ierr = 1
-                call writo('No integrated tensorial perturbation quantitites &
-                    &found to jump over',alert=.true.)
-                err_msg = 'These quantitites need to be set up'
-                CHCKERR(err_msg)
-            end if
-        end if
         
         ! some preliminary things
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables

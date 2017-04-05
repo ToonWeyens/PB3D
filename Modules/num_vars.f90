@@ -17,8 +17,9 @@ module num_vars
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, plot_B, &
         &plot_J, plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
         &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
-        &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, &
+        &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, EV_guess, &
         &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
+        &solver_SLEPC_style, &
         &max_it_rich, tol_rich, &
         &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
@@ -30,7 +31,8 @@ module num_vars
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
         &rich_restart_lvl, plot_size, jump_to_sol, &
-        &export_HEL, ex_plot_style, pert_mult_factor_POST, &
+        &export_HEL, ex_plot_style, pert_mult_factor_POST, POST_output_full, &
+        &POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_file_i, HEL_export_file_i, input_i, PB3D_i, &
         &PB3D_name, eq_i, output_i
@@ -51,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.63_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.65_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.61_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -89,6 +91,7 @@ module num_vars
     integer :: BC_style(2)                                                      ! style for BC left and right
     integer :: X_style                                                          ! style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: matrix_SLEPC_style                                               ! style for matrix storage (1: sparse, 2: shell)
+    integer :: solver_SLEPC_style                                               ! style for solver (1: Krylov-Schur, 2: GD)
     integer :: POST_style                                                       ! style for POST (1: extended grid, 2: B-aligned grid)
     integer :: max_it_slepc                                                     ! maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   ! whether to plot the q-profile or iota-profile with resonances
@@ -105,6 +108,7 @@ module num_vars
     logical :: use_pol_flux_F                                                   ! whether poloidal flux is used in F coords.
     logical :: use_normalization                                                ! whether to use normalization or not
     real(dp) :: EV_BC                                                           ! value of artificial Eigenvalue for boundary condition
+    real(dp) :: EV_guess                                                        ! first guess for eigenvalue
     real(dp), allocatable :: tol_SLEPC(:)                                       ! tolerance for SLEPC for different Richardson levels
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
@@ -134,6 +138,8 @@ module num_vars
     logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: export_HEL = .false.                                             ! export HELENA
     logical :: no_output = .false.                                              ! no output shown
+    logical :: POST_output_full = .false.                                       ! POST has output on full grids
+    logical :: POST_output_sol = .false.                                        ! POST has outputs of solution
     logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
     logical :: print_mem_usage = .false.                                        ! print memory usage is printed
     logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)

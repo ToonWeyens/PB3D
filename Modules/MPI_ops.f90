@@ -230,9 +230,9 @@ contains
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
-            &prog_style, POST_style, jump_to_sol, export_HEL, &
-            &ex_plot_style, &
-            &pert_mult_factor_POST, &
+            &prog_style, POST_style, jump_to_sol, export_HEL, EV_guess, &
+            &ex_plot_style, solver_SLEPC_style, &
+            &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem, max_X_mem, plot_size, &
             &do_execute_command_line, print_mem_usage, &
@@ -342,6 +342,9 @@ contains
                     call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(solver_SLEPC_style,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
                     call MPI_Bcast(n_sol_requested,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
@@ -352,6 +355,9 @@ contains
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(rich_restart_lvl,1,MPI_INTEGER,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(EV_guess,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(tol_norm,1,MPI_DOUBLE_PRECISION,0,&
@@ -387,6 +393,12 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(plot_E_rec,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(POST_output_full,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(POST_output_sol,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(plot_grid_style,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)

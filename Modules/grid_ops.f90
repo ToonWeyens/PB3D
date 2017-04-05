@@ -941,7 +941,6 @@ contains
         real(dp), pointer :: Z_2_tot(:,:,:) => null()                           ! total Z
         type(grid_type) :: grid_ext                                             ! angularly extended grid
         type(grid_type) :: grid_plot                                            ! grid for plotting
-        integer :: id, jd                                                       ! counters
         integer :: n_theta_plot_old                                             ! backup of n_theta_plot
         integer :: n_zeta_plot_old                                              ! backup of n_zeta_plot
         real(dp) :: min_theta_plot_old, max_theta_plot_old                      ! backup of min and max_theta_plot
@@ -1019,7 +1018,6 @@ contains
         ! priority. Therefore,  all the plotting  of the  local is handled  by a
         ! single process, the master.
         call get_full_XYZ(X_1,Y_1,Z_1,X_1_tot,Y_1_tot,Z_1_tot,'flux surfaces')
-        deallocate(X_1,Y_1,Z_1)
         
         ! 2. plot field lines
         call writo('writing field lines')
@@ -1052,13 +1050,14 @@ contains
         ! priority. Therefore,  all the plotting  of the  local is handled  by a
         ! single process, the master.
         call get_full_XYZ(X_2,Y_2,Z_2,X_2_tot,Y_2_tot,Z_2_tot,'field lines')
-        deallocate(X_2,Y_2,Z_2)
         
         ierr = magn_grid_plot_HDF5(X_1_tot,X_2_tot,Y_1_tot,Y_2_tot,&
             &Z_1_tot,Z_2_tot,anim_name)
         CHCKERR('')
         
         ! clean up
+        deallocate(X_1,Y_1,Z_1)
+        deallocate(X_2,Y_2,Z_2)
         nullify(X_1_tot,Y_1_tot,Z_1_tot)
         nullify(X_2_tot,Y_2_tot,Z_2_tot)
         
@@ -1078,7 +1077,6 @@ contains
             character(len=*) :: merge_name                                      ! name of variable to be merged
             
             ! local variables
-            real(dp), allocatable :: XYZ_loc(:)                                 ! local copy of X, Y or Z in an angular point
             real(dp), allocatable :: ser_XYZ_loc(:)                             ! serial copy of XYZ_loc
             integer, allocatable :: tot_dim(:)                                  ! total dimensions for plot 
             
@@ -1098,23 +1096,16 @@ contains
                     allocate(Z_tot(size(X,1),size(X,2),sum(tot_dim)))
                 end if
                 
-                allocate(XYZ_loc(sum(tot_dim)))
-                do jd = 1,size(X,2)
-                    do id = 1,size(X,1)
-                        XYZ_loc = X(id,jd,:)
-                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
-                        CHCKERR('')
-                        if (rank.eq.0) X_tot(id,jd,:) = ser_XYZ_loc
-                        XYZ_loc = Y(id,jd,:)
-                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
-                        CHCKERR('')
-                        if (rank.eq.0) Y_tot(id,jd,:) = ser_XYZ_loc
-                        XYZ_loc = Z(id,jd,:)
-                        ierr = get_ser_var(XYZ_loc,ser_XYZ_loc)
-                        CHCKERR('')
-                        if (rank.eq.0) Z_tot(id,jd,:) = ser_XYZ_loc
-                    end do
-                end do
+                allocate(ser_XYZ_loc(size(X(:,:,1))*sum(tot_dim)))
+                ierr = get_ser_var(reshape(X,[size(X)]),ser_XYZ_loc)
+                CHCKERR('')
+                if (rank.eq.0) X_tot = reshape(ser_XYZ_loc,shape(X_tot))
+                ierr = get_ser_var(reshape(Y,[size(Y)]),ser_XYZ_loc)
+                CHCKERR('')
+                if (rank.eq.0) Y_tot = reshape(ser_XYZ_loc,shape(Y_tot))
+                ierr = get_ser_var(reshape(Z,[size(Z)]),ser_XYZ_loc)
+                CHCKERR('')
+                if (rank.eq.0) Z_tot = reshape(ser_XYZ_loc,shape(Z_tot))
             else                                                                ! just point
                 X_tot => X
                 Y_tot => Y
@@ -1135,8 +1126,8 @@ contains
             character(*), parameter :: rout_name = 'magn_grid_plot_HDF5'
           
             ! input / output
-            real(dp), intent(in) :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)          ! X, Y and Z of surface in Axisymmetric coordinates
-            real(dp), intent(in) :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:)          ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
+            real(dp), intent(in), pointer :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:) ! X, Y and Z of surface in Axisymmetric coordinates
+            real(dp), intent(in), pointer :: X_2(:,:,:), Y_2(:,:,:), Z_2(:,:,:) ! X, Y and Z of magnetic field lines in Axisymmetric coordinates
             character(len=*), intent(in) :: anim_name                           ! name of animation
             
             ! local variables
@@ -1199,8 +1190,8 @@ contains
                     CHCKERR('')
                     
                     ! print data item for Z
-                    ierr = print_HDF5_3D_data_item(XYZ(3),file_info,'Z_V_surf_'&
-                        &//trim(i2str(id)),Z_1(:,:,id:id),loc_dim(:,1))
+                    ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
+                        &'Z_surf_'//trim(i2str(id)),Z_1(:,:,id:id),loc_dim(:,1))
                     CHCKERR('')
                     
                     ! print geometry with X, Y and Z data item

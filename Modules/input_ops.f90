@@ -10,11 +10,7 @@ module input_ops
     
     implicit none
     private
-    public read_input_opts, read_input_eq, print_output_in, &
-        &use_mumps
-    
-    ! global variables
-    logical :: use_mumps = .false.                                              ! to give a warning when mumps is used for multiple solution processes
+    public read_input_opts, read_input_eq, print_output_in
     
 contains
     ! reads input options from user-provided input file
@@ -35,7 +31,8 @@ contains
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
             &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
-            &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs
+            &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
+            &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -60,14 +57,14 @@ contains
             &rho_0, plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, &
             &prim_X, min_sec_X, max_sec_X, n_mod_X, use_normalization, &
             &n_theta_plot, n_zeta_plot, norm_disc_prec_eq, tol_norm, &
-            &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, &
+            &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
             &BC_style, max_it_inv, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_HH, &
-            &magn_int_style, ex_plot_style
+            &magn_int_style, ex_plot_style, solver_SLEPC_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
@@ -117,10 +114,9 @@ contains
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    call default_input_PB3D
+                    call default_input_PB3D()
                 case(2)                                                         ! POST
-                    ierr = default_input_POST()
-                    CHCKERR('')
+                    call default_input_POST()
             end select
             
             call lvl_ud(-1)
@@ -169,7 +165,7 @@ contains
                         call adapt_rich
                         
                         ! adapt input / output variables if needed
-                        ierr = adapt_inoutput()
+                        ierr = adapt_inoutput_PB3D()
                         CHCKERR('')
                         
                         ! adapt variables for inverse if needed
@@ -214,6 +210,10 @@ contains
                         ierr = adapt_sol_grid(min_r_plot,max_r_plot,'plot')
                         CHCKERR('')
                         
+                        ! adapt input / output variables if needed
+                        ierr = adapt_inoutput_POST()
+                        CHCKERR('')
+                        
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
                         ierr = 1
@@ -221,14 +221,6 @@ contains
                             &//trim(input_name)//'"'
                         CHCKERR(err_msg)
                     end if
-                    
-                    ! set up max_it_rich and rich_lvl
-                    call lvl_ud(1)
-                    call writo('PB3D level to be processed: '//&
-                        &trim(i2str(PB3D_rich_lvl)))
-                    call lvl_ud(-1)
-                    max_it_rich = PB3D_rich_lvl
-                    rich_lvl = PB3D_rich_lvl
             end select
             
             ! user output
@@ -254,6 +246,7 @@ contains
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
+            EV_guess = -0.01                                                    ! sensible guess
             tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             U_style = 3                                                         ! full expression for U, up to order 3
@@ -261,6 +254,7 @@ contains
             norm_style = 1                                                      ! MISHKA normalization
             BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
+            solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
             plot_magn_grid = .false.                                            ! do not plot the magnetic grid
@@ -310,12 +304,7 @@ contains
             max_it_inv = 1                                                      ! by default no iteration to calculate inverse
         end subroutine default_input_PB3D
         
-        integer function default_input_POST() result(ierr)
-            character(*), parameter :: rout_name = 'default_input_POST'
-            
-            ! initialize ierr
-            ierr = 0
-            
+        subroutine default_input_POST()
             ! concerning finding zeros
             max_it_zero = 200                                                   ! more iterations than PB3D
             tol_zero = 1.0E-8_dp                                                ! less relative error than PB3D
@@ -335,21 +324,11 @@ contains
             
             ! variables concerning input / output
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
-            
-            ! Richardson variables
-            ierr = find_max_rich_lvl(PB3D_rich_lvl)                             ! get highest Richardson level found
-            CHCKERR('')
-            if (PB3D_rich_lvl.le.0) then
-                ierr = 1
-                err_msg = 'No suitable Richardson level found'
-                CHCKERR(err_msg)
-            end if
-            call writo('Maximum Richardson level found: '//&
-                &trim(i2str(PB3D_rich_lvl)))
+            PB3D_rich_lvl = huge(1)                                             ! don't restart
             
             ! variables concerning output
             n_sol_plotted = n_sol_requested                                     ! plot all solutions
-        end function default_input_POST
+        end subroutine default_input_POST
         
         ! Checks  whether the  variables  concerning MPI  are chosen  correctly:
         !   sol_n_procs cannot be greater than n_procs. If it is lower than 1,
@@ -366,15 +345,6 @@ contains
                 call writo('Cannot use more than '//trim(i2str(n_procs))//&
                     &' MPI processes for SLEPC',warning=.true.)
                 sol_n_procs = n_procs
-            end if
-            if (sol_n_procs.gt.1 .and. use_mumps) then
-                call writo('Mumps is best used as &
-                    &a preconditioner with only one processes for &
-                    &SLEPC, as it does not scale.',warning=.true.)
-                call lvl_ud(1)
-                call writo('It is therefore recommended to set "sol_n_procs" &
-                    &to 1 (currently '//trim(i2str(sol_n_procs))//').')
-                call lvl_ud(-1)
             end if
         end subroutine adapt_MPI
         
@@ -437,11 +407,61 @@ contains
         end function adapt_run_POST
         
         ! Checks whether the variables concerning output are chosen correctly:
+        !   PB3D_rich_lvl can be at most the maximally found level
+        !   POST_output_full is true if non-flux quantities are plot
+        !   POST_output_sol is true if solution quantities are plot
+        integer function adapt_inoutput_POST() result(ierr)
+            character(*), parameter :: rout_name = 'adapt_inoutput_POST'
+            
+            ! local variables
+            integer :: max_PB3D_rich_lvl                                        ! maximum Richardson level
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! find maximum levl
+            ierr = find_max_rich_lvl(max_PB3D_rich_lvl)
+            CHCKERR('')
+            if (max_PB3D_rich_lvl.le.0) then
+                call writo('No suitable Richardson level found, so only &
+                    &equilibrium output will be done.',alert=.true.)
+                PB3D_rich_lvl = 1
+            else
+                call writo('Maximum Richardson level found: '//&
+                    &trim(i2str(max_PB3D_rich_lvl)))
+                if (PB3D_rich_lvl.eq.huge(1)) then
+                    PB3D_rich_lvl = max_PB3D_rich_lvl
+                else if (PB3D_rich_lvl.gt.max_PB3D_rich_lvl) then
+                    ierr = 1
+                    err_msg = 'PB3D_rich_lvl cannot be higher than '//&
+                        &trim(i2str(max_PB3D_rich_lvl))
+                    CHCKERR(err_msg)
+                else if (PB3D_rich_lvl.lt.1) then
+                    ierr = 1
+                    call writo('Richardson level chosen '//&
+                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
+                        &output will be done.',alert=.true.)
+                    plot_sol_xi = .false.
+                    plot_sol_Q = .false.
+                    plot_E_rec = .false.
+                    PB3D_rich_lvl = 1
+                end if
+            end if
+            max_it_rich = PB3D_rich_lvl
+            rich_lvl = PB3D_rich_lvl
+            
+            ! set POST_output_full and POST_output_sol
+            POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec
+            POST_output_full = POST_output_sol .or. plot_B .or. plot_J .or. &
+                &plot_kappa
+        end function adapt_inoutput_POST
+        
+        ! Checks whether the variables concerning output are chosen correctly:
         !   n_sol_requested has to be at least one,
         !   rich_restart_lvl can  be at most  one more than the  maximally found
         !   level, nor can it be higher than max_it_rich.
-        integer function adapt_inoutput() result(ierr)
-            character(*), parameter :: rout_name = 'adapt_inoutput'
+        integer function adapt_inoutput_PB3D() result(ierr)
+            character(*), parameter :: rout_name = 'adapt_inoutput_PB3D'
             
             ! initialize ierr
             ierr = 0
@@ -478,7 +498,7 @@ contains
                     CHCKERR(err_msg)
                 end if
             end if
-        end function adapt_inoutput
+        end function adapt_inoutput_PB3D
         
         ! Checks whether the variables concerning plotting are chosen correctly:
         !   n_theta_plot and n_zeta_plot have to be positive,

@@ -728,7 +728,6 @@ contains
         ! loop over all modes (and shift the index in m_loc and n_loc by 1)
         ld_loc = 1
         do ld = 1,size(sec_X_ind,2)
-            
             ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
             ! solving q-m/n  = 0 or  iota-n/m=0, using the functin  jq_fun. Only
             ! consider modes  that appear  somewhere in  the plasma  (e.g. where

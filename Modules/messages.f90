@@ -264,6 +264,8 @@ contains
         logical, intent(in), optional :: alert                                  ! alert message
         
         ! local variables
+        !character(len=7), parameter :: bright_str = "bright "                   ! dark terminal theme
+        character(len=0), parameter :: bright_str = ""                          ! light terminal theme
         character(len=max_str_ln) :: output_str                                 ! output string
         character(len=max_str_ln) :: time_str                                   ! time string
         character(len=max_str_ln) :: header_str                                 ! header string
@@ -399,20 +401,20 @@ contains
                 ! also write output to screen
                 if (error_loc) then
                     call write_formatted(' '//trim(time_str)//' ',&
-                        &'background_white',trim(output_str),'italic underline')
+                        &'background_red',trim(output_str),'italic underline')
                 else if (warning_loc .or. alert_loc) then
                     call write_formatted(' '//trim(time_str)//' ',&
-                        &'background_white',trim(output_str),'')
+                        &'background_cyan',trim(output_str),'italic underline')
                 else if (lvl.eq.1) then
                     call write_formatted(' '//trim(header_str),&
-                        &'bright red')
+                        &bright_str//'green')
                     call write_formatted(' '//trim(time_str)//' ','',&
-                        &trim(output_str),'bright red')
+                        &trim(output_str),bright_str//'green')
                     call write_formatted(' '//trim(header_str),&
-                        &'bright red')
+                        &bright_str//'green')
                 else if (lvl.eq.2) then
                     call write_formatted(' '//trim(time_str)//' ','',&
-                        &trim(output_str),'bright blue')
+                        &trim(output_str),bright_str//'blue')
                 else
                     write(*,"(1X,A)",IOSTAT=istat) &
                         &trim(time_str)//' '//trim(output_str)

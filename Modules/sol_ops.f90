@@ -32,10 +32,8 @@ module sol_ops
 
 contains
     ! plots Eigenvalues
-    integer function plot_sol_vals(sol,last_unstable_id) result(ierr)
+    subroutine plot_sol_vals(sol,last_unstable_id)
         use num_vars, only: rank
-        
-        character(*), parameter :: rout_name = 'plot_sol_vals'
         
         ! input / output
         type(sol_type), intent(in) :: sol                                       ! solution variables
@@ -46,9 +44,6 @@ contains
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         integer :: n_sol_found                                                  ! how many solutions found and saved
         integer :: id                                                           ! counter
-        
-        ! initialize ierr
-        ierr = 0
         
         ! set local variables
         n_sol_found = size(sol%val)
@@ -83,7 +78,7 @@ contains
                 call draw_ex([plot_title],plot_name,1,1,.false.,ex_plot_style=1)
             end if
         end if
-    end function plot_sol_vals
+    end subroutine plot_sol_vals
     
     ! Plots Eigenvectors using the angular  part of the the provided equilibrium
     ! grid and the normal part of the provided perturbation grid.
@@ -388,7 +383,7 @@ contains
                 end if
                 
                 ! transform to Cartesian components
-                ierr = calc_vec_comp(grid_X,grid_eq,eq_2,ccomp,&
+                ierr = calc_vec_comp(grid_X,grid_eq,eq_1,eq_2,ccomp,&
                     &norm_disc_prec_sol)
                 CHCKERR('')
                 

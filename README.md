@@ -734,3 +734,15 @@ CHANGELOG
       - Fixed a bug where the vacuum contribution was not copied to the integrated perturbation quantities.
       - Changed the "calc_norm_range" procedures somewhat, to take into account that the solution grid might have a different number of processes.
       - Added hard-coded option to use Hermiticity, but this does not work yet, as the SLEPC tolerance is much too low (see http://lists.mcs.anl.gov/pipermail/petsc-users/2016-October/030781.html). Forcing the matrix to be Hermitian artificially also does not work.
+
+1.65: - Fixed a bug in the plotting of the magnetic grid.
+      - Even if no solution found, POST can still output equilibrium quantities.
+      - MUMPS warning has been removed, as it is not correct. The true source of slow SLEPC convergence was not using an optimzed version.
+      - Now a target value is used through "EV_guess" in combination with shift-invert. By default, it is -1E-1. This speeds up convergence greatly.
+      - Introduced a new input variable "solver_SLEPC_style" that can choose between a default setting for Krylov-Schur (1) or GD (2).
+      - Some more user messages concerning "--jump_to_sol" as well as while setting up the SLEPC solver.
+      - Changed message formatting somewhat.
+      - B_aligned was not intialized in POST; it has been removed.
+      - Extended grids can have monotomously decreasing coordinates now.
+      - "calc_vec_comp" now takes into account possible bad points at r=0.
+      - "calc_vec_comp" can now calculate fluxes.

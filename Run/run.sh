@@ -349,7 +349,8 @@ init_vars() {
     use_input_mods=false
     case $prog_ID in
         1)  # PB3D
-            slepc_opt="-st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_type gd -eps_monitor -eps_ncv 16 -eps_view"
+            #slepc_opt="-st_ksp_type preonly -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor -eps_ncv 32 -eps_view -log_view"
+            slepc_opt="-st_ksp_type preonly -st_pc_type lu -st_pc_factor_mat_solver_package mumps -eps_monitor"
         ;;
         2)  # POST
             # nothing else

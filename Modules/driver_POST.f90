@@ -19,8 +19,6 @@ module driver_POST
     public run_driver_POST, init_POST, stop_POST
     
     ! local variables
-    logical :: full_output                                                      ! whether full output is possible if requested
-    logical :: B_aligned                                                        ! whether output grids are field-aligned
     integer :: lims_norm(2,3)                                                   ! normal i_limit of eq, X and sol variables
     integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
     integer :: min_id(3), max_id(3)                                             ! min. and max. index of range 1, 2 and 3
@@ -66,8 +64,7 @@ contains
         use grid_vars, only: disc_type
         use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
-            &plot_sol_xi, plot_sol_Q, plot_E_rec, plot_B, plot_J, plot_kappa, &
-            &n_theta_plot, n_zeta_plot
+            &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -78,6 +75,7 @@ contains
             &apply_disc, copy_grid
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
+        use MPI_utilities, only: wait_MPI
         
         character(*), parameter :: rout_name = 'init_POST'
         
@@ -105,10 +103,6 @@ contains
         ! some preliminary things
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
         CHCKERR('')
-        
-        ! set up whether full output is possible
-        full_output = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec .or. plot_B &
-            &.or. plot_J .or. plot_kappa
         
         ! set up whether Richardson level has to be appended to the name
         select case (eq_style) 
@@ -182,6 +176,10 @@ contains
             &persistent=.true.)
         call lvl_ud(-1)
         
+        ! synchronize outputs
+        ierr = wait_MPI()
+        CHCKERR('')
+        
         ! user output
         call lvl_ud(-1)
         call writo('Grids divided over MPI processes')
@@ -207,8 +205,10 @@ contains
         CHCKERR('')
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
-        ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
-        CHCKERR('')
+        if (POST_output_sol) then
+            ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
+            CHCKERR('')
+        end if
         
         ! user output
         call lvl_ud(-1)
@@ -257,7 +257,7 @@ contains
         call writo('1-D outputs plots done')
         
         ! user output
-        call writo('Prepare Eigenvector plots')
+        call writo('Prepare 3-D plots')
         call lvl_ud(1)
         
         ! calculate resonant surfaces
@@ -267,48 +267,49 @@ contains
         call lvl_ud(-1)
         
         ! plot eigenvalues
-        call writo('Plot the Eigenvalues')
-        call lvl_ud(1)
-        ierr = plot_sol_vals(sol,last_unstable_id)
-        CHCKERR('')
-        call lvl_ud(-1)
-        
-        ! find stability regions
-        call writo('Find stability ranges')
-        call lvl_ud(1)
-        call find_stab_ranges(sol,min_id,max_id,last_unstable_id)
-        call lvl_ud(-1)
-        
-        ! plots harmonics for every Eigenvalue, looping over three ranges
-        call writo('Plot the Harmonics')
-        call lvl_ud(1)
-        do jd = 1,3
-            if (min_id(jd).le.max_id(jd)) call &
-                &writo('RANGE '//trim(i2str(jd))//': modes '//&
-                &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
+        if (POST_output_sol) then
+            call writo('Plot the Eigenvalues')
             call lvl_ud(1)
-            
-            ! indices in each range
-            do id = min_id(jd),max_id(jd)
-                ! user output
-                call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(sol%val)))//', with eigenvalue '&
-                    &//trim(c2strt(sol%val(id))))
-                call lvl_ud(1)
-                ierr = plot_harmonics(grid_sol,sol,id,res_surf)
-                CHCKERR('')
-                
-                ! user output
-                call lvl_ud(-1)
-                call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(sol%val)))//' finished')
-            end do
-            
+            call plot_sol_vals(sol,last_unstable_id)
             call lvl_ud(-1)
-            if (min_id(jd).le.max_id(jd)) call &
-                &writo('RANGE '//trim(i2str(jd))//' plotted')
-        end do
-        call lvl_ud(-1)
+            
+            ! find stability regions
+            call writo('Find stability ranges')
+            call lvl_ud(1)
+            call find_stab_ranges(sol,min_id,max_id,last_unstable_id)
+            call lvl_ud(-1)
+            
+            ! plots harmonics for every Eigenvalue, looping over three ranges
+            call writo('Plot the Harmonics')
+            call lvl_ud(1)
+            do jd = 1,3
+                if (min_id(jd).le.max_id(jd)) call &
+                    &writo('RANGE '//trim(i2str(jd))//': modes '//&
+                    &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
+                call lvl_ud(1)
+                
+                ! indices in each range
+                do id = min_id(jd),max_id(jd)
+                    ! user output
+                    call writo('Mode '//trim(i2str(id))//'/'//&
+                        &trim(i2str(size(sol%val)))//', with eigenvalue '&
+                        &//trim(c2strt(sol%val(id))))
+                    call lvl_ud(1)
+                    ierr = plot_harmonics(grid_sol,sol,id,res_surf)
+                    CHCKERR('')
+                    
+                    ! user output
+                    call lvl_ud(-1)
+                    call writo('Mode '//trim(i2str(id))//'/'//&
+                        &trim(i2str(size(sol%val)))//' finished')
+                end do
+                
+                call lvl_ud(-1)
+                if (min_id(jd).le.max_id(jd)) call &
+                    &writo('RANGE '//trim(i2str(jd))//' plotted')
+            end do
+            call lvl_ud(-1)
+        end if
         
         ! Divide   the  equilibrium   jobs  if   full  output   (see  subroutine
         ! "calc_memory"  inside  "divide_eq_jobs"),  only  necessary  when  full
@@ -316,7 +317,7 @@ contains
         ! every eq_job.
         ! If full output  not requested, allocate eq_jobs_lims to  zero size, so
         ! that the driver is never run.
-        if (full_output) then
+        if (POST_output_full) then
             ! set total grid sizes
             do id = 1,2
                 ierr = get_PB3D_grid_size(n_out(:,id),grid_name(id),&
@@ -366,7 +367,7 @@ contains
         
         ! Calculate variables  on HELENA output  grid if full output  and HELENA
         ! for later interpolation
-        if (full_output .and. eq_style.eq.2) then
+        if (POST_output_full .and. eq_style.eq.2) then
             ! user output
             call writo('Reconstructing HELENA output for later interpolation')
             call lvl_ud(1)
@@ -388,8 +389,8 @@ contains
         end if
         
         ! reconstruct normal part of full eq grid for XYZ reconstruction
-        if (full_output .and. plot_grid_style.eq.0 .or. plot_grid_style.eq.3) &
-            &then
+        if (POST_output_full .and. plot_grid_style.eq.0 .or. &
+            &plot_grid_style.eq.3) then
             ! user output
             call writo('Reconstructing full eq grid for XYZ reconstruction')
             call lvl_ud(1)
@@ -405,7 +406,7 @@ contains
         
         ! user output
         call lvl_ud(-1)
-        call writo('Eigenvector plots prepared')
+        call writo('3-D plots prepared')
         
         ! clean up
         call grid_eq%dealloc()
@@ -442,7 +443,8 @@ contains
         
         use num_vars, only: no_output, no_plots, eq_style, plot_grid_style, &
             &use_pol_flux_F, pi, swap_angles, eq_jobs_lims, eq_job_nr, &
-            &plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa
+            &plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa, &
+            &POST_output_sol, POST_style
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
@@ -573,18 +575,19 @@ contains
         end select
         
         ! user output
-        call writo('Prepare Eigenvector plots')
+        call writo('Initialize 3-D plots')
         call lvl_ud(1)
         
-        call writo('Calculate helper variables')
-        call lvl_ud(1)
-        
-        ! initialize integrated energies if first equilibrium job
-        if (eq_job_nr.eq.1) then
+        ! initialize  integrated energies and  open decompose log file  if first
+        ! equilibrium job
+        if (POST_output_sol .and. eq_job_nr.eq.1) then
             allocate(E_pot_int(6,n_EV_out))
             allocate(E_kin_int(6,n_EV_out))
             E_pot_int = 0._dp
             E_kin_int = 0._dp
+            
+            ierr = open_decomp_log()
+            CHCKERR('')
         end if
         
         ! if VMEC, calculate trigonometric factors of output grid
@@ -642,39 +645,41 @@ contains
                 call writo('Plots are done in slab geometry')
                 call lvl_ud(1)
                 
-                if (B_aligned .and. plot_grid_style.eq.1) then                  ! for plot_grid_style 2 both theta and zeta need to be chosen, not alpha
-                    if (swap_angles) then
-                        call writo('For plotting, the angular coordinates &
-                            &are swapped: theta <-> zeta')
-                        if (use_pol_flux_F) then
-                            XYZ(:,:,:,1) = grids(2)%zeta_F/pi
-                        else
-                            XYZ(:,:,:,1) = grids(2)%theta_F/pi
-                        end if
-                    else
+                ! set angular coordinates
+                select case (POST_style)
+                    case (1)                                                    ! extended grid: both theta and zeta need to be chosen, not alpha
                         if (use_pol_flux_F) then
                             XYZ(:,:,:,1) = grids(2)%theta_F/pi
+                            XYZ(:,:,:,2) = grids(2)%zeta_F/pi
                         else
                             XYZ(:,:,:,1) = grids(2)%zeta_F/pi
+                            XYZ(:,:,:,2) = grids(2)%theta_F/pi
                         end if
-                    end if
-                    XYZ(:,:,:,2) = alpha
-                else
-                    if (use_pol_flux_F) then
-                        XYZ(:,:,:,1) = grids(2)%theta_F/pi
-                        XYZ(:,:,:,2) = grids(2)%zeta_F/pi
-                    else
-                        XYZ(:,:,:,1) = grids(2)%zeta_F/pi
-                        XYZ(:,:,:,2) = grids(2)%theta_F/pi
-                    end if
-                end if
+                    case (2)                                                    ! field-aligned grid: alpha in combination with parallel angle
+                        if (swap_angles) then
+                            call writo('For plotting, the angular coordinates &
+                                &are swapped: theta <-> zeta')
+                            if (use_pol_flux_F) then
+                                XYZ(:,:,:,1) = grids(2)%zeta_F/pi
+                            else
+                                XYZ(:,:,:,1) = grids(2)%theta_F/pi
+                            end if
+                        else
+                            if (use_pol_flux_F) then
+                                XYZ(:,:,:,1) = grids(2)%theta_F/pi
+                            else
+                                XYZ(:,:,:,1) = grids(2)%zeta_F/pi
+                            end if
+                        end if
+                        XYZ(:,:,:,2) = alpha
+                end select
                 
+                ! set normal coordinate
                 do kd = 1,grids(2)%loc_n_r
-                    XYZ(:,:,kd,3) = grids(2)%loc_r_F(kd)/&
-                        &max_flux_F*2*pi
+                    XYZ(:,:,kd,3) = grids(2)%loc_r_F(kd)/max_flux_F*2*pi
                 end do
                 
-                ! limit to fundamental interval -1..1 if plot style 2
+                ! limit to fundamental interval -1..1 if plot grid style 2
                 if (plot_grid_style.eq.2) XYZ(:,:,:,1:2) = &
                     &modulo(XYZ(:,:,:,1:2)+1._dp,2._dp)-1._dp
                 
@@ -686,117 +691,119 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        call lvl_ud(-1)
-        
-        ! open decomposition log file if first parallel job
-        if (eq_job_nr.eq.1) then
-            ierr = open_decomp_log()
-            CHCKERR('')
-        end if
-        
         ! user output
         call lvl_ud(-1)
-        call writo('Plots prepared')
+        call writo('3-D plots initialized')
         
         ! user output
-        call writo('Plotting variables for different ranges')
+        call writo('3-D PB3D output plots')
         call lvl_ud(1)
         
-        ! loop over three ranges
-        i_EV_out = 1
-        if (last_eq_job) allocate(sol_val_comp(2,2,n_EV_out))
-        do jd = 1,3
-            if (min_id(jd).le.max_id(jd)) call &
-                &writo('RANGE '//trim(i2str(jd))//': modes '//&
-                &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
+        ! plot magnetic field if requested
+        if (plot_B) then
+            call writo('Plot the magnetic field')
+            call lvl_ud(1)
+            ierr = B_plot(grids(1),eq_1,eq_2,plot_fluxes=POST_style.eq.1)
+            CHCKERR('')
+            call lvl_ud(-1)
+        end if
+        
+        ! plot current if requested
+        if (plot_J) then
+            call writo('Plot the current')
+            call lvl_ud(1)
+            ierr = J_plot(grids(1),eq_1,eq_2,plot_fluxes=POST_style.eq.1)
+            CHCKERR('')
+            call lvl_ud(-1)
+        end if
+        
+        ! plot magnetic field if requested
+        if (plot_kappa) then
+            call writo('Plot the curvature')
+            call lvl_ud(1)
+            ierr = kappa_plot(grids(1),eq_1,eq_2)
+            CHCKERR('')
+            call lvl_ud(-1)
+        end if
+        
+        if (POST_output_sol) then
+            ! user output
+            call writo('Solution plots for different ranges')
             call lvl_ud(1)
             
-            ! indices in each range
-            do id = min_id(jd),max_id(jd)
-                ! user output
-                call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(sol%val)))//', with eigenvalue '&
-                    &//trim(c2strt(sol%val(id))))
+            ! loop over three ranges
+            i_EV_out = 1
+            if (last_eq_job) allocate(sol_val_comp(2,2,n_EV_out))
+            do jd = 1,3
+                if (min_id(jd).le.max_id(jd)) call &
+                    &writo('RANGE '//trim(i2str(jd))//': modes '//&
+                    &trim(i2str(min_id(jd)))//'..'//trim(i2str(max_id(jd))))
                 call lvl_ud(1)
                 
-                ! plot magnetic field if requested
-                if (plot_B) then
-                    call writo('Plot the magnetic field')
+                ! indices in each range
+                do id = min_id(jd),max_id(jd)
+                    ! user output
+                    call writo('Mode '//trim(i2str(id))//'/'//&
+                        &trim(i2str(size(sol%val)))//', with eigenvalue '&
+                        &//trim(c2strt(sol%val(id))))
                     call lvl_ud(1)
-                    ierr = B_plot(grids(1),eq_2)
-                    CHCKERR('')
-                    call lvl_ud(-1)
-                end if
-                
-                ! plot current if requested
-                if (plot_J) then
-                    call writo('Plot the current')
-                    call lvl_ud(1)
-                    ierr = J_plot(grids(1),eq_1,eq_2)
-                    CHCKERR('')
-                    call lvl_ud(-1)
-                end if
-                
-                ! plot magnetic field if requested
-                if (plot_kappa) then
-                    call writo('Plot the curvature')
-                    call lvl_ud(1)
-                    ierr = kappa_plot(grids(1),eq_2)
-                    CHCKERR('')
-                    call lvl_ud(-1)
-                end if
-                
-                ! plot solution vector
-                ierr = plot_sol_vec(grids(1),grids(2),grids(3),&
-                    &eq_1,eq_2,X,sol,XYZ,id,[plot_sol_xi,plot_sol_Q])
-                CHCKERR('')
-                
-                ! user output
-                call writo('Decompose the energy into its terms')
-                call lvl_ud(1)
-                ierr = decompose_energy(grids(1),grids(2),grids(3),&
-                    &eq_1,eq_2,X,sol,id,B_aligned,XYZ=XYZ,&
-                    &E_pot_int=E_pot_int(:,i_EV_out),&
-                    &E_kin_int=E_kin_int(:,i_EV_out))
-                CHCKERR('')
-                call lvl_ud(-1)
-                
-                ! write to log  file and save difference  between Eigenvalue and
-                ! energy fraction if last parallel job
-                if (last_eq_job) then
-                    ierr = write_decomp_log(id,E_pot_int(:,i_EV_out),&
-                        &E_kin_int(:,i_EV_out))
+                    
+                    ! plot solution vector
+                    ierr = plot_sol_vec(grids(1),grids(2),grids(3),&
+                        &eq_1,eq_2,X,sol,XYZ,id,[plot_sol_xi,plot_sol_Q])
                     CHCKERR('')
                     
-                    sol_val_comp(:,1,i_EV_out) = id*1._dp
-                    sol_val_comp(:,2,i_EV_out) = [sol%val(id),&
-                        &sum(E_pot_int(:,i_EV_out))/&
-                        &sum(E_kin_int(:,i_EV_out))]
-                end if
+                    ! user output
+                    call writo('Decompose the energy into its terms')
+                    call lvl_ud(1)
+                    ierr = decompose_energy(grids(1),grids(2),grids(3),&
+                        &eq_1,eq_2,X,sol,id,B_aligned=POST_style.eq.2,XYZ=XYZ,&
+                        &E_pot_int=E_pot_int(:,i_EV_out),&
+                        &E_kin_int=E_kin_int(:,i_EV_out))
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                    
+                    ! write to  log file and save  difference between Eigenvalue
+                    ! and energy fraction if last parallel job
+                    if (last_eq_job) then
+                        ierr = write_decomp_log(id,E_pot_int(:,i_EV_out),&
+                            &E_kin_int(:,i_EV_out))
+                        CHCKERR('')
+                        
+                        sol_val_comp(:,1,i_EV_out) = id*1._dp
+                        sol_val_comp(:,2,i_EV_out) = [sol%val(id),&
+                            &sum(E_pot_int(:,i_EV_out))/&
+                            &sum(E_kin_int(:,i_EV_out))]
+                    end if
+                    
+                    ! increment counter
+                    i_EV_out = i_EV_out + 1
+                    
+                    ! user output
+                    call lvl_ud(-1)
+                    call writo('Mode '//trim(i2str(id))//'/'//&
+                        &trim(i2str(size(sol%val)))//' finished')
+                end do
                 
-                ! increment counter
-                i_EV_out = i_EV_out + 1
-                
-                ! user output
                 call lvl_ud(-1)
-                call writo('Mode '//trim(i2str(id))//'/'//&
-                    &trim(i2str(size(sol%val)))//' finished')
+                if (min_id(jd).le.max_id(jd)) call &
+                    &writo('RANGE '//trim(i2str(jd))//' plotted')
             end do
             
+            ! plot  difference between  Eigenvalue and  energy fraction  if last
+            ! parallel job
+            if (last_eq_job) then
+                call plot_sol_val_comp(sol_val_comp)
+            end if
+            
+            ! user output
             call lvl_ud(-1)
-            if (min_id(jd).le.max_id(jd)) call &
-                &writo('RANGE '//trim(i2str(jd))//' plotted')
-        end do
-        
-        ! plot  difference  between  Eigenvalue  and  energy  fraction  if  last
-        ! parallel job
-        if (last_eq_job) then
-            call plot_sol_val_comp(sol_val_comp)
+            call writo('Solution for different ranges plotted')
         end if
         
         ! user output
         call lvl_ud(-1)
-        call writo('Variables for different ranges plotted')
+        call writo('3-D output plots done')
         
         ! clean up
         call writo('Clean up')
@@ -812,18 +819,19 @@ contains
     
     ! Cleans up main driver for postprocessing.
     subroutine stop_POST()
-        use num_vars, only: plot_grid_style, eq_style
+        use num_vars, only: plot_grid_style, eq_style, POST_output_full, &
+            &POST_output_sol
         use input_utilities, only: dealloc_in
         
         call dealloc_in()
-        call sol%dealloc()
-        if (full_output .and. eq_style.eq.2) then
+        if (POST_output_sol) call sol%dealloc()
+        if (POST_output_full .and. eq_style.eq.2) then
             call grid_eq_HEL%dealloc()
             call grid_X_HEL%dealloc()
             call eq_2_HEL%dealloc()
             call X_HEL%dealloc()
         end if
-        if (full_output .and. plot_grid_style.eq.0) then
+        if (POST_output_full .and. plot_grid_style.eq.0) then
             call grid_eq_XYZ%dealloc()
         end if
     end subroutine stop_POST
@@ -1147,8 +1155,7 @@ contains
         end if
     end subroutine plot_sol_val_comp
     
-    ! Sets  up the output  grid for a particular  parallel job and  the variable
-    ! "B_aligned" as well.
+    ! Sets up the output grid for a particular parallel job
     integer function setup_out_grids(grids_out) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims
