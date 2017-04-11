@@ -753,3 +753,7 @@ CHANGELOG
       - Fixed a bug in "B_plot" and "J_plot" where "plot_fluxes" was used wrongly while optional.
       - Fixed some small bugs.
       - The module VMEC has been split in three modules, the usual VMEC_ops, VMEC_utilities and VMEC_vars.
+
+1.67: - Fixed some output bugs.
+      - Bokeh now outputs checkboxes.
+      - The VMEC files modules were wrongly absent in the previous version.

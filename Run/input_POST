@@ -20,7 +20,7 @@
     max_theta_plot          = 2.00
     POST_style              = 1
     plot_grid_style         = 0
-    ex_plot_style           = 1
+    ex_plot_style           = 2
     pert_mult_factor_POST   = 0.0000
     max_tot_mem             = 6000
 /

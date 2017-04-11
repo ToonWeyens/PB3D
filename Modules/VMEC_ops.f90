@@ -1,0 +1,302 @@
+!------------------------------------------------------------------------------!
+!   Operations that concern the output of VMEC                                 !
+!------------------------------------------------------------------------------!
+module VMEC_ops
+#include <PB3D_macros.h>
+    use str_utilities
+    use output_ops
+    use messages
+    use num_vars, only: &
+        &dp, max_str_ln, pi
+    use read_wout_mod, only: read_wout_file, read_wout_deallocate, &            ! from LIBSTELL
+        &n_r_VMEC => ns, &                                                      ! n_r
+        &xn, xm, &                                                              ! xn, xm
+        &lrfp, &                                                                ! whether or not the poloidal flux is used as radial variable
+        &phi, phipf, &                                                          ! toroidal flux (FM), norm. deriv. of toroidal flux (FM)
+        &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
+        &presf, &                                                               ! pressure (FM)
+        &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
+        &bmns, bmnc, &                                                          ! magnitude of B (HM)
+        &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
+        &gmnc, gmns                                                             ! Jacobian in VMEC coordinates
+    use VMEC_vars
+    
+    implicit none
+    private
+    public read_VMEC, normalize_VMEC
+
+contains
+    ! Reads the VMEC equilibrium data
+    ! [MPI] only master
+    integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
+        use num_utilities, only: conv_FHM, calc_int
+        use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
+        use grid_vars, only: disc_type
+        use grid_utilities, only: setup_deriv_data, apply_disc
+        
+        character(*), parameter :: rout_name = 'read_VMEC'
+        
+        ! input / output
+        integer, intent(inout) :: n_r_in                                        ! nr. of normal points in input grid
+        logical, intent(inout) :: use_pol_flux_V                                ! .true. if VMEC equilibrium is based on poloidal flux
+        
+        ! local variables
+        integer :: id                                                           ! counters
+        real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
+        real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=8) :: flux_name                                           ! either poloidal or toroidal
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
+#if ldebug
+        integer :: kd                                                           ! counter
+        real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
+        real(dp), allocatable :: B_V_c_H(:,:), B_V_s_H(:,:)                     ! Coeff. of magnitude of B (HM)
+        real(dp), allocatable :: jac_V_c_H(:,:), jac_V_s_H(:,:)                 ! Jacobian in VMEC coordinates (HM)
+#endif
+        
+        ! initialize ierr
+        ierr = 0
+        
+        call writo('Reading data from VMEC output "' &
+            &// trim(eq_name) // '"')
+        call lvl_ud(1)
+        
+        ! read VMEC output using LIBSTELL
+        call read_wout_file(eq_name,ierr)                                       ! read the VMEC file
+        CHCKERR('Failed to read the VMEC file')
+        
+        ! set some variables
+        n_r_in = n_r_VMEC
+        allocate(flux_t_V(n_r_in,0:max_deriv+2))
+        allocate(flux_p_V(n_r_in,0:max_deriv+2))
+        allocate(rot_t_V(n_r_in,0:max_deriv+1))
+        allocate(q_saf_V(n_r_in,0:max_deriv+1))
+        allocate(pres_V(n_r_in,0:max_deriv+1))
+        use_pol_flux_V = lrfp
+        flux_t_V(:,0) = phi
+        flux_t_V(:,1) = phipf
+        flux_p_V(:,1) = iotaf*phipf
+        ierr = calc_int(flux_p_V(:,1),1.0_dp/(n_r_in-1.0_dp),flux_p_V(:,0))
+        CHCKERR('')
+        pres_V(:,0) = presf
+        rot_t_V(:,0) = iotaf
+        q_saf_V(:,0) = 1._dp/iotaf
+        if (use_pol_flux_V) then
+            flux_name = 'poloidal'
+        else
+            flux_name = 'toroidal'
+        end if
+        B_0_V = sum(1.5*bmnc(:,2)-0.5_dp*bmnc(:,3))                             ! convert to full mesh
+        
+        call writo('VMEC version is ' // trim(r2str(VMEC_version)))
+        if (is_freeb_V) then
+            call writo('Free boundary VMEC')
+            err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
+            ierr = 1
+            CHCKERR(err_msg)
+        else
+            call writo('Fixed boundary VMEC')
+        end if
+        if (is_asym_V) then
+            call writo('No stellerator symmetry')
+        else
+            call writo('Stellerator symmetry')
+        end if
+        call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
+            &//trim(i2str(ntor_V))//' toroidal modes,')
+        call writo('defined on '//trim(i2str(n_r_in))//' '//flux_name//&
+            &' flux surfaces')
+        
+        call writo('Running tests')
+        call lvl_ud(1)
+        if (mnmax_V.ne.((ntor_V+1)+(2*ntor_V+1)*(mpol_V-1))) then               ! for mpol_V = 0, only ntor_V+1 values needed
+            err_msg = 'Inconsistency in ntor_V, mpol_V and mnmax_V'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        call lvl_ud(-1)
+        
+        call writo('Updating variables')
+        allocate(mn_V(mnmax_V,2))
+        mn_V(:,1) = nint(xm)
+        mn_V(:,2) = nint(xn)
+        
+        call lvl_ud(-1)
+        call writo('Data from VMEC output successfully read')
+        
+        call writo('Saving VMEC output to PB3D')
+        call lvl_ud(1)
+        
+        ! Allocate the Fourier coefficients
+        allocate(R_V_c(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(R_V_s(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(Z_V_c(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(Z_V_s(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(L_V_c(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(L_V_s(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(L_c_H(mnmax_V,n_r_in,0:0))
+        allocate(L_s_H(mnmax_V,n_r_in,0:0))
+        
+        ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
+        R_V_c(:,:,0) = rmnc
+        Z_V_s(:,:,0) = zmns
+        L_s_H(:,:,0) = lmns
+        if (is_asym_V) then                                                     ! following only needed in asymmetric situations
+            R_V_s(:,:,0) = rmns
+            Z_V_c(:,:,0) = zmnc
+            L_c_H(:,:,0) = lmnc
+        else
+            R_V_s(:,:,0) = 0._dp
+            Z_V_c(:,:,0) = 0._dp
+            L_c_H(:,:,0) = 0._dp
+        end if
+        
+        ! conversion HM -> FM (L)
+        do id = 1,mnmax_V
+            ierr = conv_FHM(L_s_H(id,:,0),L_V_s(id,:,0),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(L_c_H(id,:,0),L_V_c(id,:,0),.false.)
+            CHCKERR('')
+        end do
+        
+        ! calculate data for normal derivatives  with the toroidal (or poloidal)
+        ! flux, normalized wrt. to the  maximum flux, equidistantly, so the step
+        ! size is 1/(n_r_in-1).
+        do kd = 1,max_deriv+1
+            ierr = setup_deriv_data(1._dp/(n_r_in-1),n_r_in,&
+                &norm_deriv_data,kd,norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(flux_t_V(:,1),norm_deriv_data,flux_t_V(:,kd+1))   ! fluxes are derived up to a higher order
+            CHCKERR('')
+            ierr = apply_disc(flux_p_V(:,1),norm_deriv_data,flux_p_V(:,kd+1))   ! fluxes are derived up to a higher order
+            CHCKERR('')
+            ierr = apply_disc(pres_V(:,0),norm_deriv_data,pres_V(:,kd))
+            CHCKERR('')
+            ierr = apply_disc(rot_t_V(:,0),norm_deriv_data,rot_t_V(:,kd))
+            CHCKERR('')
+            ierr = apply_disc(q_saf_V(:,0),norm_deriv_data,q_saf_V(:,kd))
+            CHCKERR('')
+            ierr = apply_disc(R_V_c(:,:,0),norm_deriv_data,R_V_c(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(R_V_s(:,:,0),norm_deriv_data,R_V_s(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(Z_V_c(:,:,0),norm_deriv_data,Z_V_c(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(Z_V_s(:,:,0),norm_deriv_data,Z_V_s(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_c(:,:,0),norm_deriv_data,L_V_c(:,:,kd),2)
+            CHCKERR('')
+            ierr = apply_disc(L_V_s(:,:,0),norm_deriv_data,L_V_s(:,:,kd),2)
+            CHCKERR('')
+        end do
+        call norm_deriv_data%dealloc()
+        
+#if ldebug
+        ! allocate helper variables
+        allocate(B_V_sub_c_M(mnmax_V,n_r_in,3)); B_V_sub_c_M = 0._dp
+        allocate(B_V_sub_s_M(mnmax_V,n_r_in,3)); B_V_sub_s_M = 0._dp
+        allocate(B_V_c_H(mnmax_V,n_r_in)); B_V_c_H = 0._dp
+        allocate(B_V_s_H(mnmax_V,n_r_in)); B_V_s_H = 0._dp
+        allocate(jac_V_c_H(mnmax_V,n_r_in)); jac_V_c_H = 0._dp
+        allocate(jac_V_s_H(mnmax_V,n_r_in))
+        
+        ! store in helper variables
+        B_V_sub_s_M(:,:,1) = bsubsmns
+        B_V_sub_c_M(:,:,2) = bsubumnc
+        B_V_sub_c_M(:,:,3) = bsubvmnc
+        B_V_c_H(:,:) = bmnc
+        jac_V_c_H(:,:) = gmnc
+        if (is_asym_V) then                                                 ! following only needed in asymmetric situations
+            B_V_sub_c_M(:,:,1) = bsubsmnc
+            B_V_sub_s_M(:,:,2) = bsubumns
+            B_V_sub_s_M(:,:,3) = bsubvmns
+            B_V_s_H(:,:) = bmns
+            jac_V_s_H(:,:) = gmns
+        else
+            B_V_sub_c_M(:,:,1) = 0._dp
+            B_V_sub_s_M(:,:,2) = 0._dp
+            B_V_sub_s_M(:,:,3) = 0._dp
+            B_V_s_H(:,:) = 0._dp
+            jac_V_s_H(:,:) = 0._dp
+        end if
+        
+        ! allocate FM variables
+        allocate(B_V_sub_c(mnmax_V,n_r_in,3))
+        allocate(B_V_sub_s(mnmax_V,n_r_in,3))
+        allocate(B_V_c(mnmax_V,n_r_in))
+        allocate(B_V_s(mnmax_V,n_r_in))
+        allocate(jac_V_c(mnmax_V,n_r_in))
+        allocate(jac_V_s(mnmax_V,n_r_in))
+        
+        ! conversion HM -> FM (B_V_sub(2:3), B_V, jac_V)
+        do id = 1,mnmax_V
+            do kd = 2,3
+                ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
+                    &.false.)
+                CHCKERR('')
+                ierr = conv_FHM(B_V_sub_s_M(id,:,kd),B_V_sub_s(id,:,kd),&
+                    &.false.)
+                CHCKERR('')
+            end do
+            ierr = conv_FHM(B_V_c_H(id,:),B_V_c(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(B_V_s_H(id,:),B_V_s(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(jac_V_c_H(id,:),jac_V_c(id,:),.false.)
+            CHCKERR('')
+            ierr = conv_FHM(jac_V_s_H(id,:),jac_V_s(id,:),.false.)
+            CHCKERR('')
+        end do
+        
+        !!! to check decay of modes
+        !!call print_ex_2D(['B_V_c'],'',log10(abs(B_V_c)))
+        !!call print_ex_2D(['B_V_s'],'',log10(abs(B_V_s)))
+        !!call print_ex_2D(['R_V_c'],'',log10(abs(R_V_c(:,:,0))))
+        !!call print_ex_2D(['R_V_s'],'',log10(abs(R_V_s(:,:,0))))
+        !!call print_ex_2D(['Z_V_c'],'',log10(abs(Z_V_c(:,:,0))))
+        !!call print_ex_2D(['Z_V_s'],'',log10(abs(Z_V_s(:,:,0))))
+        !!call print_ex_2D(['L_V_c'],'',log10(abs(L_V_c(:,:,0))))
+        !!call print_ex_2D(['L_V_s'],'',log10(abs(L_V_s(:,:,0))))
+        
+        ! deallocate helper variables
+        deallocate(B_V_sub_c_M,B_V_sub_s_M)
+        deallocate(B_V_c_H,B_V_s_H)
+        deallocate(jac_V_c_H,jac_V_s_H)
+#endif
+        
+        ! deallocate repacked variables
+        call read_wout_deallocate()
+        
+        call lvl_ud(-1)
+        call writo('Conversion complete')
+    end function read_VMEC
+    
+    ! Normalizes VMEC input
+    ! Note  that  the normal  VMEC coordinate  runs from  0 to  1, whatever  the
+    ! normalization.
+    subroutine normalize_VMEC
+        use eq_vars, only: pres_0, psi_0, R_0
+#if ldebug
+        use  eq_vars, only: B_0
+#endif
+        
+        ! scale the VMEC quantities
+        pres_V = pres_V/pres_0
+        flux_t_V = flux_t_V/psi_0
+        flux_p_V = flux_p_V/psi_0
+        R_V_c = R_V_c/R_0
+        R_V_s = R_V_s/R_0
+        Z_V_c = Z_V_c/R_0
+        Z_V_s = Z_V_s/R_0
+        L_V_c = L_V_c
+        L_V_s = L_V_s
+#if ldebug
+        B_V_sub_s = B_V_sub_s/(R_0*B_0)
+        B_V_sub_c = B_V_sub_c/(R_0*B_0)
+        B_V_c = B_V_c/B_0
+        B_V_s = B_V_s/B_0
+        jac_V_c = jac_V_c/(R_0**3)
+        jac_V_s = jac_V_s/(R_0**3)
+#endif
+    end subroutine normalize_VMEC
+end module VMEC_ops

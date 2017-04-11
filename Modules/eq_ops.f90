@@ -1778,7 +1778,7 @@ contains
                 
                 ! draw plot
                 call draw_ex(plot_titles(3:3),file_name(1),1,1,.false.)         ! pressure
-                call draw_ex(plot_titles(2:2),file_name(2),2,1,.false.)         ! fluxes
+                call draw_ex(plot_titles(4:5),file_name(2),2,1,.false.)         ! fluxes
                 
                 ! user output
                 call writo('Safety factor and rotational transform are plotted &

@@ -3,7 +3,7 @@
     min_par_X               = -1.0
     max_par_X               = 1.0
     alpha                   = 0.0
-    min_r_sol               = 0.5
+    min_r_sol               = 0.0
     max_r_sol               = 1.0
     n_r_sol                 = 500
     norm_disc_prec_sol      = 3
@@ -36,6 +36,8 @@
     n_zeta_plot             = 1
     magn_int_style          = 1
     ex_plot_style           = 2
+    R_0                     = 3.02620
+    B_0                     = 2.25156
 /
 1.5: 
     R_0                     = 3.03687

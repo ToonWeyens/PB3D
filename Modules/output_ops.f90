@@ -405,12 +405,12 @@ contains
         data_name_loc = draw_name
         if (present(data_name)) data_name_loc = data_name
         allocate(var_names_loc(nplt))
-        if (size(var_names).ge.nplt) then
-            var_names_loc = var_names(1:nplt)
+        if (size(var_names).eq.nplt) then
+            var_names_loc = var_names
         else
             do iplt = 1,nplt
-                var_names_loc(iplt) = var_names(1)//' ('//trim(i2str(iplt))//&
-                    &' / '//trim(i2str(nplt))//')'
+                var_names_loc(iplt) = trim(var_names(1))//' ('//&
+                    &trim(i2str(iplt))//' / '//trim(i2str(nplt))//')'
             end do
         end if
         is_animated_loc = .false.
@@ -629,11 +629,17 @@ contains
         end subroutine draw_ex_GNUPlot
         
         ! Bokeh version: 2D html output
+        ! Interactive checkbox from https://github.com/bokeh/bokeh/issues/3715.
         subroutine draw_ex_Bokeh
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt'
             write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.plotting import &
                 &figure, output_file, save, show'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.layouts import &
+                &widgetbox, row'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.models.widgets import &
+                &CheckboxGroup'
+            write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.models import CustomJS'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             write(cmd_i,"(A)",IOSTAT=istat) 'TOOLS="crosshair,pan,wheel_zoom,&
                 &box_zoom,reset,save"'
@@ -656,23 +662,76 @@ contains
             
             ! individual plots
             do iplt = 1,nplt
-                ! plot the lines with legend
-                write(cmd_i,"(A)",IOSTAT=istat) 'p.line(data[:,'//&
-                    &trim(i2str(iplt-1))//'],data[:,'//&
-                    &trim(i2str(nplt+iplt-1))//'],'//trim(loc_draw_op(1))//&
-                    &',legend="'//trim(var_names_loc(iplt))//'")'
-                ! plot the circles without legend
-                write(cmd_i,"(A)",IOSTAT=istat) 'p.circle(data[:,'//&
+                ! plot the lines
+                write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//&
+                    &' = p.line(data[:,'//trim(i2str(iplt-1))//'],data[:,'//&
+                    &trim(i2str(nplt+iplt-1))//'],'//trim(loc_draw_op(1))//')'
+                ! plot the circles
+                write(cmd_i,"(A)",IOSTAT=istat) 'c'//trim(i2str(iplt))//&
+                    &' = p.circle(data[:,'//&
                     &trim(i2str(iplt-1))//'],data[:,'//&
                     &trim(i2str(nplt+iplt-1))//'],'//trim(loc_draw_op(2))//')'
             end do
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            
+            ! create checkbox
+            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox = CheckboxGroup(labels=[\'
+            do iplt = 1,nplt-1
+                write(cmd_i,"(A)",IOSTAT=istat) &
+                    &'"'//trim(var_names_loc(iplt))//'",\'
+            end do
+            write(cmd_i,"(A)",IOSTAT=istat) &
+                &'"'//trim(var_names_loc(nplt))//'"], active=[\'
+            do iplt = 1,nplt-1
+                write(cmd_i,"(A)",IOSTAT=istat) trim(i2str(iplt-1))//',\'
+            end do
+            write(cmd_i,"(A)",IOSTAT=istat) trim(i2str(nplt-1))//'])'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
+            
+            ! create callback
+            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox.callback = CustomJS(&
+                &args=dict('
+            do iplt = 1,nplt-1
+                write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//'=l'//&
+                    &trim(i2str(iplt))//', c'//trim(i2str(iplt))//'=c'//&
+                    &trim(i2str(iplt))//',\'
+            end do
+            write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(nplt))//'=l'//&
+                &trim(i2str(nplt))//', c'//trim(i2str(nplt))//'=c'//&
+                &trim(i2str(nplt))//'), code="""'
+            write(cmd_i,"(A)",IOSTAT=istat) '//console.log(cb_obj.active);'
+            do iplt = 1,nplt
+                write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//&
+                    &'.visible = false;'
+                write(cmd_i,"(A)",IOSTAT=istat) 'c'//trim(i2str(iplt))//&
+                    &'.visible = false;'
+            end do
+            write(cmd_i,"(A)",IOSTAT=istat) 'for (i in cb_obj.active) {'
+            write(cmd_i,"(A)",IOSTAT=istat) &
+                &'    //console.log(cb_obj.active[i]);'
+            do iplt = 1,nplt
+                write(cmd_i,"(A)",IOSTAT=istat) '    if (cb_obj.active[i] == '&
+                    &//trim(i2str(iplt-1))//') {'
+                write(cmd_i,"(A)",IOSTAT=istat) '    l'//trim(i2str(iplt))//&
+                    &'.visible = true;'
+                write(cmd_i,"(A)",IOSTAT=istat) '    c'//trim(i2str(iplt))//&
+                    &'.visible = true;'
+                write(cmd_i,"(A)",IOSTAT=istat) '    }'
+            end do
+            write(cmd_i,"(A)",IOSTAT=istat) '}'
+            write(cmd_i,"(A)",IOSTAT=istat) '""")'
+            
+            ! create layout
+            write(cmd_i,"(A)",IOSTAT=istat) &
+                &'layout = row(p, widgetbox(checkbox))'
+            write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! finishing the command
             write(cmd_i,"(A)",IOSTAT=istat) ''
             if (plot_on_screen) then
-                write(cmd_i,"(A)",IOSTAT=istat) 'show(p)'
+                write(cmd_i,"(A)",IOSTAT=istat) 'show(layout)'
             else
-                write(cmd_i,"(A)",IOSTAT=istat) 'save(p)'
+                write(cmd_i,"(A)",IOSTAT=istat) 'save(layout)'
             end if
         end subroutine draw_ex_Bokeh
         

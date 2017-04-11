@@ -939,13 +939,13 @@ contains
             allocate(plot_titles(n_mod_loc))
             if (use_pol_flux_F) then                                            ! n is fixed and m = m/n n
                 do ld = 1,n_mod_loc
-                    plot_titles(ld) = trim(plot_title)//' for m,n = '//&
+                    plot_titles(ld) = 'resonance for m,n = '//&
                         &trim(i2str(nint(res_surf(ld,3)*prim_X)))//','//&
                         &trim(i2str(prim_X))
                 end do
             else                                                                ! m is fixed and n = n/m m
                 do ld = 1,n_mod_loc
-                    plot_titles(ld) = trim(plot_title)//' for m,n = '//&
+                    plot_titles(ld) = 'resonance for m,n = '//&
                         &trim(i2str(prim_X))//','//&
                         &trim(i2str(nint(res_surf(ld,3)*prim_X)))
                 end do
@@ -1008,11 +1008,12 @@ contains
             x_plot_loc = x_plot_loc*2*pi/max_flux_F
             
             ! print to file
-            call print_ex_2D([plot_title],file_name,y_plot_loc,x=x_plot_loc,&
-                &draw=.false.)
+            call print_ex_2D([plot_title,plot_titles],file_name,y_plot_loc,&
+                &x=x_plot_loc,draw=.false.)
             
             ! plot using external program
-            call draw_ex([plot_title],file_name,n_mod_loc+1,1,.false.)
+            call draw_ex([plot_title,plot_titles],file_name,n_mod_loc+1,1,&
+                &.false.)
             
             call lvl_ud(-1)
             
