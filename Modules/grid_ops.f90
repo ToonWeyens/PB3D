@@ -105,11 +105,10 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &norm_disc_prec_eq
-            use num_utilities, only: con2dis, dis2con, calc_int, round_with_tol
-            use grid_utilities, only: setup_deriv_data, setup_interp_data, &
-                &apply_disc
-            use VMEC, only: flux_p_V, flux_t_V
-            use HELENA_vars, only: flux_p_H, qs_H
+            use num_utilities, only: con2dis, dis2con, round_with_tol
+            use grid_utilities, only: setup_interp_data, apply_disc
+            use VMEC_vars, only: flux_p_V, flux_t_V
+            use HELENA_vars, only: flux_p_H, flux_t_H
             use X_vars, only: min_r_sol, max_r_sol
             use eq_vars, only: max_flux_E, max_flux_F
             use grid_vars, only: n_r_in
@@ -121,8 +120,6 @@ contains
             
             ! local variables
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
-            real(dp), allocatable :: Dflux_p_H(:)                               ! normal derivative of flux_p_H
-            type(disc_type) :: norm_deriv_data                                  ! data for normal derivatives
             real(dp) :: tot_min_r_in_F_con                                      ! tot_min_r_in in continuous F coords.
             real(dp) :: tot_max_r_in_F_con                                      ! tot_max_r_in in continuous F coords.
             real(dp) :: tot_min_r_in_E_con(1)                                   ! tot_min_r_in in continuous E coords.
@@ -143,38 +140,28 @@ contains
                 case (1)                                                        ! VMEC
                     ! set up F flux
                     if (use_pol_flux_F) then
-                        flux_F = flux_p_V
+                        flux_F = flux_p_V(:,0)
                     else
-                        flux_F = - flux_t_V                                     ! conversion VMEC LH -> RH coord. system
+                        flux_F = - flux_t_V(:,0)                                ! conversion VMEC LH -> RH coord. system
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_F = flux_p_V
+                        flux_F = flux_p_V(:,0)
                     else
-                        flux_E = flux_t_V
+                        flux_E = flux_t_V(:,0)
                     end if
                 case (2)                                                        ! HELENA
-                    ! calculate normal derivative of flux_p_H
-                    allocate(Dflux_p_H(n_r_in))
-                    ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data,&
-                        &1,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = apply_disc(flux_p_H,norm_deriv_data,Dflux_p_H)
-                    CHCKERR('')
-                    call norm_deriv_data%dealloc()
                     ! set up F flux
                     if (use_pol_flux_F) then
-                        flux_F = flux_p_H
+                        flux_F = flux_p_H(:,0)
                     else
-                        ierr = calc_int(qs_H*Dflux_p_H,flux_p_H/(2*pi),flux_F)
-                        CHCKERR('')
+                        flux_F = flux_t_H(:,0)
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_E = flux_p_H
+                        flux_E = flux_p_H(:,0)
                     else
-                        ierr = calc_int(qs_H*Dflux_p_H,flux_p_H/(2*pi),flux_E)
-                        CHCKERR('')
+                        flux_E = flux_t_H(:,0)
                     end if
             end select
             
@@ -221,9 +208,6 @@ contains
             ! 6. discrete E index, rounded
             in_limits(1) = floor(tot_min_r_in_E_dis)
             in_limits(2) = ceiling(tot_max_r_in_E_dis)
-            
-            ! clean up
-            call norm_interp_data%dealloc()
         end function calc_norm_range_PB3D_in
         
         ! The normal range is calculated  by dividing the full equilibrium range
@@ -923,7 +907,7 @@ contains
             &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot
         use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
-        use VMEC, only: calc_trigon_factors
+        use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'magn_grid_plot'
         

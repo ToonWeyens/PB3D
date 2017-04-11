@@ -846,7 +846,7 @@ contains
     ! These variables will be passed on through HDF5 data files.
     integer function read_input_eq() result(ierr)
         use num_vars, only: eq_style, use_pol_flux_E, eq_i
-        use VMEC, only: read_VMEC
+        use VMEC_ops, only: read_VMEC
         use HELENA_ops, only: read_HEL
         use grid_vars, only: n_r_in
         
@@ -878,20 +878,30 @@ contains
     !                use_normalization, norm_disc_prec_eq, n_r_in, n_r_eq,
     !                n_r_sol, debug_version
     !   - misc_in_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
-    !   - flux_q_H:  flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, pres_V, rot_t_V
+    !   - flux_t_V
+    !   - flux_p_V
+    !   - pres_V
+    !   - rot_t_V
+    !   - q_saf_V
     !   - mn_V
-    !   - RZL_V:     R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s
-    !   - B_V_sub:   B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+    !   - R_V_c
+    !   - R_V_s
+    !   - Z_V_c
+    !   - Z_V_s
+    !   - L_V_c
+    !   - L_V_s
+    !   - B_V_sub:   B_V_sub_c, B_V_sub_s
+    !   - B_V: B_V_c, B_V_s
+    !   - jac_V: jac_V_c, jac_V_s
     !   - misc_in_H: ias, nchi
     !   - RZ_H:      R_H, Z_H
     !   - chi_H
-    !   - qs_H
+    !   - q_saf_H
+    !   - rot_t_H
     !   - RBphi_H
     !   - pres_H
     !   - flux_p_H
     !   - flux_t_H
-    !   - Dflux_p_H
-    !   - Dflux_t_H
     !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
     !                norm_style, U_style, X_style, matrix_SLEPC_style, K_style
     !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
@@ -899,7 +909,7 @@ contains
     integer function print_output_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
-            &norm_disc_prec_X, norm_style, U_style, X_style, tol_norm, &
+            &norm_disc_prec_X, norm_style, U_style, X_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
@@ -912,14 +922,15 @@ contains
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
-        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, Dflux_p_H, &
-            &Dflux_t_H, R_H, Z_H, nchi, ias, qs_H, pres_H, RBphi_H
-        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
-            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
-            &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
+        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
+            &q_saf_H, rot_t_H, pres_H, RBphi_H
+        use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
+            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, &
+            &rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, &
+            &jac_V_s
 #endif
         
         character(*), parameter :: rout_name = 'print_output_in'
@@ -932,6 +943,7 @@ contains
         type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
         integer :: id                                                           ! counter
         integer :: in_limits(2)                                                 ! min. and max. index of input variable grid of this process
+        integer :: loc_size                                                     ! local size
         
         ! initialize ierr
         ierr = 0
@@ -947,8 +959,7 @@ contains
         call writo('Only the normal range '//trim(i2str(in_limits(1)))//'..'//&
             &trim(i2str(in_limits(2)))//' is written')
         call writo('(relevant to solution range '//&
-            &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//&
-            &' with tolerance '//trim(r2strt(tol_norm))//')')
+            &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//')')
         
         ! set up 1D equivalents of input variables
         allocate(in_1D(max_dim_var_1D))
@@ -995,77 +1006,74 @@ contains
                 if (is_asym_V) in_1D_loc%p(1) = 1._dp
                 if (is_freeb_V) in_1D_loc%p(2) = 1._dp
                 
+                loc_size = n_r_eq*size(flux_t_V,2)
+                
                 ! flux_t_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'flux_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(flux_t_V,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_t_V(in_limits(1):in_limits(2))
-                
-                ! Dflux_t_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_t_V(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(flux_t_V(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! flux_p_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'flux_p_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(flux_p_V,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_p_V(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(flux_p_V(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
-                ! Dflux_p_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_p_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_p_V(in_limits(1):in_limits(2))
+                loc_size = n_r_eq*size(pres_V,2)
                 
                 ! pres_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'pres_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(pres_V,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = pres_V(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(pres_V(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! rot_t_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'rot_t_V'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(rot_t_V,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = rot_t_V(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(rot_t_V(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
+                
+                ! q_saf_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'q_saf_V'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(q_saf_V,2)-1]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(q_saf_V(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! mn_V
                 in_1D_loc => in_1D(id); id = id+1
@@ -1082,20 +1090,20 @@ contains
                 ! RZL_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'RZL_V'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,6]
+                allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
+                allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
+                in_1D_loc%loc_i_min = [1,1,0,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,size(R_V_c,3)-1,6]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(6*mnmax_V*n_r_eq))
-                in_1D_loc%p = reshape([R_V_c(:,in_limits(1):in_limits(2),0),&
-                    &R_V_s(:,in_limits(1):in_limits(2),0),&
-                    &Z_V_c(:,in_limits(1):in_limits(2),0),&
-                    &Z_V_s(:,in_limits(1):in_limits(2),0),&
-                    &L_V_c(:,in_limits(1):in_limits(2),0),&
-                    &L_V_s(:,in_limits(1):in_limits(2),0)],&
-                    &[6*mnmax_V*n_r_eq]) 
+                allocate(in_1D_loc%p(6*mnmax_V*n_r_eq*size(R_V_c,3)))
+                in_1D_loc%p = reshape([R_V_c(:,in_limits(1):in_limits(2),:),&
+                    &R_V_s(:,in_limits(1):in_limits(2),:),&
+                    &Z_V_c(:,in_limits(1):in_limits(2),:),&
+                    &Z_V_s(:,in_limits(1):in_limits(2),:),&
+                    &L_V_c(:,in_limits(1):in_limits(2),:),&
+                    &L_V_s(:,in_limits(1):in_limits(2),:)],&
+                    &[6*mnmax_V*n_r_eq*size(R_V_c,3)]) 
                 
 #if ldebug
                 ! B_V_sub
@@ -1179,77 +1187,72 @@ contains
                 allocate(in_1D_loc%p(nchi))
                 in_1D_loc%p = chi_H
                 
+                loc_size = n_r_eq*size(flux_p_H,2)
+                
                 ! flux_p_H
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'flux_p_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(flux_p_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_p_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(flux_p_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! flux_t_H
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'flux_t_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(flux_t_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = flux_t_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(flux_t_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
-                ! Dflux_p_H
+                ! q_saf_H
                 in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_p_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%var_name = 'q_saf_H'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(q_saf_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_p_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(q_saf_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
-                ! Dflux_t_H
+                ! rot_t_H
                 in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'Dflux_t_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                in_1D_loc%var_name = 'rot_t_H'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(rot_t_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = Dflux_t_H(in_limits(1):in_limits(2))
-                
-                ! qs_H
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'qs_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = qs_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(rot_t_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! pres_H
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'pres_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(pres_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = pres_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(pres_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! RBphi_H
                 in_1D_loc => in_1D(id); id = id+1

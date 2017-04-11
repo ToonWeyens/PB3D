@@ -24,11 +24,10 @@ contains
     ! Reads the HELENA equilibrium data
     ! (from HELENA routine IODSK)
     ! Note: The variales in the HELENA mapping file are globalized in two ways:
-    !   -  X and  Y  are  normalized w.r.t.  geometric  axis  R_geo, and  vacuum
-    !   toroidal field at  the geometric axis B_geo,V (though the  latter one is
-    !   unused).
-    !       * R[m] = R_geo[m] + a[m] X[],
-    !       * Z[m] = a[m] Y[].
+    !   -  X and  Y  are  normalized w.r.t.  vacuum  geometric  axis R_vac  and
+    !   toroidal field at the geometric axis B_vac.
+    !       * R[m] = R_vac[m] (1 + eps X[]),
+    !       * Z[m] = R_vac[m] eps Y[].
     !   - covariant toroidal field F_H,  pres_H and poloidal flux are normalized
     !   w.r.t magnetic axis R_m and total toroidal field at magnetic axis B_m.
     !       * RBphi[Tm]     = F_H[] R_m[m] B_m[T],
@@ -39,22 +38,37 @@ contains
     ! normalization to  make comparison with  MISHKA simple. This is  done using
     ! the factors
     !   - radius[] = a[m] / R_m[m],
-    !   - eps[] = a[m] / R_geo[m],
+    !   - eps[] = a[m] / R_vac[m],
     ! so that the expressions become:
     !   - R[m]          = radius[] (1/eps[] + X[])            R_m[m],
     !   - Z[m]          = radius[] Y[]                        R_m[m],
     !   - RBphi[Tm]     = F_H[]                     B_m[T]    R_m[m],
     !   - pres[N/m^2]   = pres_H[]                  B_m[T]^2  mu_0[N/A^2]^-1
-    !   - flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]    R_m[T]^2,
-    ! where in  MISHKA usually B_m =  1 T and  R_m = 1 m,  as well as rho_m  = 1
-    ! kg/m^3, to complete the normalization. If this is not the case, the
-    ! Alfven time has to be adjusted.
+    !   - flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]    R_m[T]^2.
+    ! Finally, in HELENA, the total current I, the poloidal beta and the density
+    ! at the geometric axis can be prescribed through
+    !   - XIAB = mu_0 I / (a_vac B_vac),
+    !   - BETAP = 8 pi S <p> / (I^2 mu_0),
+    !   - ZN0
+    ! where a_vac  = eps  R_vac and B_vac  are vacuum quantities,  S is  the 2-D
+    ! cross-sectional area  and <p> is  the 2-D averaged pressure. 
+    ! To translate this to the MISHKA normalization factors as
+    !   - R_m = (eps/radius) R_vac 
+    !   - B_m = B_vac / B0
+    ! where
+    !   - radius is  in the mapping file  (12), as well as in  the HELENA output
+    !   (20)
+    !   - eps is in  the mapping file (12), as well as in  the HELENA input (10)
+    !   and output (20)
+    !   - B0 is in the HELENA output (20)
+    ! Furthermore, the density on axis can be specified as ZN0 from HELENA input
+    ! (10). The other variables should probably not be touched for consistency.
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, norm_disc_prec_eq
+        use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv
         use grid_utilities, only: setup_deriv_data, apply_disc
         use num_utilities, only: calc_int
-        use HELENA_vars, only: pres_H, qs_H, flux_p_H, flux_t_H, Dflux_p_H, &
-            &Dflux_t_H, nchi, chi_H, ias, RBphi_H, R_H, Z_H
+        use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
+            &nchi, chi_H, ias, RBphi_H, R_H, Z_H
         
         character(*), parameter :: rout_name = 'read_HEL'
         
@@ -67,16 +81,15 @@ contains
         integer :: id, kd                                                       ! counters
         integer :: nchi_loc                                                     ! local nchi
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
-        real(dp), allocatable :: dqs_H(:)                                       ! derivative of q
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
         real(dp) :: Dpres_H_0, Dpres_H_e                                        ! normal derivative of pressure on axis and surface
         real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
-        real(dp) :: radius, raxis                                               ! minor radius, major radius
+        real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t. magnetic axis
         real(dp) :: eps                                                         ! inverse aspect ratio
         real(dp) :: cpsurf                                                      ! poloidal flux on surface
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
+        type(disc_type), allocatable :: norm_deriv_data(:)                      ! data for normal derivatives
         
         ! initialize ierr
         ierr = 0
@@ -101,15 +114,12 @@ contains
         read(eq_i,*,IOSTAT=ierr) (s_H(kd),kd=1,n_r_in)                          ! it is squared below, after reading cpsurf
         CHCKERR(err_msg)
         
-        allocate(qs_H(n_r_in))                                                  ! safety factor
-        read(eq_i,*,IOSTAT=ierr) (qs_H(kd),kd=1,n_r_in)
+        allocate(q_saf_H(n_r_in,0:max_deriv+1))                                 ! safety factor
+        read(eq_i,*,IOSTAT=ierr) (q_saf_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
-        
-        allocate(dqs_H(n_r_in))                                                 ! derivative of safety factor
-        read(eq_i,*,IOSTAT=ierr) dqs_H(1),dqs_H(n_r_in)                         ! first point, last point
+        read(eq_i,*,IOSTAT=ierr) q_saf_H(1,1),q_saf_H(n_r_in,1)                 ! first point, last point
         CHCKERR(err_msg)
-        
-        read(eq_i,*,IOSTAT=ierr) (dqs_H(kd),kd=2,n_r_in)                        ! second to last point (again)
+        read(eq_i,*,IOSTAT=ierr) (q_saf_H(kd,1),kd=2,n_r_in)                    ! second to last point (again)
         CHCKERR(err_msg)
         
         allocate(curj(n_r_in))                                                  ! toroidal current
@@ -152,15 +162,15 @@ contains
         read(eq_i,*,IOSTAT=ierr) &
             &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
             &nchi_loc+1,n_r_in*nchi_loc)                                        ! (gem33)
+        
+        read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
+        CHCKERR(err_msg)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = raxis**2                                                  ! first normal point is degenerate, major radius
         if (ias.ne.0) h_H_33(nchi,:) = h_H_33(1,:)
         
-        read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
-        CHCKERR(err_msg)
-        
-        allocate(pres_H(n_r_in))                                                ! pressure profile
-        read(eq_i,*,IOSTAT=ierr) (pres_H(kd),kd=1,n_r_in)
+        allocate(pres_H(n_r_in,0:max_deriv+1))                                  ! pressure profile
+        read(eq_i,*,IOSTAT=ierr) (pres_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
         read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
         CHCKERR(err_msg)
@@ -196,8 +206,8 @@ contains
         CHCKERR(err_msg)
         
         ! transform to MISHKA normalization
-        allocate(flux_p_H(n_r_in))
-        flux_p_H = 2*pi*s_H**2 * cpsurf                                         ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
+        allocate(flux_p_H(n_r_in,0:max_deriv+1))
+        flux_p_H(:,0) = 2*pi*s_H**2 * cpsurf                                    ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
         radius = radius * raxis                                                 ! global length normalization with R_m
         R_H = radius*(1._dp/eps + R_H)                                          ! local normalization with a
         Z_H = radius*Z_H                                                        ! local normalization with a
@@ -206,20 +216,41 @@ contains
         if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
         
-        ! calculate  toroidal flux (needs to  be calculated here, on  full input
-        ! grid)
-        allocate(flux_t_H(n_r_in))
-        allocate(Dflux_p_H(n_r_in))
-        allocate(Dflux_t_H(n_r_in))
-        ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data,&
-            &1,norm_disc_prec_eq)
+        ! calculate data for normal derivatives with flux_p_H/2pi
+        allocate(norm_deriv_data(max_deriv+1))
+        do kd = 1,max_deriv+1
+            ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),norm_deriv_data(kd),&
+                &kd,norm_disc_prec_eq)
+            CHCKERR('')
+        end do
+        
+        ! calculate derivatives of fluxes
+        allocate(flux_t_H(n_r_in,0:max_deriv+1))
+        do kd = 1,max_deriv+1
+            ierr = apply_disc(flux_p_H(:,0),norm_deriv_data(kd),&
+                &flux_p_H(:,kd))
+            CHCKERR('')
+        end do
+        flux_t_H(:,1) = q_saf_H(:,0)*flux_p_H(:,1)
+        ierr = calc_int(flux_t_H(:,1),flux_p_H(:,0)/(2*pi),flux_t_H(:,0))
         CHCKERR('')
-        ierr = apply_disc(flux_p_H,norm_deriv_data,Dflux_p_H)
-        CHCKERR('')
-        Dflux_t_H = qs_H*Dflux_p_H
-        ierr = calc_int(Dflux_t_H,flux_p_H/(2*pi),flux_t_H)
-        CHCKERR('')
-        call norm_deriv_data%dealloc()
+        do kd = 2,max_deriv+1
+            ierr = apply_disc(flux_t_H(:,1),norm_deriv_data(kd-1),&
+                &flux_t_H(:,kd))
+            CHCKERR('')
+        end do
+        
+        ! calculate derivatives of other variables
+        allocate(rot_t_H(n_r_in,0:max_deriv+1))                                 ! rotational transform
+        rot_t_H(:,0) = 1._dp/q_saf_H(:,0)
+        do kd = 1,max_deriv+1
+            ierr = apply_disc(pres_H(:,0),norm_deriv_data(kd),pres_H(:,kd))
+            CHCKERR('')
+            ierr = apply_disc(rot_t_H(:,0),norm_deriv_data(kd),rot_t_H(:,kd))
+            CHCKERR('')
+            ierr = apply_disc(q_saf_H(:,0),norm_deriv_data(kd),q_saf_H(:,kd))
+            CHCKERR('')
+        end do
         
         !!! To plot the cross-section
         !!call print_ex_2D(['cross_section'],'cross_section',Z_H,x=R_H,&
@@ -231,6 +262,12 @@ contains
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
+        
+        ! clean up
+        do id = 1,size(norm_deriv_data)
+            call norm_deriv_data(id)%dealloc()
+        end do
+        deallocate(norm_deriv_data)
         
         ! user output
         call writo('HELENA output given on '//trim(i2str(nchi))//&
@@ -1149,7 +1186,7 @@ contains
             allocate(jac(nchi,n_r_eq))
             
             ! calculate derivatives
-            ierr = setup_deriv_data(flux_p_H/(2*pi),norm_deriv_data,1,&
+            ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)
             CHCKERR('')
             ierr = apply_disc(R_H,norm_deriv_data,Rpsi,2)
@@ -1169,7 +1206,7 @@ contains
             ! calculate Jacobian differently
             allocate(jac_alt(nchi,n_r_eq))
             do kd = 1,n_r_eq
-                jac_alt(:,kd) = qs_H(kd)/(h_H_33(:,kd)*RBphi_H(kd))
+                jac_alt(:,kd) = q_saf_H(kd,0)/(h_H_33(:,kd)*RBphi_H(kd))
             end do
             
             ! output jacobian
@@ -1242,16 +1279,16 @@ contains
             allocate(tempvar(nchi,1,n_r_eq,4))
             ierr = apply_disc(RBphi_H,norm_deriv_data,tempvar(1,1,:,1))
             CHCKERR('')
-            ierr = apply_disc(pres_H,norm_deriv_data,tempvar(1,1,:,2))
+            ierr = apply_disc(pres_H(:,0),norm_deriv_data,tempvar(1,1,:,2))
             CHCKERR('')
             do id = 1,nchi
                 tempvar(id,1,:,1:2) = tempvar(1,1,:,1:2)
-                ierr = apply_disc(qs_H/RBphi_H*h_H_11(id,:),norm_deriv_data,&
-                    &tempvar(id,1,:,3))
+                ierr = apply_disc(q_saf_H(:,0)/RBphi_H*h_H_11(id,:),&
+                    &norm_deriv_data,tempvar(id,1,:,3))
                 CHCKERR('')
             end do
             do kd = 1,n_r_eq
-                ierr = apply_disc(qs_H(kd)/RBphi_H(kd)*h_H_12(:,kd),&
+                ierr = apply_disc(q_saf_H(kd,0)/RBphi_H(kd)*h_H_12(:,kd),&
                     &ang_deriv_data,tempvar(:,1,kd,4))
                 CHCKERR('')
             end do
@@ -1259,8 +1296,8 @@ contains
             ! calculate pressure  balance in tempvar(1)
             !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
             do kd = 1,n_r_eq
-                tempvar(:,1,kd,1) = -RBphi_H(kd)*h_H_33(:,kd)/qs_H(kd) * &
-                    &(tempvar(:,1,kd,1)*qs_H(kd) + tempvar(:,1,kd,3) + &
+                tempvar(:,1,kd,1) = -RBphi_H(kd)*h_H_33(:,kd)/q_saf_H(kd,0) * &
+                    &(tempvar(:,1,kd,1)*q_saf_H(kd,0) + tempvar(:,1,kd,3) + &
                     &tempvar(:,1,kd,4))
             end do
             

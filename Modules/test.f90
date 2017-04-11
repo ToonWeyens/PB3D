@@ -105,6 +105,8 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call lvl_ud(1)
+        
         ! user input
         call writo('which kind of interpolation?')
         call lvl_ud(1)
@@ -234,6 +236,8 @@ contains
         ! synchronize MPI
         ierr = wait_MPI()
         CHCKERR('')
+        
+        call lvl_ud(-1)
         
         call lvl_ud(-1)
     contains
@@ -841,7 +845,7 @@ contains
             &m_X
         use sol_vars, only: sol_type
         use X_ops, only: setup_nm_X
-        use VMEC, only: calc_trigon_factors
+        use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'test_read_HDF5_subset'
         

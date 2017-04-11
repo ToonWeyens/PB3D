@@ -1415,7 +1415,7 @@ contains
                 
                 ! shift-invert is  the best method for  generalized EV problems,
                 ! because a matrix needs to be inverted anyway
-                call writo('Use shift-invert')
+                call writo('use shift-invert')
                 call STSetType(solver_st,STSINVERT,ierr)
                 err_msg = 'Failed to set type to STSINVERT'
                 CHCKERR(err_msg)
@@ -1453,7 +1453,7 @@ contains
         end select
         
         ! set the guess as target
-        call writo('Set the target eigenvalue to '//trim(r2str(EV_guess)))
+        call writo('set the target eigenvalue to '//trim(r2str(EV_guess)))
         call EPSSetTarget(solver,EV_guess*one,ierr)
         err_msg = 'Failed to set the target of solver'
         CHCKERR(err_msg)

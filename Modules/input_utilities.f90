@@ -254,7 +254,7 @@ contains
     ! Cleans up input from equilibrium codes.
     subroutine dealloc_in()
         use num_vars, only: eq_style
-        use VMEC, only: dealloc_VMEC
+        use VMEC_vars, only: dealloc_VMEC
         use HELENA_vars, only: dealloc_HEL
         
         ! deallocate depending on equilibrium style

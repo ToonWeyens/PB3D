@@ -458,7 +458,7 @@ contains
         use X_ops, only: calc_X, setup_nm_X
         use sol_ops, only: plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
-        use VMEC, onLy: calc_trigon_factors
+        use VMEC_utilities, onLy: calc_trigon_factors
         use num_utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: ltest

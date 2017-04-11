@@ -831,7 +831,7 @@ contains
         use grid_utilities, only: calc_XYZ_grid, calc_eqd_grid, coord_F2E, &
             &trim_grid
         use X_vars, only: prim_X
-        use VMEC, only: calc_trigon_factors
+        use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'resonance_plot'
         

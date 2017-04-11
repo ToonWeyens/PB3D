@@ -47,14 +47,15 @@ contains
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use sol_vars, only: alpha
-        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, Dflux_p_H, &
-            &Dflux_t_H, R_H, Z_H, nchi, ias, qs_H, pres_H, RBphi_H
-        use VMEC, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, gam_V, &
-            &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, rot_t_V, &
-            &pres_V, flux_t_V, Dflux_t_V, flux_p_V, Dflux_p_V, nfp_V
+        use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
+            &q_saf_H, rot_t_H, pres_H, RBphi_H
+        use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
+            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mn_V, rot_t_V, &
+            &q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, jac_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, &
+            &jac_V_s
 #endif
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
@@ -170,52 +171,42 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                     &'flux_t_V')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(flux_t_V(n_r_eq))
-                flux_t_V = dum_1D
-                call dealloc_var_1D(var_1D)
-                
-                ! Dflux_t_V
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                    &'Dflux_t_V')
-                CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(Dflux_t_V(n_r_eq))
-                Dflux_t_V = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(flux_t_V(n_r_eq,0:max_deriv+2))
+                flux_t_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! flux_p_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                     &'flux_p_V')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(flux_p_V(n_r_eq))
-                flux_p_V = dum_1D
-                call dealloc_var_1D(var_1D)
-                
-                ! Dflux_p_V
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                    &'Dflux_p_V')
-                CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(Dflux_p_V(n_r_eq))
-                Dflux_p_V = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(flux_p_V(n_r_eq,0:max_deriv+2))
+                flux_p_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! pres_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'pres_V')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(pres_V(n_r_eq))
-                pres_V = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(pres_V(n_r_eq,0:max_deriv+1))
+                pres_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! rot_t_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'rot_t_V')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(rot_t_V(n_r_eq))
-                rot_t_V = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(rot_t_V(n_r_eq,0:max_deriv+1))
+                rot_t_V = dum_2D
+                call dealloc_var_1D(var_1D)
+                
+                ! q_saf_V
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'q_saf_V')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(q_saf_V(n_r_eq,0:max_deriv+1))
+                q_saf_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! mn_V
@@ -229,19 +220,19 @@ contains
                 ! RZL_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'RZL_V')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_3D)
+                call conv_1D2ND(var_1D,dum_4D)
                 allocate(R_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
                 allocate(R_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
                 allocate(Z_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
                 allocate(Z_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
                 allocate(L_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
                 allocate(L_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-                R_V_c(:,:,0) = dum_3D(:,:,1)
-                R_V_s(:,:,0) = dum_3D(:,:,2)
-                Z_V_c(:,:,0) = dum_3D(:,:,3)
-                Z_V_s(:,:,0) = dum_3D(:,:,4)
-                L_V_c(:,:,0) = dum_3D(:,:,5)
-                L_V_s(:,:,0) = dum_3D(:,:,6)
+                R_V_c = dum_4D(:,:,:,1)
+                R_V_s = dum_4D(:,:,:,2)
+                Z_V_c = dum_4D(:,:,:,3)
+                Z_V_s = dum_4D(:,:,:,4)
+                L_V_c = dum_4D(:,:,:,5)
+                L_V_s = dum_4D(:,:,:,6)
                 call dealloc_var_1D(var_1D)
                 
 #if ldebug
@@ -307,52 +298,42 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                     &'flux_p_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(flux_p_H(n_r_eq))
-                flux_p_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(flux_p_H(n_r_eq,0:max_deriv+1))
+                flux_p_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! flux_t_H
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
                     &'flux_t_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(flux_t_H(n_r_eq))
-                flux_t_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(flux_t_H(n_r_eq,0:max_deriv+1))
+                flux_t_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
-                ! Dflux_p_H
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                    &'Dflux_p_H')
+                ! q_saf_H
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'q_saf_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(Dflux_p_H(n_r_eq))
-                Dflux_p_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(q_saf_H(n_r_eq,0:max_deriv+1))
+                q_saf_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
-                ! Dflux_t_H
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                    &'Dflux_t_H')
+                ! rot_t_H
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'rot_t_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(Dflux_t_H(n_r_eq))
-                Dflux_t_H = dum_1D
-                call dealloc_var_1D(var_1D)
-                
-                ! qs_H
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'qs_H')
-                CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(qs_H(n_r_eq))
-                qs_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(rot_t_H(n_r_eq,0:max_deriv+1))
+                rot_t_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! pres_H
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'pres_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(pres_H(n_r_eq))
-                pres_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(pres_H(n_r_eq,0:max_deriv+1))
+                pres_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! RBphi_H

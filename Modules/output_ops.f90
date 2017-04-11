@@ -1818,6 +1818,8 @@ contains
             call lvl_ud(1)
             call writo(command)
             call lvl_ud(-1)
+            call writo('Run with "--do_execute_command_line" to execute &
+                &command line instead')
         end if
     end subroutine
 end module output_ops

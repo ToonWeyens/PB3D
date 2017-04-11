@@ -14,17 +14,16 @@ module HELENA_vars
     implicit none
     private
     public dealloc_HEL, &
-        &pres_H, qs_H, flux_p_H, flux_t_H, Dflux_p_H, Dflux_t_H, nchi, chi_H, &
-        &ias, RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33
+        &pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, nchi, chi_H, ias, &
+        &RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33
     
     ! global variables
     real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
-    real(dp), allocatable :: flux_p_H(:)                                        ! poloidal flux
-    real(dp), allocatable :: flux_t_H(:)                                        ! toroidal flux
-    real(dp), allocatable :: Dflux_p_H(:)                                       ! normal derivative of poloidal flux
-    real(dp), allocatable :: Dflux_t_H(:)                                       ! normal derivative of toroidal flux
-    real(dp), allocatable :: pres_H(:)                                          ! pressure profile
-    real(dp), allocatable :: qs_H(:)                                            ! safety factor
+    real(dp), allocatable :: flux_p_H(:,:)                                      ! poloidal flux
+    real(dp), allocatable :: flux_t_H(:,:)                                      ! toroidal flux
+    real(dp), allocatable :: pres_H(:,:)                                        ! pressure profile
+    real(dp), allocatable :: q_saf_H(:,:)                                       ! safety factor
+    real(dp), allocatable :: rot_t_H(:,:)                                       ! rotational transform
     real(dp), allocatable :: RBphi_H(:)                                         ! R B_phi (= F)
     real(dp), allocatable :: h_H_11(:,:)                                        ! adapted upper metric factor 11 (gem11)
     real(dp), allocatable :: h_H_12(:,:)                                        ! adapted upper metric factor 12 (gem12)
@@ -51,10 +50,9 @@ contains
         deallocate(chi_H)
         deallocate(flux_p_H)
         deallocate(flux_t_H)
-        deallocate(Dflux_p_H)
-        deallocate(Dflux_t_H)
         deallocate(pres_H)
-        deallocate(qs_H)
+        deallocate(q_saf_H)
+        deallocate(rot_t_H)
         deallocate(RBphi_H)
         deallocate(R_H)
         deallocate(Z_H)

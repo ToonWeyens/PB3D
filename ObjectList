@@ -33,7 +33,9 @@ str_utilities.o \
 num_ops.o \
 num_utilities.o \
 MPI_utilities.o \
-VMEC.o \
+VMEC_vars.o \
+VMEC_utilities.o \
+VMEC_ops.o \
 X_ops.o \
 X_vars.o \
 X_utilities.o \

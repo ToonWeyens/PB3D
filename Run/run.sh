@@ -278,8 +278,8 @@ display_usage() {
             echo -e ""
             echo -e "               31 qps"
             echo -e ""
-            echo -e "               41 Hmode_ped4.0"
-            echo -e "               42 Hmode_ped4.0_HELENA"
+            echo -e "               41 Hmode_ped3.0"
+            echo -e "               42 Hmode_ped3.0_HELENA"
             echo -e "               43 Hmode_ped2.0"
             echo -e "               44 Hmode_ped2.0_HELENA"
             echo -e "               45 Hmode_ped1.5"
@@ -507,10 +507,10 @@ set_input() {
                     eq_name=wout_qps.nc
                 ;;
                 41)
-                    eq_name=wout_Hmode_ped4.0.nc
+                    eq_name=wout_Hmode_ped3.0.nc
                 ;;
                 42)
-                    eq_name=Hmode_ped4.0
+                    eq_name=Hmode_ped3.0
                 ;;
                 43)
                     eq_name=wout_Hmode_ped2.0.nc

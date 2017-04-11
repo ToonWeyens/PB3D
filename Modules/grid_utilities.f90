@@ -17,12 +17,13 @@ module grid_utilities
         &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
         &nufft, find_compr_range
 #if ldebug
-    public debug_calc_int_vol
+    public debug_calc_int_vol, debug_calc_vec_comp
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
+    logical :: debug_calc_vec_comp = .false.                                    ! plot debug information for calc_vec_comp
 #endif
     
     interface coord_F2E
@@ -54,7 +55,8 @@ contains
     integer function coord_F2E_rtz(grid_eq,r_F,theta_F,zeta_F,r_E,&
         &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: tol_zero, eq_style
-        use VMEC, only: fourier2real, L_V_c, L_V_s, is_asym_V
+        use VMEC_utilities, only: fourier2real
+        use VMEC_vars, only: L_V_c, L_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
@@ -120,7 +122,7 @@ contains
         integer function coord_F2E_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use num_ops, only: calc_zero_HH
-            use VMEC, only: mnmax_V
+            use VMEC_vars, only: mnmax_V
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
@@ -350,7 +352,8 @@ contains
     contains
         integer function coord_E2F_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use VMEC, only: fourier2real, mnmax_V, L_V_c, L_V_s, is_asym_V
+            use VMEC_utilities, only: fourier2real
+            use VMEC_vars, only: mnmax_V, L_V_c, L_V_s, is_asym_V
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -551,8 +554,9 @@ contains
         integer function calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L,R) &
             &result(ierr)
             use num_vars, only: norm_disc_prec_eq
-            use VMEC, only: fourier2real, &
-                &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, is_asym_V
+            use VMEC_utilities, only: fourier2real
+            use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
+                &mnmax_V, is_asym_V
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -2174,7 +2178,7 @@ contains
             &use_normalization, rank, tol_zero
         use num_utilities, only: c, calc_int
         use eq_vars, only: R_0, B_0
-        use VMEC, only: calc_trigon_factors
+        use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'calc_vec_comp'
@@ -2376,136 +2380,6 @@ contains
         
         ! OPTIONAL 1b: plot and calculate fluxes
         if (present(v_flux_tor) .or. present(v_flux_pol)) then
-            if (use_pol_flux_F) then
-                ! interpolate q
-                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,jq)
-                CHCKERR('')
-                ! v^zeta = v^alpha + q v^theta
-                do kd = 1,grid_eq%loc_n_r
-                    v_com(:,:,kd,2,2) = jq(kd) * v_com(:,:,kd,3,2)
-                end do
-                v_com(:,:,:,2,2) = v_com(:,:,:,2,2) + v_com(:,:,:,1,2)
-                ! v^theta = v^theta
-                v_com(:,:,:,1,2) = v_com(:,:,:,3,2)
-            else
-                ! interpolate iota
-                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,jq)
-                CHCKERR('')
-                ! v^theta = -v^alpha + iota v^zeta
-                do kd = 1,grid_eq%loc_n_r
-                    v_com(:,:,kd,1,2) = jq(kd) * v_com(:,:,kd,3,2)
-                end do
-                v_com(:,:,:,1,2) = v_com(:,:,:,1,2) - v_com(:,:,:,1,2)
-                ! v^zeta = v^zeta
-                v_com(:,:,:,2,2) = v_com(:,:,:,3,2)
-            end if
-            
-            if (do_plot) then
-                ! set up plot variables
-                var_names(1,2) = trim(base_name)//'_pol'
-                var_names(2,2) = trim(base_name)//'_tor'
-                file_names(1) = trim(base_name)//'_flux'
-                description(1) = 'Poloidal and toroidal flux'
-                call plot_HDF5(var_names(1:2,2),file_names(1),&
-                    &v_com(:,:,norm_id(1):norm_id(2),1:2,2),tot_dim=&
-                    &[plot_dim(1:3),2],loc_offset=[plot_offset(1:3),0],&
-                    &X=X(:,:,:,1:2),Y=Y(:,:,:,1:2),Z=Z(:,:,:,1:2),&
-                    &cont_plot=cont_plot,description=description(1))
-            end if
-            
-            ! multiply by Jacobian
-            v_com(:,:,:,1,2) = v_com(:,:,:,1,2)*eq_2%jac_FD(:,:,:,0,0,0)
-            v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*eq_2%jac_FD(:,:,:,0,0,0)
-            
-            ! initialize temporary variable
-            allocate(v_ser_temp_int(grid_trim%n(3)))
-            
-            ! integrate and get serial variable
-            if (present(v_flux_tor) .and. grid_trim%n(1).gt.1) then             ! integrate poloidally and normally
-                ! loop over all toroidal points
-                do jd = 1,grid_trim%n(2)
-                    ! for all normal points, integrate poloidally
-                    do kd = norm_id(1),norm_id(2)
-                        ierr = calc_int(v_com(:,jd,kd,2,2),&
-                            &grid%theta_F(:,jd,kd),v_com(:,jd,kd,2,1))          ! save in "covariant" variable
-                        CHCKERR('')
-                    end do
-                    
-                    ! gather on master
-                    ierr = get_ser_var(&
-                        &v_com(grid_trim%n(1),jd,norm_id(1):norm_id(2),2,1),&
-                        &v_ser_temp)
-                    CHCKERR('')
-                    
-                    ! integrate normally if master
-                    if (rank.eq.0) then
-                        ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
-                            &v_ser_temp_int)
-                        CHCKERR('')
-                        if (use_pol_flux_F) then
-                            v_flux_tor(:,jd) = v_flux_tor(:,jd) + v_ser_temp_int
-                        else
-                            v_flux_tor(:,jd+plot_offset(1)) = v_ser_temp_int
-                        end if
-                    end if
-                end do
-                
-                ! plot output
-                if (rank.eq.0 .and. do_plot .and. &
-                    &eq_job_nr.eq.size(eq_jobs_lims,2)) then
-                    call print_ex_2D([var_names(2,2)],&
-                        &trim(file_names(1))//'_tor_int',v_flux_tor,&
-                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
-                        &[grid_trim%n(3),1]),draw=.false.)
-                    call draw_ex([var_names(2,2)],trim(file_names(1))//&
-                        &'_tor_int',plot_dim(2),1,.false.)
-                end if
-            end if
-            if (present(v_flux_pol) .and. grid_trim%n(2).gt.1) then             ! integrate toroidally and normally
-                ! loop over all poloidal points
-                do id = 1,grid_trim%n(1)
-                    ! for all normal points, integrate toroidally
-                    do kd = norm_id(1),norm_id(2)
-                        ierr = calc_int(v_com(id,:,kd,1,2),&
-                            &grid%zeta_F(id,:,kd),v_com(id,:,kd,1,1))           ! save in "covariant" variable
-                        CHCKERR('')
-                    end do
-                    
-                    ! gather on master
-                    ierr = get_ser_var(&
-                        &v_com(id,grid_trim%n(2),norm_id(1):norm_id(2),1,1),&
-                        &v_ser_temp)
-                    CHCKERR('')
-                    
-                    ! integrate normally if master
-                    if (rank.eq.0) then
-                        ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
-                            &v_ser_temp_int)
-                        CHCKERR('')
-                        if (use_pol_flux_F) then
-                            v_flux_pol(:,id+plot_offset(1)) = v_ser_temp_int
-                        else
-                            v_flux_pol(:,id) = v_flux_pol(:,id) + v_ser_temp_int
-                        end if
-                    end if
-                end do
-                
-                ! plot output
-                if (rank.eq.0 .and. do_plot .and. &
-                    &eq_job_nr.eq.size(eq_jobs_lims,2)) then
-                    call print_ex_2D([var_names(1,2)],&
-                        &trim(file_names(1))//'_pol_int',v_flux_pol,&
-                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
-                        &[grid_trim%n(3),1]),draw=.false.)
-                    call draw_ex([var_names(1,2)],trim(file_names(1))//&
-                        &'_pol_int',plot_dim(1),1,.false.)
-                end if
-            end if
-            
-            ! clean up
-            deallocate(v_ser_temp)
-            if (rank.eq.0) deallocate(v_ser_temp_int)
-            
             ! tests
             if (maxval(grid%theta_F(grid%n(1),:,:)).lt.&
                 &minval(grid%theta_F(1,:,:))) then
@@ -2551,6 +2425,241 @@ contains
                     &fluxes')
                 call lvl_ud(-1)
             end if
+            
+            ! set up v^theta and v^zeta
+            if (use_pol_flux_F) then
+                ! interpolate q
+                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,jq)
+                CHCKERR('')
+#if ldebug
+                if (debug_calc_vec_comp) then
+                    ! v_zeta = v_alpha
+                    v_com(:,:,:,2,1) = v_com(:,:,:,1,1)
+                    ! v_theta = v_theta - q v_alpha
+                    do kd = 1,grid_eq%loc_n_r
+                        v_com(:,:,kd,1,1) = jq(kd) * v_com(:,:,kd,1,1)
+                    end do
+                    v_com(:,:,:,1,1) = - v_com(:,:,:,1,1) + v_com(:,:,:,3,1)
+                else
+#endif
+                    ! v^zeta = v^alpha + q v^theta
+                    do kd = 1,grid_eq%loc_n_r
+                        v_com(:,:,kd,2,2) = jq(kd) * v_com(:,:,kd,3,2)
+                    end do
+                    v_com(:,:,:,2,2) = v_com(:,:,:,2,2) + v_com(:,:,:,1,2)
+                    ! v^theta = v^theta
+                    v_com(:,:,:,1,2) = v_com(:,:,:,3,2)
+#if ldebug
+                end if
+#endif
+            else
+                ! interpolate iota
+                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,jq)
+                CHCKERR('')
+#if ldebug
+                if (debug_calc_vec_comp) then
+                    ! v_theta = - v_alpha
+                    v_com(:,:,:,1,1) = - v_com(:,:,:,1,1)
+                    ! v_zeta = v_zeta + iota v_alpha
+                    do kd = 1,grid_eq%loc_n_r
+                        v_com(:,:,kd,2,1) = jq(kd) * v_com(:,:,kd,1,1)
+                    end do
+                    v_com(:,:,:,2,1) = v_com(:,:,:,2,1) + v_com(:,:,:,1,1)
+                else
+#endif
+                    ! v^theta = -v^alpha + iota v^zeta
+                    do kd = 1,grid_eq%loc_n_r
+                        v_com(:,:,kd,1,2) = jq(kd) * v_com(:,:,kd,3,2)
+                    end do
+                    v_com(:,:,:,1,2) = v_com(:,:,:,1,2) - v_com(:,:,:,1,2)
+                    ! v^zeta = v^zeta
+                    v_com(:,:,:,2,2) = v_com(:,:,:,3,2)
+#if ldebug
+                end if
+#endif
+            end if
+            
+            ! set up plot variables
+            if (do_plot) then
+                var_names(1,2) = 'integrated poloidal flux of '//trim(base_name)
+                var_names(2,2) = 'integrated toroidal flux of '//trim(base_name)
+                file_names(1) = trim(base_name)//'_flux'
+                description(1) = 'Poloidal and toroidal flux'
+                call plot_HDF5(var_names(1:2,2),file_names(1),&
+                    &v_com(:,:,norm_id(1):norm_id(2),1:2,2),tot_dim=&
+                    &[plot_dim(1:3),2],loc_offset=[plot_offset(1:3),0],&
+                    &X=X(:,:,:,1:2),Y=Y(:,:,:,1:2),Z=Z(:,:,:,1:2),&
+                    &cont_plot=cont_plot,description=description(1))
+            end if
+            
+            ! initialize temporary variable
+            allocate(v_ser_temp_int(grid_trim%n(3)))
+            
+#if ldebug
+            if (debug_calc_vec_comp) then
+                ! user output
+                call writo('Instead of calculating fluxes, returning &
+                    &integrals in the angular variables.',alert=.true.)
+                call lvl_ud(1)
+                    call writo('Useful to check whether Maxwell holds.')
+                    call writo('i.e. whether loop integral of J returns &
+                        &B flux')
+                    call writo('Note that the J-variables refer to B and &
+                        &vice-versa')
+                    call writo('Don''t forget the vacuum permeability!')
+                call lvl_ud(-1)
+            else
+#endif
+                ! multiply by Jacobian
+                v_com(:,:,:,1,2) = v_com(:,:,:,1,2)*eq_2%jac_FD(:,:,:,0,0,0)
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*eq_2%jac_FD(:,:,:,0,0,0)
+            end if
+#if ldebug
+#endif
+            
+            ! toroidal flux
+            if (present(v_flux_tor) .and. grid_trim%n(1).gt.1) then             ! integrate poloidally and normally
+                ! loop over all toroidal points
+                do jd = 1,grid_trim%n(2)
+#if ldebug
+                    if (debug_calc_vec_comp) then
+                        ! for  all  normal   points,  integrate  poloidally  the
+                        ! covariant poloidal quantity
+                        do kd = norm_id(1),norm_id(2)
+                            ierr = calc_int(v_com(:,jd,kd,1,1),&
+                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,1,2))      ! save in contravariant variable
+                            CHCKERR('')
+                        end do
+                        
+                        ! gather on master
+                        ierr = get_ser_var(v_com(grid_trim%n(1),jd,&
+                            &norm_id(1):norm_id(2),1,2),v_ser_temp)
+                        CHCKERR('')
+                        
+                        ! update integrals if master
+                        if (rank.eq.0) then
+                            if (use_pol_flux_F) then
+                                v_flux_tor(:,jd) = v_flux_tor(:,jd) + v_ser_temp
+                            else
+                                v_flux_tor(:,jd+plot_offset(1)) = v_ser_temp
+                            end if
+                        end if
+                    else
+#endif
+                        ! for all normal points, integrate poloidally
+                        do kd = norm_id(1),norm_id(2)
+                            ierr = calc_int(v_com(:,jd,kd,2,2),&
+                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,2,1))      ! save in covariant variable
+                            CHCKERR('')
+                        end do
+                        
+                        ! gather on master
+                        ierr = get_ser_var(v_com(grid_trim%n(1),jd,&
+                            &norm_id(1):norm_id(2),2,1),v_ser_temp)
+                        CHCKERR('')
+                        
+                        ! integrate normally and update integrals if master
+                        if (rank.eq.0) then
+                            ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
+                                &v_ser_temp_int)
+                            CHCKERR('')
+                            if (use_pol_flux_F) then
+                                v_flux_tor(:,jd) = v_flux_tor(:,jd) + &
+                                    &v_ser_temp_int
+                            else
+                                v_flux_tor(:,jd+plot_offset(1)) = v_ser_temp_int
+                            end if
+                        end if
+#if ldebug
+                    end if
+#endif
+                end do
+                
+                ! plot output
+                if (rank.eq.0 .and. do_plot .and. &
+                    &eq_job_nr.eq.size(eq_jobs_lims,2)) then
+                    call print_ex_2D([var_names(2,2)],&
+                        &trim(file_names(1))//'_tor_int',v_flux_tor,&
+                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
+                        &[grid_trim%n(3),1]),draw=.false.)
+                    call draw_ex([var_names(2,2)],trim(file_names(1))//&
+                        &'_tor_int',plot_dim(2),1,.false.)
+                end if
+            end if
+            
+            ! poloidal flux
+            if (present(v_flux_pol) .and. grid_trim%n(2).gt.1) then             ! integrate toroidally and normally
+                ! loop over all poloidal points
+                do id = 1,grid_trim%n(1)
+#if ldebug
+                    if (debug_calc_vec_comp) then
+                        ! for  all  normal   points,  integrate  toroidally  the
+                        ! covariant toroidal quantity
+                        do kd = norm_id(1),norm_id(2)
+                            ierr = calc_int(v_com(id,:,kd,2,1),&
+                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,2,2))       ! save in contravariant variable
+                            CHCKERR('')
+                        end do
+                        
+                        ! gather on master
+                        ierr = get_ser_var(v_com(id,grid_trim%n(2),&
+                            &norm_id(1):norm_id(2),2,2),v_ser_temp)
+                        CHCKERR('')
+                        
+                        ! update integrals if master
+                        if (rank.eq.0) then
+                            if (use_pol_flux_F) then
+                                v_flux_pol(:,id+plot_offset(1)) = v_ser_temp
+                            else
+                                v_flux_pol(:,id) = v_flux_pol(:,id) + v_ser_temp
+                            end if
+                        end if
+                    else
+#endif
+                        ! for all normal points, integrate toroidally
+                        do kd = norm_id(1),norm_id(2)
+                            ierr = calc_int(v_com(id,:,kd,1,2),&
+                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,1,1))       ! save in covariant variable
+                            CHCKERR('')
+                        end do
+                        
+                        ! gather on master
+                        ierr = get_ser_var(v_com(id,grid_trim%n(2),&
+                            &norm_id(1):norm_id(2),1,1),v_ser_temp)
+                        CHCKERR('')
+                        
+                        ! integrate normally and update integrals if master
+                        if (rank.eq.0) then
+                            ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
+                                &v_ser_temp_int)
+                            CHCKERR('')
+                            if (use_pol_flux_F) then
+                                v_flux_pol(:,id+plot_offset(1)) = v_ser_temp_int
+                            else
+                                v_flux_pol(:,id) = v_flux_pol(:,id) + &
+                                    &v_ser_temp_int
+                            end if
+                        end if
+#if ldebug
+                    end if
+#endif
+                end do
+                
+                ! plot output
+                if (rank.eq.0 .and. do_plot .and. &
+                    &eq_job_nr.eq.size(eq_jobs_lims,2)) then
+                    call print_ex_2D([var_names(1,2)],&
+                        &trim(file_names(1))//'_pol_int',v_flux_pol,&
+                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
+                        &[grid_trim%n(3),1]),draw=.false.)
+                    call draw_ex([var_names(1,2)],trim(file_names(1))//&
+                        &'_pol_int',plot_dim(1),1,.false.)
+                end if
+            end if
+            
+            ! clean up
+            deallocate(v_ser_temp)
+            if (rank.eq.0) deallocate(v_ser_temp_int)
         end if
         
         if (max_transf_loc.eq.1) return

@@ -53,6 +53,7 @@ PB3D_ops.o : \
     HDF5_vars.o \
     HDF5_ops.o \
     HELENA_vars.o \
+    VMEC_vars.o \
     rich_vars.o \
 
 test.o : \
@@ -66,6 +67,7 @@ test.o : \
     num_utilities.o \
     MPI_vars.o \
     MPI_utilities.o \
+    VMEC_utilities.o \
 
 grid_vars.o : \
     num_vars.o \
@@ -106,7 +108,8 @@ grid_utilities.o : \
     num_vars.o \
     grid_vars.o \
     eq_vars.o \
-    VMEC.o \
+    VMEC_vars.o \
+    VMEC_utilities.o \
     HELENA_vars.o \
     num_utilities.o \
     num_ops.o \
@@ -124,7 +127,8 @@ grid_ops.o : \
     eq_utilities.o \
     sol_vars.o \
     num_utilities.o \
-    VMEC.o \
+    VMEC_vars.o \
+    VMEC_utilities.o \
     HELENA_vars.o \
     X_vars.o \
     HDF5_ops.o \
@@ -187,7 +191,6 @@ driver_X.o : \
     rich_vars.o \
     files_ops.o \
     input_utilities.o \
-    VMEC.o \
 
 driver_sol.o : \
     str_utilities.o \
@@ -222,6 +225,7 @@ driver_POST.o : \
     PB3D_utilities.o \
     sol_ops.o \
     HELENA_ops.o \
+    VMEC_utilities.o \
     grid_utilities.o \
     grid_ops.o \
     rich_vars.o \
@@ -268,7 +272,7 @@ X_ops.o : \
     HDF5_ops.o \
     rich_vars.o \
     X_utilities.o \
-    VMEC.o \
+    VMEC_utilities.o \
     num_ops.o \
 
 X_vars.o : \
@@ -303,7 +307,9 @@ eq_ops.o : \
     MPI_utilities.o \
     grid_utilities.o \
     input_utilities.o \
-    VMEC.o \
+    VMEC_ops.o \
+    VMEC_utilities.o \
+    VMEC_vars.o \
     HELENA_vars.o \
     HELENA_ops.o \
     HDF5_ops.o \
@@ -364,6 +370,8 @@ input_utilities.o : \
     output_ops.o \
     num_vars.o \
     MPI_utilities.o \
+    HELENA_vars.o \
+    VMEC_vars.o \
 
 input_ops.o : \
     messages.o \
@@ -377,6 +385,8 @@ input_ops.o : \
     rich_vars.o \
     rich_ops.o \
     HELENA_ops.o \
+    VMEC_vars.o \
+    VMEC_ops.o \
 
 files_ops.o : \
     num_vars.o \
@@ -399,14 +409,28 @@ files_utilities.o : \
     messages.o \
     num_vars.o \
     
-VMEC.o : \
+VMEC_ops.o : \
     MPI_utilities.o \
     num_vars.o \
     str_utilities.o \
     messages.o \
     num_utilities.o \
+    grid_utilities.o \
     eq_vars.o \
-    grid_vars.o \
+    VMEC_vars.o \
+
+VMEC_utilities.o : \
+    num_vars.o \
+    str_utilities.o \
+    messages.o \
+    eq_vars.o \
+    VMEC_vars.o \
+
+VMEC_vars.o : \
+    num_vars.o \
+    str_utilities.o \
+    messages.o \
+    eq_vars.o \
 
 vac.o : \
     str_utilities.o \
@@ -460,7 +484,6 @@ MPI_ops.o : \
     str_utilities.o \
     sol_vars.o \
     messages.o \
-    VMEC.o \
     X_vars.o \
     eq_vars.o \
     files_utilities.o \

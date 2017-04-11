@@ -746,3 +746,10 @@ CHANGELOG
       - Extended grids can have monotomously decreasing coordinates now.
       - "calc_vec_comp" now takes into account possible bad points at r=0.
       - "calc_vec_comp" can now calculate fluxes.
+
+1.66: - The numerical derivatives in the normal direction are now performed before saving the HELENA and VMEC variables, in the full input grid.
+      - The procedure "prepare_RZL" has been deleted and its functionality is now done in "read_VMEC".
+      - The procedure "calc_eq_1" is now much lighter, and consists mainly of copying.
+      - Fixed a bug in "B_plot" and "J_plot" where "plot_fluxes" was used wrongly while optional.
+      - Fixed some small bugs.
+      - The module VMEC has been split in three modules, the usual VMEC_ops, VMEC_utilities and VMEC_vars.
