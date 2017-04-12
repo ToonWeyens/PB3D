@@ -1,7 +1,7 @@
 &inputdata_PB3D
-    min_n_par_X             = 5000
-    min_par_X               = -10.0
-    max_par_X               = 10.0
+    min_n_par_X             = 15000
+    min_par_X               = -30.0
+    max_par_X               = 30.0
     alpha                   = 0.0
     min_r_sol               = 0.3
     max_r_sol               = 1.0
@@ -11,7 +11,7 @@
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
-    prim_X                  = 20
+    prim_X                  = 30
     n_mod_X                 = 30
     tol_rich                = 1.0E-4
     n_sol_requested         = 1

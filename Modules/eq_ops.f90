@@ -17,13 +17,15 @@ module eq_ops
         &print_output_eq, flux_q_plot, redistribute_output_eq, divide_eq_jobs, &
         &calc_eq_jobs_lims, calc_T_HF, B_plot, J_plot, kappa_plot
 #if ldebug
-    public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC
+    public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC, &
+        &debug_J_plot
 #endif
     
     ! global variables
     integer :: fund_n_par                                                       ! fundamental interval width
 #if ldebug
     logical :: debug_calc_derived_q = .false.                                   ! plot debug information for calc_derived_q
+    logical :: debug_J_plot = .false.                                           ! plot debug information for J_plot
     logical :: debug_write_flux_q_in_file_for_VMEC = .false.                    ! plot debug information for write_flux_q_in_file_for_VMEC
 #endif
     
@@ -1563,9 +1565,10 @@ contains
     !   poloidal flux flux_p
     !   toroidal flux flux_t
     integer function flux_q_plot(grid_eq,eq) result(ierr)
-        use num_vars, only: rank, no_plots
+        use num_vars, only: rank, no_plots, use_normalization
         use grid_utilities, only: trim_grid
         use MPI_utilities, only: get_ser_var
+        use eq_vars, only: pres_0, psi_0
         
         character(*), parameter :: rout_name = 'flux_q_plot'
         
@@ -1622,7 +1625,7 @@ contains
         integer function flux_q_plot_HDF5() result(ierr)
             use num_vars, only: eq_style
             use output_ops, only: plot_HDF5
-            use grid_utilities, only: calc_XYZ_grid, extend_grid_E, trim_grid
+            use grid_utilities, only: calc_XYZ_grid, extend_grid_F, trim_grid
             use VMEC_utilities, only: calc_trigon_factors
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
@@ -1654,7 +1657,7 @@ contains
             Y_plot_2D(:,5) = eq%flux_t_FD(norm_id(1):norm_id(2),0)
             
             ! extend trimmed equilibrium grid
-            ierr = extend_grid_E(grid_trim,grid_plot)
+            ierr = extend_grid_F(grid_trim,grid_plot,grid_eq=grid_eq)
             CHCKERR('')
             
             ! if VMEC, calculate trigonometric factors of plot grid
@@ -1696,6 +1699,13 @@ contains
                 f_plot(:,:,kd,5) = Y_plot_2D(kd,5)                              ! toroidal flux
             end do
             
+            ! rescale if normalized
+            if (use_normalization) then
+                f_plot(:,:,:,3) = f_plot(:,:,:,3)*pres_0                        ! pressure
+                f_plot(:,:,:,4) = f_plot(:,:,:,4)*psi_0                         ! flux_p
+                f_plot(:,:,:,5) = f_plot(:,:,:,5)*psi_0                         ! flux_t
+            end if
+            
             ! print the output using HDF5
             call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
                 &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
@@ -1708,8 +1718,7 @@ contains
         
         ! plots the pressure and fluxes in external program
         integer function flux_q_plot_ex() result(ierr)
-            use eq_vars, only: max_flux_F, pres_0, psi_0
-            use num_vars, only: use_normalization
+            use eq_vars, only: max_flux_F
             
             character(*), parameter :: rout_name = 'flux_q_plot_ex'
             
@@ -3454,12 +3463,38 @@ contains
         allocate(J_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         J_com = 0._dp
         J_mag = 0._dp
-        do kd = 1,grid_eq%loc_n_r
-            J_com(:,:,kd,1,2) = -eq_1%pres_FD(kd,1)
-            J_com(:,:,kd,3,2) = eq_2%sigma(:,:,kd)/eq_2%jac_FD(:,:,kd,0,0,0) + &
-                &eq_1%pres_FD(kd,1)*eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) / &
-                &eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0)
-        end do
+#if ldebug
+        if (debug_J_plot) then
+            J_com(:,:,:,1,2) = eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0) - &
+                &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,1,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1) + &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,0,1)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) 
+            J_com(:,:,:,1,2) = J_com(:,:,:,1,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
+            J_com(:,:,:,3,2) = eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0) - &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,1,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0) + &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,1,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) 
+            J_com(:,:,:,3,2) = J_com(:,:,:,3,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
+        else
+#endif
+            do kd = 1,grid_eq%loc_n_r
+                J_com(:,:,kd,1,2) = -eq_1%pres_FD(kd,1)
+                J_com(:,:,kd,3,2) = eq_2%sigma(:,:,kd)/&
+                    &eq_2%jac_FD(:,:,kd,0,0,0) + eq_1%pres_FD(kd,1)*&
+                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) / &
+                    &eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0)
+            end do
+#if ldebug
+        end if
+#endif
         do id = 1,3
             J_com(:,:,:,id,1) = &
                 &J_com(:,:,:,1,2)*eq_2%g_FD(:,:,:,c([1,id],.true.),0,0,0) + &

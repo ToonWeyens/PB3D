@@ -757,3 +757,10 @@ CHANGELOG
 1.67: - Fixed some output bugs.
       - Bokeh now outputs checkboxes.
       - The VMEC files modules were wrongly absent in the previous version.
+
+1.68: - Fixed bug when solution was reconstructed even when it did not exist.
+      - The "calc_vec_comp" procedure now also calculates the "Magnetic" components, which are in the (psi,theta,zeta) direction. This streamlines the integrated flux calculation as well.
+      - Fixed some bugs where normalization factors were not properly taken into account when calculating fluxes.
+      - "extend_grid_E" is now called "extend_grid_F" and works on the Flux variables. This is very important for when integration happens in these grids, so that the non-varying coordinate should be constant.
+      - Fixed some small bug in the division of equilibrium jobs for POST, where no maximum was provided.
+      - There is still an issue with the pressure balance. This is due to an inaccuracy in the calculation of the current from the magnetic field. This probably also causes a deviation from the correct results for the integrated current fluxes.

@@ -71,8 +71,7 @@ contains
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
-        use grid_utilities, only: extend_grid_E, setup_interp_data, &
-            &apply_disc, copy_grid
+        use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
         use MPI_utilities, only: wait_MPI
@@ -252,6 +251,9 @@ contains
             call writo('Magnetic grid plot not requested')
         end if
         
+        ierr = wait_MPI()
+        CHCKERR('')
+        
         ! user output
         call lvl_ud(-1)
         call writo('1-D outputs plots done')
@@ -346,12 +348,13 @@ contains
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs
                     ierr = divide_eq_jobs(product(n_out(1:2,1)),&
-                        &var_size_without_par,n_div)
+                        &var_size_without_par,n_div,n_div_max=n_out(1,1)-1)
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
                     ierr = divide_eq_jobs(product(n_out(1:2,1)),&
-                        &var_size_without_par,n_div,n_par_X_base=nchi)
+                        &var_size_without_par,n_div,n_div_max=n_out(1,1)-1,&
+                        &n_par_X_base=nchi)
                     CHCKERR('')
             end select
             
@@ -1159,7 +1162,7 @@ contains
     integer function setup_out_grids(grids_out) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims
-        use grid_utilities, only: extend_grid_E, copy_grid
+        use grid_utilities, only: extend_grid_F, copy_grid
         use PB3D_ops, only: reconstruct_PB3D_grid
         
         character(*), parameter :: rout_name = 'setup_out_grids'
@@ -1219,10 +1222,10 @@ contains
                 
                 ! extend eq and X grid
                 n_theta = eq_jobs_lims(2,eq_job_nr)-eq_jobs_lims(1,eq_job_nr)+1
-                ierr = extend_grid_E(grid_eq,grids_out(1),n_theta_plot=n_theta,&
+                ierr = extend_grid_F(grid_eq,grids_out(1),n_theta_plot=n_theta,&
                     &lim_theta_plot=lim_theta,grid_eq=grid_eq)                  ! extend eq grid and convert to F
                 CHCKERR('')
-                ierr = extend_grid_E(grid_X,grids_out(2),n_theta_plot=n_theta,&
+                ierr = extend_grid_F(grid_X,grids_out(2),n_theta_plot=n_theta,&
                     &lim_theta_plot=lim_theta,grid_eq=grid_eq)                  ! extend eq grid and convert to F
                 CHCKERR('')
                 

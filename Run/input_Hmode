@@ -5,7 +5,7 @@
     alpha                   = 0.0
     min_r_sol               = 0.0
     max_r_sol               = 1.0
-    n_r_sol                 = 500
+    n_r_sol                 = 1000
     norm_disc_prec_sol      = 3
     norm_disc_prec_eq       = 5
     max_it_zero             = 500
@@ -22,9 +22,9 @@
     norm_style              = 1
     U_style                 = 3
     max_it_slepc            = 2000
-    max_tot_mem             = 2500
+    max_tot_mem             = 1000
     plot_magn_grid          = .false.
-    plot_flux_q             = .false.
+    plot_flux_q             = .true.
     plot_resonance          = .false.
     plot_B                  = .false.
     plot_J                  = .false.
@@ -32,12 +32,10 @@
     matrix_SLEPC_style      = 1
     max_it_rich             = 2
     rich_restart_lvl        = 1
-    n_theta_plot            = 100
+    n_theta_plot            = 50
     n_zeta_plot             = 1
     magn_int_style          = 1
     ex_plot_style           = 2
-    R_0                     = 3.02620
-    B_0                     = 2.25156
 /
 1.5: 
     R_0                     = 3.03687

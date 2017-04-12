@@ -906,7 +906,7 @@ contains
         use num_vars, only: rank, no_plots, n_theta_plot, n_zeta_plot, &
             &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
             &max_zeta_plot
-        use grid_utilities, only: trim_grid, extend_grid_E, calc_XYZ_grid
+        use grid_utilities, only: trim_grid, extend_grid_F, calc_XYZ_grid
         use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'magn_grid_plot'
@@ -958,7 +958,7 @@ contains
         max_zeta_plot = 2
         
         ! extend grid
-        ierr = extend_grid_E(grid,grid_ext)
+        ierr = extend_grid_F(grid,grid_ext,grid_eq=grid)
         CHCKERR('')
         
         ! restore n_theta_plot and n_zeta_plot

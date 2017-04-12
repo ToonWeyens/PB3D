@@ -630,6 +630,8 @@ contains
         
         ! Bokeh version: 2D html output
         ! Interactive checkbox from https://github.com/bokeh/bokeh/issues/3715.
+        ! (Could be replaced by http://bokeh.pydata.org/en/latest/docs/
+        !  user_guide/interaction/legends.html#userguide-interaction-legends)
         subroutine draw_ex_Bokeh
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt'

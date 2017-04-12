@@ -324,6 +324,7 @@ display_usage() {
                 echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
                 (( $((($i-101)%10+1)) == 10 )) && echo -e ""
             done
+            echo -e "               201 Hmode_ped1.5_ripple16"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -452,7 +453,7 @@ set_input() {
                 4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-1])
                     input_name=Hmode
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|201)
                     input_name=Hmode_ripple
                 ;;
                 *)
@@ -625,6 +626,9 @@ set_input() {
                 ;;
                 13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
                     eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc
+                ;;
+                201)
+                    eq_name=wout_Hmode_ped1.5_ripple16.nc
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"

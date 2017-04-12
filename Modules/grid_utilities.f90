@@ -12,7 +12,7 @@ module grid_utilities
 
     implicit none
     private
-    public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_E, &
+    public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
         &nufft, find_compr_range
@@ -76,24 +76,12 @@ contains
         ierr = 0
         
         ! set up array sizes
-        dims(1:2) = grid_eq%n(1:2)
-        dims(3) = grid_eq%loc_n_r
+        dims = shape(theta_E)
         
         ! tests
-        if (size(theta_F,1).ne.size(zeta_F,1) .or. &
-            &size(theta_F,2).ne.size(zeta_F,2) .or. &
-            &size(theta_F,3).ne.size(zeta_F,3) .or. &
-            &size(theta_F,3).ne.size(r_F)) then
+        if (dims(3).ne.size(r_F) .or. dims(3).ne.size(r_E)) then
             ierr = 1
-            err_msg = 'theta_F, zeta_F and r_F need to have the correct &
-                &dimensions'
-            CHCKERR(err_msg)
-        end if
-        if (dims(1).ne.size(zeta_E,1) .or. dims(2).ne.size(zeta_E,2) .or. &
-            &dims(3).ne.size(zeta_E,3) .or. dims(3).ne.size(r_E)) then
-            ierr = 1
-            err_msg = 'theta_E, zeta_E and r_E need to have the correct &
-                &dimensions'
+            err_msg = 'r_F and r_E need to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (present(r_F_array).neqv.present(r_E_array)) then
@@ -308,23 +296,12 @@ contains
         ierr = 0
         
         ! set up array sizes
-        dims = shape(theta_E)
+        dims = shape(theta_F)
         
         ! tests
-        if (size(theta_F,1).ne.size(zeta_F,1) .or. &
-            &size(theta_F,2).ne.size(zeta_F,2) .or. &
-            &size(theta_F,3).ne.size(zeta_F,3) .or. &
-            &size(theta_F,3).ne.size(r_F)) then
+        if (dims(3).ne.size(r_F) .or. dims(3).ne.size(r_E)) then
             ierr = 1
-            err_msg = 'theta_F, zeta_F and r_F need to have the correct &
-                &dimensions'
-            CHCKERR(err_msg)
-        end if
-        if (dims(1).ne.size(zeta_E,1) .or. dims(2).ne.size(zeta_E,2) .or. &
-            &dims(3).ne.size(zeta_E,3) .or. dims(3).ne.size(r_E)) then
-            ierr = 1
-            err_msg = 'theta_E, zeta_E and r_E need to have the correct &
-                &dimensions'
+            err_msg = 'r_F and r_E need to have the correct dimensions'
             CHCKERR(err_msg)
         end if
         if (present(r_F_array).neqv.present(r_E_array)) then
@@ -847,17 +824,16 @@ contains
     end function calc_eqd_grid_1D
     
     ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
-    ! n_zeta_plot angular and own loc_n_r points in E coordinates.
-    ! Optionally,  the grid  can  also  be converted  to  F  coordinates if  the
-    ! equilibrium grid is provided. Though this is required for many operations,
-    ! it  is  not   required  for  the  calculation  of  X,   Y  and  Z  through
-    ! calc_XYZ_grid.
-    integer function extend_grid_E(grid_in,grid_ext,grid_eq,n_theta_plot,&
+    ! n_zeta_plot angular and own loc_n_r points in F coordinates.
+    ! Optionally,  the grid  can  also  be converted  to  E  coordinates if  the
+    ! equilibrium grid is  provided. This is required for  many operations, such
+    ! as the calculation of X, Y and Z through calc_XYZ_grid.
+    integer function extend_grid_F(grid_in,grid_ext,grid_eq,n_theta_plot,&
         &n_zeta_plot,lim_theta_plot,lim_zeta_plot) result(ierr)
         use num_vars, only: n_theta => n_theta_plot, n_zeta => n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot
         
-        character(*), parameter :: rout_name = 'extend_grid_E'
+        character(*), parameter :: rout_name = 'extend_grid_F'
         
         ! input / output
         type(grid_type), intent(in) :: grid_in                                  ! grid to be extended
@@ -896,28 +872,28 @@ contains
 #endif
         
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
-        ! geometry angularly in E coordinates
+        ! geometry angularly in F coordinates
         ierr = grid_ext%init([n_theta_plot_loc,n_zeta_plot_loc,grid_in%n(3)],&
             &[grid_in%i_min,grid_in%i_max])
         CHCKERR('')
-        grid_ext%r_E = grid_in%r_E
-        grid_ext%loc_r_E = grid_in%loc_r_E
-        ierr = calc_eqd_grid(grid_ext%theta_E,lim_theta_plot_loc(1)*pi,&
+        grid_ext%r_F = grid_in%r_F
+        grid_ext%loc_r_F = grid_in%loc_r_F
+        ierr = calc_eqd_grid(grid_ext%theta_F,lim_theta_plot_loc(1)*pi,&
             &lim_theta_plot_loc(2)*pi,1)
         CHCKERR('')
-        ierr = calc_eqd_grid(grid_ext%zeta_E,lim_zeta_plot_loc(1)*pi,&
+        ierr = calc_eqd_grid(grid_ext%zeta_F,lim_zeta_plot_loc(1)*pi,&
             &lim_zeta_plot_loc(2)*pi,2)
         CHCKERR('')
         
-        ! convert all E coordinates to F coordinates if requested
+        ! convert all F coordinates to E coordinates if requested
         if (present(grid_eq)) then
             grid_ext%r_F = grid_in%r_F
-            ierr = coord_E2F(grid_eq,&
-                &grid_ext%loc_r_E,grid_ext%theta_E,grid_ext%zeta_E,&
-                &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F)
+            ierr = coord_F2E(grid_eq,&
+                &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F,&
+                &grid_ext%loc_r_E,grid_ext%theta_E,grid_ext%zeta_E)
             CHCKERR('')
         end if
-    end function extend_grid_E
+    end function extend_grid_F
     
     ! Copy a grid A to a new grid B, that was not yet initialized. This new grid
     ! can contain  a subsection of the  previous grid in all  dimensions. It can
@@ -2147,10 +2123,11 @@ contains
     ! Calculates  contra-  and covariant  components  of  a vector  in  multiple
     ! coordinate systems:
     !   1. F: (alpha,psi,theta),
-    !   2. - H: (psi,theta,phi) if HELENA is used,
+    !   2. M: (psi,theta,zeta),
+    !   3. - H: (psi,theta,phi) if HELENA is used,
     !      - V: (r,theta,zeta) if VMEC is used,
-    !   3. C: (R,phi,Z),
-    !   4. X: (X,Y,Z),
+    !   4. C: (R,phi,Z),
+    !   5. X: (X,Y,Z),
     ! as well  as the magnitude,  starting from  the input in  Flux coordinates.
     ! Note that the components in X, Y and Z can be used to plot the real vector
     ! and that covariant components should  be equal to contravariant components
@@ -2177,7 +2154,7 @@ contains
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
             &use_normalization, rank, tol_zero
         use num_utilities, only: c, calc_int
-        use eq_vars, only: R_0, B_0
+        use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
         
@@ -2198,11 +2175,12 @@ contains
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed plot grid
-        integer :: max_transf_loc = 4                                           ! local max_transf
+        integer :: max_transf_loc                                               ! local max_transf
         integer :: id, jd, kd                                                   ! counter
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: c_loc                                                        ! local c
         logical :: cont_plot                                                    ! continued plot
         logical :: do_plot                                                      ! perform plotting
         character(len=max_str_ln) :: description(3)                             ! description of plots
@@ -2210,8 +2188,9 @@ contains
         character(len=max_str_ln) :: var_names(3,2)                             ! variable names
         character(len=5) :: coord_names(3)                                      ! name of coordinates
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp) :: norm_len                                                    ! normalization factor for lengths, to cancel the one introduced in "calc_XYZ"
-        real(dp), allocatable :: jq(:)                                          ! saf. fac. or rot. transf. in Flux coords.
+        real(dp) :: norm_len                                                    ! normalization factor for lengths, to cancel the one introduced in "calc_XYZ_grid"
+        real(dp), allocatable :: q_saf(:,:)                                     ! interpolated q_saf_FD and derivative
+        real(dp), allocatable :: jac(:,:,:)                                     ! interpolated jac_FD
         real(dp), allocatable :: XYZR(:,:,:,:)                                  ! X, Y, Z and R of surface in cylindrical coordinates, untrimmed grid
         real(dp), allocatable :: X(:,:,:,:), Y(:,:,:,:), Z(:,:,:,:)             ! copy of X, Y and Z, trimmed grid
         real(dp), allocatable :: v_temp(:,:,:,:,:)                              ! temporary variable for v
@@ -2228,8 +2207,9 @@ contains
         ierr = 0
         
         ! set up maximum level up to which to transform and whether to plot
+        max_transf_loc = 5
         if (present(max_transf)) then
-            if (max_transf.ge.1 .and. max_transf.le.4) &
+            if (max_transf.ge.1 .and. max_transf.le.5) &
                 &max_transf_loc = max_transf
         end if
         do_plot = .false.
@@ -2302,12 +2282,13 @@ contains
             end do
         end if
         
-        ! set up temporal copy of  v, T_BA and T_AB
+        ! set up temporal interpolated copy of  v, T_BA and T_AB
         allocate(v_temp(grid%n(1),grid%n(2),grid%loc_n_r,3,2))
         allocate(T_BA(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
         allocate(T_AB(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
+        allocate(q_saf(grid%loc_n_r,0:1))
         if (present(v_flux_tor) .or. present(v_flux_pol)) then
-            allocate(jq(grid%loc_n_r))
+            allocate(jac(grid%n(1),grid%n(2),grid%loc_n_r))
             if (rank.eq.0 .and. .not.cont_plot) then
                 if (present(v_flux_tor)) then
                     allocate(v_flux_tor(grid_trim%n(3),plot_dim(2)))
@@ -2378,7 +2359,105 @@ contains
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
         
-        ! OPTIONAL 1b: plot and calculate fluxes
+        ! 2.   Magnetic  coordinates   (phi,theta,zeta)   by  converting   using
+        ! transformation matrices:
+        !   (v_i)_M = T_M^F (v_i)_F
+        !   (v^i)_M = (v^i)_F T_F^M
+        ! where
+        !             ( -q' theta 1 0 )
+        !   T_MF    = (    -q     0 1 )
+        !             (     1     0 0 )
+        ! if the poloidal flux is used, or
+        !             ( -q'/q zeta q 0 )
+        !   T_MF    = (    -1      0 0 )
+        !             (    1/q     0 1 )
+        ! if it is the toroidal flux. Its inverse can be calculated as well.
+        T_BA = 0._dp
+        T_AB = 0._dp
+        ierr = apply_disc(eq_1%q_saf_FD(:,0:1),norm_interp_data,q_saf,1)
+        CHCKERR('')
+        c_loc = c([1,1],.false.)
+        if (use_pol_flux_F) then
+            T_BA(:,:,:,c_loc,0,0,0) = -grid%theta_F
+            do kd = 1,grid%loc_n_r
+                T_BA(:,:,kd,c_loc,0,0,0) = T_BA(:,:,kd,c_loc,0,0,0)*q_saf(kd,1)
+                T_BA(:,:,kd,c([2,1],.false.),0,0,0) = -q_saf(kd,0)
+            end do
+            T_BA(:,:,:,c([3,1],.false.),0,0,0) = 1._dp
+            T_BA(:,:,:,c([1,2],.false.),0,0,0) = 1._dp
+            T_BA(:,:,:,c([2,3],.false.),0,0,0) = 1._dp
+        else
+            T_BA(:,:,:,c_loc,0,0,0) = -grid%zeta_F
+            do kd = 1,grid%loc_n_r
+                T_BA(:,:,kd,c_loc,0,0,0) = &
+                    &T_BA(:,:,kd,c_loc,0,0,0)*q_saf(kd,1)/q_saf(kd,0)
+                T_BA(:,:,kd,c([2,1],.false.),0,0,0) = 1._dp/q_saf(kd,0)
+                T_BA(:,:,kd,c([1,2],.false.),0,0,0) = q_saf(kd,0)
+            end do
+            T_BA(:,:,:,c([2,1],.false.),0,0,0) = -1._dp
+            T_BA(:,:,:,c([3,3],.false.),0,0,0) = 1._dp
+        end if
+        ierr = calc_inv_met(T_AB,T_BA,[0,0,0])
+        CHCKERR('')
+        v_com = 0._dp
+        do jd = 1,3
+            do id = 1,3
+                v_com(:,:,:,jd,1) = v_com(:,:,:,jd,1) + T_BA(:,:,:,&
+                    &c([jd,id],.false.),0,0,0) * v_temp(:,:,:,id,1)
+                v_com(:,:,:,jd,2) = v_com(:,:,:,jd,2) + T_AB(:,:,:,&
+                    &c([id,jd],.false.),0,0,0) * v_temp(:,:,:,id,2)
+            end do
+        end do
+        if (present(v_mag)) then
+            v_mag = 0._dp
+            do id = 1,3
+                v_mag = v_mag + v_com(:,:,:,id,1)*v_com(:,:,:,id,2)
+            end do
+            v_mag = sqrt(v_mag)
+        end if
+        
+        ! set up plot variables
+        if (do_plot) then
+            coord_names(1) = 'psi'
+            coord_names(2) = 'theta'
+            coord_names(3) = 'zeta'
+            var_names = trim(base_name)
+            do id = 1,3
+                var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
+                    &trim(coord_names(id))
+                var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
+                    &trim(coord_names(id))
+            end do
+            description(1) = 'covariant components of the magnetic field in &
+                &Magnetic coordinates'
+            description(2) = 'contravariant components of the magnetic field &
+                &in Magnetic coordinates'
+            description(3) = 'magnitude of the magnetic field in Magnetic &
+                &coordinates'
+            file_names(1) = trim(base_name)//'_M_sub'
+            file_names(2) = trim(base_name)//'_M_sup'
+            file_names(3) = trim(base_name)//'_M_mag'
+            if (use_normalization) then
+                v_com(:,:,:,1,1) = v_com(:,:,:,1,1) / (R_0*B_0)                 ! norm factor for e_psi
+                v_com(:,:,:,2,1) = v_com(:,:,:,2,1) * R_0                       ! norm factor for e_theta
+                v_com(:,:,:,3,1) = v_com(:,:,:,3,1) * R_0                       ! norm factor for e_zeta
+                v_com(:,:,:,1,2) = v_com(:,:,:,1,2) * (R_0*B_0)                 ! norm factor for e^psi
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
+                v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta
+            end if
+            do id = 1,2
+                call plot_HDF5(var_names(:,id),trim(file_names(id)),&
+                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
+                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
+                    &description=description(id))
+            end do
+            if (present(v_mag)) &
+                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
+                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
+                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+        end if
+        
         if (present(v_flux_tor) .or. present(v_flux_pol)) then
             ! tests
             if (maxval(grid%theta_F(grid%n(1),:,:)).lt.&
@@ -2388,7 +2467,7 @@ contains
                 call lvl_ud(1)
                 call writo('This inverts the sign of the toroidal flux.')
                 call writo('Remember that the grid limits are prescribed &
-                    &in Equilibrium quantities.')
+                    &in Flux quantities.')
                 call lvl_ud(-1)
             end if
             if (maxval(grid%zeta_F(:,grid%n(2),:)).lt.&
@@ -2398,7 +2477,7 @@ contains
                 call lvl_ud(1)
                 call writo('This inverts the sign of the poloidal flux.')
                 call writo('Remember that the grid limits are prescribed &
-                    &in Equilibrium quantities.')
+                    &in Flux quantities.')
                 if (eq_style.eq.1) call writo('For VMEC, these are inverse.')
                 call lvl_ud(-1)
             end if
@@ -2408,7 +2487,7 @@ contains
                 call lvl_ud(1)
                 call writo('This inverts the sign of the fluxes.')
                 call writo('Remember that the grid limits are prescribed &
-                    &in Equilibrium quantities.')
+                    &in Flux quantities.')
                 call lvl_ud(-1)
             end if
             if (abs(minval(grid%r_F)).gt.tol_zero) then
@@ -2426,74 +2505,14 @@ contains
                 call lvl_ud(-1)
             end if
             
-            ! set up v^theta and v^zeta
-            if (use_pol_flux_F) then
-                ! interpolate q
-                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,jq)
-                CHCKERR('')
-#if ldebug
-                if (debug_calc_vec_comp) then
-                    ! v_zeta = v_alpha
-                    v_com(:,:,:,2,1) = v_com(:,:,:,1,1)
-                    ! v_theta = v_theta - q v_alpha
-                    do kd = 1,grid_eq%loc_n_r
-                        v_com(:,:,kd,1,1) = jq(kd) * v_com(:,:,kd,1,1)
-                    end do
-                    v_com(:,:,:,1,1) = - v_com(:,:,:,1,1) + v_com(:,:,:,3,1)
-                else
-#endif
-                    ! v^zeta = v^alpha + q v^theta
-                    do kd = 1,grid_eq%loc_n_r
-                        v_com(:,:,kd,2,2) = jq(kd) * v_com(:,:,kd,3,2)
-                    end do
-                    v_com(:,:,:,2,2) = v_com(:,:,:,2,2) + v_com(:,:,:,1,2)
-                    ! v^theta = v^theta
-                    v_com(:,:,:,1,2) = v_com(:,:,:,3,2)
-#if ldebug
-                end if
-#endif
-            else
-                ! interpolate iota
-                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,jq)
-                CHCKERR('')
-#if ldebug
-                if (debug_calc_vec_comp) then
-                    ! v_theta = - v_alpha
-                    v_com(:,:,:,1,1) = - v_com(:,:,:,1,1)
-                    ! v_zeta = v_zeta + iota v_alpha
-                    do kd = 1,grid_eq%loc_n_r
-                        v_com(:,:,kd,2,1) = jq(kd) * v_com(:,:,kd,1,1)
-                    end do
-                    v_com(:,:,:,2,1) = v_com(:,:,:,2,1) + v_com(:,:,:,1,1)
-                else
-#endif
-                    ! v^theta = -v^alpha + iota v^zeta
-                    do kd = 1,grid_eq%loc_n_r
-                        v_com(:,:,kd,1,2) = jq(kd) * v_com(:,:,kd,3,2)
-                    end do
-                    v_com(:,:,:,1,2) = v_com(:,:,:,1,2) - v_com(:,:,:,1,2)
-                    ! v^zeta = v^zeta
-                    v_com(:,:,:,2,2) = v_com(:,:,:,3,2)
-#if ldebug
-                end if
-#endif
-            end if
-            
-            ! set up plot variables
-            if (do_plot) then
-                var_names(1,2) = 'integrated poloidal flux of '//trim(base_name)
-                var_names(2,2) = 'integrated toroidal flux of '//trim(base_name)
-                file_names(1) = trim(base_name)//'_flux'
-                description(1) = 'Poloidal and toroidal flux'
-                call plot_HDF5(var_names(1:2,2),file_names(1),&
-                    &v_com(:,:,norm_id(1):norm_id(2),1:2,2),tot_dim=&
-                    &[plot_dim(1:3),2],loc_offset=[plot_offset(1:3),0],&
-                    &X=X(:,:,:,1:2),Y=Y(:,:,:,1:2),Z=Z(:,:,:,1:2),&
-                    &cont_plot=cont_plot,description=description(1))
-            end if
-            
             ! initialize temporary variable
             allocate(v_ser_temp_int(grid_trim%n(3)))
+            
+            ! set up plot variables
+            var_names(1,2) = 'integrated poloidal flux of '//trim(base_name)
+            var_names(2,2) = 'integrated toroidal flux of '//trim(base_name)
+            file_names(1) = trim(base_name)//'_flux_pol_int'
+            file_names(2) = trim(base_name)//'_flux_tor_int'
             
 #if ldebug
             if (debug_calc_vec_comp) then
@@ -2504,20 +2523,27 @@ contains
                     call writo('Useful to check whether Maxwell holds.')
                     call writo('i.e. whether loop integral of J returns &
                         &B flux')
-                    call writo('Note that the J-variables refer to B and &
+                    call writo('Note that the J-variables now refer to B and &
                         &vice-versa')
+                    call writo('Don''t forget the contribution of the toroidal &
+                        &field B_zeta on axis, times 2piR.')
                     call writo('Don''t forget the vacuum permeability!')
                 call lvl_ud(-1)
             else
 #endif
-                ! multiply by Jacobian
-                v_com(:,:,:,1,2) = v_com(:,:,:,1,2)*eq_2%jac_FD(:,:,:,0,0,0)
-                v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*eq_2%jac_FD(:,:,:,0,0,0)
+                ! multiply angular contravariant coordinates by Jacobian
+                ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),norm_interp_data,&
+                    &jac,3)
+                CHCKERR('')
+                if (use_normalization) jac = jac*R_0/B_0
+                v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*jac
+                v_com(:,:,:,3,2) = v_com(:,:,:,3,2)*jac
+                deallocate(jac)
             end if
 #if ldebug
 #endif
             
-            ! toroidal flux
+            ! integrate toroidal flux
             if (present(v_flux_tor) .and. grid_trim%n(1).gt.1) then             ! integrate poloidally and normally
                 ! loop over all toroidal points
                 do jd = 1,grid_trim%n(2)
@@ -2526,14 +2552,14 @@ contains
                         ! for  all  normal   points,  integrate  poloidally  the
                         ! covariant poloidal quantity
                         do kd = norm_id(1),norm_id(2)
-                            ierr = calc_int(v_com(:,jd,kd,1,1),&
-                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,1,2))      ! save in contravariant variable
+                            ierr = calc_int(v_com(:,jd,kd,2,1),&
+                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,2,2))      ! save in contravariant variable
                             CHCKERR('')
                         end do
                         
                         ! gather on master
                         ierr = get_ser_var(v_com(grid_trim%n(1),jd,&
-                            &norm_id(1):norm_id(2),1,2),v_ser_temp)
+                            &norm_id(1):norm_id(2),2,2),v_ser_temp)
                         CHCKERR('')
                         
                         ! update integrals if master
@@ -2548,14 +2574,14 @@ contains
 #endif
                         ! for all normal points, integrate poloidally
                         do kd = norm_id(1),norm_id(2)
-                            ierr = calc_int(v_com(:,jd,kd,2,2),&
-                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,2,1))      ! save in covariant variable
+                            ierr = calc_int(v_com(:,jd,kd,3,2),&
+                                &grid%theta_F(:,jd,kd),v_com(:,jd,kd,3,1))      ! save in covariant variable
                             CHCKERR('')
                         end do
                         
                         ! gather on master
                         ierr = get_ser_var(v_com(grid_trim%n(1),jd,&
-                            &norm_id(1):norm_id(2),2,1),v_ser_temp)
+                            &norm_id(1):norm_id(2),3,1),v_ser_temp)
                         CHCKERR('')
                         
                         ! integrate normally and update integrals if master
@@ -2563,6 +2589,8 @@ contains
                             ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
                                 &v_ser_temp_int)
                             CHCKERR('')
+                            if (use_normalization) v_ser_temp_int = &
+                                &v_ser_temp_int*psi_0
                             if (use_pol_flux_F) then
                                 v_flux_tor(:,jd) = v_flux_tor(:,jd) + &
                                     &v_ser_temp_int
@@ -2579,15 +2607,15 @@ contains
                 if (rank.eq.0 .and. do_plot .and. &
                     &eq_job_nr.eq.size(eq_jobs_lims,2)) then
                     call print_ex_2D([var_names(2,2)],&
-                        &trim(file_names(1))//'_tor_int',v_flux_tor,&
+                        &trim(file_names(2)),v_flux_tor,&
                         &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
                         &[grid_trim%n(3),1]),draw=.false.)
-                    call draw_ex([var_names(2,2)],trim(file_names(1))//&
-                        &'_tor_int',plot_dim(2),1,.false.)
+                    call draw_ex([var_names(2,2)],trim(file_names(2)),&
+                        &plot_dim(2),1,.false.)
                 end if
             end if
             
-            ! poloidal flux
+            ! integrate poloidal flux
             if (present(v_flux_pol) .and. grid_trim%n(2).gt.1) then             ! integrate toroidally and normally
                 ! loop over all poloidal points
                 do id = 1,grid_trim%n(1)
@@ -2596,14 +2624,14 @@ contains
                         ! for  all  normal   points,  integrate  toroidally  the
                         ! covariant toroidal quantity
                         do kd = norm_id(1),norm_id(2)
-                            ierr = calc_int(v_com(id,:,kd,2,1),&
-                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,2,2))       ! save in contravariant variable
+                            ierr = calc_int(v_com(id,:,kd,3,1),&
+                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,3,2))       ! save in contravariant variable
                             CHCKERR('')
                         end do
                         
                         ! gather on master
                         ierr = get_ser_var(v_com(id,grid_trim%n(2),&
-                            &norm_id(1):norm_id(2),2,2),v_ser_temp)
+                            &norm_id(1):norm_id(2),3,2),v_ser_temp)
                         CHCKERR('')
                         
                         ! update integrals if master
@@ -2618,14 +2646,14 @@ contains
 #endif
                         ! for all normal points, integrate toroidally
                         do kd = norm_id(1),norm_id(2)
-                            ierr = calc_int(v_com(id,:,kd,1,2),&
-                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,1,1))       ! save in covariant variable
+                            ierr = calc_int(v_com(id,:,kd,2,2),&
+                                &grid%zeta_F(id,:,kd),v_com(id,:,kd,2,1))       ! save in covariant variable
                             CHCKERR('')
                         end do
                         
                         ! gather on master
                         ierr = get_ser_var(v_com(id,grid_trim%n(2),&
-                            &norm_id(1):norm_id(2),1,1),v_ser_temp)
+                            &norm_id(1):norm_id(2),2,1),v_ser_temp)
                         CHCKERR('')
                         
                         ! integrate normally and update integrals if master
@@ -2633,6 +2661,8 @@ contains
                             ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
                                 &v_ser_temp_int)
                             CHCKERR('')
+                            if (use_normalization) v_ser_temp_int = &
+                                &v_ser_temp_int*psi_0
                             if (use_pol_flux_F) then
                                 v_flux_pol(:,id+plot_offset(1)) = v_ser_temp_int
                             else
@@ -2649,11 +2679,11 @@ contains
                 if (rank.eq.0 .and. do_plot .and. &
                     &eq_job_nr.eq.size(eq_jobs_lims,2)) then
                     call print_ex_2D([var_names(1,2)],&
-                        &trim(file_names(1))//'_pol_int',v_flux_pol,&
+                        &trim(file_names(1)),v_flux_pol,&
                         &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
                         &[grid_trim%n(3),1]),draw=.false.)
-                    call draw_ex([var_names(1,2)],trim(file_names(1))//&
-                        &'_pol_int',plot_dim(1),1,.false.)
+                    call draw_ex([var_names(1,2)],trim(file_names(1)),&
+                        &plot_dim(1),1,.false.)
                 end if
             end if
             
@@ -2662,12 +2692,14 @@ contains
             if (rank.eq.0) deallocate(v_ser_temp_int)
         end if
         
-        if (max_transf_loc.eq.1) return
+        if (max_transf_loc.eq.2) return
         
-        ! 2.   HELENA   coordinates   (psi,theta,zeta)   or   VMEC   coordinates
+        ! 3.   HELENA   coordinates   (psi,theta,zeta)   or   VMEC   coordinates
         ! (r,theta,phi), by converting using transformation matrices
         !   (v_i)_H = T_H^F (v_i)_F
         !   (v^i)_H = (v^i)_F T_F^H
+        ! Note: This is  done directly from step 1; The results  from step 2 are
+        ! skipped, i.e. v_temp is not overwritten after step 2.
         ierr = apply_disc(eq_2%T_FE(:,:,:,:,0,0,0),norm_interp_data,&
             &T_AB(:,:,:,:,0,0,0),3)
         CHCKERR('')
@@ -2754,12 +2786,12 @@ contains
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
         
-        if (max_transf_loc.eq.2) return
+        if (max_transf_loc.eq.3) return
         
-        ! 3.   cylindrical    coordinates   (R,phi,Z)   by    converting   using
+        ! 4.   cylindrical    coordinates   (R,phi,Z)   by    converting   using
         ! transformation matrices:
-        !   (v_i)_C = T_H^E (v_i)_E
-        !   (v^i)_C = (v^i)_E T_F^X
+        !   (v_i)_C = T_C^E (v_i)_E
+        !   (v^i)_C = (v^i)_E T_E^C
         ! where for VMEC (E=V), the transformation matrix T_VC is tabulated, and
         ! its inverse  is calculate,  and for  HELENA (E=H),  the transformation
         ! matrix T_HC is given by
@@ -2874,9 +2906,9 @@ contains
                 &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
         end if
         
-        if (max_transf_loc.eq.3) return
+        if (max_transf_loc.eq.4) return
         
-        ! 4. Cartesian  coordinates (X,Y,Z)  by converting  using transformation
+        ! 5. Cartesian  coordinates (X,Y,Z)  by converting  using transformation
         ! matrices
         !    (e_R)    (   cos(phi)   sin(phi)  0 ) (e_X)
         !   (e_phi) = ( -R sin(phi) R cos(phi) 0 ) (e_Y)

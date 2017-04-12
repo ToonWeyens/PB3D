@@ -425,6 +425,9 @@ contains
             if (max_PB3D_rich_lvl.le.0) then
                 call writo('No suitable Richardson level found, so only &
                     &equilibrium output will be done.',alert=.true.)
+                plot_sol_xi = .false.
+                plot_sol_Q = .false.
+                plot_E_rec = .false.
                 PB3D_rich_lvl = 1
             else
                 call writo('Maximum Richardson level found: '//&
