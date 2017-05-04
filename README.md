@@ -764,3 +764,8 @@ CHANGELOG
       - "extend_grid_E" is now called "extend_grid_F" and works on the Flux variables. This is very important for when integration happens in these grids, so that the non-varying coordinate should be constant.
       - Fixed some small bug in the division of equilibrium jobs for POST, where no maximum was provided.
       - There is still an issue with the pressure balance. This is due to an inaccuracy in the calculation of the current from the magnetic field. This probably also causes a deviation from the correct results for the integrated current fluxes.
+
+1.69: - Extended "debug_calc_derived_q" somewhat.
+      - Splines have been implemented for derivatives. Only the third order (cubic) has been implemented. This is now fixed.
+      - "conv_FHM" has been removed, replaced by splines.
+      - Fixed issue in HDF5 plotting, where the symmetry type was not recoverable for vector plots.

@@ -29,10 +29,11 @@ contains
     ! Reads the VMEC equilibrium data
     ! [MPI] only master
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
-        use num_utilities, only: conv_FHM, calc_int
-        use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
+        use num_utilities, only: calc_int
+        use num_vars, only: eq_name, max_deriv
         use grid_vars, only: disc_type
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use grid_utilities, only: apply_disc
+        use splines, only: spline3
         
         character(*), parameter :: rout_name = 'read_VMEC'
         
@@ -42,11 +43,11 @@ contains
         
         ! local variables
         integer :: id                                                           ! counters
+        real(dp), allocatable :: r_V(:)                                         ! normal coordinate
         real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
 #if ldebug
         integer :: kd                                                           ! counter
         real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
@@ -151,45 +152,54 @@ contains
             L_c_H(:,:,0) = 0._dp
         end if
         
-        ! conversion HM -> FM (L)
-        do id = 1,mnmax_V
-            ierr = conv_FHM(L_s_H(id,:,0),L_V_s(id,:,0),.false.)
-            CHCKERR('')
-            ierr = conv_FHM(L_c_H(id,:,0),L_V_c(id,:,0),.false.)
-            CHCKERR('')
-        end do
-        
         ! calculate data for normal derivatives  with the toroidal (or poloidal)
         ! flux, normalized wrt. to the  maximum flux, equidistantly, so the step
         ! size is 1/(n_r_in-1).
-        do kd = 1,max_deriv+1
-            ierr = setup_deriv_data(1._dp/(n_r_in-1),n_r_in,&
-                &norm_deriv_data,kd,norm_disc_prec_eq)
+        r_V = [((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]
+        ierr = spline3(r_V,q_saf_V(:,0),r_V,ynew=q_saf_V(:,0),&
+            &dynew=q_saf_V(:,1),d2ynew=q_saf_V(:,2))
+        CHCKERR('')
+        ierr = spline3(r_V,rot_t_V(:,0),r_V,ynew=rot_t_V(:,0),&
+            &dynew=rot_t_V(:,1),d2ynew=rot_t_V(:,2))
+        CHCKERR('')
+        ierr = spline3(r_V,pres_V(:,0),r_V,ynew=pres_V(:,0),&
+            &dynew=pres_V(:,1),d2ynew=pres_V(:,2))
+        CHCKERR('')
+        ierr = spline3(r_V,flux_t_V(:,1),r_V,ynew=flux_t_V(:,1),&
+            &dynew=flux_t_V(:,2),d2ynew=flux_t_V(:,3))
+        CHCKERR('')
+        ierr = spline3(r_V,flux_p_V(:,1),r_V,ynew=flux_p_V(:,1),&
+            &dynew=flux_p_V(:,2),d2ynew=flux_p_V(:,3))
+        CHCKERR('')
+        do id = 1,mnmax_V
+            ierr = spline3(r_V,R_V_c(id,:,0),r_V,ynew=R_V_c(id,:,0),&
+                &dynew=R_V_c(id,:,1),d2ynew=R_V_c(id,:,2))
             CHCKERR('')
-            ierr = apply_disc(flux_t_V(:,1),norm_deriv_data,flux_t_V(:,kd+1))   ! fluxes are derived up to a higher order
+            ierr = spline3(r_V,R_V_s(id,:,0),r_V,ynew=R_V_s(id,:,0),&
+                &dynew=R_V_s(id,:,1),d2ynew=R_V_s(id,:,2))
             CHCKERR('')
-            ierr = apply_disc(flux_p_V(:,1),norm_deriv_data,flux_p_V(:,kd+1))   ! fluxes are derived up to a higher order
+            ierr = spline3(r_V,Z_V_c(id,:,0),r_V,ynew=Z_V_c(id,:,0),&
+                &dynew=Z_V_c(id,:,1),d2ynew=Z_V_c(id,:,2))
             CHCKERR('')
-            ierr = apply_disc(pres_V(:,0),norm_deriv_data,pres_V(:,kd))
+            ierr = spline3(r_V,Z_V_s(id,:,0),r_V,ynew=Z_V_s(id,:,0),&
+                &dynew=Z_V_s(id,:,1),d2ynew=Z_V_s(id,:,2))
             CHCKERR('')
-            ierr = apply_disc(rot_t_V(:,0),norm_deriv_data,rot_t_V(:,kd))
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &L_c_H(id,2:n_r_in,0),r_V,ynew=L_V_c(id,:,0),&
+                &dynew=L_V_c(id,:,1),d2ynew=L_V_c(id,:,2))
             CHCKERR('')
-            ierr = apply_disc(q_saf_V(:,0),norm_deriv_data,q_saf_V(:,kd))
-            CHCKERR('')
-            ierr = apply_disc(R_V_c(:,:,0),norm_deriv_data,R_V_c(:,:,kd),2)
-            CHCKERR('')
-            ierr = apply_disc(R_V_s(:,:,0),norm_deriv_data,R_V_s(:,:,kd),2)
-            CHCKERR('')
-            ierr = apply_disc(Z_V_c(:,:,0),norm_deriv_data,Z_V_c(:,:,kd),2)
-            CHCKERR('')
-            ierr = apply_disc(Z_V_s(:,:,0),norm_deriv_data,Z_V_s(:,:,kd),2)
-            CHCKERR('')
-            ierr = apply_disc(L_V_c(:,:,0),norm_deriv_data,L_V_c(:,:,kd),2)
-            CHCKERR('')
-            ierr = apply_disc(L_V_s(:,:,0),norm_deriv_data,L_V_s(:,:,kd),2)
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &L_s_H(id,2:n_r_in,0),r_V,ynew=L_V_s(id,:,0),&
+                &dynew=L_V_s(id,:,1),d2ynew=L_V_s(id,:,2))
             CHCKERR('')
         end do
-        call norm_deriv_data%dealloc()
+        
+        !!! to check, as these are not supposed to be necessary
+        !!flux_t_V(:,3:) = 0._dp
+        !!flux_p_V(:,3:) = 0._dp
+        !!q_saf_V(:,3:) = 0._dp
+        !!rot_t_V(:,3:) = 0._dp
+        !!pres_V(:,3:) = 0._dp
         
 #if ldebug
         ! allocate helper variables
@@ -206,7 +216,7 @@ contains
         B_V_sub_c_M(:,:,3) = bsubvmnc
         B_V_c_H(:,:) = bmnc
         jac_V_c_H(:,:) = gmnc
-        if (is_asym_V) then                                                 ! following only needed in asymmetric situations
+        if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             B_V_sub_c_M(:,:,1) = bsubsmnc
             B_V_sub_s_M(:,:,2) = bsubumns
             B_V_sub_s_M(:,:,3) = bsubvmns
@@ -231,20 +241,26 @@ contains
         ! conversion HM -> FM (B_V_sub(2:3), B_V, jac_V)
         do id = 1,mnmax_V
             do kd = 2,3
-                ierr = conv_FHM(B_V_sub_c_M(id,:,kd),B_V_sub_c(id,:,kd),&
-                    &.false.)
+                ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    &B_V_sub_c_M(id,2:n_r_in,kd),r_V,&
+                    &ynew=B_V_sub_c(id,:,kd))
                 CHCKERR('')
-                ierr = conv_FHM(B_V_sub_s_M(id,:,kd),B_V_sub_s(id,:,kd),&
-                    &.false.)
+                ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    &B_V_sub_s_M(id,2:n_r_in,kd),r_V,&
+                    &ynew=B_V_sub_s(id,:,kd))
                 CHCKERR('')
             end do
-            ierr = conv_FHM(B_V_c_H(id,:),B_V_c(id,:),.false.)
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &B_V_c_H(id,2:n_r_in),r_V,ynew=B_V_c(id,:))
             CHCKERR('')
-            ierr = conv_FHM(B_V_s_H(id,:),B_V_s(id,:),.false.)
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:))
             CHCKERR('')
-            ierr = conv_FHM(jac_V_c_H(id,:),jac_V_c(id,:),.false.)
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &jac_V_c_H(id,2:n_r_in),r_V,ynew=jac_V_c(id,:))
             CHCKERR('')
-            ierr = conv_FHM(jac_V_s_H(id,:),jac_V_s(id,:),.false.)
+            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &jac_V_s_H(id,2:n_r_in),r_V,ynew=jac_V_s(id,:))
             CHCKERR('')
         end do
         

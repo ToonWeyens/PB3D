@@ -9,7 +9,7 @@ module num_utilities
     
     implicit none
     private
-    public calc_ext_var, calc_det, calc_int, add_arr_mult, c, conv_FHM, &
+    public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
         &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD
@@ -241,43 +241,6 @@ contains
         ! call the subroutine
         call calc_derivs_of_order(res,order,dims)
     end function derivs
-
-    ! numerically interpolates a function that is given on either FM to HM or to
-    ! FM. If FM2HM is .true., the starting variable is FM, if .false., it is HM
-    integer function conv_FHM(var,cvar,FM2HM) result(ierr)
-        character(*), parameter :: rout_name = 'conv_FHM'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)
-        real(dp), intent(inout) :: cvar(:)
-        logical, intent(in) :: FM2HM
-        
-        ! local variables
-        integer :: max_n
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        max_n = size(var)
-        
-        ! tests
-        if (size(cvar).ne.max_n) then
-            err_msg = 'The converted vector has to be of the same length as &
-                &the input vector'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        if (FM2HM) then                                                         ! FM to HM
-            cvar(1) = 0.0_dp
-            cvar(2:max_n) = (var(1:max_n-1)+var(2:max_n))/2.0_dp
-        else                                                                    ! HM to FM
-            cvar(1) = (3.0_dp*var(2)-var(3))/2.0_dp
-            cvar(2:max_n-1) = (var(2:max_n-1)+var(3:max_n))/2.0_dp
-            cvar(max_n) = (-var(max_n-1)+3.0_dp*var(max_n))/2.0_dp
-        end if
-    end function conv_FHM
     
     ! checks  whether the  derivatives requested  for a  certain subroutine  are
     ! valid

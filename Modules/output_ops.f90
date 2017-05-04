@@ -1202,81 +1202,80 @@ contains
         cont_plot_loc = .false.
         if (present(cont_plot)) cont_plot_loc = cont_plot
         
-        ! set up symmetry type, and local var names if not a continued plot
+        ! default symmetry type
+        sym_type_loc = 1
+        
+        ! Find  symmetry type  by  checking whether  Y/X  is constant  (toroidal
+        ! symmetry) or  Z^2/(X^2+Y^2) is  constant (poloidal symmetry),  for all
+        ! plots.
+        if (present(sym_type)) then
+            sym_type_loc = sym_type
+        else if (minval(tot_dim_3D).eq.1) then                                  ! possibly symmetry
+            ! allocate helper variable
+            allocate(sym_ang(loc_dim_3D(1),loc_dim_3D(2),loc_dim_3D(3)))
+            ! initialize sym_pol and sym_tor
+            sym_pol = 0
+            sym_tor = 0
+            ! loop over all plots
+            do id = 1,n_plot
+                ! assign pointers
+                call assign_pointers(id)
+                ! check poloidal angle
+                sym_ang = atan(Y_3D/X_3D)
+                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
+                    &(maxval(X_3D).ge.0._dp .neqv. &
+                    &minval(X_3D).lt.0._dp).and.&                               ! X has to be either positive or negative
+                    &(maxval(Y_3D).ge.0._dp .neqv. &
+                    &minval(Y_3D).lt.0._dp)) &                                  ! Y has to be either positive or negative
+                    &sym_pol = sym_pol+1                                        ! poloidal symmetry for this plot
+                ! check toroidal angle
+                sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))
+                if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
+                    &sym_tor = sym_tor+1                                        ! toroidal symmetry for this plot
+            end do
+            ! get total sym_pol and sym_tor
+            if (ind_plot) then                                                  ! so that below test succeeds
+                allocate(tot_sym_pol(n_procs),tot_sym_tor(n_procs))
+                tot_sym_pol = sym_pol
+                tot_sym_tor = sym_tor
+            else                                                                ! get from all the processes
+                istat = get_ser_var([sym_pol],tot_sym_pol,scatter=.true.)
+                CHCKSTT
+                istat = get_ser_var([sym_tor],tot_sym_tor,scatter=.true.)
+                CHCKSTT
+            end if
+            
+            ! check total results
+            if (sum(tot_sym_pol).eq.n_procs*n_plot) then                        ! poloidal symmetry for all plots
+                sym_type_loc = 2
+            else if (sum(tot_sym_tor).eq.n_procs*n_plot) then                   ! toroidal symmetry for all plots
+                sym_type_loc = 3
+            end if
+            ! deallocate helper variables
+            deallocate(sym_ang)
+        end if
+        
+        ! tests
+        if (col_loc.eq.4) then
+            if (sym_type_loc.eq.1) then
+                if (n_plot.ne.3) then
+                    istat = 1
+                    call writo('For vector field plots, need 3 dimensions',&
+                        &warning=.true.)
+                    CHCKSTT
+                end if
+            else
+                if (n_plot.ne.2) then
+                    istat = 1
+                    call writo('For symmetric vector field plots, need 2 &
+                        &dimensions',warning=.true.)
+                    CHCKSTT
+                end if
+            end if
+        end if
+        
+        ! set up and local var names if not a continued plot
         if (.not.cont_plot_loc) then
-            ! default symmetry type
-            sym_type_loc = 1
-            
-            ! Find symmetry type  by checking whether Y/X  is constant (toroidal
-            ! symmetry) or  Z^2/(X^2+Y^2) is  constant (poloidal  symmetry), for
-            ! all plots.
-            if (minval(tot_dim_3D).eq.1) then                                   ! possibly symmetry
-                ! allocate helper variable
-                allocate(sym_ang(loc_dim_3D(1),loc_dim_3D(2),loc_dim_3D(3)))
-                ! initialize sym_pol and sym_tor
-                sym_pol = 0
-                sym_tor = 0
-                ! loop over all plots
-                do id = 1,n_plot
-                    ! assign pointers
-                    call assign_pointers(id)
-                    ! check poloidal angle
-                    sym_ang = atan(Y_3D/X_3D)
-                    if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
-                        &(maxval(X_3D).ge.0._dp .neqv. &
-                        &minval(X_3D).lt.0._dp).and.&                           ! X has to be either positive or negative
-                        &(maxval(Y_3D).ge.0._dp .neqv. &
-                        &minval(Y_3D).lt.0._dp)) &                              ! Y has to be either positive or negative
-                        &sym_pol = sym_pol+1                                    ! poloidal symmetry for this plot
-                    ! check toroidal angle
-                    sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))
-                    if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
-                        &sym_tor = sym_tor+1                                    ! toroidal symmetry for this plot
-                end do
-                ! get total sym_pol and sym_tor
-                if (ind_plot) then                                              ! so that below test succeeds
-                    allocate(tot_sym_pol(n_procs),tot_sym_tor(n_procs))
-                    tot_sym_pol = sym_pol
-                    tot_sym_tor = sym_tor
-                else                                                            ! get from all the processes
-                    istat = get_ser_var([sym_pol],tot_sym_pol,scatter=.true.)
-                    CHCKSTT
-                    istat = get_ser_var([sym_tor],tot_sym_tor,scatter=.true.)
-                    CHCKSTT
-                end if
-                
-                ! check total results
-                if (sum(tot_sym_pol).eq.n_procs*n_plot) then                    ! poloidal symmetry for all plots
-                    sym_type_loc = 2
-                else if (sum(tot_sym_tor).eq.n_procs*n_plot) then               ! toroidal symmetry for all plots
-                    sym_type_loc = 3
-                end if
-                ! deallocate helper variables
-                deallocate(sym_ang)
-            end if
-            
-            ! possibly overwrite local symmetry type
-            if (present(sym_type)) sym_type_loc = sym_type
-            
-            ! tests
-            if (col_loc.eq.4) then
-                if (sym_type_loc.eq.1) then
-                    if (n_plot.ne.3) then
-                        istat = 1
-                        call writo('For vector field plots, need 3 dimensions',&
-                            &warning=.true.)
-                        CHCKSTT
-                    end if
-                else
-                    if (n_plot.ne.2) then
-                        istat = 1
-                        call writo('For symmetric vector field plots, need 2 &
-                            &dimensions',warning=.true.)
-                        CHCKSTT
-                    end if
-                end if
-            end if
-            
             ! set up local var_names
             allocate(grd_names(n_plot))
             allocate(att_names(n_plot))
@@ -1331,7 +1330,7 @@ contains
         
         ! create grid for collection if not continued plot
         if (.not.cont_plot_loc) allocate(grids(n_plot))
-            
+        
         ! allocate data item arrays
         if (sym_type_loc.eq.1) then                                             ! 3D grid
             allocate(dat(3))

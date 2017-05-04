@@ -50,13 +50,6 @@ contains
                     CHCKERR('')
                     call pause_prog
                 end if
-                
-                call writo('Test conversion between full and half mesh?')
-                if (get_log(.false.)) then
-                    ierr = test_conv_FHM()
-                    CHCKERR('')
-                    call pause_prog
-                end if
             case(2)                                                             ! POST
                 call writo('Test reading of subsets?')
                 if (get_log(.false.)) then
@@ -716,118 +709,6 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_calc_deriv
-    
-    ! tests the conversion between full and half mesh
-    integer function test_conv_FHM() result(ierr)
-        use num_vars, only: rank
-        use num_utilities, only: conv_FHM
-        
-        character(*), parameter :: rout_name = 'test_conv_FHM'
-        
-        ! local variables
-        integer :: id, kd
-        integer :: n_max, step, n_r
-        integer, parameter :: length = 50
-        real(dp), allocatable :: varin(:), varout(:), varoutout(:), vardiff(:)
-        real(dp) :: maxerr(length), averr(length), num_points(length)
-        real(dp) :: plotvar(2,length)
-        logical :: ind_plot, log_plot
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! user output
-        call writo('Going to test the numerical conversion between full and &
-            &half mesh variables')
-        call writo('The relative difference between an original FM variable&
-            & var and h2f*f2h*var, should be decreasing with increasing &
-            &number of radial points')
-        call lvl_ud(1)
-        
-        ! get user inputs
-        call writo('Do you want the individual plots?')
-        ind_plot = get_log(.false.)
-        
-        call writo('n_max = ?')
-        n_max = get_int(lim_lo=4*length)
-        
-        call writo('logarithmic plot?')
-        log_plot = get_log(.false.)
-        
-        ! only do the tests by the master
-        if (rank.eq.0) then
-            ! set step
-            step = n_max/length
-            
-            do id = 1,length
-                n_r = id*step
-                
-                num_points(id) = n_r
-                
-                if (allocated(varin)) deallocate(varin)
-                if (allocated(varout)) deallocate(varout)
-                if (allocated(varoutout)) deallocate(varoutout)
-                if (allocated(vardiff)) deallocate(vardiff)
-                allocate(varin(n_r))
-                allocate(varout(n_r))
-                allocate(varoutout(n_r))
-                allocate(vardiff(n_r))
-                
-                do kd = 1,n_r
-                    ! some continuous curve:
-                    varin(kd) = sin(float(kd)/n_r) + 0.5*cos(3*float(kd)/n_r)
-                end do
-                
-                ierr = conv_FHM(varin,varout,.true.)
-                CHCKERR('')
-                ierr = conv_FHM(varout,varoutout,.false.)
-                CHCKERR('')
-                do kd = 1,n_r
-                    vardiff(kd) = 2*(varin(kd)-varoutout(kd))/&
-                        &(varin(kd)+varoutout(kd))
-                end do
-                maxerr(id) = maxval(abs(vardiff))
-                averr(id) = sum(abs(vardiff))/size(vardiff)
-                
-                if (ind_plot) then
-                    call print_ex_2D('input with '//trim(i2str(n_r))&
-                        &//' radial points ('//trim(i2str(id))//'/'//&
-                        &trim(i2str(length))//')','',varin)
-                    call print_ex_2D('first output with '//trim(i2str(n_r))&
-                        &//' radial points ('//trim(i2str(id))//'/'//&
-                        &trim(i2str(length))//')','',varout)
-                    call print_ex_2D('output with '//trim(i2str(n_r))&
-                        &//' radial points ('//trim(i2str(id))//'/'//&
-                        &trim(i2str(length))//')','',varoutout)
-                    call print_ex_2D('rel. difference with '//trim(i2str(n_r))&
-                        &//' radial points ('//trim(i2str(id))//'/'//&
-                        &trim(i2str(length))//')','',vardiff)
-                    call writo('max = '//trim(r2strt(maxerr(id)))&
-                        &//', average: '//trim(r2strt(averr(id))))
-                end if
-            end do
-            
-            plotvar(1,:) = num_points
-            if (log_plot) then
-                plotvar(2,:) = log10(maxerr)
-            else
-                plotvar(2,:) = maxerr
-            end if
-            call print_ex_2D('maximum error as a function of numer of points',&
-                &'',plotvar(2,:),x=plotvar(1,:))
-            if (log_plot) then
-                plotvar(2,:) = log10(averr)
-            else
-                plotvar(2,:) = averr
-            end if
-            call print_ex_2D('average error as a function of numer of points',&
-                &'',plotvar(2,:),x=plotvar(1,:))
-        end if
-        
-        ! user output
-        call lvl_ud(-1)
-        call writo('Test complete')
-    end function test_conv_FHM
     
     ! tests reading of HDF5 subset
     integer function test_read_HDF5_subset() result(ierr)

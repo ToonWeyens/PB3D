@@ -81,8 +81,10 @@ contains
         ! local variables
         character(len=max_str_ln) :: full_file_name                             ! full file name
         character(len=max_str_ln) :: line                                       ! line in file
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer(HID_T) :: HDF5_i                                                ! file identifier 
         integer(HID_T) :: plist_id                                              ! property list identifier 
+        integer :: sym_type_loc                                                 ! local symmetry type
         integer :: MPI_Comm_loc                                                 ! MPI Communicator used
         integer :: disable_rw                                                   ! MPI info to disable read and write
         integer :: i_st(2)                                                      ! indices of sym_type in read string
@@ -143,6 +145,7 @@ contains
         if (cont_plot_loc) then
             call H5Fopen_f(trim(full_file_name)//'.h5',H5F_ACC_RDWR_F,&
                 &HDF5_i,ierr,access_prp=plist_id)
+            CHCKERR('Failed to open file')
         else
             call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,&
                 &HDF5_i,ierr,access_prp=plist_id)
@@ -186,8 +189,14 @@ contains
                     else
                         i_st(2) = i_st(2) - 2
                     end if
-                    read(line(i_st(1):i_st(2)),*,iostat=ierr) sym_type
+                    read(line(i_st(1):i_st(2)),*,iostat=ierr) sym_type_loc
                     CHCKERR('Can''t read symmetry type')
+                    if (sym_type_loc.ne.sym_type) then
+                        ierr = 1
+                        err_msg = 'Symmetry type of continued plot does not &
+                            &match previous plot'
+                        CHCKERR(err_msg)
+                    end if
                 end if
             else
                 ! open accompanying xmf file

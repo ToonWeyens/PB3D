@@ -53,12 +53,11 @@ contains
     ! perturbation grid.
     integer function calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, &
-            &norm_disc_prec_X
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_X
         use num_utilities, only: con2dis
-        use grid_utilities, only: setup_deriv_data, setup_interp_data, &
-            &apply_disc
+        use grid_utilities, only: setup_interp_data, apply_disc
         use X_vars, only: sec_X_ind
+        use splines, only: spline3
 #if ldebug
         use num_utilities, only: calc_int
 #endif
@@ -91,11 +90,11 @@ contains
         complex(dp), allocatable :: sol_vec_tot(:,:)                            ! total solution vector
         complex(dp), allocatable :: Dsol_vec(:,:)                               ! normal derivative of sol_vec
         complex(dp), allocatable :: Dsol_vec_tot(:,:)                           ! total normal derivative of sol_vec 
+        complex(dp), allocatable :: Dsol_vec_loc(:)                             ! local Dsol_vec_tot
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent
         real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at solution grid
         real(dp), allocatable :: S(:,:,:), inv_J(:,:,:)                         ! S and 1/J, interpolated at solution grid
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
 #if ldebug
         real(dp), allocatable :: sol_vec_ALT(:)                                 ! sol_vec calculated from Dsol_vec
@@ -200,6 +199,7 @@ contains
             ! set up variables
             allocate(sol_vec_tot(n_mod_tot,grid_X%loc_n_r))
             allocate(Dsol_vec_tot(n_mod_tot,grid_X%loc_n_r))
+            allocate(Dsol_vec_loc(grid_X%loc_n_r))
             sol_vec_tot = 0._dp
             
             ! convert to total solution vector
@@ -207,12 +207,12 @@ contains
             CHCKERR('')
             
             ! derive
-            ierr = setup_deriv_data(grid_X%loc_r_F,norm_deriv_data,1,&
-                &norm_disc_prec_sol)
-            CHCKERR('')
-            ierr = apply_disc(sol_vec_tot,norm_deriv_data,Dsol_vec_tot,2)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
+            do ld = 1,n_mod_tot
+                ierr = spline3(grid_X%loc_r_F,sol_vec_tot(ld,:),&
+                    &grid_X%loc_r_F,dynew=Dsol_vec_loc)
+                CHCKERR('')
+                Dsol_vec_tot(ld,:) = Dsol_vec_loc
+            end do
             
 #if ldebug
             if (debug_calc_XUQ_arr) then

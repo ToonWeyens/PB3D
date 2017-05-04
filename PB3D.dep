@@ -418,6 +418,7 @@ VMEC_ops.o : \
     grid_utilities.o \
     eq_vars.o \
     VMEC_vars.o \
+    splines.o \
 
 VMEC_utilities.o : \
     num_vars.o \
@@ -509,5 +510,9 @@ str_utilities.o : \
     num_vars.o \
 
 num_vars.o : \
+
+splines.o : \
+    num_vars.o \
+    output_ops.o \
 
 foul.o : \

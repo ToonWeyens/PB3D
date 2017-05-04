@@ -771,8 +771,8 @@ contains
             &' values on normal range '//trim(r2strt(min_r_sol))//'..'//&
             &trim(r2strt(max_r_sol)))
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
-            &range '//trim(r2strt(min_par_X*pi))//'..'//&
-            &trim(r2strt(max_par_X*pi)))
+            &range '//trim(r2strt(min_par_X))//'pi..'//&
+            &trim(r2strt(max_par_X))//'pi')
         call lvl_ud(1)
         if (only_half_grid_loc) call writo('for this Richardson level, only &
             &the even points are setup up')

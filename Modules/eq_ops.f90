@@ -84,7 +84,7 @@ contains
     integer function calc_eq_1(grid_eq,eq) result(ierr)                         ! flux version
         use num_vars, only: eq_style, rho_style, use_normalization, &
             &use_pol_flux_E, use_pol_flux_F, export_HEL
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use grid_utilities, only: apply_disc
         use eq_vars, only: rho_0
         use num_utilities, only: derivs
         use eq_utilities, only: calc_F_derivs
@@ -2832,12 +2832,13 @@ contains
     subroutine calc_derived_q(grid_eq,eq_1,eq_2)
         use num_utilities, only: c
         use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq, eq_style
+        use num_vars, only: eq_style
+        use splines, only: spline3
 #if ldebug
         use num_vars, only: use_pol_flux_F
-        use grid_utilities, only: trim_grid, calc_XYZ_grid, setup_deriv_data, &
-            &apply_disc
+        use grid_utilities, only: trim_grid, calc_XYZ_grid
         use VMEC_utilities, only: calc_trigon_factors
+        use num_utilities, only: calc_int
 #endif
         
         ! input / output
@@ -2874,11 +2875,11 @@ contains
         type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
         real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
         real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
+        real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
         real(dp), allocatable :: X_plot(:,:,:)                                  ! X of plot
         real(dp), allocatable :: Y_plot(:,:,:)                                  ! Y of plot
         real(dp), allocatable :: Z_plot(:,:,:)                                  ! Z of plot
-        type(disc_type) :: ang_deriv_data                                      ! data for angular derivatives
         integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -2963,6 +2964,8 @@ contains
                 &grid_eq_trim%loc_n_r))
             allocate(D3sigma_ALT(grid_eq_trim%n(1),grid_eq_trim%n(2),&
                 &grid_eq_trim%loc_n_r))
+            allocate(sigma_ALT(grid_eq_trim%n(1),grid_eq_trim%n(2),&
+                &grid_eq_trim%loc_n_r))
             
             ! point parallel angle
             if (use_pol_flux_F) then
@@ -2974,15 +2977,11 @@ contains
             ! get derived sigma
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_eq_trim%n(2)
-                    istat = setup_deriv_data(ang_par_F(:,jd,kd),ang_deriv_data,&
-                        &1,norm_disc_prec_eq)
-                    CHCKSTT
-                    istat = apply_disc(eq_2%sigma(:,jd,kd),ang_deriv_data,&
-                        &D3sigma(:,jd,kd-norm_id(1)+1))
+                    istat = spline3(ang_par_F(:,jd,kd),eq_2%sigma(:,jd,kd),&
+                        &ang_par_F(:,jd,kd),dynew=D3sigma(:,jd,kd-norm_id(1)+1))
                     CHCKSTT
                 end do
             end do
-            call ang_deriv_data%dealloc()
             
             ! calculate alternatively derived sigma
             do kd = norm_id(1),norm_id(2)
@@ -2990,11 +2989,28 @@ contains
                     &-2*eq_1%pres_FD(kd,1)*eq_2%kappa_g(:,:,kd)*J(:,:,kd)
             end do
             
+            ! calculate alternative sigma by integration
+            ! Note:  there  is  an  undetermined constant  of  integration  that
+            ! depends on the normal coordinate and the geodesic coordinate.
+            do kd = norm_id(1),norm_id(2)
+                do jd = 1,grid_eq_trim%n(2)
+                    istat = calc_int(D3sigma_ALT(:,jd,kd-norm_id(1)+1),&
+                        &ang_par_F(:,jd,kd),sigma_ALT(:,jd,kd-norm_id(1)+1))
+                    CHCKSTT
+                end do
+                sigma_ALT(:,:,kd-norm_id(1)+1) = eq_2%sigma(1,1,kd) + &
+                    &sigma_ALT(:,:,kd-norm_id(1)+1)
+            end do
+            
             ! plot output
             call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
                 &grid_eq_trim%n,[0,0,grid_eq_trim%i_min-1],&
                 &description='To test whether -2 p'' J kappa_g = D3sigma',&
                 &output_message=.true.)
+            call plot_diff_HDF5(eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
+                &sigma_ALT,'TEST_sigma',grid_eq_trim%n,&
+                &[0,0,grid_eq_trim%i_min-1],description='To test whether &
+                &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
             
             ! get X, Y and Z of plot
             allocate(X_plot(grid_eq_trim%n(1),grid_eq_trim%n(2),&
@@ -3010,12 +3026,6 @@ contains
             ! plot shear
             call plot_HDF5('shear','TEST_shear',&
                 &eq_2%S(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
-                &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
-                &z=Z_plot)
-            
-            ! plot sigma
-            call plot_HDF5('sigma','TEST_sigma',&
-                &eq_2%sigma(:,:,norm_id(1):norm_id(2)),tot_dim=grid_eq_trim%n,&
                 &loc_offset=[0,0,grid_eq_trim%i_min-1],x=X_plot,y=Y_plot,&
                 &z=Z_plot)
             
@@ -4929,9 +4939,10 @@ contains
     
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,eq) result(ierr)
-        use grid_utilities, only: trim_grid
+        use grid_utilities, only: trim_grid, nufft
         use VMEC_utilities, only: fourier2real
         use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
+        use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'test_jac_V'
         
@@ -4943,6 +4954,8 @@ contains
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
+        real(dp), allocatable :: DD2res(:,:,:)                                  ! result variable of second theta derivative
+        real(dp), allocatable :: F(:,:)                                         ! fourier components
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -4969,12 +4982,18 @@ contains
         
         ! set up res
         allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+        allocate(DD2res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
-        ! get jac_V from VMEC
+        ! get jac_V and second derivative from VMEC
         ierr = fourier2real(jac_V_c(:,norm_id_f(1):norm_id_f(2)),&
             &jac_V_s(:,norm_id_f(1):norm_id_f(2)),&
             &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),res,&
             &sym=[.true.,is_asym_V])
+        CHCKERR('')
+        ierr = fourier2real(jac_V_c(:,norm_id_f(1):norm_id_f(2)),&
+            &jac_V_s(:,norm_id_f(1):norm_id_f(2)),&
+            &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),DD2res,&
+            &sym=[.true.,is_asym_V],deriv=[2,0])
         CHCKERR('')
         
         ! user output
@@ -4982,13 +5001,36 @@ contains
         call lvl_ud(1)
         
         ! set some variables
-        file_name = 'TEST_jac_V'
         description = 'Testing calculated with given value for jac_V'
         
         ! plot difference
+        file_name = 'TEST_jac_V'
         call plot_diff_HDF5(res(:,:,:),&
             &eq%jac_E(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
             &tot_dim,loc_offset,description,output_message=.true.)
+        file_name = 'TEST_D22jac_V'
+        call plot_diff_HDF5(DD2res(:,:,:),&
+            &eq%jac_E(:,:,norm_id(1):norm_id(2),0,2,0),file_name,&
+            &tot_dim,loc_offset,description,output_message=.true.)
+        
+        ! calculate NUFFT
+        if (rank.eq.n_procs-1) then
+            call print_ex_2D('VMEC last surface','VMEC_lf',&
+                &res(:,1,grid_trim%loc_n_r),&
+                &x=grid_trim%theta_E(:,1,grid_trim%loc_n_r))
+            call print_ex_2D('PB3D last surface','PB3D_lf',&
+                &eq%jac_E(:,1,grid_eq%loc_n_r,0,0,0),&
+                &x=grid_eq%theta_E(:,1,grid_eq%loc_n_r))
+            
+            ierr = nufft(grid_trim%theta_E(:,1,grid_trim%loc_n_r),&
+                &res(:,1,grid_trim%loc_n_r),F,plot_name='VMEC')
+            CHCKERR('')
+            deallocate(F)
+            ierr = nufft(grid_eq%theta_E(:,1,grid_eq%loc_n_r),&
+                &eq%jac_E(:,1,grid_eq%loc_n_r,0,0,0),F,plot_name='PB3D')
+            CHCKERR('')
+            deallocate(F)
+        end if
         
         call lvl_ud(-1)
         
@@ -5151,10 +5193,11 @@ contains
     ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
     integer function test_p(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c
-        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
+        use grid_utilities, only: trim_grid
         use eq_vars, only: vac_perm
-        use num_vars, only: eq_style, norm_disc_prec_eq
+        use num_vars, only: eq_style
         use HELENA_vars, only: RBphi_H, h_H_11, h_H_12
+        use splines, only: spline3
         
         character(*), parameter :: rout_name = 'test_p'
         
@@ -5167,8 +5210,6 @@ contains
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         integer :: id, jd, kd                                                   ! counters
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
@@ -5277,21 +5318,18 @@ contains
                 &eq_2%g_FD(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0)*&
                 &eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,1,0)/ &
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
-            ierr = setup_deriv_data(grid_trim%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = apply_disc(eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
+                    ierr = spline3(grid_trim%loc_r_E,&
+                        &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &RBphi_H(norm_id_f(1):norm_id_f(2))+&
                         &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &h_H_11(id,norm_id_f(1):norm_id_f(2))/&
                         &RBphi_H(norm_id_f(1):norm_id_f(2)),&
-                        &norm_deriv_data,res(id,jd,:,2))
+                        &grid_trim%loc_r_E,dynew=res(id,jd,:,2))
                     CHCKERR('')
                 end do
             end do
-            call norm_deriv_data%dealloc()
             
             ! set some variables
             file_name = 'TEST_D2B_3'
@@ -5316,11 +5354,9 @@ contains
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = apply_disc(h_H_12(:,kd+grid_eq%i_min-1),&
-                        &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,2))
+                    ierr = spline3(grid_eq%theta_E(:,jd,kd),&
+                        &h_H_12(:,kd+grid_eq%i_min-1),grid_eq%theta_E(:,jd,kd),&
+                        &dynew=res(:,jd,kd-norm_id(1)+1,2))
                     CHCKERR('')
                 end do
                 res(:,:,kd-norm_id(1)+1,2) = &
@@ -5329,7 +5365,6 @@ contains
                     &RBphi_H(kd+grid_eq%i_min-1) * &
                     &eq_1%q_saf_E(kd,1)
             end do
-            call ang_deriv_data%dealloc()
             
             ! set some variables
             file_name = 'TEST_D3B_2'
