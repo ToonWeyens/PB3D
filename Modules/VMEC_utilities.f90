@@ -146,8 +146,8 @@ contains
     !   unique calculations.
     ! Both  these  versions  make  use  of  a  factor  that  represents  angular
     ! derivatives. For deriv = [j,k], this is:
-    !   m^j (-n)^k (-1)^((j+1)/2 + (k+1)/2)     for varf_c,
-    !   m^j (-n)^k (-1)^(j/2 + k/2)             for varf_c,
+    !   m^j (-n)^k (-1)^((j+k+1)/2)             for varf_c,
+    !   m^j (-n)^k (-1)^((j+k)/2)               for varf_c,
     ! where  the  divisions  have  to  be  done  using  integers,  i.e.  without
     ! remainder. The  first two factors  are straightforward, and the  third one
     ! originates in  the change of  sign when deriving a  cosine, but not  for a
@@ -210,7 +210,7 @@ contains
         do id = 1,mnmax_V
             ! setup derivative factor for varf_c
             deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**((deriv_loc(1)+1)/2+(deriv_loc(2)+1)/2)
+                &(-1)**((sum(deriv_loc)+1)/2)
             
             ! add terms ~ varf_c
             if (sym_loc(1)) then
@@ -231,7 +231,7 @@ contains
             
             ! setup derivative factor for varf_s
             deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**(deriv_loc(1)/2+deriv_loc(2)/2)
+                &(-1)**(sum(deriv_loc)/2)
             
             ! add terms ~ varf_s
             if (sym_loc(2)) then
@@ -306,7 +306,7 @@ contains
             
             ! setup derivative factor for varf_c
             deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**((deriv_loc(1)+1)/2+(deriv_loc(2)+1)/2)
+                &(-1)**((sum(deriv_loc)+1)/2)
             
             ! add terms ~ varf_c
             if (sym_loc(1)) then
@@ -325,7 +325,7 @@ contains
             
             ! setup derivative factor for varf_s
             deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**(deriv_loc(1)/2+deriv_loc(2)/2)
+                &(-1)**(sum(deriv_loc)/2)
             
             ! add terms ~ varf_s
             if (sym_loc(2)) then

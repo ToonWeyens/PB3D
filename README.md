@@ -769,3 +769,9 @@ CHANGELOG
       - Splines have been implemented for derivatives. Only the third order (cubic) has been implemented. This is now fixed.
       - "conv_FHM" has been removed, replaced by splines.
       - Fixed issue in HDF5 plotting, where the symmetry type was not recoverable for vector plots.
+
+1.70: - Fixed an important bug in the "fourier2real" where the incorrect sign was taken for the derivatives due to an incorrect application of integer division.
+      - The pressure balance is more correct, as is the test on D3sigma.
+      - Changed the tests in "calc_derived_q" somewhat.
+      - Added a new test on the calculation of R, Z and L for VMEC, more specifically for the correct treatment of the derivatives.
+      - "plot_HDF5" now also takes single X, Y and Z for a collection.

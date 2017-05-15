@@ -1512,16 +1512,24 @@ contains
             ! input / output
             integer :: id                                                       ! index at which to assing pointer
             
+            ! local variables
+            integer :: id_loc                                                   ! local id
+            
             ! X
             if (present(X)) then
+                id_loc = id
                 if (col_id_loc.eq.1) then
-                    X_3D => X(id,:,:,:)
+                    if (size(X,1).eq.1) id_loc = 1
+                    X_3D => X(id_loc,:,:,:)
                 else if (col_id_loc.eq.2) then
-                    X_3D => X(:,id,:,:)
+                    if (size(X,2).eq.1) id_loc = 1
+                    X_3D => X(:,id_loc,:,:)
                 else if (col_id_loc.eq.3) then
-                    X_3D => X(:,:,id,:)
+                    if (size(X,3).eq.1) id_loc = 1
+                    X_3D => X(:,:,id_loc,:)
                 else if (col_id_loc.eq.4) then
-                    X_3D => X(:,:,:,id)
+                    if (size(X,4).eq.1) id_loc = 1
+                    X_3D => X(:,:,:,id_loc)
                 else
                     istat = 1
                     CHCKSTT
@@ -1534,14 +1542,19 @@ contains
             end if
             ! Y
             if (present(Y)) then
+                id_loc = id
                 if (col_id_loc.eq.1) then
-                    Y_3D => Y(id,:,:,:)
+                    if (size(Y,1).eq.1) id_loc = 1
+                    Y_3D => Y(id_loc,:,:,:)
                 else if (col_id_loc.eq.2) then
-                    Y_3D => Y(:,id,:,:)
+                    if (size(Y,2).eq.1) id_loc = 1
+                    Y_3D => Y(:,id_loc,:,:)
                 else if (col_id_loc.eq.3) then
-                    Y_3D => Y(:,:,id,:)
+                    if (size(Y,3).eq.1) id_loc = 1
+                    Y_3D => Y(:,:,id_loc,:)
                 else if (col_id_loc.eq.4) then
-                    Y_3D => Y(:,:,:,id)
+                    if (size(Y,4).eq.1) id_loc = 1
+                    Y_3D => Y(:,:,:,id_loc)
                 else
                     istat = 1
                     CHCKSTT
@@ -1552,16 +1565,21 @@ contains
                     Y_3D(:,jd,:) = loc_offset_3D(2) + jd - 1
                 end do
             end if
-            ! X
+            ! Z
             if (present(Z)) then
+                id_loc = id
                 if (col_id_loc.eq.1) then
-                    Z_3D => Z(id,:,:,:)
+                    if (size(Z,1).eq.1) id_loc = 1
+                    Z_3D => Z(id_loc,:,:,:)
                 else if (col_id_loc.eq.2) then
-                    Z_3D => Z(:,id,:,:)
+                    if (size(Z,2).eq.1) id_loc = 1
+                    Z_3D => Z(:,id_loc,:,:)
                 else if (col_id_loc.eq.3) then
-                    Z_3D => Z(:,:,id,:)
+                    if (size(Z,3).eq.1) id_loc = 1
+                    Z_3D => Z(:,:,id_loc,:)
                 else if (col_id_loc.eq.4) then
-                    Z_3D => Z(:,:,:,id)
+                    if (size(Z,4).eq.1) id_loc = 1
+                    Z_3D => Z(:,:,:,id_loc)
                 else
                     istat = 1
                     CHCKSTT

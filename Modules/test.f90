@@ -41,6 +41,13 @@ contains
             call pause_prog
         end if
         
+        call writo('Test calculation of RZL?')
+        if (get_log(.false.)) then
+            ierr = test_calc_RZL()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
@@ -709,6 +716,151 @@ contains
         call lvl_ud(-1)
         call writo('Test complete')
     end function test_calc_deriv
+    
+    ! tests the calculation of R, Z, and L
+    integer function test_calc_RZL() result(ierr)
+        use PB3D_ops, only: reconstruct_PB3D_in
+        use num_vars, only: eq_style
+        
+        character(*), parameter :: rout_name = 'test_calc_RZL'
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! preliminary things
+        ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables
+        CHCKERR('')
+        
+        ! select according to equilibrium style
+        select case (eq_style)
+            case(1)                                                             ! VMEC
+                ierr = test_calc_RZL_VMEC()
+                CHCKERR('')
+            case(2)                                                             ! HELENA
+                ! do nothing
+        end select
+        
+        ! clean up
+        call dealloc_in()
+    contains
+        integer function test_calc_RZL_VMEC() result(ierr)
+            use num_vars, only: rank
+            use grid_vars, only: n_r_eq, grid_type
+            use grid_utilities, only: calc_eqd_grid
+            use VMEC_utilities, only: calc_trigon_factors, fourier2real
+            use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
+                &is_asym_V
+            
+            character(*), parameter :: rout_name = 'test_calc_RZL_VMEC'
+            
+            ! local variables
+            integer :: id, jd                                                   ! counters
+            integer :: dims(3)                                                  ! dimensions of grid
+            integer :: norm_id                                                  ! normal point for which to do the analysis
+            real(dp) :: grid_lims(2,2)                                          ! limits on grid
+            real(dp), allocatable :: norm(:,:,:)                                ! copy of normal grid variable
+            real(dp), allocatable :: R(:,:,:), Z(:,:,:), L(:,:,:)               ! local R, Z and L
+            type(grid_type) :: grid                                             ! grid
+            integer :: deriv(3)                                                 ! local derivative
+            integer :: max_deriv(3)                                             ! maximum derivative
+            
+            ! user output
+            call writo('Going to test the calculation of R, Z and L')
+            call lvl_ud(1)
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (rank.eq.0) then
+                ! set normal point
+                call writo('For which normal point do you want the analysis?')
+                norm_id = get_int(lim_lo=1,lim_hi=n_r_eq)
+                
+                ! set dimensions [theta,zeta,r]
+                dims = [1,1,1]
+                do id = 2,3
+                    call writo('grid size in dimension '//trim(i2str(id))//'?')
+                    dims(id-1) = get_int(lim_lo=1)
+                    
+                    call writo('limits for angle '//trim(i2str(id))//' [pi]?')
+                    grid_lims(1,id-1) = get_real()*pi
+                    grid_lims(2,id-1) = get_real(lim_lo=grid_lims(1,id-1)/pi)*pi
+                end do
+                
+                ierr = grid%init(dims)
+                CHCKERR('')
+                
+                ! create grid
+                allocate(norm(dims(1),dims(2),dims(3)))
+                ierr = calc_eqd_grid(grid%theta_E,grid_lims(1,1),&
+                    &grid_lims(2,1),1)
+                CHCKERR('')
+                ierr = calc_eqd_grid(grid%zeta_E,grid_lims(1,2),&
+                    &grid_lims(2,2),2)
+                CHCKERR('')
+                norm = (norm_id-1._dp)/(n_r_eq-1)
+                grid%r_E = norm(1,1,:)
+                
+                ! set maximum derivatives [r,theta,zeta]
+                max_deriv(1) = 0
+                do id = 2,3
+                    call writo('maximum derivative in dimension '//&
+                        &trim(i2str(id))//'?')
+                    max_deriv(id) = get_int(lim_lo=0,lim_hi=3)
+                end do
+                
+                ! calculate R, Z and L
+                allocate(R(dims(1),dims(2),dims(3)))
+                allocate(Z(dims(1),dims(2),dims(3)))
+                allocate(L(dims(1),dims(2),dims(3)))
+                ierr = calc_trigon_factors(grid%theta_E,grid%zeta_E,&
+                    &grid%trigon_factors)
+                CHCKERR('')
+                do jd = 0,max_deriv(3)
+                    do id = 0,max_deriv(2)
+                        deriv = [0,id,jd]
+                        call writo('Calculating for deriv = ['//&
+                            &trim(i2str(deriv(1)))//','//&
+                            &trim(i2str(deriv(2)))//','//&
+                            &trim(i2str(deriv(3)))//']')
+                        call lvl_ud(1)
+                        ierr = fourier2real(R_V_c(:,norm_id:norm_id,deriv(1)),&
+                            &R_V_s(:,norm_id:norm_id,deriv(1)),&
+                            !&grid%theta_E,grid%zeta_E,&
+                            &grid%trigon_factors,&
+                            &R,sym=[.true.,is_asym_V],&
+                            &deriv=[deriv(2),deriv(3)])
+                        CHCKERR('')
+                        ierr = fourier2real(Z_V_c(:,norm_id:norm_id,deriv(1)),&
+                            &Z_V_s(:,norm_id:norm_id,deriv(1)),&
+                            !&grid%theta_E,grid%zeta_E,&
+                            &grid%trigon_factors,&
+                            &Z,sym=[is_asym_V,.true.],&
+                            &deriv=[deriv(2),deriv(3)])
+                        CHCKERR('')
+                        ierr = fourier2real(L_V_c(:,norm_id:norm_id,deriv(1)),&
+                            &L_V_s(:,norm_id:norm_id,deriv(1)),&
+                            !&grid%theta_E,grid%zeta_E,&
+                            &grid%trigon_factors,&
+                            &L,sym=[is_asym_V,.true.],&
+                            &deriv=[deriv(2),deriv(3)])
+                        CHCKERR('')
+                        call plot_HDF5(['R','Z','L'],'TEST_RZL_0_'//&
+                            &trim(i2str(id))//'_'//trim(i2str(jd)),&
+                            &reshape([R,Z,L],[dims,3]),&
+                            &X=reshape([grid%theta_E],[dims,1]),&
+                            &Y=reshape([grid%zeta_E],[dims,1]),&
+                            &Z=reshape([norm],[dims,1]))
+                        call lvl_ud(-1)
+                    end do
+                end do
+            end if
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Test complete')
+        end function test_calc_RZL_VMEC
+    end function test_calc_RZL
     
     ! tests reading of HDF5 subset
     integer function test_read_HDF5_subset() result(ierr)

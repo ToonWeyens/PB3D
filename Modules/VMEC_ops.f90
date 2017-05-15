@@ -119,8 +119,8 @@ contains
         
         call writo('Updating variables')
         allocate(mn_V(mnmax_V,2))
-        mn_V(:,1) = nint(xm)
-        mn_V(:,2) = nint(xn)
+        mn_V(:,1) = nint(xm(1:mnmax_V))
+        mn_V(:,2) = nint(xn(1:mnmax_V))
         
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
@@ -139,13 +139,13 @@ contains
         allocate(L_s_H(mnmax_V,n_r_in,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
-        R_V_c(:,:,0) = rmnc
-        Z_V_s(:,:,0) = zmns
-        L_s_H(:,:,0) = lmns
+        R_V_c(:,:,0) = rmnc(1:mnmax_V,:)
+        Z_V_s(:,:,0) = zmns(1:mnmax_V,:)
+        L_s_H(:,:,0) = lmns(1:mnmax_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            R_V_s(:,:,0) = rmns
-            Z_V_c(:,:,0) = zmnc
-            L_c_H(:,:,0) = lmnc
+            R_V_s(:,:,0) = rmns(1:mnmax_V,:)
+            Z_V_c(:,:,0) = zmnc(1:mnmax_V,:)
+            L_c_H(:,:,0) = lmnc(1:mnmax_V,:)
         else
             R_V_s(:,:,0) = 0._dp
             Z_V_c(:,:,0) = 0._dp
@@ -211,17 +211,17 @@ contains
         allocate(jac_V_s_H(mnmax_V,n_r_in))
         
         ! store in helper variables
-        B_V_sub_s_M(:,:,1) = bsubsmns
-        B_V_sub_c_M(:,:,2) = bsubumnc
-        B_V_sub_c_M(:,:,3) = bsubvmnc
-        B_V_c_H(:,:) = bmnc
-        jac_V_c_H(:,:) = gmnc
+        B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_V,:)
+        B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_V,:)
+        B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_V,:)
+        B_V_c_H(:,:) = bmnc(1:mnmax_V,:)
+        jac_V_c_H(:,:) = gmnc(1:mnmax_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_sub_c_M(:,:,1) = bsubsmnc
-            B_V_sub_s_M(:,:,2) = bsubumns
-            B_V_sub_s_M(:,:,3) = bsubvmns
-            B_V_s_H(:,:) = bmns
-            jac_V_s_H(:,:) = gmns
+            B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_V,:)
+            B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_V,:)
+            B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_V,:)
+            B_V_s_H(:,:) = bmns(1:mnmax_V,:)
+            jac_V_s_H(:,:) = gmns(1:mnmax_V,:)
         else
             B_V_sub_c_M(:,:,1) = 0._dp
             B_V_sub_s_M(:,:,2) = 0._dp
@@ -264,15 +264,37 @@ contains
             CHCKERR('')
         end do
         
-        !!! to check decay of modes
-        !!call print_ex_2D(['B_V_c'],'',log10(abs(B_V_c)))
-        !!call print_ex_2D(['B_V_s'],'',log10(abs(B_V_s)))
-        !!call print_ex_2D(['R_V_c'],'',log10(abs(R_V_c(:,:,0))))
-        !!call print_ex_2D(['R_V_s'],'',log10(abs(R_V_s(:,:,0))))
-        !!call print_ex_2D(['Z_V_c'],'',log10(abs(Z_V_c(:,:,0))))
-        !!call print_ex_2D(['Z_V_s'],'',log10(abs(Z_V_s(:,:,0))))
-        !!call print_ex_2D(['L_V_c'],'',log10(abs(L_V_c(:,:,0))))
-        !!call print_ex_2D(['L_V_s'],'',log10(abs(L_V_s(:,:,0))))
+        ! to check decay of modes
+        call print_ex_2D('jac_V_c','jac_V_c',log10(maxval(abs(jac_V_c),2)),&
+            &draw=.false.)
+        call draw_ex(['jac_V_c'],'jac_V_c',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('jac_V_s','jac_V_1',log10(maxval(abs(jac_V_s),2)),&
+            &draw=.false.)
+        call draw_ex(['jac_V_s'],'jac_V_s',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('B_V_c','B_V_c',log10(maxval(abs(B_V_c),2)),&
+            &draw=.false.)
+        call draw_ex(['B_V_c'],'B_V_c',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('B_V_s','B_V_1',log10(maxval(abs(B_V_s),2)),&
+            &draw=.false.)
+        call draw_ex(['B_V_s'],'B_V_s',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('R_V_c','R_V_c',log10(maxval(abs(R_V_c(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['R_V_c'],'R_V_c',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('R_V_s','R_V_s',log10(maxval(abs(R_V_s(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['R_V_s'],'R_V_s',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('Z_V_c','Z_V_c',log10(maxval(abs(Z_V_c(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['Z_V_c'],'Z_V_c',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('Z_V_s','Z_V_s',log10(maxval(abs(Z_V_s(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['Z_V_s'],'Z_V_s',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('L_V_c','L_V_c',log10(maxval(abs(L_V_c(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['L_V_c'],'L_V_c',1,1,.false.,ex_plot_style=1)
+        call print_ex_2D('L_V_s','L_V_s',log10(maxval(abs(L_V_s(:,:,0)),2)),&
+            &draw=.false.)
+        call draw_ex(['L_V_s'],'L_V_s',1,1,.false.,ex_plot_style=1)
         
         ! deallocate helper variables
         deallocate(B_V_sub_c_M,B_V_sub_s_M)

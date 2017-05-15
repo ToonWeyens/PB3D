@@ -324,7 +324,15 @@ display_usage() {
                 echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
                 (( $((($i-101)%10+1)) == 10 )) && echo -e ""
             done
+            echo -e ""
             echo -e "               201 Hmode_ped1.5_ripple16"
+            echo -e "               301 circular"
+            echo -e "               302 circular_ripple1"
+            echo -e "               303 circular_ripple16_0.005"
+            echo -e "               304 circular_ripple16_0.001"
+            echo -e "               305 circular_ripple16_0.0001"
+            echo -e "               306 circular_ripple6_0.001"
+            echo -e "               307 circular_ripple1_0.001"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -453,7 +461,7 @@ set_input() {
                 4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-1])
                     input_name=Hmode
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|201)
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|201|30[1-7])
                     input_name=Hmode_ripple
                 ;;
                 *)
@@ -629,6 +637,27 @@ set_input() {
                 ;;
                 201)
                     eq_name=wout_Hmode_ped1.5_ripple16.nc
+                ;;
+                301)
+                    eq_name=wout_circular.nc
+                ;;
+                302)
+                    eq_name=wout_circular_ripple1.nc
+                ;;
+                303)
+                    eq_name=wout_circular_ripple16_0.005.nc
+                ;;
+                304)
+                    eq_name=wout_circular_ripple16_0.001.nc
+                ;;
+                305)
+                    eq_name=wout_circular_ripple16_0.0001.nc
+                ;;
+                306)
+                    eq_name=wout_circular_ripple6_0.001.nc
+                ;;
+                307)
+                    eq_name=wout_circular_ripple1_0.001.nc
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
