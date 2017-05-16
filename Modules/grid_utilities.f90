@@ -2229,7 +2229,7 @@ contains
         CHCKERR('')
         
         ! if r starts at 0, take away first points as it is singular
-        if (abs(grid%r_F(1)).lt.tol_zero) then
+        if (abs(grid_trim%r_F(1)).lt.tol_zero) then
             if (rank.eq.0) then
                 norm_id(1) = 1+norm_disc_prec
                 grid_trim%loc_n_r = grid_trim%loc_n_r-norm_disc_prec
@@ -2481,7 +2481,7 @@ contains
                 if (eq_style.eq.1) call writo('For VMEC, these are inverse.')
                 call lvl_ud(-1)
             end if
-            if (maxval(grid%r_F).lt.maxval(grid%r_F)) then
+            if (grid_trim%r_F(grid_trim%n(3)).lt.grid_trim%r_F(1)) then
                 call writo('r of the grid monotomically decreases in Flux &
                     &quantities.',alert=.true.)
                 call lvl_ud(1)
@@ -2490,7 +2490,7 @@ contains
                     &in Flux quantities.')
                 call lvl_ud(-1)
             end if
-            if (abs(minval(grid%r_F)).gt.tol_zero) then
+            if (abs(minval(grid_trim%r_F)).gt.tol_zero) then
                 call writo('r of the grid does not start at zero.',alert=.true.)
                 call lvl_ud(1)
                 call writo('This leaves out part of the fluxes.')
@@ -2586,8 +2586,8 @@ contains
                         
                         ! integrate normally and update integrals if master
                         if (rank.eq.0) then
-                            ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
-                                &v_ser_temp_int)
+                            ierr = calc_int(v_ser_temp,&
+                                &grid_trim%r_F(norm_id(1):),v_ser_temp_int)
                             CHCKERR('')
                             if (use_normalization) v_ser_temp_int = &
                                 &v_ser_temp_int*psi_0
@@ -2608,7 +2608,7 @@ contains
                     &eq_job_nr.eq.size(eq_jobs_lims,2)) then
                     call print_ex_2D([var_names(2,2)],&
                         &trim(file_names(2)),v_flux_tor,&
-                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
+                        &x=reshape(grid_trim%r_F(norm_id(1):)*2*pi/max_flux_F,&
                         &[grid_trim%n(3),1]),draw=.false.)
                     call draw_ex([var_names(2,2)],trim(file_names(2)),&
                         &plot_dim(2),1,.false.)
@@ -2658,8 +2658,8 @@ contains
                         
                         ! integrate normally and update integrals if master
                         if (rank.eq.0) then
-                            ierr = calc_int(v_ser_temp,grid%r_F(norm_id(1):),&
-                                &v_ser_temp_int)
+                            ierr = calc_int(v_ser_temp,&
+                                &grid_trim%r_F(norm_id(1):),v_ser_temp_int)
                             CHCKERR('')
                             if (use_normalization) v_ser_temp_int = &
                                 &v_ser_temp_int*psi_0
@@ -2680,7 +2680,7 @@ contains
                     &eq_job_nr.eq.size(eq_jobs_lims,2)) then
                     call print_ex_2D([var_names(1,2)],&
                         &trim(file_names(1)),v_flux_pol,&
-                        &x=reshape(grid%r_F(norm_id(1):)*2*pi/max_flux_F,&
+                        &x=reshape(grid_trim%r_F(norm_id(1):)*2*pi/max_flux_F,&
                         &[grid_trim%n(3),1]),draw=.false.)
                     call draw_ex([var_names(1,2)],trim(file_names(1)),&
                         &plot_dim(1),1,.false.)

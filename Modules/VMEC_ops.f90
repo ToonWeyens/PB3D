@@ -264,38 +264,6 @@ contains
             CHCKERR('')
         end do
         
-        ! to check decay of modes
-        call print_ex_2D('jac_V_c','jac_V_c',log10(maxval(abs(jac_V_c),2)),&
-            &draw=.false.)
-        call draw_ex(['jac_V_c'],'jac_V_c',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('jac_V_s','jac_V_1',log10(maxval(abs(jac_V_s),2)),&
-            &draw=.false.)
-        call draw_ex(['jac_V_s'],'jac_V_s',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('B_V_c','B_V_c',log10(maxval(abs(B_V_c),2)),&
-            &draw=.false.)
-        call draw_ex(['B_V_c'],'B_V_c',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('B_V_s','B_V_1',log10(maxval(abs(B_V_s),2)),&
-            &draw=.false.)
-        call draw_ex(['B_V_s'],'B_V_s',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('R_V_c','R_V_c',log10(maxval(abs(R_V_c(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['R_V_c'],'R_V_c',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('R_V_s','R_V_s',log10(maxval(abs(R_V_s(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['R_V_s'],'R_V_s',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('Z_V_c','Z_V_c',log10(maxval(abs(Z_V_c(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['Z_V_c'],'Z_V_c',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('Z_V_s','Z_V_s',log10(maxval(abs(Z_V_s(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['Z_V_s'],'Z_V_s',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('L_V_c','L_V_c',log10(maxval(abs(L_V_c(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['L_V_c'],'L_V_c',1,1,.false.,ex_plot_style=1)
-        call print_ex_2D('L_V_s','L_V_s',log10(maxval(abs(L_V_s(:,:,0)),2)),&
-            &draw=.false.)
-        call draw_ex(['L_V_s'],'L_V_s',1,1,.false.,ex_plot_style=1)
-        
         ! deallocate helper variables
         deallocate(B_V_sub_c_M,B_V_sub_s_M)
         deallocate(B_V_c_H,B_V_s_H)

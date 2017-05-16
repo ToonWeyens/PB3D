@@ -775,3 +775,7 @@ CHANGELOG
       - Changed the tests in "calc_derived_q" somewhat.
       - Added a new test on the calculation of R, Z and L for VMEC, more specifically for the correct treatment of the derivatives.
       - "plot_HDF5" now also takes single X, Y and Z for a collection.
+
+1.71: - The discrepancy between the fluxes is finally fixed, probably. Might have to test with bigger 3-D effects.
+      - Fixed a bug in the calculation of fluxes. 
+      - Using "--plot_VMEC_modes" the decay of the VMEC Fourier modes can be investigated.

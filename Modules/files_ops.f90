@@ -28,27 +28,28 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(23), inc_args(23))
+                allocate(opt_args(24), inc_args(24))
                 opt_args = ''
                 inc_args = 0
                 opt_args(7) = '--no_guess'
                 opt_args(8) = '--jump_to_sol'
                 opt_args(9) = '--export_HEL'
-                opt_args(10) = '-st_pc_factor_shift_type'
-                opt_args(11) = '-st_pc_type'
-                opt_args(12) = '-st_pc_factor_mat_solver_package'
-                opt_args(13) = '-eps_type'
-                opt_args(14) = '-eps_monitor'
-                opt_args(15) = '-eps_tol'
-                opt_args(16) = '-eps_ncv'
-                opt_args(17) = '-eps_mpd'
-                opt_args(18) = '-eps_view'
-                opt_args(19) = '-st_type'
-                opt_args(20) = '-st_pc_type'
-                opt_args(21) = '-st_pc_factor_mat_solver_package'
-                opt_args(22) = '-log_view'
-                opt_args(23) = '-st_ksp_type'
-                inc_args(7:23) = [0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0,1]
+                opt_args(10) = '--plot_VMEC_modes'
+                opt_args(11) = '-st_pc_factor_shift_type'
+                opt_args(12) = '-st_pc_type'
+                opt_args(13) = '-st_pc_factor_mat_solver_package'
+                opt_args(14) = '-eps_type'
+                opt_args(15) = '-eps_monitor'
+                opt_args(16) = '-eps_tol'
+                opt_args(17) = '-eps_ncv'
+                opt_args(18) = '-eps_mpd'
+                opt_args(19) = '-eps_view'
+                opt_args(20) = '-st_type'
+                opt_args(21) = '-st_pc_type'
+                opt_args(22) = '-st_pc_factor_mat_solver_package'
+                opt_args(23) = '-log_view'
+                opt_args(24) = '-st_ksp_type'
+                inc_args(7:24) = [0,0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0,1]
             case(2)                                                             ! POST
                 allocate(opt_args(7), inc_args(7))
                 opt_args = ''
@@ -168,7 +169,7 @@ contains
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
             &do_execute_command_line, output_name, prog_name, print_mem_usage, &
-            &swap_angles, jump_to_sol, export_HEL
+            &swap_angles, jump_to_sol, export_HEL, plot_VMEC_modes
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -401,7 +402,17 @@ contains
                             &warning=.true.)
                         export_HEL = .false.
                     end if
-                case (10:23)
+                case (10)                                                       ! output VMEC modes
+                    if (eq_style.eq.1) then
+                        call writo('option plot_VMEC_modes chosen: Plotting &
+                            &(decay of) modes')
+                        plot_VMEC_modes = .true.
+                    else
+                        call writo('Can only output VMEC modes with VMEC',&
+                            &warning=.true.)
+                        plot_VMEC_modes = .false.
+                    end if
+                case (11:24)
                     opt_str = ''
                     do id = 1,inc_args(opt_nr)
                         opt_str = trim(opt_str)//' '//&

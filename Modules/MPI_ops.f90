@@ -230,8 +230,8 @@ contains
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
-            &prog_style, POST_style, jump_to_sol, export_HEL, EV_guess, &
-            &ex_plot_style, solver_SLEPC_style, &
+            &prog_style, POST_style, jump_to_sol, export_HEL, &
+            &plot_VMEC_modes, EV_guess, ex_plot_style, solver_SLEPC_style, &
             &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
             &max_it_inv, tol_norm, max_it_slepc, &
             &max_tot_mem, max_X_mem, plot_size, &
@@ -335,6 +335,9 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(export_HEL,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(plot_VMEC_modes,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)

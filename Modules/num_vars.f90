@@ -31,8 +31,8 @@ module num_vars
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
         &rich_restart_lvl, plot_size, jump_to_sol, &
-        &export_HEL, ex_plot_style, pert_mult_factor_POST, POST_output_full, &
-        &POST_output_sol, &
+        &export_HEL, plot_VMEC_modes, ex_plot_style, pert_mult_factor_POST, &
+        &POST_output_full, POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_file_i, HEL_export_file_i, input_i, PB3D_i, &
         &PB3D_name, eq_i, output_i
@@ -53,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.70_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.71_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.66_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -137,6 +137,7 @@ module num_vars
     logical :: no_plots = .false.                                               ! no plots made
     logical :: jump_to_sol = .false.                                            ! jump to solution
     logical :: export_HEL = .false.                                             ! export HELENA
+    logical :: plot_VMEC_modes = .false.                                        ! plot VMEC modes
     logical :: no_output = .false.                                              ! no output shown
     logical :: POST_output_full = .false.                                       ! POST has output on full grids
     logical :: POST_output_sol = .false.                                        ! POST has outputs of solution

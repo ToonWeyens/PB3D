@@ -12,12 +12,12 @@
     norm_disc_prec_sol      = 3
     n_zeta_plot             = 21
     min_zeta_plot           = 0.00
-    max_zeta_plot           = 0.10
-    min_r_plot              = 0.8
+    max_zeta_plot           = 2.00
+    min_r_plot              = 0.0
     max_r_plot              = 1.0
-    n_theta_plot            = 1
-    min_theta_plot          = 0.25
-    max_theta_plot          = 0.25
+    n_theta_plot            = 21
+    min_theta_plot          = 0.00
+    max_theta_plot          = 2.00
     POST_style              = 1
     plot_grid_style         = 0
     ex_plot_style           = 2

@@ -914,7 +914,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC, magn_int_style, K_style, debug_version
+            &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -954,6 +954,43 @@ contains
         ! user output
         call writo('Write input variables to output file')
         call lvl_ud(1)
+        
+        ! plot modes if requested and VMEC
+        if (plot_VMEC_modes) then
+            call writo('Plotting decay of VMEC modes')
+            call draw_ex(['R_V_c'],'R_V_c',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('R_V_s','R_V_s',&
+                &log10(maxval(abs(R_V_s(:,:,0)),2)),draw=.false.)
+            call draw_ex(['R_V_s'],'R_V_s',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('Z_V_c','Z_V_c',&
+                &log10(maxval(abs(Z_V_c(:,:,0)),2)),draw=.false.)
+            call draw_ex(['Z_V_c'],'Z_V_c',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('Z_V_s','Z_V_s',&
+                &log10(maxval(abs(Z_V_s(:,:,0)),2)),draw=.false.)
+            call draw_ex(['Z_V_s'],'Z_V_s',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('L_V_c','L_V_c',&
+                &log10(maxval(abs(L_V_c(:,:,0)),2)),draw=.false.)
+            call draw_ex(['L_V_c'],'L_V_c',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('L_V_s','L_V_s',&
+                &log10(maxval(abs(L_V_s(:,:,0)),2)),draw=.false.)
+            call draw_ex(['L_V_s'],'L_V_s',1,1,.false.,ex_plot_style=1)
+#if ldebug
+            call print_ex_2D('jac_V_c','jac_V_c',&
+                &log10(maxval(abs(jac_V_c),2)),draw=.false.)
+            call draw_ex(['jac_V_c'],'jac_V_c',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('jac_V_s','jac_V_s',&
+                &log10(maxval(abs(jac_V_s),2)),draw=.false.)
+            call draw_ex(['jac_V_s'],'jac_V_s',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('B_V_c','B_V_c',&
+                &log10(maxval(abs(B_V_c),2)),draw=.false.)
+            call draw_ex(['B_V_c'],'B_V_c',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('B_V_s','B_V_s',&
+                &log10(maxval(abs(B_V_s),2)),draw=.false.)
+            call draw_ex(['B_V_s'],'B_V_s',1,1,.false.,ex_plot_style=1)
+            call print_ex_2D('R_V_c','R_V_c',&
+                &log10(maxval(abs(R_V_c(:,:,0)),2)),draw=.false.)
+#endif
+        end if
         
         ! calculate limits of input range
         ierr = calc_norm_range(in_limits=in_limits)
