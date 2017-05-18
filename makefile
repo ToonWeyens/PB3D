@@ -14,36 +14,37 @@ BLASLAPACK_DIR=''# 1. XPS 9360
 #BLASLAPACK_DIR=''# 3. GEORGE
 
 # LIBSTELL (Note that by default, unlogically, everything is in bin!)
-LIBSTELL_DIR=$(HOME)/bin# 1. XPS 9360
+LIBSTELL_DIR=/opt/stellinstall/bin# 1. XPS 9360
 #LIBSTELL_DIR=$(COMPILE_DIR)/bin# 2. ITER
 #LIBSTELL_DIR=$(HOME)/bin# 3. GEORGE
 
 # HDF5
 # (from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef)
-HDF5_DIR=/opt/hdf5-1.8.16/hdf5# 1. XPS 9360
+HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 1. XPS 9360
 #HDF5_DIR=$(COMPILE_DIR)# 2. ITER
 #HDF5_DIR_INC=/usr/include/hdf5/openmpi# 3. GEORGE
 #HDF5_DIR_LIB=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 3. GEORGE
 
 # NETCDF
-NETCDF_DIR=/opt/NetCDF-4.4.0/NetCDF#  1. XPS 9360
-#NETCDF_DIR=$(COMPILE_DIR)#  2. ITER
-#NETCDF_DIR=$(HOME)#  3. GEORGE
+NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
+#NETCDFF_DIR=$(COMPILE_DIR)#  2. ITER
+#NETCDFF_DIR=$(HOME)#  3. GEORGE
 
 # PETSC
 #PETSC_ARCH = debug-complex
-PETSC_ARCH = arch-linux2-c-opt
-PETSC_DIR = /opt/petsc-3.6.4# 1. XPS 9360
+PETSC_ARCH = complex# 1. XPS 93600
+#PETSC_ARCH = arch-linux2-c-opt# 2. ITER
+PETSC_DIR = /opt/petsc-3.7.6# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
 #PETSC_DIR = $(HOME)/Programs/petsc-3.6.4# 3. GEORGE
 
 # SLEPC
-SLEPC_DIR=/opt/slepc-3.6.3# 1. XPS 9360
+SLEPC_DIR=/opt/slepc-3.7.4# 1. XPS 9360
 #SLEPC_DIR=$(COMPILE_DIR)# 2. ITER
 #SLEPC_DIR = $(HOME)/Programs/slepc-3.6.3# 3. GEORGE
 
 # PB3D
-PB3D_DIR = $(HOME)/Documents/PB3D# 1. XPS 9360
+PB3D_DIR = /opt/PB3D# 1. XPS 9360
 #PB3D_DIR = $(HOME)/Programs_MPICH3.1.3/PB3D# 2. ITER
 #PB3D_DIR = $(HOME)/Programs/PB3D# 3. GEORGE
 
@@ -57,6 +58,7 @@ include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   $(PETSC_FC_INCLUDES) \
   $(SLEPC_INCLUDE) \
+  -I/usr/include/hdf5/openmpi \
   -I$(PB3D_DIR)/include#1. XPS 9360
 
 #INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
@@ -76,16 +78,16 @@ INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
 ##############################################################################
 LINK = -llapack -lblas \
   $(LIBSTELL_DIR)/libstell.a \
-  -L$(HDF5_DIR)/lib -lhdf5_fortran -lhdf5 \
-  -L$(NETCDF_DIR)/lib -lnetcdf -lnetcdff \
-  -Wl,-R$(NETCDF_DIR)/lib \
+  -L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
+  -L$(NETCDFF_DIR)/lib -lnetcdff \
+  -Wl,-R$(NETCDFF_DIR)/lib \
   $(PETSC_LIB) \
   $(SLEPC_LIB) \
   libdfftpack.a libfoul.a# 1. XPS 9360
 
 #LINK = -L$(BLASLAPACK_DIR)/lib -lblas -llapack \
   #$(LIBSTELL_DIR)/libstell.a \
-  #-L$(NETCDF_DIR)/lib -lnetcdff -lnetcdf \
+  #-L$(NETCDFF_DIR)/lib -lnetcdff \
   #-L$(HDF5_DIR)/lib -lhdf5_hl -lhdf5 -lhdf5_fortran -ldl -lm -lz \
   #$(PETSC_LIB) \
   #$(SLEPC_LIB) \
@@ -94,8 +96,8 @@ LINK = -llapack -lblas \
 #LINK = -llapack -lblas \
   #$(LIBSTELL_DIR)/libstell.a \
   #-L$(HDF5_DIR_LIB) -lhdf5_fortran -lhdf5 \
-  #-L$(NETCDF_DIR)/lib -lnetcdf -lnetcdff \
-  #-Wl,-R$(NETCDF_DIR)/lib \
+  #-L$(NETCDFF_DIR)/lib -lnetcdff \
+  #-Wl,-R$(NETCDFF_DIR)/lib \
   #$(PETSC_LIB) \
   #$(SLEPC_LIB) \
   #libdfftpack.a libfoul.a# 3. GEORGE

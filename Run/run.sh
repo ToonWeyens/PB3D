@@ -42,6 +42,9 @@ main() {
     
     # set base
     base=$(pwd)
+    
+    # set program directory
+    prog_dir=$base/..
 
     # loop over all inputs
     # (from http://www.cyberciti.biz/faq/unix-linux-iterate-over-a-variable-range-of-numbers-in-bash/)
@@ -777,7 +780,7 @@ create_loc_script() {
         rsync --progress -zvhL $out_full_loc/$input_name \$out_full/ 2> /dev/null
         rsync --progress -zvhL $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
         $(aux_copy_inputs)
-        rsync --progress -zvhL \$base/../$prog_name \$out_full/
+        rsync --progress -zvhL $prog_dir/$prog_name \$out_full/
         chmod +x \$out_full/$prog_name
         
         # go to run directory
