@@ -399,7 +399,14 @@ contains
         
         ! clean up
         deallocate(dum_1D)
-        deallocate(dum_3D)
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+#if ldebug
+                deallocate(dum_3D)
+#endif
+            case (2)                                                            ! HELENA
+                deallocate(dum_3D)
+        end select
     end function reconstruct_PB3D_in
     
     ! Reconstructs grid variables from PB3D output.

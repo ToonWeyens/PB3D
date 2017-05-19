@@ -380,9 +380,7 @@ contains
         PetscBool :: flg                                                        ! flag to catch options
         PetscInt :: id                                                          ! counters
         character(len=max_str_ln) :: option_name                                ! options
-#if !defined(PETSC_USE_COMPLEX)
         character(len=max_str_ln) :: err_msg                                    ! error message
-#endif
         
         ! initialize ierr
         ierr = 0
@@ -418,14 +416,20 @@ contains
             &with the option "--with-scalar-type=complex"'
         call SlepcFinalize(ierr)
         ierr = 1
-        ERR(err_msg)
+        CHCKERR(err_msg)
 #endif
         
         ! catch options so they don't give a Petsc warning
         do id = 1,size(opt_args)
             option_name = opt_args(id)
-            if (trim(option_name).ne.'') call PetscOptionsHasName(&
-                &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)
+            if (trim(option_name).ne.'') then
+                call PetscOptionsHasName(PETSC_NULL_OBJECT,&
+                    &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)           ! Petsc 3.7.6
+                !call PetscOptionsHasName(PETSC_NULL_CHARACTER,&
+                    !&trim(option_name),flg,ierr)                                ! Petsc 3.6.4
+                err_msg = 'Failed to decide whether option has a name'
+                CHCKERR(err_msg)
+            end if
         end do
     end function start_SLEPC
     

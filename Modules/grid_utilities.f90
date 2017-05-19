@@ -2539,8 +2539,8 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*jac
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2)*jac
                 deallocate(jac)
-            end if
 #if ldebug
+            end if
 #endif
             
             ! integrate toroidal flux

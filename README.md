@@ -894,3 +894,9 @@ Technische Universiteit Eindhoven
 * Adapted to XPS 9360.
 * Adapted markdown file.
 * New script to setup Run.
+
+## 1.73: 
+* Removed stellinstall, as it now has its own repository.
+* Fixed small bugs considering release version.
+* Fixed small bugs for new Petsc version.
+* Fixed small bugs for mayavi. On Ubuntu, it now works *without* usin pip at all, and *only* with packages.

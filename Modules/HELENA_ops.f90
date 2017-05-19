@@ -52,17 +52,20 @@ contains
     !   - ZN0
     ! where a_vac  = eps  R_vac and B_vac  are vacuum quantities,  S is  the 2-D
     ! cross-sectional area  and <p> is  the 2-D averaged pressure. 
-    ! To translate this to the MISHKA normalization factors as
-    !   - R_m = (eps/radius) R_vac 
-    !   - B_m = B_vac / B0
-    ! where
-    !   - radius is  in the mapping file  (12), as well as in  the HELENA output
-    !   (20)
-    !   - eps is in  the mapping file (12), as well as in  the HELENA input (10)
-    !   and output (20)
-    !   - B0 is in the HELENA output (20)
-    ! Furthermore, the density on axis can be specified as ZN0 from HELENA input
-    ! (10). The other variables should probably not be touched for consistency.
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! To translate this to the MISHKA normalization factors as                 !
+    !   - R_m = (eps/radius) R_vac                                             !
+    !   - B_m = B_vac / B0                                                     !
+    ! where                                                                    !
+    !   - radius is in the mapping file  (12), as well as in the HELENA output !
+    !   (20)                                                                   !
+    !   - eps is in the mapping file (12), as well as in the HELENA input (10) !
+    !   and output (20)                                                        !
+    !   - B0 is in the HELENA output (20)                                      !
+    ! Furthermore, the  density on axis  can be  specified as ZN0  from HELENA !
+    ! input  (10). The  other variables  should  probably not  be touched  for !
+    ! consistency.                                                             !
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv
         use grid_utilities, only: setup_deriv_data, apply_disc

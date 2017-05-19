@@ -743,7 +743,7 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt, &
                 &array, size, zeros, amin, amax'
             write(cmd_i,"(A)",IOSTAT=istat) 'from mayavi.mlab import outline, &
-                &mesh, points3d, savefig, colorbar, axes, savefig'
+                &mesh, points3d, savefig, colorbar, axes, savefig, show'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             write(cmd_i,"(A)",IOSTAT=istat) 'nplt = '//trim(i2str(nplt))
             
@@ -806,16 +806,11 @@ contains
             
             ! pause on screen or output to file
             if (plot_on_screen) then
-                write(cmd_i,"(A)",IOSTAT=istat) 'def pause():'
-                write(cmd_i,"(A)",IOSTAT=istat) '    programPause = &
-                    &raw_input("Paused. Press enter...")'
-                write(cmd_i,"(A)",IOSTAT=istat) 'pause()'
-            else
-                write(cmd_i,"(A)",IOSTAT=istat) '#def pause():'
-                write(cmd_i,"(A)",IOSTAT=istat) '#    programPause = &
-                    &raw_input("Paused. Press enter...")'
-                write(cmd_i,"(A)",IOSTAT=istat) '#pause()'
                 write(cmd_i,"(A)",IOSTAT=istat) ''
+                write(cmd_i,"(A)",IOSTAT=istat) 'show()'
+            else
+                write(cmd_i,"(A)",IOSTAT=istat) ''
+                write(cmd_i,"(A)",IOSTAT=istat) '#show()'
                 write(cmd_i,"(A)",IOSTAT=istat) 'savefig("'//trim(plot_dir)//&
                     &'/'//trim(draw_name)//'.png"'//',magnification=4)'
             end if

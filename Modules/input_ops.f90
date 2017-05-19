@@ -958,6 +958,8 @@ contains
         ! plot modes if requested and VMEC
         if (plot_VMEC_modes) then
             call writo('Plotting decay of VMEC modes')
+            call print_ex_2D('R_V_c','R_V_c',&
+                &log10(maxval(abs(R_V_c(:,:,0)),2)),draw=.false.)
             call draw_ex(['R_V_c'],'R_V_c',1,1,.false.,ex_plot_style=1)
             call print_ex_2D('R_V_s','R_V_s',&
                 &log10(maxval(abs(R_V_s(:,:,0)),2)),draw=.false.)
@@ -987,8 +989,6 @@ contains
             call print_ex_2D('B_V_s','B_V_s',&
                 &log10(maxval(abs(B_V_s),2)),draw=.false.)
             call draw_ex(['B_V_s'],'B_V_s',1,1,.false.,ex_plot_style=1)
-            call print_ex_2D('R_V_c','R_V_c',&
-                &log10(maxval(abs(R_V_c(:,:,0)),2)),draw=.false.)
 #endif
         end if
         
