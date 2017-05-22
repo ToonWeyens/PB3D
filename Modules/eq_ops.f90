@@ -379,8 +379,12 @@ contains
                         call writo('normal range for which to plot toroidal &
                             &ripple proportionality?')
                         lim_r(1) = get_int(lim_lo=1,lim_hi=n_r_eq,ind=.true.)
-                        lim_r(2) = get_int(lim_lo=lim_r(1),lim_hi=n_r_eq,&
-                            &ind=.true.)
+                        if (lim_r(1).eq.n_r_eq) then
+                            lim_r(2) = n_r_eq
+                        else
+                            lim_r(2) = get_int(lim_lo=lim_r(1),lim_hi=n_r_eq,&
+                                &ind=.true.)
+                        end if
                         
                         ! calculate the proportionality factors
                         call calc_prop_B_tor(lim_r,prop_B_tor)
@@ -393,16 +397,12 @@ contains
                                 &ind=.true.)
                         end if
                         
-                        ! NUFFT for chosen value
+                        ! NUFFT for chosen value, normalized to 1
                         ierr = nufft(prop_B_tor(:,r_prop-lim_r(1)+1,2),&
-                            &prop_B_tor(:,r_prop-lim_r(1)+1,1),&
+                            &prop_B_tor(:,r_prop-lim_r(1)+1,1)/&
+                            &maxval(abs(prop_B_tor(:,r_prop-lim_r(1)+1,1))),&
                             &prop_B_tor_F_loc)
                         CHCKERR('')
-                        
-                        ! rescale to 1cm
-                        prop_B_tor_F_loc = prop_B_tor_F_loc/max(&
-                            &sum(prop_B_tor_F_loc(:,1)),&
-                            &sum(prop_B_tor_F_loc(:,2)))/100
                         
                         tot_nr_pert = 1 + 2*size(prop_B_tor_F_loc,1) - 2
                     case (3)                                                    ! manually
@@ -417,17 +417,15 @@ contains
                 if (pert_type.eq.1 .or. pert_type.eq.2) then
                     call writo('Globally multiply with some factor?')
                     call lvl_ud(1)
-                    call writo('Now: maximum deformation: 1m')
+                    mult_fac = 0.01_dp
+                    call writo('Now: maximum deformation: '//&
+                        &trim(r2strt(mult_fac))//'m')
                     call writo('     minor radius: '//&
                         &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
                     call writo('     major radius: '//&
                         &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
                     call lvl_ud(-1)
-                    if (get_log(.false.)) then
-                        mult_fac = get_real()
-                    else
-                        mult_fac = 1._dp
-                    end if
+                    if (get_log(.false.)) mult_fac = get_real()
                 end if
                 
                 ! set up n, m and delta  (use maximum possible size, possibly +1
@@ -458,7 +456,8 @@ contains
                         case (2)                                                ! automatically
                             m_loc = jd/2
                             if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
-                            delta_loc = prop_B_tor_F_loc(jd/2+1,:)*mult_fac
+                            delta_loc = mult_fac/prop_B_tor_F_loc(jd/2+1,:)
+                            if (m_loc.ne.0) delta_loc = delta_loc*0.5_dp        ! modes with nonzero m are counted double
                         case (3)                                                ! manually
                             call writo('For mode '//trim(i2str(jd))//'/'//&
                                 &trim(i2str(tot_nr_pert))//':')
@@ -728,11 +727,17 @@ contains
                 u_norm(:,1) = BH_deriv(:,2)/u_norm(:,2)
                 u_norm(:,2) = -BH_deriv(:,1)/u_norm(:,2)
                 deallocate(BH_deriv)
-                !!!call print_ex_2D(['test_normal'],'',&
-                    !!!&transpose(reshape([BH_0(:,2)-u_norm(:,2)*0.1,BH_0(:,2),&
-                    !!!&BH_0(:,2)+u_norm(:,2)*0.1],[size(BH_0,1),3])),x=&
-                    !!!&transpose(reshape([BH_0(:,1)-u_norm(:,1)*0.1,BH_0(:,1),&
-                    !!!&BH_0(:,1)+u_norm(:,1)*0.1],[size(BH_0,1),3])))
+                if (debug_write_flux_q_in_file_for_VMEC) then
+                    call print_ex_2D(['u_norm'],'',u_norm,x=&
+                        &reshape([theta(:,2)],[n_B,1]))
+                    call print_ex_2D(['test_normal'],'',&
+                        &transpose(reshape([BH_0(:,2)-u_norm(:,2)*0.1,&
+                        &BH_0(:,2),BH_0(:,2)+u_norm(:,2)*0.1],&
+                        &[size(BH_0,1),3])),x=&
+                        &transpose(reshape([BH_0(:,1)-u_norm(:,1)*0.1,&
+                        &BH_0(:,1),BH_0(:,1)+u_norm(:,1)*0.1],&
+                        &[size(BH_0,1),3])))
+                end if
             end if
             
             ! loop  over all  toroidal  modes N  and  include the  corresponding
@@ -794,6 +799,9 @@ contains
                 plot_name(1) = 'R_F_pert_cos_'//trim(i2str(jd-jd_min+1))
                 plot_name(2) = 'Z_F_pert_cos_'//trim(i2str(jd-jd_min+1))
                 do kd = 1,2
+                    !!!call print_ex_2D('BH_pert_'//trim(i2str(kd)),&
+                        !!!&'BH_pert_'//trim(i2str(kd)),BH_pert(:,kd),&
+                        !!!&x=theta(:,1))
                     ! NUFFT
                     ierr = nufft(theta(:,1),BH_pert(:,kd),B_F_loc,&
                         &plot_name(kd))
@@ -1190,8 +1198,11 @@ contains
             end do
         end function print_mode_numbers
         
-        !  calculate   the   proportionality   between   toroidal   ripple   and
-        ! perturbation
+        ! calculate the proportionality between toroidal ripple and perturbation
+        ! Contents of prop_B_tor (last index):
+        !   1. |nabla psi| Dq/q 
+        !   2. chi_H
+        !   3. normalized flux_p
         subroutine calc_prop_B_tor(lim_r,prop_B_tor)
             use HELENA_vars, only: h_H_11, nchi, chi_H, ias, flux_p_H, q_saf_H
             use grid_vars, only: n_r_eq

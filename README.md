@@ -900,3 +900,8 @@ Technische Universiteit Eindhoven
 * Fixed small bugs considering release version.
 * Fixed small bugs for new Petsc version.
 * Fixed small bugs for mayavi. On Ubuntu, it now works *without* usin pip at all, and *only* with packages.
+
+## 1.74:
+* Fixed a bug in the export of HELENA, where modes with nonzero m were counted double.
+* As "prop_B_tor" has to be multiplied by the position ripple to yield the magnetic field ripple, its inverse needs to be used. This has been fixed.
+* Currently, the implementation expects implicitly that the toroidal field ripple is constant for all poloidal positions. This is going to be changed.
