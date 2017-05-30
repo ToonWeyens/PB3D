@@ -3040,8 +3040,14 @@ contains
         integer :: n_x                                                          ! nr. of points
         integer :: interp_ord = 4                                               ! order of interpolation
         integer :: id                                                           ! counter
+        integer :: ml_x                                                         ! location of maximum of x
+        integer :: lim(2)                                                       ! limits in x
+        integer :: lim_loc(2)                                                   ! limits in loc_x
+        real(dp), allocatable :: x_fund(:)                                      ! x on fundamental interval 0..2pi
+        real(dp), allocatable :: x_loc(:)                                       ! local x, extended
         real(dp), allocatable :: work(:)                                        ! work array
-        real(dp), allocatable :: f_loc(:)                                       ! local copy of f
+        real(dp), allocatable :: f_loc(:)                                       ! local f, extended
+        real(dp), allocatable :: f_int(:)                                       ! interpolated f, later Fourier modes
         type(disc_type) :: trigon_interp_data                                   ! data for non-equidistant sampling fourier coefficients
         character(len=max_str_ln) :: plot_title(2)                              ! name of plot
         logical :: print_log = .false.                                          ! print log plot as well
@@ -3051,18 +3057,59 @@ contains
             ierr = 1
             CHCKERR('x and f must have same size')
         end if
+        if (maxval(x)-minval(x).gt.2*pi) then
+            ierr = 1
+            CHCKERR('x is not a fundamental interval')
+        end if
+        
+        ! create local x and  f that go from <0 to <2pi,  with enough points for
+        ! full order precision
+        allocate(x_fund(size(x)))
+        x_fund = mod(x,2*pi)
+        where(x_fund.lt.0._dp) x_fund = x_fund+2*pi
+        allocate(x_loc(size(x)+2*interp_ord))
+        allocate(f_loc(size(x)+2*interp_ord))
+        ml_x = maxloc(x_fund,1)
+        lim_loc = [1,interp_ord]
+        lim = [ml_x-interp_ord+1,ml_x]
+        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))-2*pi
+        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
+        lim_loc = [interp_ord+1,interp_ord+size(x)-ml_x]
+        lim = [ml_x+1,size(x)]
+        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
+        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
+        lim_loc = [interp_ord+size(x)-ml_x+1,size(x)+interp_ord]
+        lim = [1,ml_x]
+        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
+        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
+        lim_loc(1) = lim_loc(2)+1
+        do id = ml_x+1,min(size(x),ml_x+interp_ord)
+            x_loc(lim_loc(1)) = x_fund(id)+2*pi
+            f_loc(lim_loc(1)) = f(id)
+            lim_loc(1) = lim_loc(1)+1
+        end do
+        do id = 1,ml_x+interp_ord-size(x)
+            x_loc(lim_loc(1)) = x_fund(id)+2*pi
+            f_loc(lim_loc(1)) = f(id)
+            lim_loc(1) = lim_loc(1)+1
+        end do
         
         ! set local f and interpolate
         n_x = size(x)
-        allocate(f_loc(n_x))
-        ierr = setup_interp_data([x,2*pi],[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
-            &trigon_interp_data,interp_ord)
-        ierr = apply_disc([f,f(1)],trigon_interp_data,f_loc)
+        allocate(f_int(n_x))
+        ierr = setup_interp_data(x_loc,[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
+            &trigon_interp_data,interp_ord,is_trigon=.true.)
+        ierr = apply_disc(f_loc,trigon_interp_data,f_int)
         CHCKERR('')
+        
+        ! clean up
+        deallocate(x_fund)
+        deallocate(x_loc)
+        deallocate(f_loc)
         call trigon_interp_data%dealloc()
         
         !!do id = 1,n_x
-            !!f_loc(id) = -4._dp+&
+            !!f_int(id) = -4._dp+&
                 !!&3*cos((id-1._dp)/n_x*2*pi*1)+&
                 !!&0.5*cos((id-1._dp)/n_x*2*pi*100)+&
                 !!&1.5*cos((id-1._dp)/n_x*2*pi*101)+&
@@ -3077,20 +3124,20 @@ contains
         
         ! calculate fft
         call dffti(n_x,work)
-        call dfftf(n_x,f_loc,work)
+        call dfftf(n_x,f_int,work)
         deallocate(work)
         
         ! rescale
-        f_loc(:) = f_loc(:)*2/n_x
-        f_loc(1) = f_loc(1)/2
+        f_int(:) = f_int(:)*2/n_x
+        f_int(1) = f_int(1)/2
         
         ! separate cos and sine
         if (allocated(f_F)) deallocate(f_F)
         allocate(f_F(m_F+1,2))
-        f_F(1,1) = f_loc(1)
+        f_F(1,1) = f_int(1)
         f_F(1,2) = 0._dp
-        f_F(2:m_F+1,1) = f_loc(2:2*m_F:2)
-        f_F(2:m_F+1,2) = -f_loc(3:2*m_F+1:2)                                    ! routine returns - sine factors
+        f_F(2:m_F+1,1) = f_int(2:2*m_F:2)
+        f_F(2:m_F+1,2) = -f_int(3:2*m_F+1:2)                                    ! routine returns - sine factors
         
         ! output in plot if requested
         if (present(plot_name)) then

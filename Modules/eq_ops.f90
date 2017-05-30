@@ -83,7 +83,7 @@ contains
     ! limit memory usage.
     integer function calc_eq_1(grid_eq,eq) result(ierr)                         ! flux version
         use num_vars, only: eq_style, rho_style, use_normalization, &
-            &use_pol_flux_E, use_pol_flux_F, export_HEL
+            &use_pol_flux_E, use_pol_flux_F
         use grid_utilities, only: apply_disc
         use eq_vars, only: rho_0
         use num_utilities, only: derivs
@@ -117,16 +117,6 @@ contains
                 call calc_flux_q_VMEC()
             case (2)                                                            ! HELENA
                 call calc_flux_q_HEL()
-                
-                ! export for VMEC port
-                if (export_HEL) then
-                    call writo('Exporting HELENA equilibrium for VMEC porting')
-                    call lvl_ud(1)
-                    ierr = write_flux_q_in_file_for_VMEC()
-                    CHCKERR('')
-                    call lvl_ud(-1)
-                    call writo('Done exporting')
-                end if
         end select
         
         ! take local variables
@@ -211,19 +201,312 @@ contains
                 grid_eq%r_F = flux_t_H(:,0)/(2*pi)                              ! psi_F = flux_t/2pi
             end if
         end subroutine calc_flux_q_HEL
+    end function calc_eq_1
+    integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
+        use num_vars, only: eq_style, export_HEL, use_normalization
+        use num_utilities, only: derivs, c
+        use eq_utilities, only: calc_inv_met, calc_F_derivs
+        use VMEC_utilities, only: calc_trigon_factors
+#if ldebug
+        use num_vars, only: ltest
+        use input_utilities, only: get_log, pause_prog
+        use HELENA_ops, only: test_metrics_H
+#endif
         
+        character(*), parameter :: rout_name = 'calc_eq_2'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium variables
+        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
+        
+        ! local variables
+        integer :: id
+        integer :: pmone                                                        ! plus or minus one
+        logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Start setting up metric equilibrium quantities')
+        
+        call lvl_ud(1)
+        
+        ! set up local dealloc_vars
+        dealloc_vars_loc = .false.
+        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
+        
+        ! create metric equilibrium variables
+        call eq_2%init(grid_eq)
+        
+        ! do some preparations depending on equilibrium style used
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
+                ! derivatives
+                call writo('Calculate R,Z,L...')
+                ierr = calc_trigon_factors(grid_eq%theta_E,grid_eq%zeta_E,&
+                    &grid_eq%trigon_factors)
+                CHCKERR('')
+                do id = 0,max_deriv+1
+                    ierr = calc_RZL(grid_eq,eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+            case (2)                                                            ! HELENA
+                ! do nothing
+        end select
+        
+        ! Calcalations depending on equilibrium style being used:
+        !   1:  VMEC
+        !   2:  HELENA
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate the metrics in the cylindrical coordinate system
+                call writo('Calculate g_C')                                     ! h_C is not necessary
+                do id = 0,max_deriv
+                    ierr = calc_g_C(eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the jacobian in the cylindrical coordinate system
+                call writo('Calculate jac_C')
+                do id = 0,max_deriv
+                    ierr = calc_jac_C(eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the transformation matrix C(ylindrical) -> V(MEC)
+                call writo('Calculate T_VC')
+                do id = 0,max_deriv
+                    ierr = calc_T_VC(eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the metric factors in the VMEC coordinate system
+                call writo('Calculate g_V')
+                do id = 0,max_deriv
+                    ierr = calc_g_V(eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the jacobian in the VMEC coordinate system
+                call writo('Calculate jac_V')
+                do id = 0,max_deriv
+                    ierr = calc_jac_V(eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of g_V?')
+                    if(get_log(.false.)) then
+                        ierr = test_g_V(grid_eq,eq_2)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                    call writo('Test calculation of jac_V?')
+                    if(get_log(.false.)) then
+                        ierr = test_jac_V(grid_eq,eq_2)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
+                
+                ! calculate the transformation matrix V(MEC) -> F(lux)
+                call writo('Calculate T_VF')
+                do id = 0,max_deriv
+                    ierr = calc_T_VF(grid_eq,eq_1,eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! set up plus minus one
+                pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
+                
+                ! possibly deallocate
+                if (dealloc_vars_loc) then
+                    deallocate(eq_2%R_E,eq_2%Z_E,eq_2%L_E)
+                    deallocate(eq_2%g_C,eq_2%jac_C)
+                    deallocate(eq_2%T_VC,eq_2%det_T_VC)
+                end if
+            case (2)                                                            ! HELENA
+#if ldebug
+                if (ltest) then
+                    call writo('Test consistency of metric factors?')
+                    if(get_log(.false.,ind=.true.)) then
+                        ierr = test_metrics_H()
+                        CHCKERR('')
+                        call pause_prog(ind=.true.)
+                    end if
+                end if
+#endif
+                
+                ! calculate the jacobian in the HELENA coordinate system        
+                call writo('Calculate jac_H')
+                do id = 0,max_deriv
+                    ierr = calc_jac_H(grid_eq,eq_1,eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! calculate the metric factors in the HELENA coordinate system
+                call writo('Calculate h_H')
+                do id = 0,max_deriv
+                    ierr = calc_h_H(grid_eq,eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of D1 D2 h_H?')
+                    if(get_log(.false.)) then
+                        ierr = test_D12h_H(grid_eq,eq_2)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
+                
+                ! calculate the inverse g_H of the metric factors h_H
+                call writo('Calculate g_H')
+                do id = 0,max_deriv
+                    ierr = calc_inv_met(eq_2%g_E,eq_2%h_E,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! export for VMEC port
+                if (export_HEL) then
+                    call writo('Exporting HELENA equilibrium for VMEC porting')
+                    call lvl_ud(1)
+                    ierr = write_flux_q_in_file_for_VMEC(eq_1,eq_2)
+                    CHCKERR('')
+                    call lvl_ud(-1)
+                    call writo('Done exporting')
+                end if
+                
+                ! calculate the transformation matrix H(ELENA) -> F(lux)        
+                call writo('Calculate T_HF')
+                do id = 0,max_deriv
+                    ierr = calc_T_HF(grid_eq,eq_1,eq_2,derivs(id))
+                    CHCKERR('')
+                end do
+                
+                ! set up plus minus one
+                pmone = 1
+                
+                ! possibly deallocate
+                if (dealloc_vars_loc) then
+                    deallocate(eq_2%h_E)
+                end if
+        end select
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test calculation of T_EF?')
+            if(get_log(.false.)) then
+                ierr = test_T_EF(grid_eq,eq_1,eq_2)
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+#endif
+        
+        ! calculate  the  inverse of  the transformation  matrix T_EF
+        call writo('Calculate T_FE')
+        do id = 0,max_deriv
+            ierr = calc_inv_met(eq_2%T_FE,eq_2%T_EF,derivs(id))
+            CHCKERR('')
+            ierr = calc_inv_met(eq_2%det_T_FE,eq_2%det_T_EF,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the metric factors in the Flux coordinate system
+        call writo('Calculate g_F')
+        do id = 0,max_deriv
+            ierr = calc_g_F(eq_2,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the inverse h_F of the metric factors g_F
+        call writo('Calculate h_F')
+        do id = 0,max_deriv
+            ierr = calc_inv_met(eq_2%h_F,eq_2%g_F,derivs(id))
+            CHCKERR('')
+        end do
+        
+        ! calculate the jacobian in the Flux coordinate system
+        call writo('Calculate jac_F')
+        do id = 0,max_deriv
+            ierr = calc_jac_F(eq_2,derivs(id))
+            CHCKERR('')
+        end do
+        
+        !!! limit Jacobian to small value to avoid infinities
+        !!if (maxval(eq_2%jac_F(:,:,:,0,0,0)).gt.0._dp) then
+            !!eq_2%jac_F(:,:,:,0,0,0) = max(eq_2%jac_F(:,:,:,0,0,0),tol_zero)
+        !!else
+            !!eq_2%jac_F(:,:,:,0,0,0) = min(eq_2%jac_F(:,:,:,0,0,0),-tol_zero)
+        !!end if
+        
+        ! possibly deallocate
+        if (dealloc_vars_loc) then
+            deallocate(eq_2%g_E,eq_2%jac_E)
+        end if
+        
+        ! Transform metric equilibrium E into F derivatives
+        ierr = calc_F_derivs(eq_2)
+        CHCKERR('')
+        
+        ! possibly deallocate
+        if (dealloc_vars_loc) then
+            deallocate(eq_2%g_F,eq_2%h_F,eq_2%jac_F)
+            deallocate(eq_2%T_EF,eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
+        end if
+        
+        ! Calculate derived metric quantities
+        call calc_derived_q(grid_eq,eq_1,eq_2)
+        
+#if ldebug
+        if (ltest) then
+            call writo('Test Jacobian in Flux coordinates?')
+            if(get_log(.false.)) then
+                ierr = test_jac_F(grid_eq,eq_1,eq_2)
+                CHCKERR('')
+                call pause_prog
+            end if
+            call writo('Test calculation of B_F?')
+            if(get_log(.false.)) then
+                ierr = test_B_F(grid_eq,eq_1,eq_2)
+                CHCKERR('')
+                call pause_prog
+            end if
+            call writo('Test consistency with given pressure?')
+            if(get_log(.false.)) then
+                ierr = test_p(grid_eq,eq_1,eq_2)
+                CHCKERR('')
+                call pause_prog
+            end if
+        end if
+#endif
+        
+        call lvl_ud(-1)
+        
+        call writo('Done setting up metric equilibrium quantities')
+    contains
         ! Plots flux quantities in file for VMEC port.
         ! Optionally, a perturbation can be added.
         ! A note about the indices of B_F, B_F_pert and B_F_loc:
         !   B_F_loc:  (pol modes, cos/sin)
         !   B_F:      (pol modes, tor modes, cos/sin (m theta), R/Z)
         !   B_F_pert: (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
-        integer function write_flux_q_in_file_for_VMEC() result(ierr)
+        integer function write_flux_q_in_file_for_VMEC(eq_1,eq_2) result(ierr)
             use eq_vars, only: pres_0, R_0, psi_0
             use grid_vars, only: n_r_eq
             use grid_utilities, only: setup_interp_data, apply_disc, nufft
-            use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H, flux_t_H, &
-                &pres_H, rot_t_H
+            use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
@@ -234,6 +517,10 @@ contains
             
             character(*), parameter :: rout_name = &
                 &'write_flux_q_in_file_for_VMEC'
+            
+            ! input / output
+            type(eq_1_type), intent(in) :: eq_1                                 ! flux equilibrium quantities
+            type(eq_2_type), intent(in) :: eq_2                                 ! metric equilibrium quantities
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
@@ -250,6 +537,7 @@ contains
             integer :: pert_type                                                ! type of perturbation prescription
             integer :: lim_r(2)                                                 ! limits in r range for plot
             integer :: r_prop                                                   ! r at which to use proportionality factor
+            integer :: max_n_B_output                                           ! max. nr. of modes written in output file (constant in VMEC)
             integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
@@ -264,11 +552,12 @@ contains
             character(len=max_str_ln) :: file_name                              ! name of file
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
-            real(dp) :: m_tol = 1.E-8_dp                                        ! tolerance for Fourier mode strength
+            real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
             real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
             real(dp) :: norm_B_H(2)                                             ! normalization for R and Z Fourier modes
             real(dp) :: mult_fac                                                ! global multiplication factor
+            real(dp) :: RZ_B_0(2)                                               ! origin of R and Z of boundary
             real(dp), allocatable :: R_H_loc(:,:)                               ! local R_H
             real(dp), allocatable :: Z_H_loc(:,:)                               ! local Z_H
             real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
@@ -286,6 +575,7 @@ contains
             logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
+            logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
 #if ldebug
             real(dp), allocatable :: BH_0_ALT(:)                                ! theta derivative of R and Z
             type(disc_type) :: deriv_data                                       ! data for derivatives in theta
@@ -387,7 +677,7 @@ contains
                         end if
                         
                         ! calculate the proportionality factors
-                        call calc_prop_B_tor(lim_r,prop_B_tor)
+                        call calc_prop_B_tor(lim_r,eq_2,prop_B_tor)
                         
                         if (lim_r(1).eq.lim_r(2)) then
                             r_prop = lim_r(1)
@@ -418,7 +708,7 @@ contains
                     call writo('Globally multiply with some factor?')
                     call lvl_ud(1)
                     mult_fac = 0.01_dp
-                    call writo('Now: maximum deformation: '//&
+                    call writo('Current multiplication factor: '//&
                         &trim(r2strt(mult_fac))//'m')
                     call writo('     minor radius: '//&
                         &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
@@ -455,6 +745,9 @@ contains
                             loc_data_char = '#'
                         case (2)                                                ! automatically
                             m_loc = jd/2
+                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+                            write(*,*) '!!!! THIS IS NOT CORRECT YET !!!!!!!!!!'
+                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
                             if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
                             delta_loc = mult_fac/prop_B_tor_F_loc(jd/2+1,:)
                             if (m_loc.ne.0) delta_loc = delta_loc*0.5_dp        ! modes with nonzero m are counted double
@@ -616,12 +909,13 @@ contains
                     theta(nchi+kd,2) = 2*pi-chi_H(nchi-kd)
                 end do
             else
-                BH_0(:,1) = R_H_loc(1:n_B-1,n_r_eq)
-                BH_0(:,2) = Z_H_loc(1:n_B-1,n_r_eq)
-                theta(:,2) = chi_H(1:n_B-1)
+                BH_0(:,1) = R_H_loc(1:n_B,n_r_eq)
+                BH_0(:,2) = Z_H_loc(1:n_B,n_r_eq)
+                theta(:,2) = chi_H(1:n_B)
             end if
-            theta(:,1) = atan2(BH_0(:,2),BH_0(:,1)-R_H_loc(1,1))
-            where(theta(:,1).lt.0._dp) theta(:,1) = theta(:,1)+2*pi
+            RZ_B_0(1) = sum(R_H_loc(:,1))/size(R_H_loc,1)
+            RZ_B_0(2) = sum(Z_H_loc(:,1))/size(Z_H_loc,1)
+            theta(:,1) = atan2(BH_0(:,2)-RZ_B_0(2),BH_0(:,1)-RZ_B_0(1))
             
             !!! TEMPORARILY
             !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
@@ -944,6 +1238,16 @@ contains
             call writo("Detected recommended number of poloidal modes: "//&
                 &trim(i2str(rec_min_m)))
             
+            ! possibly get maximum number of modes to plot
+            max_n_B_output = rec_min_m
+            call writo('Do you want to change the maximum number of modes &
+                &from current '//trim(i2str(max_n_B_output))//'?')
+            change_max_n_B_output = get_log(.false.)
+            if (change_max_n_B_output) then
+                call writo('Maximum number of modes to output?')
+                max_n_B_output = get_int(lim_lo=1)
+            end if
+            
             ! user output
             if (pert_eq) then
                 call lvl_ud(-1)
@@ -989,15 +1293,15 @@ contains
             write(HEL_export_file_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))    ! 0 .. MPOL-1
             write(HEL_export_file_i,"(A)") "TCON0 = 1"
             write(HEL_export_file_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
-                &1.E-6, 1.E-10, 2.000E-18, "
-            write(HEL_export_file_i,"(A)") "NITER = 6000, NSTEP = 200,"
+                &1.E-10, 1.E-14, 2.000E-18, "
+            write(HEL_export_file_i,"(A)") "NITER = 20000, NSTEP = 200,"
             write(HEL_export_file_i,"(A)") "NFP = "//trim(i2str(nfp))
             if (use_normalization) then
                 write(HEL_export_file_i,"(A)") "PHIEDGE = "//&
-                    &trim(r2str(-flux_t_H(grid_eq%n(3),0)*psi_0))
+                    &trim(r2str(-eq_1%flux_t_E(grid_eq%n(3),0)*psi_0))
             else
                 write(HEL_export_file_i,"(A)") "PHIEDGE = "//&
-                    &trim(r2str(-flux_t_H(grid_eq%n(3),0)))
+                    &trim(r2str(-eq_1%flux_t_E(grid_eq%n(3),0)))
             end if
             
             write(HEL_export_file_i,"(A)") ""
@@ -1010,17 +1314,17 @@ contains
             write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_S ="
             do kd = 1,grid_eq%n(3)
                 write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                    &flux_t_H(kd,0)/flux_t_H(grid_eq%n(3),0)
+                    &eq_1%flux_t_E(kd,0)/eq_1%flux_t_E(grid_eq%n(3),0)
             end do
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_F ="
             do kd = 1,grid_eq%n(3)
                 if (use_normalization) then
                     write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                        &pres_H(kd,0)*pres_0
+                        &eq_1%pres_E(kd,0)*pres_0
                 else
                     write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                        &pres_H(kd,0)
+                        &eq_1%pres_E(kd,0)
                 end if
             end do
             
@@ -1035,12 +1339,12 @@ contains
             write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_S ="
             do kd = 1,grid_eq%n(3)
                 write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                    &flux_t_H(kd,0)/flux_t_H(grid_eq%n(3),0)
+                    &eq_1%flux_t_E(kd,0)/eq_1%flux_t_E(grid_eq%n(3),0)
             end do
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_F ="
             do kd = 1,grid_eq%n(3)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", -rot_t_H(kd,0)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", -eq_1%rot_t_E(kd,0)
             end do
             
             write(HEL_export_file_i,"(A)") ""
@@ -1048,20 +1352,21 @@ contains
             
             write(HEL_export_file_i,"(A)") &
                 &"!----- Boundary Shape Parameters -----"
-            ierr = print_mode_numbers(HEL_export_file_i,B_F(:,0,:,:),0)
+            ierr = print_mode_numbers(HEL_export_file_i,B_F(:,0,:,:),0,&
+                &max_n_B_output)
             CHCKERR('')
             if (pert_eq) then
                 do jd = 2,nr_n
                     ierr = print_mode_numbers(HEL_export_file_i,&
-                        &B_F(:,-(jd-1),:,:),-n_pert(jd))
+                        &B_F(:,-(jd-1),:,:),-n_pert(jd),max_n_B_output)
                     CHCKERR('')
                     ierr = print_mode_numbers(HEL_export_file_i,&
-                        &B_F(:,jd-1,:,:),n_pert(jd))
+                        &B_F(:,jd-1,:,:),n_pert(jd),max_n_B_output)
                     CHCKERR('')
                 end do
             end if
-            write(HEL_export_file_i,"(A,ES23.16)") "RAXIS = ", B_F(1,0,1,1)
-            write(HEL_export_file_i,"(A,ES23.16)") "ZAXIS = ", B_F(1,0,1,2)
+            write(HEL_export_file_i,"(A,ES23.16)") "RAXIS = ", RZ_B_0(1)
+            write(HEL_export_file_i,"(A,ES23.16)") "ZAXIS = ", RZ_B_0(2)
             write(HEL_export_file_i,"(A)") "&END"
             
             close(HEL_export_file_i)
@@ -1151,20 +1456,21 @@ contains
             ! print
             call print_ex_3D('plasma boundary',trim(plot_name),XYZ_plot(:,:,3),&
                 &x=XYZ_plot(:,:,1),y=XYZ_plot(:,:,2),draw=.false.)
-            call draw_ex(['plasma boundary'],trim(plot_name),1,2,.true.)
+            call draw_ex(['plasma boundary'],trim(plot_name),1,2,.false.)
         end subroutine plot_boundary
         
         ! print the mode numbers
-        integer function print_mode_numbers(file_i,B,n_pert) result(ierr)
+        integer function print_mode_numbers(file_i,B,n_pert,max_n_B_output) &
+            &result(ierr)
             character(*), parameter :: rout_name = 'print_mode_numbers'
             
             ! input / output
             integer, intent(in) :: file_i                                       ! file to output flux quantities for VMEC export
             real(dp), intent(in) :: B(:,:,:)                                    ! cosine and sine of fourier series for R and Z
             integer, intent(in) :: n_pert                                       ! toroidal mode number
+            integer, intent(in) :: max_n_B_output                               ! maximum number of modes to output
             
             ! local variables
-            integer :: max_n_B_output = 101                                     ! max. nr. of modes written in output file (constant in VMEC)
             integer :: kd                                                       ! counter
             integer :: m                                                        ! counter
             character :: var_name                                               ! name of variables (R or Z)
@@ -1200,21 +1506,30 @@ contains
         
         ! calculate the proportionality between toroidal ripple and perturbation
         ! Contents of prop_B_tor (last index):
-        !   1. |nabla psi| Dq/q 
+        !   1. (nabla psi/|nabla psi|).nabla(F/R) (R/F)
         !   2. chi_H
         !   3. normalized flux_p
-        subroutine calc_prop_B_tor(lim_r,prop_B_tor)
-            use HELENA_vars, only: h_H_11, nchi, chi_H, ias, flux_p_H, q_saf_H
+        subroutine calc_prop_B_tor(lim_r,eq_2,prop_B_tor)
+            use HELENA_vars, only: RBphi_H, nchi, chi_H, ias, R_H
             use grid_vars, only: n_r_eq
+            use eq_vars, only: R_0
+            use splines, only: spline3
+            use num_utilities, only: c
             
             ! input / output
             integer, intent(in) :: lim_r(2)                                     ! limits in r range for plot
+            type(eq_2_type), intent(in), target :: eq_2                         ! metric equilibrium variables
             real(dp), intent(inout), allocatable :: prop_B_tor(:,:,:)           ! proportionality between delta B_tor and delta_norm
             
             ! local variables
             integer :: nchi_2pi                                                 ! nr. of poloidal points in entire interval 0..2pi
             integer :: id, kd                                                   ! counters
             character(len=max_str_ln) :: file_name                              ! name of plot file
+            real(dp), allocatable :: D1lnB_tor(:,:)                             ! d(F/R)/dpsi (R/F)
+            real(dp), allocatable :: D2lnB_tor(:,:)                             ! d(F/R)/dtheta (R/F) = -d(R)/dheta (1/R)
+            real(dp), pointer :: h11(:,:) => null()                             ! h^psi,psi
+            real(dp), pointer :: h12(:,:) => null()                             ! h^psi,theta
+            real(dp), allocatable :: prop_B_tor_plot(:,:,:)                     ! prop_B_tor to plot
             
             if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
                 nchi_2pi = nchi*2-2                                             ! -2 because of overlapping points at 0, pi
@@ -1222,351 +1537,97 @@ contains
                 nchi_2pi  = nchi-1                                              ! -1 because of overlapping points at 0
             end if
             allocate(prop_B_tor(nchi_2pi,lim_r(2)-lim_r(1)+1,3))
+            allocate(prop_B_tor_plot(nchi_2pi,lim_r(2)-lim_r(1)+1,3))
+            
+            ! calculate Dpsi B_tor and set pointers
+            allocate(D1lnB_tor(nchi,n_r_eq))
+            allocate(D2lnB_tor(nchi,n_r_eq))
+            do id = 1,nchi
+                ierr = spline3(eq_1%flux_p_E(:,0)/(2*pi),&
+                    &log(RBphi_H/R_H(id,:)),eq_1%flux_p_E(:,0)/(2*pi),&
+                    &dynew=D1lnB_tor(id,:))
+                CHCKERR('')
+            end do
+            do kd = 1,n_r_eq
+                ierr = spline3(chi_H,log(1._dp/R_H(:,kd)),chi_H,&
+                    &dynew=D2lnB_tor(:,kd))
+                CHCKERR('')
+            end do
+            h11 => eq_2%h_E(:,1,:,c([1,1],.true.),0,0,0)
+            h12 => eq_2%h_E(:,1,:,c([1,2],.true.),0,0,0)
             
             call writo('Fourier coefficients at normal positions')
             call lvl_ud(1)
             do kd = lim_r(1),lim_r(2)
                 ! set up prop_B_tor, chi and normal coordinate
                 if (ias.eq.0) then                                              ! symmetric
+                    !prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
+                        !&-sqrt(h11(:,kd))*eq_1%q_saf_E(kd,1)/&
+                        !&eq_1%q_saf_E(kd,0)
                     prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
-                        &sqrt(h_H_11(:,kd))*q_saf_H(kd,1)/&
-                        &q_saf_H(kd,0)
+                        &D1lnB_tor(:,kd)*sqrt(h11(:,kd))+&
+                        &D2lnB_tor(:,kd)*h12(:,kd)/sqrt(h11(:,kd))
                     prop_B_tor(1:nchi,kd-lim_r(1)+1,2) = chi_H
                     do id = 1,nchi-2
+                        !prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
+                            !&-sqrt(h11(nchi-id,kd))*eq_1%q_saf_E(kd,1)/&
+                            !&eq_1%q_saf_E(kd,0)
                         prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
-                            &sqrt(h_H_11(nchi-id,kd))*q_saf_H(kd,1)/&
-                            &q_saf_H(kd,0)
+                            &D1lnB_tor(nchi-id,kd)*sqrt(h11(nchi-id,kd))+&
+                            &D2lnB_tor(nchi-id,kd)*h12(nchi-id,kd)/&
+                            &sqrt(h11(nchi-id,kd))
                         prop_B_tor(nchi+id,kd-lim_r(1)+1,2) = &
                             &2*pi-chi_H(nchi-id)
                     end do
                 else
+                    !prop_B_tor(:,kd-lim_r(1)+1,1) = &
+                        !&-sqrt(h11(1:nchi_2pi-1,kd))*eq_1%q_saf_E(kd,1)/&
+                        !&eq_1%q_saf_E(kd,0)
                     prop_B_tor(:,kd-lim_r(1)+1,1) = &
-                        &sqrt(h_H_11(1:nchi_2pi-1,kd))*q_saf_H(kd,1)/&
-                        &q_saf_H(kd,0)
+                        &D1lnB_tor(1:nchi_2pi-1,kd)*sqrt(h11(1:nchi_2pi-1,kd))+&
+                        &D2lnB_tor(1:nchi_2pi-1,kd)*h12(1:nchi_2pi-1,kd)/&
+                        &h11(1:nchi_2pi-1,kd)
                     prop_B_tor(:,kd-lim_r(1)+1,2) = chi_H(1:nchi_2pi-1)
                 end if
                 prop_B_tor(:,kd-lim_r(1)+1,3) = &
-                    &flux_p_H(kd,0)/flux_p_H(n_r_eq,0)
+                    &eq_1%flux_p_E(kd,0)/eq_1%flux_p_E(n_r_eq,0)
             end do
             call lvl_ud(-1)
             
+            ! include normalization
+            if (use_normalization) prop_B_tor(:,:,1) = prop_B_tor(:,:,1) / R_0
+            
+            ! plot variable, -pi..pi
             call writo('D1B |nabla psi|: ')
+            prop_B_tor_plot(:,:,1) = transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
+                &shape(transpose(prop_B_tor(:,:,1)))))
+            prop_B_tor_plot(:,:,2) = transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2)-2*pi),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
+                &shape(transpose(prop_B_tor(:,:,2)))))
+            prop_B_tor_plot(:,:,3) = transpose(reshape(&
+                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,3)),&
+                &transpose(prop_B_tor(1:nchi_2pi/2,:,3))],&
+                &shape(transpose(prop_B_tor(:,:,3)))))
+            
+            ! 2-D
             call lvl_ud(1)
             file_name = 'prop_B_tor_2D'
             call print_ex_2D([trim(file_name)],trim(file_name),&
-                &transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
-                &shape(transpose(prop_B_tor(:,:,1))))),&
-                &x=transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2))-2*pi,&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
-                &shape(transpose(prop_B_tor(:,:,2))))),&
-                &draw=.false.)
+                &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),draw=.false.)
             call draw_ex([trim(file_name)],trim(file_name),&
-                &size(prop_B_tor,2),1,.false.)
+                &size(prop_B_tor_plot,2),1,.false.)
+            
+            ! 3-D
             file_name = 'prop_B_tor_3D'
             call print_ex_3D(trim(file_name),trim(file_name),&
-                &transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
-                &shape(transpose(prop_B_tor(:,:,1))))),&
-                &x=transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2))-2*pi,&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
-                &shape(transpose(prop_B_tor(:,:,2))))),&
-                &y=transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,3)),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,3))],&
-                &shape(transpose(prop_B_tor(:,:,3))))),&
-                &draw=.false.)
+                &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),&
+                &y=prop_B_tor_plot(:,:,3),draw=.false.)
             call draw_ex([trim(file_name)],trim(file_name),1,2,.false.)
             call lvl_ud(-1)
         end subroutine calc_prop_B_tor
-    end function calc_eq_1
-    integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
-        use num_vars, only: eq_style
-        use num_utilities, only: derivs, c
-        use eq_utilities, only: calc_inv_met, calc_F_derivs
-        use VMEC_utilities, only: calc_trigon_factors
-#if ldebug
-        use num_vars, only: ltest
-        use input_utilities, only: get_log, pause_prog
-        use HELENA_ops, only: test_metrics_H
-#endif
-        
-        character(*), parameter :: rout_name = 'calc_eq_2'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium variables
-        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
-        
-        ! local variables
-        integer :: id
-        integer :: pmone                                                        ! plus or minus one
-        logical :: dealloc_vars_loc                                             ! local dealloc_vars
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! user output
-        call writo('Start setting up metric equilibrium quantities')
-        
-        call lvl_ud(1)
-        
-        ! set up local dealloc_vars
-        dealloc_vars_loc = .false.
-        if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
-        
-        ! create metric equilibrium variables
-        call eq_2%init(grid_eq)
-        
-        ! do some preparations depending on equilibrium style used
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
-                ! derivatives
-                call writo('Calculate R,Z,L...')
-                ierr = calc_trigon_factors(grid_eq%theta_E,grid_eq%zeta_E,&
-                    &grid_eq%trigon_factors)
-                CHCKERR('')
-                do id = 0,max_deriv+1
-                    ierr = calc_RZL(grid_eq,eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-            case (2)                                                            ! HELENA
-                ! do nothing
-        end select
-        
-        ! Calcalations depending on equilibrium style being used:
-        !   1:  VMEC
-        !   2:  HELENA
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! calculate the metrics in the cylindrical coordinate system
-                call writo('Calculate g_C')                                     ! h_C is not necessary
-                do id = 0,max_deriv
-                    ierr = calc_g_C(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the jacobian in the cylindrical coordinate system
-                call writo('Calculate jac_C')
-                do id = 0,max_deriv
-                    ierr = calc_jac_C(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the transformation matrix C(ylindrical) -> V(MEC)
-                call writo('Calculate T_VC')
-                do id = 0,max_deriv
-                    ierr = calc_T_VC(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the metric factors in the VMEC coordinate system
-                call writo('Calculate g_V')
-                do id = 0,max_deriv
-                    ierr = calc_g_V(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the jacobian in the VMEC coordinate system
-                call writo('Calculate jac_V')
-                do id = 0,max_deriv
-                    ierr = calc_jac_V(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-#if ldebug
-                if (ltest) then
-                    call writo('Test calculation of g_V?')
-                    if(get_log(.false.)) then
-                        ierr = test_g_V(grid_eq,eq_2)
-                        CHCKERR('')
-                        call pause_prog
-                    end if
-                    call writo('Test calculation of jac_V?')
-                    if(get_log(.false.)) then
-                        ierr = test_jac_V(grid_eq,eq_2)
-                        CHCKERR('')
-                        call pause_prog
-                    end if
-                end if
-#endif
-                
-                ! calculate the transformation matrix V(MEC) -> F(lux)
-                call writo('Calculate T_VF')
-                do id = 0,max_deriv
-                    ierr = calc_T_VF(grid_eq,eq_1,eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! set up plus minus one
-                pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
-                
-                ! possibly deallocate
-                if (dealloc_vars_loc) then
-                    deallocate(eq_2%R_E,eq_2%Z_E,eq_2%L_E)
-                    deallocate(eq_2%g_C,eq_2%jac_C)
-                    deallocate(eq_2%T_VC,eq_2%det_T_VC)
-                end if
-            case (2)                                                            ! HELENA
-#if ldebug
-                if (ltest) then
-                    call writo('Test consistency of metric factors?')
-                    if(get_log(.false.,ind=.true.)) then
-                        ierr = test_metrics_H()
-                        CHCKERR('')
-                        call pause_prog(ind=.true.)
-                    end if
-                end if
-#endif
-                
-                ! calculate the jacobian in the HELENA coordinate system        
-                call writo('Calculate jac_H')
-                do id = 0,max_deriv
-                    ierr = calc_jac_H(grid_eq,eq_1,eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the metric factors in the HELENA coordinate system
-                call writo('Calculate h_H')
-                do id = 0,max_deriv
-                    ierr = calc_h_H(grid_eq,eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-#if ldebug
-                if (ltest) then
-                    call writo('Test calculation of D1 D2 h_H?')
-                    if(get_log(.false.)) then
-                        ierr = test_D12h_H(grid_eq,eq_2)
-                        CHCKERR('')
-                        call pause_prog
-                    end if
-                end if
-#endif
-                
-                ! calculate the inverse g_H of the metric factors h_H
-                call writo('Calculate g_H')
-                do id = 0,max_deriv
-                    ierr = calc_inv_met(eq_2%g_E,eq_2%h_E,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! calculate the transformation matrix H(ELENA) -> F(lux)        
-                call writo('Calculate T_HF')
-                do id = 0,max_deriv
-                    ierr = calc_T_HF(grid_eq,eq_1,eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
-                ! set up plus minus one
-                pmone = 1
-                
-                ! possibly deallocate
-                if (dealloc_vars_loc) then
-                    deallocate(eq_2%h_E)
-                end if
-        end select
-        
-#if ldebug
-        if (ltest) then
-            call writo('Test calculation of T_EF?')
-            if(get_log(.false.)) then
-                ierr = test_T_EF(grid_eq,eq_1,eq_2)
-                CHCKERR('')
-                call pause_prog
-            end if
-        end if
-#endif
-        
-        ! calculate  the  inverse of  the transformation  matrix T_EF
-        call writo('Calculate T_FE')
-        do id = 0,max_deriv
-            ierr = calc_inv_met(eq_2%T_FE,eq_2%T_EF,derivs(id))
-            CHCKERR('')
-            ierr = calc_inv_met(eq_2%det_T_FE,eq_2%det_T_EF,derivs(id))
-            CHCKERR('')
-        end do
-        
-        ! calculate the metric factors in the Flux coordinate system
-        call writo('Calculate g_F')
-        do id = 0,max_deriv
-            ierr = calc_g_F(eq_2,derivs(id))
-            CHCKERR('')
-        end do
-        
-        ! calculate the inverse h_F of the metric factors g_F
-        call writo('Calculate h_F')
-        do id = 0,max_deriv
-            ierr = calc_inv_met(eq_2%h_F,eq_2%g_F,derivs(id))
-            CHCKERR('')
-        end do
-        
-        ! calculate the jacobian in the Flux coordinate system
-        call writo('Calculate jac_F')
-        do id = 0,max_deriv
-            ierr = calc_jac_F(eq_2,derivs(id))
-            CHCKERR('')
-        end do
-        
-        !!! limit Jacobian to small value to avoid infinities
-        !!if (maxval(eq_2%jac_F(:,:,:,0,0,0)).gt.0._dp) then
-            !!eq_2%jac_F(:,:,:,0,0,0) = max(eq_2%jac_F(:,:,:,0,0,0),tol_zero)
-        !!else
-            !!eq_2%jac_F(:,:,:,0,0,0) = min(eq_2%jac_F(:,:,:,0,0,0),-tol_zero)
-        !!end if
-        
-        ! possibly deallocate
-        if (dealloc_vars_loc) then
-            deallocate(eq_2%g_E,eq_2%jac_E)
-        end if
-        
-        ! Transform metric equilibrium E into F derivatives
-        ierr = calc_F_derivs(eq_2)
-        CHCKERR('')
-        
-        ! possibly deallocate
-        if (dealloc_vars_loc) then
-            deallocate(eq_2%g_F,eq_2%h_F,eq_2%jac_F)
-            deallocate(eq_2%T_EF,eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
-        end if
-        
-        ! Calculate derived metric quantities
-        call calc_derived_q(grid_eq,eq_1,eq_2)
-        
-#if ldebug
-        if (ltest) then
-            call writo('Test Jacobian in Flux coordinates?')
-            if(get_log(.false.)) then
-                ierr = test_jac_F(grid_eq,eq_1,eq_2)
-                CHCKERR('')
-                call pause_prog
-            end if
-            call writo('Test calculation of B_F?')
-            if(get_log(.false.)) then
-                ierr = test_B_F(grid_eq,eq_1,eq_2)
-                CHCKERR('')
-                call pause_prog
-            end if
-            call writo('Test consistency with given pressure?')
-            if(get_log(.false.)) then
-                ierr = test_p(grid_eq,eq_1,eq_2)
-                CHCKERR('')
-                call pause_prog
-            end if
-        end if
-#endif
-        
-        call lvl_ud(-1)
-        
-        call writo('Done setting up metric equilibrium quantities')
     end function calc_eq_2
 
     ! plots the flux quantities in the solution grid

@@ -905,3 +905,8 @@ Technische Universiteit Eindhoven
 * Fixed a bug in the export of HELENA, where modes with nonzero m were counted double.
 * As "prop_B_tor" has to be multiplied by the position ripple to yield the magnetic field ripple, its inverse needs to be used. This has been fixed.
 * Currently, the implementation expects implicitly that the toroidal field ripple is constant for all poloidal positions. This is going to be changed.
+
+## 1.75: 
+* The translation between magnetic and position perturbation is not correct.
+* "nufft" now correctly takes into account functions that are defined in any interval.
+* "export_HEL" now also works for non top-bottom symmetric configurations.

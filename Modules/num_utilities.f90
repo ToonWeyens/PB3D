@@ -1409,16 +1409,22 @@ contains
                 ind_lo = id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
-                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_lo = '//&
-                    &trim(i2str(ind_lo)))
+                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', '//&
+                    &trim(r2strt(pt_c_loc))//' + '//trim(r2strt(tol))//&
+                    &'*abs('//trim(r2strt(pt_c_loc))//') >= '//&
+                    &trim(r2strt(var_c_loc(id)))//' => ['//&
+                    &trim(i2str(ind_lo))//','//trim(i2str(ind_hi))//']')
 #endif
             end if
             if (pt_c_loc-tol*abs(pt_c_loc) .le. var_c_inv(id)) then
                 ind_hi = size_c+1-id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
-                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', ind_hi = '//&
-                    &trim(i2str(ind_hi)))
+                    &trim(i2str(id))//'/'//trim(i2str(size_c))//', '//&
+                    &trim(r2strt(pt_c_loc))//' - '//trim(r2strt(tol))//&
+                    &'*abs('//trim(r2strt(pt_c_loc))//') < '//&
+                    &trim(r2strt(var_c_inv(id)))//' => ['//&
+                    &trim(i2str(ind_lo))//','//trim(i2str(ind_hi))//']')
 #endif
             end if
         end do
