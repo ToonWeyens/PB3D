@@ -44,7 +44,11 @@ main() {
     base=$(pwd)
     
     # set program directory
-    prog_dir=$base/..
+    if [[ $on_cluster = true ]]; then
+        prog_dir=$base/..
+    else
+        prog_dir=/opt/PB3D
+    fi
 
     # loop over all inputs
     # (from http://www.cyberciti.biz/faq/unix-linux-iterate-over-a-variable-range-of-numbers-in-bash/)
@@ -321,14 +325,23 @@ display_usage() {
             echo -e "               77 Hmode_ped1.5_0.99"
             echo -e "               78 Hmode_ped1.5_0.99_HELENA"
             echo -e ""
-            echo -e "               81 Hmode_JET_HELENA"
+            echo -e "               81 Hmode_JET_HELENA_4.0"
+            echo -e "               82 Hmode_JET_HELENA_4.0_HELENA"
+            echo -e "               83 Hmode_JET_HELENA_3.0"
+            echo -e "               84 Hmode_JET_HELENA_3.0_HELENA"
+            echo -e "               85 Hmode_JET_HELENA_2.0"
+            echo -e "               86 Hmode_JET_HELENA_2.0_HELENA"
             echo -e ""
             for ((i=131; i <= 180 ; i++)); do
                 echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
                 (( $((($i-101)%10+1)) == 10 )) && echo -e ""
             done
             echo -e ""
-            echo -e "               201 Hmode_ped1.5_ripple16"
+            echo -e "               201 Hmode_ped3.0_ripple16_10.0"
+            echo -e "               202 Hmode_ped3.0_ripple16_1.00"
+            echo -e "               203 Hmode_ped3.0_ripple16_0.01"
+            echo -e "               204 Hmode_ped3.0_ripple16_0.001"
+            echo -e "               205 Hmode_ped2.0_ripple16_1.0"
             echo -e "               301 circular"
             echo -e "               302 circular_ripple1"
             echo -e "               303 circular_ripple16_0.005"
@@ -336,6 +349,10 @@ display_usage() {
             echo -e "               305 circular_ripple16_0.0001"
             echo -e "               306 circular_ripple6_0.001"
             echo -e "               307 circular_ripple1_0.001"
+            echo -e "               401 Hmode_ped2.0_ripple16"
+            echo -e "               501 circular_ped2.0"
+            echo -e "               502 circular_ped2.0_HELENA"
+            echo -e "               601 test_ripple_M0_0.05"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -461,10 +478,10 @@ set_input() {
                 31)
                     input_name=qps
                 ;;
-                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-1])
+                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2])
                     input_name=Hmode
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|201|30[1-7])
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|20[1-5]|30[2-7]|401|601)
                     input_name=Hmode_ripple
                 ;;
                 *)
@@ -633,13 +650,40 @@ set_input() {
                     eq_name=Hmode_ped1.5_0.99
                 ;;
                 81)
-                    eq_name=Hmode_JET
+                    eq_name=wout_Hmode_JET_4.0.nc
+                ;;
+                82)
+                    eq_name=Hmode_JET_4.0
+                ;;
+                83)
+                    eq_name=wout_Hmode_JET_3.0.nc
+                ;;
+                84)
+                    eq_name=Hmode_JET_3.0
+                ;;
+                85)
+                    eq_name=wout_Hmode_JET_2.0.nc
+                ;;
+                86)
+                    eq_name=Hmode_JET_2.0
                 ;;
                 13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
                     eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc
                 ;;
                 201)
-                    eq_name=wout_Hmode_ped1.5_ripple16.nc
+                    eq_name=wout_Hmode_ped3.0_ripple16_10.0.nc
+                ;;
+                202)
+                    eq_name=wout_Hmode_ped3.0_ripple16_1.00.nc
+                ;;
+                203)
+                    eq_name=wout_Hmode_ped3.0_ripple16_0.01.nc
+                ;;
+                204)
+                    eq_name=wout_Hmode_ped3.0_ripple16_0.001.nc
+                ;;
+                205)
+                    eq_name=wout_Hmode_ped2.0_ripple16_1.00.nc
                 ;;
                 301)
                     eq_name=wout_circular.nc
@@ -661,6 +705,18 @@ set_input() {
                 ;;
                 307)
                     eq_name=wout_circular_ripple1_0.001.nc
+                ;;
+                401)
+                    eq_name=wout_Hmode_ped2.0_ripple16.nc
+                ;;
+                501)
+                    eq_name=wout_circular_ped2.0.nc
+                ;;
+                502)
+                    eq_name=circular_ped2.0
+                ;;
+                601)
+                    eq_name=wout_test_ripple_M0_0.05.nc
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -812,7 +868,7 @@ aux_copy_inputs() {
             echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
         ;;
         2)  # POST
-            echo "ln -s $base/$PB3D_out_full $out_full/ 2> /dev/null"
+            echo "ln -sf $base/$PB3D_out_full $out_full/ 2> /dev/null"
         ;;
     esac
 }

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<Object name="ExpressionList">
+    <Object name="Expression">
+        <Field name="name" type="string">prop_B_tor</Field>
+        <Field name="definition" type="string">"delta_r / pos_cmfe(&lt;/home/toon/Simulations/PB3D/TEST_RIPPLE_0.01_SLAB/Data/B_F_sub_COMP.xmf:B_sub_alpha/default_att_name&gt;, default_grid_name, 1.0)"</Field>
+        <Field name="hidden" type="bool">false</Field>
+        <Field name="type" type="string">ScalarMeshVar</Field>
+        <Field name="fromDB" type="bool">false</Field>
+        <Field name="fromOperator" type="bool">false</Field>
+        <Field name="operatorName" type="string">__none__</Field>
+        <Field name="meshName" type="string"></Field>
+        <Field name="dbName" type="string">__none__</Field>
+        <Field name="autoExpression" type="bool">false</Field>
+    </Object>
+</Object>

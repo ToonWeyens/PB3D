@@ -230,7 +230,7 @@ contains
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, swap_angles, plot_resonance, tol_SLEPC, &
-            &prog_style, POST_style, jump_to_sol, export_HEL, &
+            &prog_style, POST_style, jump_to_sol, export_HEL, compare_tor_pos, &
             &plot_VMEC_modes, EV_guess, ex_plot_style, solver_SLEPC_style, &
             &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
             &max_it_inv, tol_norm, max_it_slepc, &
@@ -387,6 +387,9 @@ contains
                 case(2)                                                         ! POST
                     call MPI_Bcast(swap_angles,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(compare_tor_pos,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(plot_sol_xi,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)

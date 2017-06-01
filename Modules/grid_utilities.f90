@@ -2141,18 +2141,22 @@ contains
     ! Note: The metric factors and transformation matrices have to be allocated.
     ! They  can be  calculated  using  the routines  from  eq_ops,  for deriv  =
     ! [0,0,0].
-    ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
-    ! beforehand.
+    ! Note: For VMEC,  the trigonometric factors of grid_XYZ  must be calculated
+    ! beforehand. Optionally,  by providing X, Y  and Z, the ones  calculated in
+    ! this  routine are  overwritten. This  is  usefull for,  for example,  slab
+    ! geometries.
     ! Note: The normalization  factors are taken into account and  the output is
     ! transformed back to unnormalized values.
     integer function calc_vec_comp(grid,grid_eq,eq_1,eq_2,v_com,norm_disc_prec,&
-        &v_mag,base_name,max_transf,v_flux_tor,v_flux_pol) result(ierr)
+        &v_mag,base_name,max_transf,v_flux_tor,v_flux_pol,XYZ,compare_tor_pos) &
+        &result(ierr)
         
         use grid_vars, only: disc_type
         use eq_vars, only: eq_1_type, eq_2_type, max_flux_F
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
-            &use_normalization, rank, tol_zero
+            &use_normalization, rank, tol_zero, &
+            &compare_tor_pos_glob => compare_tor_pos
         use num_utilities, only: c, calc_int
         use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
@@ -2169,9 +2173,11 @@ contains
         integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
         real(dp), intent(inout), optional :: v_mag(:,:,:)                       ! magnitude of v (dim1,dim2,dim3)
         character(len=*), intent(in), optional :: base_name                     ! base name for output plotting
-        integer, intent(in), optional :: max_transf                             ! maximum transformation level (1: Flux, 2: Equilibrium, 3: Cylindrical, 4: Cartesian [def])
+        integer, intent(in), optional :: max_transf                             ! maximum transformation level (2: Magnetic, 3: Equilibrium, 4: Cylindrical, 5: Cartesian [def])
         real(dp), intent(inout), allocatable, optional :: v_flux_pol(:,:)       ! poloidal flux of v as function of normal coordinate for all toroidal positions
         real(dp), intent(inout), allocatable, optional :: v_flux_tor(:,:)       ! toroidal flux of v as function of normal coordinate for all poloidal positions
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
+        logical, intent(in), optional :: compare_tor_pos                        ! compare toroidal positions
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed plot grid
@@ -2181,8 +2187,10 @@ contains
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: c_loc                                                        ! local c
+        integer :: tor_id(2)                                                    ! toroidal indices
         logical :: cont_plot                                                    ! continued plot
         logical :: do_plot                                                      ! perform plotting
+        logical :: compare_tor_pos_loc                                          ! local compare_tor_pos
         character(len=max_str_ln) :: description(3)                             ! description of plots
         character(len=max_str_ln) :: file_names(3)                              ! plot file names
         character(len=max_str_ln) :: var_names(3,2)                             ! variable names
@@ -2205,6 +2213,10 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! user output
+        call writo('Prepare calculation of vector components')
+        call lvl_ud(1)
         
         ! set up maximum level up to which to transform and whether to plot
         max_transf_loc = 5
@@ -2251,17 +2263,38 @@ contains
             &XYZR(:,:,:,3),R=XYZR(:,:,:,4))
         CHCKERR('')
         
+        ! set up local compare_tor_pos
+        compare_tor_pos_loc = compare_tor_pos_glob
+        if (present(compare_tor_pos)) compare_tor_pos_loc = compare_tor_pos
+        
         ! if plotting is required
         if (do_plot) then
             ! set up plot dimensions and local dimensions
             plot_dim = [grid_trim%n,3]
             plot_offset = [0,0,grid_trim%i_min-1,0]
+            tor_id = [1,size(v_com,2)]
+            if (compare_tor_pos_loc) then
+                if (plot_dim(2).ne.2) then
+                    ierr = 1
+                    err_msg = 'When comparing toroidal positions, need to &
+                        &have 2 toroidal points'
+                    CHCKERR(err_msg)
+                end if
+                plot_dim(2) = 1
+                tor_id(2) = 1
+            end if
             
             ! possibly modify if multiple equilibrium parallel jobs
             if (size(eq_jobs_lims,2).gt.1) then
                 plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
                     &eq_jobs_lims(1,1) + 1
                 plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+                if (compare_tor_pos_loc) then
+                    ierr = 1
+                    err_msg = 'When comparing toroidal positions, cannot have &
+                        &multiple equilibrium jobs'
+                    CHCKERR(err_msg)
+                end if
             end if
             
             ! tests
@@ -2271,15 +2304,46 @@ contains
                 CHCKERR(err_msg)
             end if
             
+            ! user output
+            if (compare_tor_pos_loc) call writo('Comparing toroidal positions')
+            
             ! copy X, Y and Z to trimmed grid copies
-            allocate(X(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
-            allocate(Y(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
-            allocate(Z(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3))
-            do id = 1,3
-                X(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),1)
-                Y(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),2)
-                Z(:,:,:,id) = XYZR(:,:,norm_id(1):norm_id(2),3)
-            end do
+            allocate(X(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
+            allocate(Y(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
+            allocate(Z(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
+            if (compare_tor_pos_loc) then
+                if (present(XYZ)) then
+                    X(:,1,:,1) = 0.5_dp*&
+                        &(XYZ(:,1,norm_id(1):norm_id(2),1) + &
+                        &XYZ(:,2,norm_id(1):norm_id(2),1))
+                    Y(:,1,:,1) = 0.5_dp*&
+                        &(XYZ(:,1,norm_id(1):norm_id(2),2) + &
+                        &XYZ(:,2,norm_id(1):norm_id(2),2))
+                    Z(:,1,:,1) = 0.5_dp*&
+                        &(XYZ(:,1,norm_id(1):norm_id(2),3) + &
+                        &XYZ(:,2,norm_id(1):norm_id(2),3))
+                else
+                    X(:,1,:,1) = 0.5_dp*&
+                        &(XYZR(:,1,norm_id(1):norm_id(2),1) + &
+                        &XYZR(:,2,norm_id(1):norm_id(2),1))
+                    Y(:,1,:,1) = 0.5_dp*&
+                        &(XYZR(:,1,norm_id(1):norm_id(2),2) + &
+                        &XYZR(:,2,norm_id(1):norm_id(2),2))
+                    Z(:,1,:,1) = 0.5_dp*&
+                        &(XYZR(:,1,norm_id(1):norm_id(2),3) + &
+                        &XYZR(:,2,norm_id(1):norm_id(2),3))
+                end if
+            else
+                if (present(XYZ)) then
+                    X(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),1)
+                    Y(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),2)
+                    Z(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),3)
+                else
+                    X(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),1)
+                    Y(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),2)
+                    Z(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),3)
+                end if
+            end if
         end if
         
         ! set up temporal interpolated copy of  v, T_BA and T_AB
@@ -2287,7 +2351,8 @@ contains
         allocate(T_BA(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
         allocate(T_AB(grid%n(1),grid%n(2),grid%loc_n_r,9,0:0,0:0,0:0))
         allocate(q_saf(grid%loc_n_r,0:1))
-        if (present(v_flux_tor) .or. present(v_flux_pol)) then
+        if ((present(v_flux_tor) .or. present(v_flux_pol)) .and. &
+            &.not.compare_tor_pos_loc) then
             allocate(jac(grid%n(1),grid%n(2),grid%loc_n_r))
             if (rank.eq.0 .and. .not.cont_plot) then
                 if (present(v_flux_tor)) then
@@ -2301,7 +2366,11 @@ contains
             end if
         end if
         
+        call lvl_ud(-1)
+        
         ! 1. Flux coordinates (alpha,psi,theta)
+        call writo('Flux coordinates')
+        call lvl_ud(1)
         if (present(v_mag)) then
             v_mag = 0._dp
             do id = 1,3
@@ -2338,6 +2407,11 @@ contains
             file_names(1) = trim(base_name)//'_F_sub'
             file_names(2) = trim(base_name)//'_F_sup'
             file_names(3) = trim(base_name)//'_F_mag'
+            if (compare_tor_pos_loc) then
+                do id = 1,3
+                    file_names(id) = trim(file_names(id))//'_COMP'
+                end do
+            end if
             if (use_normalization) then
                 v_com(:,:,:,1,1) = v_com(:,:,:,1,1) * R_0                       ! norm factor for e_alpha
                 v_com(:,:,:,2,1) = v_com(:,:,:,2,1) / (R_0*B_0)                 ! norm factor for e_psi
@@ -2346,18 +2420,33 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) * (R_0*B_0)                 ! norm factor for e^psi
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^theta
             end if
+            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
+                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
-                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
-                    &description=description(id))
+                    &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
+                    &tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=X(:,tor_id(1):tor_id(2),:,:),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,:),&
+                    &cont_plot=cont_plot,description=description(id))
             end do
-            if (present(v_mag)) &
-                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
-                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
-                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
-                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+            if (present(v_mag)) then
+                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
+                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                    &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
+                    &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                    &X=X(:,tor_id(1):tor_id(2),:,1),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,1),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,1),&
+                    &cont_plot=cont_plot,description=description(3))
+            end if
         end if
+        
+        call lvl_ud(-1)
         
         ! 2.   Magnetic  coordinates   (phi,theta,zeta)   by  converting   using
         ! transformation matrices:
@@ -2372,6 +2461,8 @@ contains
         !   T_MF    = (    -1      0 0 )
         !             (    1/q     0 1 )
         ! if it is the toroidal flux. Its inverse can be calculated as well.
+        call writo('magnetic coordinates')
+        call lvl_ud(1)
         T_BA = 0._dp
         T_AB = 0._dp
         ierr = apply_disc(eq_1%q_saf_FD(:,0:1),norm_interp_data,q_saf,1)
@@ -2437,6 +2528,11 @@ contains
             file_names(1) = trim(base_name)//'_M_sub'
             file_names(2) = trim(base_name)//'_M_sup'
             file_names(3) = trim(base_name)//'_M_mag'
+            if (compare_tor_pos_loc) then
+                do id = 1,3
+                    file_names(id) = trim(file_names(id))//'_COMP'
+                end do
+            end if
             if (use_normalization) then
                 v_com(:,:,:,1,1) = v_com(:,:,:,1,1) / (R_0*B_0)                 ! norm factor for e_psi
                 v_com(:,:,:,2,1) = v_com(:,:,:,2,1) * R_0                       ! norm factor for e_theta
@@ -2445,20 +2541,34 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta
             end if
+            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
+                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
-                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
-                    &description=description(id))
+                    &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
+                    &tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=X(:,tor_id(1):tor_id(2),:,:),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,:),&
+                    &cont_plot=cont_plot,description=description(id))
             end do
-            if (present(v_mag)) &
-                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
-                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
-                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
-                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+            if (present(v_mag)) then
+                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
+                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                    &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
+                    &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                    &X=X(:,tor_id(1):tor_id(2),:,1),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,1),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,1),&
+                    &cont_plot=cont_plot,description=description(3))
+            end if
         end if
         
-        if (present(v_flux_tor) .or. present(v_flux_pol)) then
+        if ((present(v_flux_tor) .or. present(v_flux_pol)) .and. &
+            &.not.compare_tor_pos_loc) then
             ! tests
             if (maxval(grid%theta_F(grid%n(1),:,:)).lt.&
                 &minval(grid%theta_F(1,:,:))) then
@@ -2544,7 +2654,8 @@ contains
 #endif
             
             ! integrate toroidal flux
-            if (present(v_flux_tor) .and. grid_trim%n(1).gt.1) then             ! integrate poloidally and normally
+            if (present(v_flux_tor) .and. grid_trim%n(1).gt.1 .and. &
+                &.not.compare_tor_pos_loc) then                                 ! integrate poloidally and normally
                 ! loop over all toroidal points
                 do jd = 1,grid_trim%n(2)
 #if ldebug
@@ -2616,7 +2727,8 @@ contains
             end if
             
             ! integrate poloidal flux
-            if (present(v_flux_pol) .and. grid_trim%n(2).gt.1) then             ! integrate toroidally and normally
+            if (present(v_flux_pol) .and. grid_trim%n(2).gt.1 .and. &
+                &.not.compare_tor_pos_loc) then                                 ! integrate toroidally and normally
                 ! loop over all poloidal points
                 do id = 1,grid_trim%n(1)
 #if ldebug
@@ -2692,6 +2804,8 @@ contains
             if (rank.eq.0) deallocate(v_ser_temp_int)
         end if
         
+        call lvl_ud(-1)
+        
         if (max_transf_loc.eq.2) return
         
         ! 3.   HELENA   coordinates   (psi,theta,zeta)   or   VMEC   coordinates
@@ -2700,6 +2814,8 @@ contains
         !   (v^i)_H = (v^i)_F T_F^H
         ! Note: This is  done directly from step 1; The results  from step 2 are
         ! skipped, i.e. v_temp is not overwritten after step 2.
+        call writo('Equilibrium coordinates')
+        call lvl_ud(1)
         ierr = apply_disc(eq_2%T_FE(:,:,:,:,0,0,0),norm_interp_data,&
             &T_AB(:,:,:,:,0,0,0),3)
         CHCKERR('')
@@ -2758,6 +2874,11 @@ contains
                     file_names(2) = trim(base_name)//'_H_sup'
                     file_names(3) = trim(base_name)//'_H_mag'
             end select
+            if (compare_tor_pos_loc) then
+                do id = 1,3
+                    file_names(id) = trim(file_names(id))//'_COMP'
+                end do
+            end if
             var_names = trim(base_name)
             do id = 1,3
                 var_names(id,1) = trim(var_names(id,1))//'_sub_'//&
@@ -2773,18 +2894,33 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta or e^phi
             end if
+            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
+                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
-                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
-                    &description=description(id))
+                    &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
+                    &tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=X(:,tor_id(1):tor_id(2),:,:),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,:),&
+                    &cont_plot=cont_plot,description=description(id))
             end do
-            if (present(v_mag)) &
-                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
-                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
-                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
-                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+            if (present(v_mag)) then
+                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
+                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                    &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
+                    &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                    &X=X(:,tor_id(1):tor_id(2),:,1),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,1),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,1),&
+                    &cont_plot=cont_plot,description=description(3))
+            end if
         end if
+        
+        call lvl_ud(-1)
         
         if (max_transf_loc.eq.3) return
         
@@ -2799,6 +2935,8 @@ contains
         !   T_HC    = ( R_theta  0 Z_theta )
         !             (    0    -1    0    )
         ! and its inverse can be calculated as well.
+        call writo('Cylindrical coordinates')
+        call lvl_ud(1)
         T_BA = 0._dp
         T_AB = 0._dp
         select case (eq_style)
@@ -2875,6 +3013,11 @@ contains
             file_names(1) = trim(base_name)//'_C_sub'
             file_names(2) = trim(base_name)//'_C_sup'
             file_names(3) = trim(base_name)//'_C_mag'
+            if (compare_tor_pos_loc) then
+                do id = 1,3
+                    file_names(id) = trim(file_names(id))//'_COMP'
+                end do
+            end if
             coord_names(1) = 'R'
             coord_names(2) = 'phi'
             coord_names(3) = 'Z'
@@ -2893,18 +3036,33 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^phi
                 !v_com(:,:,:,3,2) = v_com(:,:,:,3,2)                             ! norm factor for e^Z
             end if
+            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
+                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
-                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
-                    &description=description(id))
+                    &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
+                    &tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=X(:,tor_id(1):tor_id(2),:,:),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,:),&
+                    &cont_plot=cont_plot,description=description(id))
             end do
-            if (present(v_mag)) &
-                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
-                &v_mag(:,:,norm_id(1):norm_id(2)),tot_dim=plot_dim(1:3),&
-                &loc_offset=plot_offset(1:3),X=X(:,:,:,1),Y=Y(:,:,:,1),&
-                &Z=Z(:,:,:,1),cont_plot=cont_plot,description=description(3))
+            if (present(v_mag)) then
+                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
+                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                    &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
+                    &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                    &X=X(:,tor_id(1):tor_id(2),:,1),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,1),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,1),&
+                    &cont_plot=cont_plot,description=description(3))
+            end if
         end if
+        
+        call lvl_ud(-1)
         
         if (max_transf_loc.eq.4) return
         
@@ -2915,6 +3073,8 @@ contains
         !    (e_Z)    (     0          0       1 ) (e_Z)
         ! with  phi  =  -  zeta_F.   For  the  transformation  of  contravariant
         ! components, the factor R becomes 1/R and the transpose is taken.
+        call writo('Cartesian coordinates')
+        call lvl_ud(1)
         T_BA = 0._dp
         T_AB = 0._dp
         T_AB(:,:,:,c([1,1],.false.),0,0,0) = cos(-grid%zeta_F)
@@ -2954,6 +3114,11 @@ contains
             file_names(1) = trim(base_name)//'_X_sub'
             file_names(2) = trim(base_name)//'_X_sup'
             file_names(3) = trim(base_name)//'_X_mag'
+            if (compare_tor_pos_loc) then
+                do id = 1,3
+                    file_names(id) = trim(file_names(id))//'_COMP'
+                end do
+            end if
             coord_names(1) = 'X'
             coord_names(2) = 'Y'
             coord_names(3) = 'Z'
@@ -2964,25 +3129,41 @@ contains
                 var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
                     &trim(coord_names(id))
             end do
+            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
+                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
-                    &v_com(:,:,norm_id(1):norm_id(2),:,id),tot_dim=plot_dim,&
-                    &loc_offset=plot_offset,X=X,Y=Y,Z=Z,cont_plot=cont_plot,&
-                    &description=description(id))
+                    &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
+                    &tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=X(:,tor_id(1):tor_id(2),:,:),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,:),&
+                    &cont_plot=cont_plot,description=description(id))
             end do
-            if (present(v_mag)) &
-                &call plot_HDF5(trim(base_name),trim(file_names(3)),&
-                &v_mag(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
-                &X=X(:,:,:,1),Y=Y(:,:,:,1),Z=Z(:,:,:,1),&
-                &cont_plot=cont_plot,description=description(3))
+            if (present(v_mag)) then
+                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
+                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                call plot_HDF5(trim(base_name),trim(file_names(3)),&
+                    &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
+                    &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
+                    &X=X(:,tor_id(1):tor_id(2),:,1),&
+                    &Y=Y(:,tor_id(1):tor_id(2),:,1),&
+                    &Z=Z(:,tor_id(1):tor_id(2),:,1),&
+                    &cont_plot=cont_plot,description=description(3))
+            end if
             
             ! plot vector as well
             call plot_HDF5([trim(base_name)],trim(base_name)//'_vec',&
-                &v_com(:,:,norm_id(1):norm_id(2),:,1),tot_dim=plot_dim,&
-                &loc_offset=plot_offset,X=X,Y=Y,Z=Z,col=4,cont_plot=cont_plot,&
+                &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,1),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,&
+                &X=X(:,tor_id(1):tor_id(2),:,:),Y=Y(:,tor_id(1):tor_id(2),:,:),&
+                &Z=Z(:,tor_id(1):tor_id(2),:,:),col=4,cont_plot=cont_plot,&
                 &description='magnetic field vector')
         end if
+        
+        call lvl_ud(-1)
         
         ! clean up
         call norm_interp_data%dealloc()

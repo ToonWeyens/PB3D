@@ -15,7 +15,7 @@ module eq_ops
     private
     public calc_eq, calc_derived_q, calc_normalization_const, normalize_input, &
         &print_output_eq, flux_q_plot, redistribute_output_eq, divide_eq_jobs, &
-        &calc_eq_jobs_lims, calc_T_HF, B_plot, J_plot, kappa_plot
+        &calc_eq_jobs_lims, calc_T_HF, B_plot, J_plot, kappa_plot, delta_r_plot
 #if ldebug
     public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC, &
         &debug_J_plot
@@ -510,9 +510,10 @@ contains
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
-            use num_vars, only: eq_name, HEL_pert_file_i, HEL_export_file_i
+            use num_vars, only: eq_name, HEL_pert_file_i, HEL_export_file_i, &
+                &norm_disc_prec_eq
 #if ldebug
-            use grid_utilities, only: setup_deriv_data, apply_disc
+            use grid_utilities, only: setup_deriv_data
 #endif
             
             character(*), parameter :: rout_name = &
@@ -555,9 +556,12 @@ contains
             real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
             real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
-            real(dp) :: norm_B_H(2)                                             ! normalization for R and Z Fourier modes
+            real(dp) :: norm_B_H                                                ! normalization for R and Z Fourier modes
             real(dp) :: mult_fac                                                ! global multiplication factor
             real(dp) :: RZ_B_0(2)                                               ! origin of R and Z of boundary
+            real(dp) :: s_V(99)                                                 ! normal coordinate s for writing
+            real(dp) :: pres_V(99)                                              ! pressure for writing
+            real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
             real(dp), allocatable :: R_H_loc(:,:)                               ! local R_H
             real(dp), allocatable :: Z_H_loc(:,:)                               ! local Z_H
             real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
@@ -576,8 +580,9 @@ contains
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
             logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
+            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
 #if ldebug
-            real(dp), allocatable :: BH_0_ALT(:)                                ! theta derivative of R and Z
+            real(dp), allocatable :: BH_0_ALT(:,:)                              ! reconstructed R and Z
             type(disc_type) :: deriv_data                                       ! data for derivatives in theta
 #endif
             
@@ -923,11 +928,19 @@ contains
             !!BH_0(:,1) = 1.5_dp + 0.5*cos(theta(:,1))
             !!BH_0(:,2) = 0.5*sin(theta(:,1))
             
-            ! plot output
+            ! plot angles
             plot_name(1) = 'chi'
             plot_title = ['theta_G','chi_H  ']
             call print_ex_2D(plot_title(1:2),plot_name(1),theta/pi,&
-                &x=reshape([theta(:,2),theta(:,2)],[n_B,2])/pi,&
+                &x=reshape([theta(:,2)],[n_B,1])/pi,&
+                &draw=.false.)
+            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
+            
+            ! plot R and Z
+            plot_name(1) = 'RZ'
+            plot_title = ['R_H','Z_H']
+            call print_ex_2D(plot_title(1:2),plot_name(1),BH_0,&
+                &x=reshape([theta(:,1)],[n_B,1])/pi,&
                 &draw=.false.)
             call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
             
@@ -940,13 +953,49 @@ contains
                 call lvl_ud(1)
                 
                 ! NUFFT
-                ierr = nufft(theta(:,1),BH_0(:,kd),B_F_loc,plot_name(kd))
+                ierr = nufft(theta(:,1),BH_0(:,kd),B_F_loc,plot_name(kd))       ! geometrical pol. Fourier coefficients
                 CHCKERR('')
                 if (kd.eq.1) then
                     allocate(B_F(size(B_F_loc,1),-(nr_n-1):(nr_n-1),2,2))       ! (pol modes, tor modes, cos/sin (m theta), R/Z)
                     B_F = 0._dp
                 end if
                 B_F(:,0,:,kd) = B_F_loc
+            
+#if ldebug
+                if (debug_write_flux_q_in_file_for_VMEC) then
+                    allocate(BH_0_ALT(size(BH_0,1),size(B_F_loc,1)))
+                    
+                    call writo('Comparing R or Z with reconstruction &
+                        &through Fourier coefficients')
+                    BH_0_ALT(:,1) = B_F_loc(1,1)
+                    do id = 1,size(B_F_loc,1)-1
+                        BH_0_ALT(:,id+1) = BH_0_ALT(:,id) + &
+                            &B_F_loc(id+1,1)*cos(id*theta(:,2)) + &
+                            &B_F_loc(id+1,2)*sin(id*theta(:,2))
+                    end do
+                    call print_ex_2D(['orig BH','alt BH '],'',&
+                        &reshape([BH_0(:,kd),BH_0_ALT(:,size(B_F_loc,1))],&
+                        &[size(BH_0,1),2]),x=&
+                        &reshape([theta(:,2)],[size(BH_0,1),1]))
+                    
+                    call writo('Plotting Fourier approximation')
+                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series',BH_0_ALT,&
+                        &x=reshape([theta(:,2)],[size(BH_0,1),1]))
+                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series',size(B_F_loc,1),1,.false.)
+                    
+                    call writo('Making animation')
+                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series_anim',BH_0_ALT,&
+                        &x=reshape([theta(:,2)],[size(BH_0,1),1]))
+                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series_anim',size(B_F_loc,1),1,.false.,&
+                        &is_animated=.true.)
+                    
+                    deallocate(BH_0_ALT)
+                end if
+#endif
                 
                 call lvl_ud(-1)
             end do
@@ -958,13 +1007,11 @@ contains
             
             ! user output
             if (pert_eq) then
+                ! Calculate the  normal unit vector on  the HELENA (equidistant)
+                ! poloidal grid.
                 call writo('Modify axisymmetric equilibrium')
                 call lvl_ud(1)
-            end if
-            
-            ! Calculate  the  normal  unit vector  on  the HELENA  (equidistant)
-            ! poloidal grid.
-            if (pert_eq) then
+                
                 ! calculate unit normal vector  by calculating first the Fourier
                 ! components in  the Helena poloidal coordinate,  and then using
                 ! them to obtain the poloidal derivative  of R and Z. The normal
@@ -987,31 +1034,19 @@ contains
                     
 #if ldebug
                     if (debug_write_flux_q_in_file_for_VMEC) then
-                        allocate(BH_0_ALT(size(BH_0,1)))
+                        allocate(BH_0_ALT(size(BH_0,1),1))
                         
-                        call writo('Comparing R or Z with reconstruction &
-                            &through Fourier coefficients')
-                        BH_0_ALT = 0._dp
-                        do id = 0,size(B_F_loc,1)-1
-                            BH_0_ALT = BH_0_ALT + &
-                                &B_F_loc(id+1,1)*cos(id*theta(:,2)) + &
-                                &B_F_loc(id+1,2)*sin(id*theta(:,2))
-                        end do
-                        call print_ex_2D(['orig BH','alt BH '],'',&
-                            &reshape([BH_0(:,kd),BH_0_ALT],[size(BH_0,1),2]),x=&
-                            &reshape([theta(:,2),theta(:,2)],[size(BH_0,1),2]))
-                        
-                        call writo('Comparing derivative')
+                        call writo('Comparing derivative of R or Z with &
+                            &reconstruction through Fourier coefficients')
                         ierr = setup_deriv_data(theta(:,2),deriv_data,1,1)
                         CHCKERR('')
-                        ierr = apply_disc(BH_0(:,kd),deriv_data,BH_0_ALT)
+                        ierr = apply_disc(BH_0(:,kd),deriv_data,BH_0_ALT(:,1))
                         CHCKERR('')
                         call deriv_data%dealloc()
                         call print_ex_2D(['orig BH','alt BH '],'',&
-                            &reshape([BH_deriv(:,kd),BH_0_ALT],&
+                            &reshape([BH_deriv(:,kd),BH_0_ALT(:,1)],&
                             &[size(BH_deriv,1),2]),x=&
-                            &reshape([theta(:,2),theta(:,2)],&
-                            &[size(BH_deriv,1),2]))
+                            &reshape([theta(:,2)],[size(BH_deriv,1),1]))
                         
                         deallocate(BH_0_ALT)
                     end if
@@ -1228,11 +1263,10 @@ contains
             
             ! find out how many poloidal modes would be necessary
             rec_min_m = 1
-            norm_B_H(1) = maxval(abs(B_F(:,:,:,1)))
-            norm_B_H(2) = maxval(abs(B_F(:,:,:,2)))
+            norm_B_H = maxval(abs(B_F))
             do id = 1,size(B_F,1)
-                if (maxval(abs(B_F(id,:,:,1)/norm_B_H(1))).gt.m_tol .or. &      ! for R
-                    &maxval(abs(B_F(id,:,:,2)/norm_B_H(2))).gt.m_tol) &         ! for Z
+                if (maxval(abs(B_F(id,:,:,1)/norm_B_H)).gt.m_tol .or. &         ! for R
+                    &maxval(abs(B_F(id,:,:,2)/norm_B_H)).gt.m_tol) &            ! for Z
                     &rec_min_m = id
             end do
             call writo("Detected recommended number of poloidal modes: "//&
@@ -1273,6 +1307,19 @@ contains
             call writo('This can be used for VMEC porting')
             call lvl_ud(1)
             
+            ! interpolate for VMEC output
+            s_V = [((kd-1._dp)/(size(s_V)-1),kd=1,size(s_V))]
+            ierr = setup_interp_data(&
+                &eq_1%flux_t_E(:,0)/eq_1%flux_t_E(grid_eq%n(3),0),s_V,&
+                &norm_interp_data,norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(eq_1%pres_E(:,0),norm_interp_data,pres_V)
+            CHCKERR('')
+            if (use_normalization) pres_V = pres_V*pres_0
+            ierr = apply_disc(-eq_1%rot_t_E(:,0),norm_interp_data,rot_T_V)
+            CHCKERR('')
+            call norm_interp_data%dealloc()
+            
             ! output to VMEC input file
             open(HEL_export_file_i,STATUS='replace',FILE=trim(file_name),&
                 &IOSTAT=ierr)
@@ -1312,20 +1359,13 @@ contains
             write(HEL_export_file_i,"(A)") "GAMMA =  0.00000000000000E+00"
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_S ="
-            do kd = 1,grid_eq%n(3)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                    &eq_1%flux_t_E(kd,0)/eq_1%flux_t_E(grid_eq%n(3),0)
+            do kd = 1,size(s_V)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", s_V(kd)
             end do
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_F ="
-            do kd = 1,grid_eq%n(3)
-                if (use_normalization) then
-                    write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                        &eq_1%pres_E(kd,0)*pres_0
-                else
-                    write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                        &eq_1%pres_E(kd,0)
-                end if
+            do kd = 1,size(pres_V)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", pres_V(kd)
             end do
             
             write(HEL_export_file_i,"(A)") ""
@@ -1337,14 +1377,13 @@ contains
             write(HEL_export_file_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_S ="
-            do kd = 1,grid_eq%n(3)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", &
-                    &eq_1%flux_t_E(kd,0)/eq_1%flux_t_E(grid_eq%n(3),0)
+            do kd = 1,size(s_V)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", s_V(kd)
             end do
             write(HEL_export_file_i,"(A)") ""
             write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_F ="
-            do kd = 1,grid_eq%n(3)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", -eq_1%rot_t_E(kd,0)
+            do kd = 1,size(rot_t_V)
+                write(HEL_export_file_i,"(A1,ES23.16)") " ", rot_t_V(kd)
             end do
             
             write(HEL_export_file_i,"(A)") ""
@@ -1504,11 +1543,12 @@ contains
             end do
         end function print_mode_numbers
         
-        ! calculate the proportionality between toroidal ripple and perturbation
+        ! calculate the proportionality between perturbation and toroidal ripple
         ! Contents of prop_B_tor (last index):
-        !   1. (nabla psi/|nabla psi|).nabla(F/R) (R/F)
+        !   1. prop_B_tor = 1/[-q'/q |nabla psi|]
         !   2. chi_H
         !   3. normalized flux_p
+        ! so that delta_r = prop_B_tor delta_B_tor/B_tor
         subroutine calc_prop_B_tor(lim_r,eq_2,prop_B_tor)
             use HELENA_vars, only: RBphi_H, nchi, chi_H, ias, R_H
             use grid_vars, only: n_r_eq
@@ -1528,7 +1568,6 @@ contains
             real(dp), allocatable :: D1lnB_tor(:,:)                             ! d(F/R)/dpsi (R/F)
             real(dp), allocatable :: D2lnB_tor(:,:)                             ! d(F/R)/dtheta (R/F) = -d(R)/dheta (1/R)
             real(dp), pointer :: h11(:,:) => null()                             ! h^psi,psi
-            real(dp), pointer :: h12(:,:) => null()                             ! h^psi,theta
             real(dp), allocatable :: prop_B_tor_plot(:,:,:)                     ! prop_B_tor to plot
             
             if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
@@ -1554,39 +1593,27 @@ contains
                 CHCKERR('')
             end do
             h11 => eq_2%h_E(:,1,:,c([1,1],.true.),0,0,0)
-            h12 => eq_2%h_E(:,1,:,c([1,2],.true.),0,0,0)
             
             call writo('Fourier coefficients at normal positions')
             call lvl_ud(1)
             do kd = lim_r(1),lim_r(2)
                 ! set up prop_B_tor, chi and normal coordinate
                 if (ias.eq.0) then                                              ! symmetric
-                    !prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
-                        !&-sqrt(h11(:,kd))*eq_1%q_saf_E(kd,1)/&
-                        !&eq_1%q_saf_E(kd,0)
                     prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
-                        &D1lnB_tor(:,kd)*sqrt(h11(:,kd))+&
-                        &D2lnB_tor(:,kd)*h12(:,kd)/sqrt(h11(:,kd))
+                        &-(sqrt(h11(:,kd))*eq_1%q_saf_E(kd,1)/&
+                        &eq_1%q_saf_E(kd,0))**(-1)
                     prop_B_tor(1:nchi,kd-lim_r(1)+1,2) = chi_H
                     do id = 1,nchi-2
-                        !prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
-                            !&-sqrt(h11(nchi-id,kd))*eq_1%q_saf_E(kd,1)/&
-                            !&eq_1%q_saf_E(kd,0)
                         prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
-                            &D1lnB_tor(nchi-id,kd)*sqrt(h11(nchi-id,kd))+&
-                            &D2lnB_tor(nchi-id,kd)*h12(nchi-id,kd)/&
-                            &sqrt(h11(nchi-id,kd))
+                            &-(sqrt(h11(nchi-id,kd))*eq_1%q_saf_E(kd,1)/&
+                            &eq_1%q_saf_E(kd,0))**(-1)
                         prop_B_tor(nchi+id,kd-lim_r(1)+1,2) = &
                             &2*pi-chi_H(nchi-id)
                     end do
                 else
-                    !prop_B_tor(:,kd-lim_r(1)+1,1) = &
-                        !&-sqrt(h11(1:nchi_2pi-1,kd))*eq_1%q_saf_E(kd,1)/&
-                        !&eq_1%q_saf_E(kd,0)
                     prop_B_tor(:,kd-lim_r(1)+1,1) = &
-                        &D1lnB_tor(1:nchi_2pi-1,kd)*sqrt(h11(1:nchi_2pi-1,kd))+&
-                        &D2lnB_tor(1:nchi_2pi-1,kd)*h12(1:nchi_2pi-1,kd)/&
-                        &h11(1:nchi_2pi-1,kd)
+                        &-(sqrt(h11(1:nchi_2pi-1,kd))*eq_1%q_saf_E(kd,1)/&
+                        &eq_1%q_saf_E(kd,0))**(-1)
                     prop_B_tor(:,kd-lim_r(1)+1,2) = chi_H(1:nchi_2pi-1)
                 end if
                 prop_B_tor(:,kd-lim_r(1)+1,3) = &
@@ -1595,7 +1622,7 @@ contains
             call lvl_ud(-1)
             
             ! include normalization
-            if (use_normalization) prop_B_tor(:,:,1) = prop_B_tor(:,:,1) / R_0
+            if (use_normalization) prop_B_tor(:,:,1) = prop_B_tor(:,:,1) * R_0
             
             ! plot variable, -pi..pi
             call writo('D1B |nabla psi|: ')
@@ -1614,14 +1641,14 @@ contains
             
             ! 2-D
             call lvl_ud(1)
-            file_name = 'prop_B_tor_2D'
+            file_name = 'prop_B_tor_prediction_2D'
             call print_ex_2D([trim(file_name)],trim(file_name),&
                 &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),draw=.false.)
             call draw_ex([trim(file_name)],trim(file_name),&
                 &size(prop_B_tor_plot,2),1,.false.)
             
             ! 3-D
-            file_name = 'prop_B_tor_3D'
+            file_name = 'prop_B_tor_prediction_3D'
             call print_ex_3D(trim(file_name),trim(file_name),&
                 &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),&
                 &y=prop_B_tor_plot(:,:,3),draw=.false.)
@@ -3390,13 +3417,14 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function B_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes) result(ierr)
+    integer function B_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
+        &result(ierr)
+        
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
         use eq_vars, only: B_0
-        use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'B_plot'
         
@@ -3406,6 +3434,7 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
         logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
         
         ! local variables
         integer :: id                                                           ! counter
@@ -3453,11 +3482,11 @@ contains
         if (plot_fluxes_loc) then
             ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
                 &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,&
-                &v_flux_tor=B_flux_tor,v_flux_pol=B_flux_pol)
+                &v_flux_tor=B_flux_tor,v_flux_pol=B_flux_pol,XYZ=XYZ)
             CHCKERR('')
         else
             ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
-                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name)
+                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,XYZ=XYZ)
             CHCKERR('')
         end if
     end function B_plot
@@ -3481,13 +3510,14 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes) result(ierr)
+    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
+        &result(ierr)
+        
         use grid_utilities, only: calc_vec_comp
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
         use eq_vars, only: B_0, R_0, pres_0
-        use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'J_plot'
         
@@ -3497,6 +3527,7 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
         logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -3576,11 +3607,11 @@ contains
         if (plot_fluxes_loc) then
             ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
                 &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,&
-                &v_flux_tor=J_flux_tor,v_flux_pol=J_flux_pol)
+                &v_flux_tor=J_flux_tor,v_flux_pol=J_flux_pol,XYZ=XYZ)
             CHCKERR('')
         else
             ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
-                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name)
+                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,XYZ=XYZ)
             CHCKERR('')
         end if
     end function J_plot
@@ -3597,7 +3628,9 @@ contains
     ! Note that vector plots for different  Richardson levels can be combined to
     ! show the total grid by just plotting them all individually.
     ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function kappa_plot(grid_eq,eq_1,eq_2,rich_lvl) result(ierr)
+    integer function kappa_plot(grid_eq,eq_1,eq_2,rich_lvl,XYZ) &
+        &result(ierr)
+        
         use grid_utilities, only: calc_vec_comp
         use eq_vars, only: eq_1_type, eq_2_type
         use eq_utilities, only: calc_inv_met
@@ -3618,6 +3651,7 @@ contains
         type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
         type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
         
         ! local variables
         real(dp), allocatable :: k_com(:,:,:,:,:)                               ! covariant and contravariant components of kappa (dim1,dim2,dim3,3,2)
@@ -3629,7 +3663,7 @@ contains
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
-        real(dp), allocatable :: XYZ(:,:,:,:,:)                                 ! X, Y and Z of surface in cylindrical coordinates, trimmed grid
+        real(dp), allocatable :: XYZ_loc(:,:,:,:,:)                             ! X, Y and Z of surface in cylindrical coordinates, trimmed grid
         real(dp), allocatable :: k_com_inv(:,:,:,:)                             ! inverted cartesian components of curvature
         logical, save :: asked_for_testing = .false.                            ! whether we have been asked to test
         logical, save :: testing = .false.                                      ! whether we are testing
@@ -3694,7 +3728,7 @@ contains
         
         ! transform coordinates
         ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,k_com,&
-            &norm_disc_prec_eq,v_mag=k_mag,base_name=base_name)
+            &norm_disc_prec_eq,v_mag=k_mag,base_name=base_name,XYZ=XYZ)
         CHCKERR('')
         
 #if ldebug
@@ -3746,31 +3780,32 @@ contains
                 end if
                 
                 ! calculate X, Y and Z
-                allocate(XYZ(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,3,&
-                    &3))
-                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ(:,:,:,1,1),&
-                    &XYZ(:,:,:,1,2),XYZ(:,:,:,1,3))
+                allocate(XYZ_loc(grid_trim%n(1),grid_trim%n(2),&
+                    &grid_trim%loc_n_r,3,3))
+                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ_loc(:,:,:,1,1),&
+                    &XYZ_loc(:,:,:,1,2),XYZ_loc(:,:,:,1,3))
                 CHCKERR('')
                 
                 ! produce a plot of center of curvature for every point
                 call plot_HDF5(['cen_of_curv'],'TEST_cen_of_curv_vec',&
                     &k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
-                    &X=XYZ(:,:,:,:,1),Y=XYZ(:,:,:,:,2),Z=XYZ(:,:,:,:,3),&
-                    &col=4,cont_plot=eq_job_nr.gt.1,&
+                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
+                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
                     &description='center of curvature')
                 
                 ! displace the points to the center of curvature
                 do id = 1,3
-                    XYZ(:,:,:,1,id) = XYZ(:,:,:,1,id) + k_com_inv(:,:,:,id)
+                    XYZ_loc(:,:,:,1,id) = XYZ_loc(:,:,:,1,id) + &
+                        &k_com_inv(:,:,:,id)
                 end do
-                XYZ(:,:,:,2,:) = XYZ(:,:,:,1,:)
-                XYZ(:,:,:,3,:) = XYZ(:,:,:,3,:)
+                XYZ_loc(:,:,:,2,:) = XYZ_loc(:,:,:,1,:)
+                XYZ_loc(:,:,:,3,:) = XYZ_loc(:,:,:,3,:)
                 
                 ! produce an inverted plot
                 call plot_HDF5(['cen_of_curv_inv'],'TEST_cen_of_curv_inv_vec',&
                     &-k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
-                    &X=XYZ(:,:,:,:,1),Y=XYZ(:,:,:,:,2),Z=XYZ(:,:,:,:,3),&
-                    &col=4,cont_plot=eq_job_nr.gt.1,&
+                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
+                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
                     &description='center of curvature')
                 
                 ! clean up
@@ -3781,7 +3816,206 @@ contains
         end if
 #endif
     end function kappa_plot
-
+    
+    ! Plots the  magnetic fields. If  multiple equilibrium parallel  jobs, every
+    ! job does its piece, and the results are joined automatically by plot_HDF5.
+    ! The outputs are given in contra- and covariant components and magnitude in
+    ! multiple coordinate systems, as indicated in "calc_vec_comp".
+    ! The starting point is the fact that the magnetic field is given by
+    !   B = e_theta/J
+    ! in F coordinates. The F covariant components are therefore given by
+    !   B_i = g_i3/J
+    ! and the only non-vanishing contravariant component is
+    !   B^3 = 1/J.
+    ! These are then all be transformed to the other coordinate systems.
+    ! Note that vector plots for different  Richardson levels can be combined to
+    ! show the total grid by just plotting them all individually.
+    ! Note: The metric factors and transformation matrices have to be allocated.
+    integer function delta_r_plot(grid_eq,eq_1,eq_2,XYZ,rich_lvl) &
+        &result(ierr)
+        
+        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, &
+            &use_normalization, rank, use_pol_flux_F, ex_plot_style
+        use eq_vars, only: B_0
+        use num_utilities, only: c
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'delta_r_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
+        real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of grid
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level
+        
+        ! local variables
+        integer :: id, jd                                                       ! counters
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
+        real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface
+        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: delta_B(:,:,:,:)                               ! delta_B/B
+        real(dp), allocatable :: prop_B_tor_2D(:,:,:)                           ! delta_r / delta_B/B for 2-D plotting
+        real(dp), allocatable :: prop_B_tor_2D_loc(:)                           ! local prop_B_tor_2D
+        real(dp), allocatable :: x_2D(:,:)                                      ! x for 2-D plotting
+        real(dp), allocatable :: x_2D_loc(:)                                    ! local x_2D
+        real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
+        real(dp), allocatable :: u_norm_com(:,:,:,:,:)                          ! covariant and contravariant components of u_norm (dim1,dim2,dim3,3,2)
+        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
+        character(len=25) :: base_name                                          ! base name
+        character(len=25) :: plot_names(2)                                      ! plot names
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! trim grid
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! calculate local X, Y and Z
+        ! (Can be different from provided one for different plot grid styles)
+        allocate(XYZ_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_loc(:,:,:,1),XYZ_loc(:,:,:,2),&
+            &XYZ_loc(:,:,:,3))
+        CHCKERR('')
+        
+        ! set up components of u_norm
+        allocate(u_norm_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        u_norm_com = 0._dp
+        u_norm_com(:,:,:,2,1) = &
+            &(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))**(-0.5_dp)                ! normal unit vector nabla psi / |nabla psi|
+        do id = 1,3
+            u_norm_com(:,:,:,id,2) = eq_2%h_FD(:,:,:,c([2,id],.true.),0,0,0)*&
+                &u_norm_com(:,:,:,2,1)
+        end do
+        
+        ! transform coordinates, including the flux
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,u_norm_com,&
+            &norm_disc_prec_eq,XYZ=XYZ,compare_tor_pos=.false.)
+        CHCKERR('')
+        
+        ! dot  position difference  with Cartesian components  of u_norm  to get
+        ! delta_r
+        allocate(delta_r(grid_eq%n(1),1,grid_eq%loc_n_r))
+        delta_r = 0._dp
+        do id = 1,3
+            delta_r(:,1,:) = delta_r(:,1,:) + 0.5_dp * &
+                &(u_norm_com(:,2,:,id,1)+u_norm_com(:,1,:,id,1)) * &
+                &(XYZ_loc(:,2,:,id)-XYZ_loc(:,1,:,id))
+        end do
+        
+        ! Calculate cylindrical components of B
+        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        B_com = 0._dp
+        do id = 1,3
+            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0)
+        end do
+        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
+        if (use_normalization) B_com = B_com * B_0
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
+            &max_transf=4)
+        CHCKERR('')
+        
+        ! set plot variables for delta_r
+        base_name = 'delta_r'
+        plot_names(1) = 'delta_r'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! plot
+        call plot_HDF5(trim(plot_names(1)),trim(base_name),&
+            &delta_r(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &X=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),1)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),1)),&
+            &Y=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),2)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),2)),&
+            &Z=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),3)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),3)),&
+            &cont_plot=eq_job_nr.gt.1,&
+            &description='plasma position displacement')
+        
+        ! set plot variables for prop_B_tor
+        base_name = 'prop_B_tor_from_eq'
+        plot_names(1) = trim(base_name)//'_sub'
+        plot_names(2) = trim(base_name)//'_sup'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        allocate(delta_B(grid_eq%n(1),1,grid_eq%loc_n_r,2))
+        delta_B = 2*(B_com(:,2:2,:,2,:)-B_com(:,1:1,:,2,:)) / &
+            &(B_com(:,2:2,:,2,:)+B_com(:,1:1,:,2,:))
+        
+        ! plot with HDF5
+        call plot_HDF5(plot_names,trim(base_name),&
+            &reshape([delta_r(:,:,norm_id(1):norm_id(2)),&
+            &delta_r(:,:,norm_id(1):norm_id(2))],&
+            &[grid_trim%n(1),1,grid_trim%loc_n_r,2])/&
+            &delta_B(:,:,norm_id(1):norm_id(2),:),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3),2],&
+            &loc_offset=[0,0,grid_trim%i_min-1,0],&
+            &X=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),1:1)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),1:1)),&
+            &Y=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),2:2)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),2:2)),&
+            &Z=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),3:3)+&
+            &XYZ(:,2:2,norm_id(1):norm_id(2),3:3)),&
+            &cont_plot=eq_job_nr.gt.1,description='delta_r divided by delta_B')
+        
+        ! plot in 2-D
+        r_lim_2D = [1,grid_trim%n(3)]
+        if (ex_plot_style.eq.2) r_lim_2D(1) = &
+            &max(r_lim_2D(1),r_lim_2D(2)-127+1)                                 ! Bokeh can only handle 255/2 input arguments
+        if (rank.eq.0) then
+            allocate(prop_B_tor_2D(grid_trim%n(1),grid_trim%n(3),2))
+            allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
+        end if
+        if (use_pol_flux_F) then
+            ang_par_F => grid_trim%theta_F
+        else
+            ang_par_F => grid_trim%zeta_F
+        end if
+        do id = 1,grid_trim%n(1)
+            do jd = 1,2
+                ierr = get_ser_var(delta_r(id,1,norm_id(1):norm_id(2))/&
+                    &delta_B(id,1,norm_id(1):norm_id(2),jd),prop_B_tor_2D_loc)
+                CHCKERR('')
+                if (rank.eq.0) prop_B_tor_2D(id,:,jd) = prop_B_tor_2D_loc
+            end do
+            ierr = get_ser_var(ang_par_F(id,1,:),&
+                &x_2D_loc)
+            CHCKERR('')
+            if (rank.eq.0) x_2D(id,:) = x_2D_loc/pi
+        end do
+        if (rank.eq.0) then
+            do jd = 1,2
+                call print_ex_2D([trim(plot_names(jd))],trim(base_name),&
+                    &prop_B_tor_2D(:,r_lim_2D(1):r_lim_2D(2),jd),&
+                    &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
+                call draw_ex([trim(plot_names(jd))],trim(base_name),&
+                    &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
+            end do
+        end if
+        
+        ! clean up
+        call grid_trim%dealloc()
+        nullify(ang_par_F)
+    end function delta_r_plot
     
     ! Print equilibrium quantities to an output file:
     !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,

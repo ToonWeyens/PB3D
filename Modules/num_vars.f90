@@ -30,7 +30,7 @@ module num_vars
         &max_zeta_plot, min_r_plot, max_r_plot, n_sol_requested, &
         &n_sol_plotted, retain_all_sol, do_execute_command_line, &
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
-        &rich_restart_lvl, plot_size, jump_to_sol, &
+        &rich_restart_lvl, plot_size, jump_to_sol, compare_tor_pos, &
         &export_HEL, plot_VMEC_modes, ex_plot_style, pert_mult_factor_POST, &
         &POST_output_full, POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
@@ -53,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.75_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.76_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.75_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -144,6 +144,7 @@ module num_vars
     logical :: do_execute_command_line = .false.                                ! call "execute_command_line" inside program
     logical :: print_mem_usage = .false.                                        ! print memory usage is printed
     logical :: swap_angles = .false.                                            ! swap angles theta and zeta in plots (only for POST)
+    logical :: compare_tor_pos = .false.                                        ! compare quantities at toroidal positions (only for POST)
     logical :: retain_all_sol                                                   ! retain also faulty solutions
     character(len=5) :: plot_dir = 'Plots'                                      ! directory where to save plots
     character(len=7) :: script_dir = 'Scripts'                                  ! directory where to save scripts for plots

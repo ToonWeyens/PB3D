@@ -51,10 +51,11 @@ contains
                 opt_args(24) = '-st_ksp_type'
                 inc_args(7:24) = [0,0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0,1]
             case(2)                                                             ! POST
-                allocate(opt_args(7), inc_args(7))
+                allocate(opt_args(8), inc_args(8))
                 opt_args = ''
                 opt_args(7) = '--swap_angles'
-                inc_args = 0
+                opt_args(8) = '--compare_tor_pos'
+                inc_args(7:8) = [0,0]
         end select
         
         ! set common option arguments
@@ -169,7 +170,8 @@ contains
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
             &do_execute_command_line, output_name, prog_name, print_mem_usage, &
-            &swap_angles, jump_to_sol, export_HEL, plot_VMEC_modes
+            &swap_angles, jump_to_sol, export_HEL, plot_VMEC_modes, &
+            &compare_tor_pos
         use rich_vars, only: no_guess
 #if ldebug
         use num_vars, only: ltest
@@ -435,6 +437,10 @@ contains
                     call writo('option swap_angles chosen: theta and zeta are &
                         &swapped in plots')
                     swap_angles = .true.
+                case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
+                    call writo('option compare_tor_pos chosen: Comparing &
+                        &B, J and kappa at different toroidal positions')
+                    compare_tor_pos = .true.
                 case default
                     call writo('Invalid option number',warning=.true.)
             end select

@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.75                                                              !
+!   Version: 1.76                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !

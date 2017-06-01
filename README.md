@@ -910,3 +910,12 @@ Technische Universiteit Eindhoven
 * The translation between magnetic and position perturbation is not correct.
 * "nufft" now correctly takes into account functions that are defined in any interval.
 * "export_HEL" now also works for non top-bottom symmetric configurations.
+
+## 1.76:
+* New option "compare_tor_pos" to compare quantities B, J and kappa at different toroidal positions.
+* "compare_tor_pos" also gives a resulting factor "prop_B_tor" that has to be multiplied by the B ripple to get the position ripple.
+* The old "prop_B_tor" that was used in "write_flux_q_in_file_for_VMEC" is not working correctly, as shown by direct comparison.
+* This will be changed in the near future.
+* "write_flux_q_in_file_for_VMEC" now has some more output.
+* Changed the default EV guess.
+* In "write_flux_q_in_file_for_VMEC" the cases with full normal output are now interpolated.

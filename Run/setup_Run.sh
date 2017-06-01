@@ -45,6 +45,9 @@ cp --interactive $PB3D_dir/pert_*.dat .
 # copy scorep files
 cp --interactive $PB3D_dir/scorep.fil .
 
+# copy VisIt expressions
+cp --interactive $PB3D_dir/visit_expressions.xmf .
+
 # change the PB3D directory in the run script
 # (from https://unix.stackexchange.com/a/66989 and https://askubuntu.com/a/76842)
 sed -i "s,^\( *prog_dir= *\)[^ ]*\(.*\)*$,\1"${PB3D_dir%/}/../"\2," run.sh

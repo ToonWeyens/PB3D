@@ -246,7 +246,7 @@ contains
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
-            EV_guess = -0.01                                                    ! sensible guess
+            EV_guess = -0.3_dp                                                  ! sensible guess
             tol_SLEPC = huge(1._dp)                                             ! nonsensible value to check for user overwriting
             rho_style = 1                                                       ! constant pressure profile, equal to rho_0
             U_style = 3                                                         ! full expression for U, up to order 3
@@ -507,7 +507,11 @@ contains
         !   n_theta_plot and n_zeta_plot have to be positive,
         !   if n_theta_plot or  n_zeta_plot is equal to 1, the  minimum value is
         !   chosen.
+        !   if  comparing different  toroidal positions,  only 2  values can  be
+        !   used.
         subroutine adapt_plot
+            use num_vars, only: compare_tor_pos
+            
             ! local variables
             real(dp), parameter :: tol = 1.E-6_dp                               ! tolerance for checks
             
@@ -536,6 +540,11 @@ contains
                     &warning=.true.)
                 max_zeta_plot = 0.5*(min_zeta_plot+max_zeta_plot)
                 min_zeta_plot = max_zeta_plot
+            end if
+            if (compare_tor_pos .and. n_zeta_plot.ne.2) then
+                call writo('For compare_tor_pos, you can only use n_zeta = 2',&
+                    &warning=.true.)
+                n_zeta_plot = 2
             end if
         end subroutine adapt_plot
         
@@ -996,8 +1005,13 @@ contains
         ierr = calc_norm_range(in_limits=in_limits)
         CHCKERR('')
         n_r_eq = in_limits(2)-in_limits(1)+1
-        call writo('Only the normal range '//trim(i2str(in_limits(1)))//'..'//&
-            &trim(i2str(in_limits(2)))//' is written')
+        if (in_limits(1).gt.1 .or. in_limits(2).lt.n_r_in) then
+            call writo('Only the normal range '//trim(i2str(in_limits(1)))//&
+                &'..'//trim(i2str(in_limits(2)))//' is written')
+        else
+            call writo('The entire normal range '//trim(i2str(in_limits(1)))//&
+                &'..'//trim(i2str(in_limits(2)))//' is written')
+        end if
         call writo('(relevant to solution range '//&
             &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//')')
         
