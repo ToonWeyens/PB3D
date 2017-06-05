@@ -144,7 +144,8 @@ contains
                         CHCKERR('')
                         
                         ! adapt plotting variables if needed
-                        call adapt_plot
+                        ierr = adapt_plot()
+                        CHCKERR('')
                         
                         ! adapt perturbation modes
                         ierr = adapt_X_modes()
@@ -204,7 +205,8 @@ contains
                         CHCKERR('')
                         
                         ! adapt plotting variables if needed
-                        call adapt_plot
+                        ierr = adapt_plot()
+                        CHCKERR('')
                         
                         ! adapt plot grid and save to solution variable
                         ierr = adapt_sol_grid(min_r_plot,max_r_plot,'plot')
@@ -509,11 +511,18 @@ contains
         !   chosen.
         !   if  comparing different  toroidal positions,  only 2  values can  be
         !   used.
-        subroutine adapt_plot
+        !   ex_plot_style should be 1 (GNUPlot) or 2 (Bokeh / Mayavi)
+        integer function adapt_plot() result(ierr)
             use num_vars, only: compare_tor_pos
+            
+            character(*), parameter :: rout_name = 'adapt_plot'
             
             ! local variables
             real(dp), parameter :: tol = 1.E-6_dp                               ! tolerance for checks
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
             
             if (n_theta_plot.lt.1) then
                 n_theta_plot = 1
@@ -541,12 +550,29 @@ contains
                 max_zeta_plot = 0.5*(min_zeta_plot+max_zeta_plot)
                 min_zeta_plot = max_zeta_plot
             end if
-            if (compare_tor_pos .and. n_zeta_plot.ne.2) then
-                call writo('For compare_tor_pos, you can only use n_zeta = 2',&
-                    &warning=.true.)
-                n_zeta_plot = 2
+            if (ex_plot_style.lt.1 .or. ex_plot_style.gt.2) then
+                call writo('external plot style should be')
+                call lvl_ud(1)
+                call writo('1: GNUPlot')
+                call writo('2: Bokeh (2-D) / Mayavi (3-D)')
+                call lvl_ud(-1)
+                call writo('Default (1: GNUPlot) chosen',warning=.true.)
+                ex_plot_style = 1
             end if
-        end subroutine adapt_plot
+            if (prog_style.eq.2) then                                           ! only for POST
+                if (compare_tor_pos .and. n_zeta_plot.ne.2) then
+                    ierr = 1
+                    err_msg = 'For compare_tor_pos, you can only use n_zeta = 2'
+                    CHCKERR(err_msg)
+                end if
+                if (compare_tor_pos .and. POST_style.ne.1) then
+                    ierr = 1
+                    err_msg = 'For compare_tor_pos, you can only use &
+                        &POST_style = 2 (extended grid)'
+                    CHCKERR(err_msg)
+                end if
+            end if
+        end function adapt_plot
         
         ! Checks whether  variables concerning  perturbation modes  are correct:
         !   the absolute value of prim_X has to be at least min_nm_X,

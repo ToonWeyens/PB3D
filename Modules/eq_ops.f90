@@ -17,8 +17,7 @@ module eq_ops
         &print_output_eq, flux_q_plot, redistribute_output_eq, divide_eq_jobs, &
         &calc_eq_jobs_lims, calc_T_HF, B_plot, J_plot, kappa_plot, delta_r_plot
 #if ldebug
-    public debug_calc_derived_q, debug_write_flux_q_in_file_for_VMEC, &
-        &debug_J_plot
+    public debug_calc_derived_q, debug_create_VMEC_input, debug_J_plot
 #endif
     
     ! global variables
@@ -26,7 +25,7 @@ module eq_ops
 #if ldebug
     logical :: debug_calc_derived_q = .false.                                   ! plot debug information for calc_derived_q
     logical :: debug_J_plot = .false.                                           ! plot debug information for J_plot
-    logical :: debug_write_flux_q_in_file_for_VMEC = .false.                    ! plot debug information for write_flux_q_in_file_for_VMEC
+    logical :: debug_create_VMEC_input = .false.                                ! plot debug information for create_VMEC_input
 #endif
     
     ! interfaces
@@ -381,7 +380,7 @@ contains
                 if (export_HEL) then
                     call writo('Exporting HELENA equilibrium for VMEC porting')
                     call lvl_ud(1)
-                    ierr = write_flux_q_in_file_for_VMEC(eq_1,eq_2)
+                    ierr = create_VMEC_input(eq_1,eq_2)
                     CHCKERR('')
                     call lvl_ud(-1)
                     call writo('Done exporting')
@@ -497,12 +496,32 @@ contains
         call writo('Done setting up metric equilibrium quantities')
     contains
         ! Plots flux quantities in file for VMEC port.
-        ! Optionally, a perturbation can be added.
+        ! Optionally, a  perturbation can be  added: Either the  displacement of
+        ! the plasma position can be described  (pert_style 1), or ripple in the
+        ! toroidal magnetic  field (pert_style  2), with  a fixed  toroidal mode
+        ! number.
+        ! Both perturbation styles can have various prescription types:
+        !   1. file with Fourier modes in the HELENA angular coordinates
+        !   2. same but manually
+        !   3. file with perturbation on general points R, Z, phi
+        ! For perturbation  style 2, an  additional fourth prescription  type is
+        ! through a map of the magnetic perturbation in space.
+        ! Also,  for  this  perturbation  style,  a  file  has  to  be  provided
+        ! that describes  the translation  between position ripple  and magnetic
+        ! perturbation.  This file  can  be generated  for  an already  existing
+        ! ripple case using POST with --compare_tor_pos with n_zeta_plot = 2 and
+        ! min_theta_plot and max_theta_plot indicating half a ripple period.
+        ! After  translating  these to  an  equivalent  position deviation,  the
+        ! procedure calculates the  NUFFT in the geometrical angles  in order to
+        ! output it to a VMEC input file.
+        ! The output from this VMEC run can then be used to iteratively create a
+        ! new  file to  translate  toroidal magnetic  field  ripple to  position
+        ! perturbation.
         ! A note about the indices of B_F, B_F_pert and B_F_loc:
         !   B_F_loc:  (pol modes, cos/sin)
         !   B_F:      (pol modes, tor modes, cos/sin (m theta), R/Z)
         !   B_F_pert: (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
-        integer function write_flux_q_in_file_for_VMEC(eq_1,eq_2) result(ierr)
+        integer function create_VMEC_input(eq_1,eq_2) result(ierr)
             use eq_vars, only: pres_0, R_0, psi_0
             use grid_vars, only: n_r_eq
             use grid_utilities, only: setup_interp_data, apply_disc, nufft
@@ -510,14 +529,14 @@ contains
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
-            use num_vars, only: eq_name, HEL_pert_file_i, HEL_export_file_i, &
-                &norm_disc_prec_eq
+            use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
+                &norm_disc_prec_eq, prop_B_tor_i
+            use files_utilities, only: skip_comment
 #if ldebug
             use grid_utilities, only: setup_deriv_data
 #endif
             
-            character(*), parameter :: rout_name = &
-                &'write_flux_q_in_file_for_VMEC'
+            character(*), parameter :: rout_name = 'create_VMEC_input'
             
             ! input / output
             type(eq_1_type), intent(in) :: eq_1                                 ! flux equilibrium quantities
@@ -535,10 +554,12 @@ contains
             integer :: istat                                                    ! status
             integer :: plot_dim(2)                                              ! plot dimensions
             integer :: rec_min_m                                                ! recommended minimum of poloidal modes
+            integer :: pert_style                                               ! style of perturbation (1: r, 2: B_tor)
             integer :: pert_type                                                ! type of perturbation prescription
-            integer :: lim_r(2)                                                 ! limits in r range for plot
             integer :: r_prop                                                   ! r at which to use proportionality factor
             integer :: max_n_B_output                                           ! max. nr. of modes written in output file (constant in VMEC)
+            integer :: n_prop_B_tor(2)                                          ! n of prop_B_tor
+            integer :: flux_type_prop_B_tor                                     ! 1 (poloidal) or 2 (toroidal) flux used in prop_B_tor
             integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
@@ -548,17 +569,21 @@ contains
             character(len=2) :: plus                                            ! "+ " or ""
             character(len=8) :: flux_name(2)                                    ! "poloidal" or "toroidal"
             character(len=6) :: path_prefix = '../../'                          ! prefix of path
-            character(len=max_str_ln) :: pert_file_name                         ! name of perturbation file
+            character(len=max_str_ln) :: dummy_string                           ! dummy string
+            character(len=max_str_ln) :: HEL_pert_file_name                     ! name of perturbation file
             character(len=max_str_ln) :: err_msg                                ! error message
             character(len=max_str_ln) :: file_name                              ! name of file
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
+            character(len=max_str_ln) :: prop_B_tor_file_name                   ! name of B_tor proportionality file
             real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
             real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
             real(dp) :: norm_B_H                                                ! normalization for R and Z Fourier modes
             real(dp) :: mult_fac                                                ! global multiplication factor
+            real(dp) :: min_theta_prop_B_tor                                    ! starting angle of prop_B_tor
             real(dp) :: RZ_B_0(2)                                               ! origin of R and Z of boundary
+            real(dp) :: dummy_input(4)                                          ! dummy variable
             real(dp) :: s_V(99)                                                 ! normal coordinate s for writing
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
@@ -576,10 +601,13 @@ contains
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
             real(dp), allocatable :: prop_B_tor(:,:,:)                          ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_F_loc(:,:)                      ! local fourier coefficients of prop_B_tor
+            real(dp), allocatable :: s_prop_B_tor(:)                            ! normal positions at which prop_B_tor is tabulated
             logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
             logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
+            logical :: found                                                    ! whether something was found
+            logical :: choose_norm_pos                                          ! whether to choose a different normal position to use
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
 #if ldebug
             real(dp), allocatable :: BH_0_ALT(:,:)                              ! reconstructed R and Z
@@ -607,6 +635,9 @@ contains
                 Z_H_loc = Z_H*R_0
             end if
             
+            ! set up auxiliary variable
+            flux_name = ['poloidal','toroidal']
+            
             ! get input about equilibrium perturbation
             ! Note: negative N values will be converted to negative M values and
             ! Possibly negative delta's.
@@ -615,92 +646,202 @@ contains
             
             zero_N_pert = .false.
             if (pert_eq) then
+                ! get perturbation style
+                call writo('Which perturbation do you want to describe?')
+                call lvl_ud(1)
+                call writo('1: plasma boundary position')
+                call writo('2: B_tor magnetic ripple with fixed N')
+                call lvl_ud(-1)
+                pert_style = get_int(lim_lo=1,lim_hi=2)
+                
+                ! for style 2, get proportionality file
+                if (pert_style.eq.2) then
+                    ! find file
+                    found = .false.
+                    do while (.not.found)
+                        call writo('Proportionality file name?')
+                        call lvl_ud(1)
+                        read(*,*,IOSTAT=ierr) prop_B_tor_file_name
+                        err_msg = 'failed to read prop_B_tor_file_name'
+                        CHCKERR(err_msg)
+                        open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
+                            &IOSTAT=ierr,STATUS='old')
+                        if (ierr.eq.0) then
+                            found = .true.
+                        else
+                            call writo('Could not open file "'//&
+                                &trim(prop_B_tor_file_name)//'"')
+                        end if
+                        call lvl_ud(-1)
+                    end do
+                    
+                    ! read file
+                    call writo('Analyzing perturbation proportionality file "'&
+                        &//trim(prop_B_tor_file_name)//'"')
+                    call lvl_ud(1)
+                    ierr = skip_comment(prop_B_tor_i,name=prop_B_tor_file_name)
+                    CHCKERR('')
+                    read(prop_B_tor_i,*,IOSTAT=ierr) dummy_input
+                    err_msg = 'failed to read dummy_input'
+                    CHCKERR(err_msg)
+                    n_prop_B_tor = nint(dummy_input(1:2))
+                    min_theta_prop_B_tor = dummy_input(3)
+                    flux_type_prop_B_tor = 1
+                    if (dummy_input(4).lt.1) flux_type_prop_B_tor = 2
+                    call writo(trim(i2str(n_prop_B_tor(1)))//' poloidal points')
+                    call writo(trim(i2str(n_prop_B_tor(2)))//' normal points &
+                        &in '//flux_name(flux_type_prop_B_tor)//' flux')
+                    call lvl_ud(1)
+                    allocate(prop_B_tor(n_prop_B_tor(1),n_prop_B_tor(2),2))
+                    allocate(s_prop_B_tor(n_prop_B_tor(2)))
+                    ierr = skip_comment(prop_B_tor_i,name=prop_B_tor_file_name)
+                    CHCKERR('')
+                    do kd = 1,n_prop_B_tor(2)
+                        do id = 1,2
+                            read(prop_B_tor_i,*,IOSTAT=ierr) dummy_input(id), &
+                                &prop_B_tor(:,kd,id)
+                            err_msg = 'failed to read dummy_input'
+                            CHCKERR(err_msg)
+                        end do
+                        if (abs(dummy_input(1)-dummy_input(2)).lt.&
+                            &10*tiny(1._dp)) then
+                            s_prop_B_tor(kd) = dummy_input(1)
+                            call writo(trim(i2str(kd))//'/'//&
+                                &trim(i2str(n_prop_B_tor(2)))//': s = '//&
+                                &trim(r2str(s_prop_B_tor(kd))))
+                        else
+                            ierr = 1
+                            err_msg = 'Check s-values in "'//&
+                                &trim(prop_B_tor_file_name)//'"'
+                            CHCKERR(err_msg)
+                        end if
+                    end do
+                    call lvl_ud(-1)
+                    
+                    call writo('Use last normal position?')
+                    choose_norm_pos = get_log(.true.)
+                    if (.not.choose_norm_pos) then
+                        call writo('Normal position to use, in normalized '//&
+                            &flux_name(flux_type_prop_B_tor)//' flux')
+                        r_prop = get_int(lim_lo=1,lim_hi=n_prop_B_tor(2),&
+                            &ind=.true.)
+                    else
+                        r_prop = n_prop_B_tor(2)
+                    end if
+                    
+                    call lvl_ud(-1)
+                    
+                    call writo('toroidal modulation mode number?')
+                    n_loc = get_int()
+                end if
+                
+                ! get perturbation type
                 call writo('How do you want to prescribe the perturbation?')
                 call lvl_ud(1)
-                call writo('1: through a file')
+                call writo('1: through a file with Fourier modes in HELENA &
+                    &coordinates')
                 call lvl_ud(1)
                 call writo('It should provide N M delta_cos delta_sin in four &
                     &columns')
                 call writo('Rows starting with "#" are ignored')
                 call lvl_ud(-1)
-                call writo('2: automatically deduced from toroidal magnetic &
-                    &perturbation')
-                call writo('3: manually')
+                call writo('2: same as 1 but interactively')
+                call writo('3: through a file with Fourier modes in general &
+                    &coordinates')
+                call lvl_ud(1)
+                call writo('It should provide R Z phi delta_r in four columns')
+                call writo('Rows starting with "#" are ignored')
+                call writo('Note: You can use the output of DESCUR in the &
+                    &STELLOPT suite')
                 call lvl_ud(-1)
-                pert_type = get_int(lim_lo=1,lim_hi=3)
+                call writo('4: same as 3 but interactively')
+                pert_type = get_int(lim_lo=1,lim_hi=4)
                 
                 select case (pert_type)
-                    case (1)                                                    ! from file
-                        ! user input
-                        call writo('File name?')
-                        read(*,*) pert_file_name
-                        
-                        ! open
-                        err_msg = 'Could not open file '//trim(pert_file_name)
-                        do kd = 0,2
-                            call writo('Trying "'//path_prefix(1:kd*3)//&
-                                &trim(pert_file_name)//'"')
-                            open(HEL_pert_file_i,FILE=path_prefix(1:kd*3)//&
-                                &trim(pert_file_name),IOSTAT=ierr,STATUS='old')
+                    case (1,3)                                                  ! file with Fourier modes
+                        found = .false.
+                        do while (.not.found)
+                            ! user input
+                            call writo('File name?')
+                            call lvl_ud(1)
+                            read(*,*,IOSTAT=ierr) HEL_pert_file_name
+                            err_msg = 'failed to read HEL_pert_file_name'
+                            CHCKERR(err_msg)
+                            
+                            ! open
+                            do kd = 0,2
+                                call writo('Trying "'//path_prefix(1:kd*3)//&
+                                    &trim(HEL_pert_file_name)//'"')
+                                open(HEL_pert_i,FILE=path_prefix(1:kd*3)//&
+                                    &trim(HEL_pert_file_name),IOSTAT=ierr,&
+                                    &STATUS='old')
+                                if (ierr.eq.0) then
+                                    call lvl_ud(1)
+                                    call writo("Success")
+                                    call lvl_ud(-1)
+                                    exit
+                                end if
+                            end do
                             if (ierr.eq.0) then
-                                call lvl_ud(1)
-                                call writo("Success")
-                                call lvl_ud(-1)
-                                exit
+                                found = .true.
+                            else
+                                call writo('Could not open file "'//&
+                                    &trim(HEL_pert_file_name)//'"')
                             end if
+                            
+                            call lvl_ud(-1)
                         end do
-                        CHCKERR(err_msg)
-                        call writo('Parsing "'//trim(pert_file_name)//'"')
                         
-                        ! get number of lines
-                        istat = 0
-                        tot_nr_pert = 0
-                        do while (istat.eq.0)
-                            ! read first character of data
-                            read(HEL_pert_file_i,*,IOSTAT=istat) loc_data_char
-                            if (istat.eq.0 .and. loc_data_char.ne.'#') then     ! exclude comment lines
-                                tot_nr_pert = tot_nr_pert + 1
-                            end if
-                        end do
-                        rewind(HEL_pert_file_i)
-                        loc_data_char = '#'
+                        call writo('Parsing "'//trim(HEL_pert_file_name)//'"')
                         
-                        ! set error message
-                        err_msg = 'Could not read file '//trim(pert_file_name)
-                    case (2)                                                    ! automatically
-                        call writo('toroidal modulation mode number?')
-                        n_loc = get_int()
-                        
-                        call writo('normal range for which to plot toroidal &
-                            &ripple proportionality?')
-                        lim_r(1) = get_int(lim_lo=1,lim_hi=n_r_eq,ind=.true.)
-                        if (lim_r(1).eq.n_r_eq) then
-                            lim_r(2) = n_r_eq
+                        if (pert_type.eq.1) then
+                            ! get number of lines
+                            istat = 0
+                            tot_nr_pert = 0
+                            do while (istat.eq.0)
+                                ! read first character of data
+                                read(HEL_pert_i,*,IOSTAT=istat) loc_data_char
+                                if (istat.eq.0 .and. loc_data_char.ne.'#') then ! exclude comment lines
+                                    tot_nr_pert = tot_nr_pert + 1
+                                end if
+                            end do
+                            rewind(HEL_pert_i)
+                            loc_data_char = '#'
                         else
-                            lim_r(2) = get_int(lim_lo=lim_r(1),lim_hi=n_r_eq,&
-                                &ind=.true.)
+                            ! set error message
+                            err_msg = 'Cannot read the file "'//&
+                                &trim(HEL_pert_file_name)//'"'
+                            
+                            ! forward until 'MB'
+                            found = .false.
+                            do while (.not.found) 
+                                read(HEL_pert_i,*,IOSTAT=ierr) dummy_string
+                                if (trim(dummy_string).eq.'MB') then
+                                    found = .true.
+                                    tot_nr_pert = 0
+                                end if
+                                CHCKERR(err_msg)
+                            end do
+                            
+                            ! count number of lines
+                            found = .false.
+                            do while (.not.found)
+                                read(HEL_pert_i,'(A)',IOSTAT=ierr) dummy_string
+                                if (trim(dummy_string).eq.'') then
+                                    found = .true.
+                                    write(*,*) ''
+                                else
+                                    tot_nr_pert = tot_nr_pert + 1
+                                end if
+                                err_msg = 'Cannot read the file "'//&
+                                    &trim(HEL_pert_file_name)//'"'
+                                CHCKERR(err_msg)
+                            end do
+                            do id = 1,tot_nr_pert+1
+                                backspace(HEL_pert_i)
+                            end do
                         end if
-                        
-                        ! calculate the proportionality factors
-                        call calc_prop_B_tor(lim_r,eq_2,prop_B_tor)
-                        
-                        if (lim_r(1).eq.lim_r(2)) then
-                            r_prop = lim_r(1)
-                        else
-                            call writo('which normal position to use?')
-                            r_prop = get_int(lim_lo=lim_r(1),lim_hi=lim_r(2),&
-                                &ind=.true.)
-                        end if
-                        
-                        ! NUFFT for chosen value, normalized to 1
-                        ierr = nufft(prop_B_tor(:,r_prop-lim_r(1)+1,2),&
-                            &prop_B_tor(:,r_prop-lim_r(1)+1,1)/&
-                            &maxval(abs(prop_B_tor(:,r_prop-lim_r(1)+1,1))),&
-                            &prop_B_tor_F_loc)
-                        CHCKERR('')
-                        
-                        tot_nr_pert = 1 + 2*size(prop_B_tor_F_loc,1) - 2
-                    case (3)                                                    ! manually
+                    case (2,4)                                                  ! interactively
                         ! user input
                         call writo('Prescribe interactively')
                         call writo('How many different combinations of &
@@ -709,19 +850,19 @@ contains
                 end select
                 
                 ! ask for global multiplication factor
-                if (pert_type.eq.1 .or. pert_type.eq.2) then
-                    call writo('Globally multiply with some factor?')
-                    call lvl_ud(1)
-                    mult_fac = 0.01_dp
-                    call writo('Current multiplication factor: '//&
-                        &trim(r2strt(mult_fac))//'m')
-                    call writo('     minor radius: '//&
-                        &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
-                    call writo('     major radius: '//&
-                        &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
-                    call lvl_ud(-1)
-                    if (get_log(.false.)) mult_fac = get_real()
-                end if
+                call writo('Globally multiply with some factor?')
+                call lvl_ud(1)
+                mult_fac = 0.01_dp
+                call writo('Current multiplication factor: '//&
+                    &trim(r2strt(mult_fac))//'m')
+                call lvl_ud(1)
+                call writo('minor radius: '//&
+                    &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
+                call writo('major radius: '//&
+                    &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
+                call lvl_ud(-1)
+                call lvl_ud(-1)
+                if (get_log(.false.)) mult_fac = get_real()
                 
                 ! set up n, m and delta  (use maximum possible size, possibly +1
                 ! if N=0 is not a perturbation, and limit afterwards)
@@ -733,30 +874,26 @@ contains
                 nr_m = 0
                 do jd = 1,tot_nr_pert
                     select case (pert_type)
-                        case (1)                                                ! from file
+                        case (1)                                                ! file with Fourier modes in HELENA coordinates
+                            err_msg = 'Could not read file '//&
+                                &trim(HEL_pert_file_name)
                             do while (loc_data_char.eq.'#')
                                 ! read first character of data
-                                read(HEL_pert_file_i,*,IOSTAT=ierr) &
+                                read(HEL_pert_i,*,IOSTAT=ierr) &
                                     &loc_data_char
                                 CHCKERR(err_msg)
                                 if (loc_data_char.ne.'#') then                  ! exclude comment lines
-                                    backspace(UNIT=HEL_pert_file_i)             ! go back one line
-                                    read(HEL_pert_file_i,*,IOSTAT=ierr) &
+                                    backspace(UNIT=HEL_pert_i)                  ! go back one line
+                                    read(HEL_pert_i,*,IOSTAT=ierr) &
                                         &n_loc, m_loc, delta_loc
                                     CHCKERR(err_msg)
                                     delta_loc = delta_loc*mult_fac
                                 end if
                             end do
                             loc_data_char = '#'
-                        case (2)                                                ! automatically
-                            m_loc = jd/2
-                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-                            write(*,*) '!!!! THIS IS NOT CORRECT YET !!!!!!!!!!'
-                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-                            if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
-                            delta_loc = mult_fac/prop_B_tor_F_loc(jd/2+1,:)
-                            if (m_loc.ne.0) delta_loc = delta_loc*0.5_dp        ! modes with nonzero m are counted double
-                        case (3)                                                ! manually
+                            
+                            close(HEL_pert_i)
+                        case (2)                                                ! same as 1 but interactively
                             call writo('For mode '//trim(i2str(jd))//'/'//&
                                 &trim(i2str(tot_nr_pert))//':')
                             call lvl_ud(1)
@@ -775,7 +912,21 @@ contains
                                 &trim(i2str(n_loc))//' zeta)?')
                             delta_loc(2) = get_real()
                             
+                            delta_loc = delta_loc*mult_fac
+                            
                             call lvl_ud(-1)
+                        case (3)                                                ! file with Fourier modes in general coordinates
+                            ! user input
+                            ierr = 1
+                            CHCKERR('NOT YET IMPLEMENTED')
+                        case (4)                                                ! same as 3 but interactively
+                            m_loc = jd/2
+                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+                            write(*,*) '!!!! THIS IS NOT CORRECT YET !!!!!!!!!!'
+                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
+                            if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
+                            delta_loc = mult_fac/prop_B_tor_F_loc(jd/2+1,:)
+                            if (m_loc.ne.0) delta_loc = delta_loc*0.5_dp        ! modes with nonzero m are counted double
                     end select
                     
                     ! has N = 0 been prescribed?
@@ -801,8 +952,6 @@ contains
                     m_pert(n_id,nr_m(n_id)) = m_loc                             ! with value m_loc
                     delta(n_id,nr_m(n_id),:) = delta_loc                        ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
-                
-                if (pert_type.eq.1) close(HEL_pert_file_i)
             else
                 nr_n = 0
             end if
@@ -811,7 +960,6 @@ contains
             plot_dim = [100,100]
             plot_lims(:,1) = [0.0_dp,2.0_dp]
             plot_lims(:,2) = [0.5_dp,2.0_dp]
-            flux_name = ['poloidal','toroidal']
             call writo('Change plot properties from defaults?')
             call lvl_ud(1)
             do id = 1,2
@@ -962,7 +1110,7 @@ contains
                 B_F(:,0,:,kd) = B_F_loc
             
 #if ldebug
-                if (debug_write_flux_q_in_file_for_VMEC) then
+                if (debug_create_VMEC_input) then
                     allocate(BH_0_ALT(size(BH_0,1),size(B_F_loc,1)))
                     
                     call writo('Comparing R or Z with reconstruction &
@@ -1033,7 +1181,7 @@ contains
                     end do
                     
 #if ldebug
-                    if (debug_write_flux_q_in_file_for_VMEC) then
+                    if (debug_create_VMEC_input) then
                         allocate(BH_0_ALT(size(BH_0,1),1))
                         
                         call writo('Comparing derivative of R or Z with &
@@ -1056,7 +1204,7 @@ contains
                 u_norm(:,1) = BH_deriv(:,2)/u_norm(:,2)
                 u_norm(:,2) = -BH_deriv(:,1)/u_norm(:,2)
                 deallocate(BH_deriv)
-                if (debug_write_flux_q_in_file_for_VMEC) then
+                if (debug_create_VMEC_input) then
                     call print_ex_2D(['u_norm'],'',u_norm,x=&
                         &reshape([theta(:,2)],[n_B,1]))
                     call print_ex_2D(['test_normal'],'',&
@@ -1290,18 +1438,22 @@ contains
             ! user output
             file_name = "input."//trim(eq_name)
             if (pert_eq) then
-                if (pert_type.eq.1 .or. pert_type.eq.3) then
-                    do jd = jd_min,nr_n
-                        file_name = trim(file_name)//'_N'//&
-                            &trim(i2str(n_pert(jd)))
-                        do id = 1,nr_m(jd)
-                            file_name = trim(file_name)//'M'//&
-                                &trim(i2str(m_pert(jd,id)))
+                select case (pert_type)
+                    case (1,2)                                                  ! Fourier modes in HELENA coordinates
+                        do jd = jd_min,nr_n
+                            file_name = trim(file_name)//'_N'//&
+                                &trim(i2str(n_pert(jd)))
+                            do id = 1,nr_m(jd)
+                                file_name = trim(file_name)//'M'//&
+                                    &trim(i2str(m_pert(jd,id)))
+                            end do
                         end do
-                    end do
-                else
-                    file_name = trim(file_name)//'_REALISTIC'
-                end if
+                    case (3,4)                                                  ! Fourier modes in general coordinates
+                        ! user input
+                        ierr = 1
+                        CHCKERR('NOT YET IMPLEMENTED')
+                        file_name = trim(file_name)//'_MAP'
+                end select
             end if
             call writo('Generate VMEC input file "'//trim(file_name)//'"')
             call writo('This can be used for VMEC porting')
@@ -1321,101 +1473,101 @@ contains
             call norm_interp_data%dealloc()
             
             ! output to VMEC input file
-            open(HEL_export_file_i,STATUS='replace',FILE=trim(file_name),&
+            open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
                 &IOSTAT=ierr)
             CHCKERR('Failed to open file')
             
-            write(HEL_export_file_i,"(A)") "!----- General Parameters -----"
-            write(HEL_export_file_i,"(A)") "&INDATA"
-            write(HEL_export_file_i,"(A)") "MGRID_FILE = 'NONE',"
-            write(HEL_export_file_i,"(A)") "PRECON_TYPE = 'GMRES'"
-            write(HEL_export_file_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
-            write(HEL_export_file_i,"(A)") "DELT = 1.00E+00,"
-            write(HEL_export_file_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, &
+            write(HEL_export_i,"(A)") "!----- General Parameters -----"
+            write(HEL_export_i,"(A)") "&INDATA"
+            write(HEL_export_i,"(A)") "MGRID_FILE = 'NONE',"
+            write(HEL_export_i,"(A)") "PRECON_TYPE = 'GMRES'"
+            write(HEL_export_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
+            write(HEL_export_i,"(A)") "DELT = 1.00E+00,"
+            write(HEL_export_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, &
                 &639"
-            write(HEL_export_file_i,"(A)") "LRFP = F"
-            write(HEL_export_file_i,"(A,L1)") "LASYM = ", .not.stel_sym
-            write(HEL_export_file_i,"(A)") "LFREEB = F"
-            write(HEL_export_file_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))       ! -NTOR .. NTOR
-            write(HEL_export_file_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))    ! 0 .. MPOL-1
-            write(HEL_export_file_i,"(A)") "TCON0 = 1"
-            write(HEL_export_file_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
+            write(HEL_export_i,"(A)") "LRFP = F"
+            write(HEL_export_i,"(A,L1)") "LASYM = ", .not.stel_sym
+            write(HEL_export_i,"(A)") "LFREEB = F"
+            write(HEL_export_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))            ! -NTOR .. NTOR
+            write(HEL_export_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))         ! 0 .. MPOL-1
+            write(HEL_export_i,"(A)") "TCON0 = 1"
+            write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
                 &1.E-10, 1.E-14, 2.000E-18, "
-            write(HEL_export_file_i,"(A)") "NITER = 20000, NSTEP = 200,"
-            write(HEL_export_file_i,"(A)") "NFP = "//trim(i2str(nfp))
+            write(HEL_export_i,"(A)") "NITER = 20000, NSTEP = 200,"
+            write(HEL_export_i,"(A)") "NFP = "//trim(i2str(nfp))
             if (use_normalization) then
-                write(HEL_export_file_i,"(A)") "PHIEDGE = "//&
+                write(HEL_export_i,"(A)") "PHIEDGE = "//&
                     &trim(r2str(-eq_1%flux_t_E(grid_eq%n(3),0)*psi_0))
             else
-                write(HEL_export_file_i,"(A)") "PHIEDGE = "//&
+                write(HEL_export_i,"(A)") "PHIEDGE = "//&
                     &trim(r2str(-eq_1%flux_t_E(grid_eq%n(3),0)))
             end if
             
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
             
-            write(HEL_export_file_i,"(A)") "!----- Pressure Parameters -----"
-            write(HEL_export_file_i,"(A)") "PMASS_TYPE = 'cubic_spline'"
-            write(HEL_export_file_i,"(A)") "GAMMA =  0.00000000000000E+00"
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_S ="
+            write(HEL_export_i,"(A)") "!----- Pressure Parameters -----"
+            write(HEL_export_i,"(A)") "PMASS_TYPE = 'cubic_spline'"
+            write(HEL_export_i,"(A)") "GAMMA =  0.00000000000000E+00"
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)",advance="no") "AM_AUX_S ="
             do kd = 1,size(s_V)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", s_V(kd)
+                write(HEL_export_i,"(A1,ES23.16)") " ", s_V(kd)
             end do
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)",advance="no") "AM_AUX_F ="
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)",advance="no") "AM_AUX_F ="
             do kd = 1,size(pres_V)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", pres_V(kd)
+                write(HEL_export_i,"(A1,ES23.16)") " ", pres_V(kd)
             end do
             
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
             
-            write(HEL_export_file_i,"(A)") &
+            write(HEL_export_i,"(A)") &
                 &"!----- Current/Iota Parameters -----"
-            write(HEL_export_file_i,"(A)") "NCURR = 0"
-            write(HEL_export_file_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_S ="
+            write(HEL_export_i,"(A)") "NCURR = 0"
+            write(HEL_export_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)",advance="no") "AI_AUX_S ="
             do kd = 1,size(s_V)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", s_V(kd)
+                write(HEL_export_i,"(A1,ES23.16)") " ", s_V(kd)
             end do
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)",advance="no") "AI_AUX_F ="
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)",advance="no") "AI_AUX_F ="
             do kd = 1,size(rot_t_V)
-                write(HEL_export_file_i,"(A1,ES23.16)") " ", rot_t_V(kd)
+                write(HEL_export_i,"(A1,ES23.16)") " ", rot_t_V(kd)
             end do
             
-            write(HEL_export_file_i,"(A)") ""
-            write(HEL_export_file_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
+            write(HEL_export_i,"(A)") ""
             
-            write(HEL_export_file_i,"(A)") &
+            write(HEL_export_i,"(A)") &
                 &"!----- Boundary Shape Parameters -----"
-            ierr = print_mode_numbers(HEL_export_file_i,B_F(:,0,:,:),0,&
+            ierr = print_mode_numbers(HEL_export_i,B_F(:,0,:,:),0,&
                 &max_n_B_output)
             CHCKERR('')
             if (pert_eq) then
                 do jd = 2,nr_n
-                    ierr = print_mode_numbers(HEL_export_file_i,&
+                    ierr = print_mode_numbers(HEL_export_i,&
                         &B_F(:,-(jd-1),:,:),-n_pert(jd),max_n_B_output)
                     CHCKERR('')
-                    ierr = print_mode_numbers(HEL_export_file_i,&
+                    ierr = print_mode_numbers(HEL_export_i,&
                         &B_F(:,jd-1,:,:),n_pert(jd),max_n_B_output)
                     CHCKERR('')
                 end do
             end if
-            write(HEL_export_file_i,"(A,ES23.16)") "RAXIS = ", RZ_B_0(1)
-            write(HEL_export_file_i,"(A,ES23.16)") "ZAXIS = ", RZ_B_0(2)
-            write(HEL_export_file_i,"(A)") "&END"
+            write(HEL_export_i,"(A,ES23.16)") "RAXIS = ", RZ_B_0(1)
+            write(HEL_export_i,"(A,ES23.16)") "ZAXIS = ", RZ_B_0(2)
+            write(HEL_export_i,"(A)") "&END"
             
-            close(HEL_export_file_i)
+            close(HEL_export_i)
             
             ! user output
             call lvl_ud(-1)
             
             ! wait
             call pause_prog
-        end function write_flux_q_in_file_for_VMEC
+        end function create_VMEC_input
         
         ! plots the boundary of a toroidal configuration
         subroutine plot_boundary(B,n,plot_name,plot_dim,plot_lims)
@@ -1542,119 +1694,6 @@ contains
                 CHCKERR('Failed to write')
             end do
         end function print_mode_numbers
-        
-        ! calculate the proportionality between perturbation and toroidal ripple
-        ! Contents of prop_B_tor (last index):
-        !   1. prop_B_tor = 1/[-q'/q |nabla psi|]
-        !   2. chi_H
-        !   3. normalized flux_p
-        ! so that delta_r = prop_B_tor delta_B_tor/B_tor
-        subroutine calc_prop_B_tor(lim_r,eq_2,prop_B_tor)
-            use HELENA_vars, only: RBphi_H, nchi, chi_H, ias, R_H
-            use grid_vars, only: n_r_eq
-            use eq_vars, only: R_0
-            use splines, only: spline3
-            use num_utilities, only: c
-            
-            ! input / output
-            integer, intent(in) :: lim_r(2)                                     ! limits in r range for plot
-            type(eq_2_type), intent(in), target :: eq_2                         ! metric equilibrium variables
-            real(dp), intent(inout), allocatable :: prop_B_tor(:,:,:)           ! proportionality between delta B_tor and delta_norm
-            
-            ! local variables
-            integer :: nchi_2pi                                                 ! nr. of poloidal points in entire interval 0..2pi
-            integer :: id, kd                                                   ! counters
-            character(len=max_str_ln) :: file_name                              ! name of plot file
-            real(dp), allocatable :: D1lnB_tor(:,:)                             ! d(F/R)/dpsi (R/F)
-            real(dp), allocatable :: D2lnB_tor(:,:)                             ! d(F/R)/dtheta (R/F) = -d(R)/dheta (1/R)
-            real(dp), pointer :: h11(:,:) => null()                             ! h^psi,psi
-            real(dp), allocatable :: prop_B_tor_plot(:,:,:)                     ! prop_B_tor to plot
-            
-            if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
-                nchi_2pi = nchi*2-2                                             ! -2 because of overlapping points at 0, pi
-            else                                                                ! asymmetric (so nchi is aumented by one)
-                nchi_2pi  = nchi-1                                              ! -1 because of overlapping points at 0
-            end if
-            allocate(prop_B_tor(nchi_2pi,lim_r(2)-lim_r(1)+1,3))
-            allocate(prop_B_tor_plot(nchi_2pi,lim_r(2)-lim_r(1)+1,3))
-            
-            ! calculate Dpsi B_tor and set pointers
-            allocate(D1lnB_tor(nchi,n_r_eq))
-            allocate(D2lnB_tor(nchi,n_r_eq))
-            do id = 1,nchi
-                ierr = spline3(eq_1%flux_p_E(:,0)/(2*pi),&
-                    &log(RBphi_H/R_H(id,:)),eq_1%flux_p_E(:,0)/(2*pi),&
-                    &dynew=D1lnB_tor(id,:))
-                CHCKERR('')
-            end do
-            do kd = 1,n_r_eq
-                ierr = spline3(chi_H,log(1._dp/R_H(:,kd)),chi_H,&
-                    &dynew=D2lnB_tor(:,kd))
-                CHCKERR('')
-            end do
-            h11 => eq_2%h_E(:,1,:,c([1,1],.true.),0,0,0)
-            
-            call writo('Fourier coefficients at normal positions')
-            call lvl_ud(1)
-            do kd = lim_r(1),lim_r(2)
-                ! set up prop_B_tor, chi and normal coordinate
-                if (ias.eq.0) then                                              ! symmetric
-                    prop_B_tor(1:nchi,kd-lim_r(1)+1,1) = &
-                        &-(sqrt(h11(:,kd))*eq_1%q_saf_E(kd,1)/&
-                        &eq_1%q_saf_E(kd,0))**(-1)
-                    prop_B_tor(1:nchi,kd-lim_r(1)+1,2) = chi_H
-                    do id = 1,nchi-2
-                        prop_B_tor(nchi+id,kd-lim_r(1)+1,1) = &
-                            &-(sqrt(h11(nchi-id,kd))*eq_1%q_saf_E(kd,1)/&
-                            &eq_1%q_saf_E(kd,0))**(-1)
-                        prop_B_tor(nchi+id,kd-lim_r(1)+1,2) = &
-                            &2*pi-chi_H(nchi-id)
-                    end do
-                else
-                    prop_B_tor(:,kd-lim_r(1)+1,1) = &
-                        &-(sqrt(h11(1:nchi_2pi-1,kd))*eq_1%q_saf_E(kd,1)/&
-                        &eq_1%q_saf_E(kd,0))**(-1)
-                    prop_B_tor(:,kd-lim_r(1)+1,2) = chi_H(1:nchi_2pi-1)
-                end if
-                prop_B_tor(:,kd-lim_r(1)+1,3) = &
-                    &eq_1%flux_p_E(kd,0)/eq_1%flux_p_E(n_r_eq,0)
-            end do
-            call lvl_ud(-1)
-            
-            ! include normalization
-            if (use_normalization) prop_B_tor(:,:,1) = prop_B_tor(:,:,1) * R_0
-            
-            ! plot variable, -pi..pi
-            call writo('D1B |nabla psi|: ')
-            prop_B_tor_plot(:,:,1) = transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,1)),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,1))],&
-                &shape(transpose(prop_B_tor(:,:,1)))))
-            prop_B_tor_plot(:,:,2) = transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,2)-2*pi),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,2))],&
-                &shape(transpose(prop_B_tor(:,:,2)))))
-            prop_B_tor_plot(:,:,3) = transpose(reshape(&
-                &[transpose(prop_B_tor(nchi_2pi/2+1:nchi_2pi,:,3)),&
-                &transpose(prop_B_tor(1:nchi_2pi/2,:,3))],&
-                &shape(transpose(prop_B_tor(:,:,3)))))
-            
-            ! 2-D
-            call lvl_ud(1)
-            file_name = 'prop_B_tor_prediction_2D'
-            call print_ex_2D([trim(file_name)],trim(file_name),&
-                &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),draw=.false.)
-            call draw_ex([trim(file_name)],trim(file_name),&
-                &size(prop_B_tor_plot,2),1,.false.)
-            
-            ! 3-D
-            file_name = 'prop_B_tor_prediction_3D'
-            call print_ex_3D(trim(file_name),trim(file_name),&
-                &prop_B_tor_plot(:,:,1),x=prop_B_tor_plot(:,:,2),&
-                &y=prop_B_tor_plot(:,:,3),draw=.false.)
-            call draw_ex([trim(file_name)],trim(file_name),1,2,.false.)
-            call lvl_ud(-1)
-        end subroutine calc_prop_B_tor
     end function calc_eq_2
 
     ! plots the flux quantities in the solution grid
@@ -3837,9 +3876,10 @@ contains
         use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, &
-            &use_normalization, rank, use_pol_flux_F, ex_plot_style
-        use eq_vars, only: B_0
-        use num_utilities, only: c
+            &use_normalization, rank, use_pol_flux_F, ex_plot_style, n_procs, &
+            &prop_B_tor_i, min_theta_plot
+        use eq_vars, only: B_0, R_0, psi_0, max_flux_F
+        use num_utilities, only: c, calc_int
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'delta_r_plot'
@@ -3852,21 +3892,30 @@ contains
         integer, intent(in), optional :: rich_lvl                               ! Richardson level
         
         ! local variables
-        integer :: id, jd                                                       ! counters
+        integer :: id, jd, kd                                                   ! counters
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
+        real(dp) :: flux_code                                                   ! positive for poloidal flux, negative for toroidal
         real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: delta_B(:,:,:,:)                               ! delta_B/B
-        real(dp), allocatable :: prop_B_tor_2D(:,:,:)                           ! delta_r / delta_B/B for 2-D plotting
-        real(dp), allocatable :: prop_B_tor_2D_loc(:)                           ! local prop_B_tor_2D
+        real(dp), allocatable :: prop_B_tor_tot(:,:,:)                          ! delta_r / delta_B/B in total grid
+        real(dp), allocatable :: var_tot_loc(:)                                 ! auxilliary variable
         real(dp), allocatable :: x_2D(:,:)                                      ! x for 2-D plotting
-        real(dp), allocatable :: x_2D_loc(:)                                    ! local x_2D
         real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
+        real(dp), allocatable :: rad(:,:,:)                                     ! minor radius
+        real(dp), allocatable :: prev_rad(:)                                    ! rad of previous ranks
+        real(dp), allocatable :: arclen(:,:,:)                                  ! length along the arc for the proportionality factor
+        real(dp), allocatable :: arclen_tot(:,:,:)                              ! arclen in total grid
         real(dp), allocatable :: u_norm_com(:,:,:,:,:)                          ! covariant and contravariant components of u_norm (dim1,dim2,dim3,3,2)
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
+        logical :: new_file_found                                               ! name for new file found
+        character(len=8) :: flux_name                                           ! either poloidal or toroidal
         character(len=25) :: base_name                                          ! base name
         character(len=25) :: plot_names(2)                                      ! plot names
+        character(len=max_str_ln) :: prop_B_tor_file_name                       ! name of B_tor proportionality file
+        character(len=max_str_ln) :: format_head                                ! header format
+        character(len=max_str_ln) :: format_val                                 ! format
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -3877,6 +3926,9 @@ contains
             ierr = 1
             CHCKERR('trigonometric factors not allocated')
         end if
+        
+        call writo('Calculate normal displacement')
+        call lvl_ud(1)
         
         ! trim grid
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
@@ -3889,15 +3941,40 @@ contains
             &XYZ_loc(:,:,:,3))
         CHCKERR('')
         
-        ! set up components of u_norm
+        ! set up components of u_norm and calculate minor radius
         allocate(u_norm_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(rad(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+        allocate(prev_rad(n_procs))
         u_norm_com = 0._dp
+        rad = 0._dp
         u_norm_com(:,:,:,2,1) = &
             &(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))**(-0.5_dp)                ! normal unit vector nabla psi / |nabla psi|
         do id = 1,3
             u_norm_com(:,:,:,id,2) = eq_2%h_FD(:,:,:,c([2,id],.true.),0,0,0)*&
                 &u_norm_com(:,:,:,2,1)
         end do
+        do jd = 1,grid_trim%n(2)
+            do id = 1,grid_trim%n(1)
+                ierr = calc_int((eq_2%h_FD(id,jd,norm_id(1):norm_id(2),&
+                    &c([2,2],.true.),0,0,0))**(-0.5),grid_trim%loc_r_F,&
+                    &rad(id,jd,:))
+                CHCKERR('')
+                if (use_normalization) rad(id,jd,:) = &
+                    &rad(id,jd,:) * psi_0/(R_0*B_0)
+                ierr = get_ser_var([rad(id,jd,grid_trim%loc_n_r)],prev_rad,&
+                    &scatter=.true.)
+                CHCKERR('')
+                rad(id,jd,:) = rad(id,jd,:) + sum(prev_rad(1:rank))
+            end do
+        end do
+        call plot_HDF5('rad','rad',rad,&
+            &tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &X=XYZ(:,:,norm_id(1):norm_id(2),1),&
+            &Y=XYZ(:,:,norm_id(1):norm_id(2),2),&
+            &Z=XYZ(:,:,norm_id(1):norm_id(2),3),&
+            &cont_plot=eq_job_nr.gt.1,&
+            &description='minor radius')
         
         ! transform coordinates, including the flux
         ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,u_norm_com,&
@@ -3913,19 +3990,6 @@ contains
                 &(u_norm_com(:,2,:,id,1)+u_norm_com(:,1,:,id,1)) * &
                 &(XYZ_loc(:,2,:,id)-XYZ_loc(:,1,:,id))
         end do
-        
-        ! Calculate cylindrical components of B
-        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        B_com = 0._dp
-        do id = 1,3
-            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0)
-        end do
-        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
-        if (use_normalization) B_com = B_com * B_0
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
-            &max_transf=4)
-        CHCKERR('')
         
         ! set plot variables for delta_r
         base_name = 'delta_r'
@@ -3949,6 +4013,24 @@ contains
             &cont_plot=eq_job_nr.gt.1,&
             &description='plasma position displacement')
         
+        call lvl_ud(-1)
+        
+        call writo('Calculate magnetic field ripple')
+        call lvl_ud(1)
+        
+        ! Calculate cylindrical components of B
+        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        B_com = 0._dp
+        do id = 1,3
+            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0)
+        end do
+        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
+        if (use_normalization) B_com = B_com * B_0
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
+            &max_transf=4)
+        CHCKERR('')
+        
         ! set plot variables for prop_B_tor
         base_name = 'prop_B_tor_from_eq'
         plot_names(1) = trim(base_name)//'_sub'
@@ -3960,6 +4042,11 @@ contains
         allocate(delta_B(grid_eq%n(1),1,grid_eq%loc_n_r,2))
         delta_B = 2*(B_com(:,2:2,:,2,:)-B_com(:,1:1,:,2,:)) / &
             &(B_com(:,2:2,:,2,:)+B_com(:,1:1,:,2,:))
+        
+        call lvl_ud(-1)
+        
+        call writo('Output ripple proportionality factor')
+        call lvl_ud(1)
         
         ! plot with HDF5
         call plot_HDF5(plot_names,trim(base_name),&
@@ -3982,7 +4069,7 @@ contains
         if (ex_plot_style.eq.2) r_lim_2D(1) = &
             &max(r_lim_2D(1),r_lim_2D(2)-127+1)                                 ! Bokeh can only handle 255/2 input arguments
         if (rank.eq.0) then
-            allocate(prop_B_tor_2D(grid_trim%n(1),grid_trim%n(3),2))
+            allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3),2))
             allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
         end if
         if (use_pol_flux_F) then
@@ -3993,24 +4080,128 @@ contains
         do id = 1,grid_trim%n(1)
             do jd = 1,2
                 ierr = get_ser_var(delta_r(id,1,norm_id(1):norm_id(2))/&
-                    &delta_B(id,1,norm_id(1):norm_id(2),jd),prop_B_tor_2D_loc)
+                    &delta_B(id,1,norm_id(1):norm_id(2),jd),var_tot_loc)
                 CHCKERR('')
-                if (rank.eq.0) prop_B_tor_2D(id,:,jd) = prop_B_tor_2D_loc
+                if (rank.eq.0) prop_B_tor_tot(id,:,jd) = var_tot_loc
             end do
-            ierr = get_ser_var(ang_par_F(id,1,:),&
-                &x_2D_loc)
+            ierr = get_ser_var(ang_par_F(id,1,:),var_tot_loc)
             CHCKERR('')
-            if (rank.eq.0) x_2D(id,:) = x_2D_loc/pi
+            if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
         end do
         if (rank.eq.0) then
             do jd = 1,2
                 call print_ex_2D([trim(plot_names(jd))],trim(base_name),&
-                    &prop_B_tor_2D(:,r_lim_2D(1):r_lim_2D(2),jd),&
+                    &prop_B_tor_tot(:,r_lim_2D(1):r_lim_2D(2),jd),&
                     &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
                 call draw_ex([trim(plot_names(jd))],trim(base_name),&
                     &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
             end do
         end if
+        
+        call lvl_ud(-1)
+        
+        call writo('Output to file as function of fractional arc length')
+        call lvl_ud(1)
+        
+        ! calculate arclength: int dtheta |e_theta|
+        allocate(arclen(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        do kd = 1,grid_eq%loc_n_r
+            do jd = 1,grid_eq%n(2)
+                if (use_pol_flux_F) then
+                    ! e_arc = e_theta - q e_alpha
+                    ierr = calc_int((&
+                        &eq_2%g_FD(:,jd,kd,c([3,3],.true.),0,0,0) - &
+                        &eq_2%g_FD(:,jd,kd,c([1,3],.true.),0,0,0) * &
+                        &2*eq_1%q_saf_FD(kd,0) + &
+                        &eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0) * &
+                        &eq_1%q_saf_FD(kd,0)**2)**(0.5),&
+                        &grid_eq%theta_F(:,jd,kd),arclen(:,jd,kd))
+                    CHCKERR('')
+                else
+                    ! e_arc = -e_alpha
+                    ierr = calc_int(&
+                        &(-eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0))**(0.5),&
+                        &grid_eq%theta_F(:,jd,kd),arclen(:,jd,kd))
+                    CHCKERR('')
+                end if
+                if (use_normalization) arclen(:,jd,kd) = arclen(:,jd,kd) * R_0  ! not really necessary as we take fractional arc length
+                arclen(:,jd,kd) = arclen(:,jd,kd) / arclen(grid_trim%n(1),jd,kd)
+            end do
+        end do
+        if (rank.eq.0) then
+            allocate(arclen_tot(grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)))
+        end if
+        do id = 1,grid_trim%n(1)
+            do jd = 1,grid_trim%n(2)
+                ierr = get_ser_var(arclen(id,jd,norm_id(1):norm_id(2)),&
+                    &var_tot_loc)
+                CHCKERR('')
+                if (rank.eq.0) arclen_tot(id,jd,:) = var_tot_loc
+            end do
+        end do
+        
+        ! only master outputs to file
+        if (rank.eq.0) then
+            ! find new file name
+            new_file_found = .false.
+            prop_B_tor_file_name = 'prop_B_tor'
+            kd = 1
+            do while (.not.new_file_found)
+                open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
+                    &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
+                if (ierr.eq.0) then
+                    kd = kd + 1
+                else
+                    prop_B_tor_file_name = trim(prop_B_tor_file_name)//'_'//&
+                        &trim(i2str(kd))//'.dat'
+                    new_file_found = .true.
+                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
+                        &IOSTAT=ierr,STATUS='new')
+                    CHCKERR('Failed to open file')
+                end if
+            end do
+            format_head = '("# ",'//trim(i2str(size(prop_B_tor_tot,1)+1))//&
+                &'(A23," "))'
+            format_val = '("  ",'//trim(i2str(size(prop_B_tor_tot,1)+1))//&
+                &'(ES23.16," "))'
+            
+            ! user output
+            call writo('Save toroidal field proportionality factor in file "'//&
+                &trim(prop_B_tor_file_name)//'"')
+            
+            ! write to output file
+            if (use_normalization) prop_B_tor_tot = prop_B_tor_tot / R_0
+            if (use_pol_flux_F) then
+                flux_name = 'poloidal'
+                flux_code = 1._dp
+            else
+                flux_name = 'toroidal'
+                flux_code = -1._dp
+            end if
+            write(prop_B_tor_i,'(A)') '# Proportionality factor to be &
+                &multiplied by deltaB/B in order to get delta_r/R_0 necessary'
+            write(prop_B_tor_i,trim(format_head)) 'n_pol', 'n_r', &
+                &'ang_pol_start'
+            write(prop_B_tor_i,trim(format_val)) 1._dp*grid_trim%n(1), &
+                &1._dp*grid_trim%n(3), min_theta_plot*pi, flux_code
+            write(prop_B_tor_i,trim(format_head)) trim(flux_name)//' s', &
+                &'poloidal angle'
+            write(prop_B_tor_i,trim(format_head)) trim(flux_name)//' s', &
+                &'proportionality factor'
+            do kd = 1,grid_trim%n(3)
+                write(prop_B_tor_i,trim(format_val)) &
+                    &grid_trim%r_F(kd)*2*pi/max_flux_F, &
+                    &0.5*sum(arclen_tot(:,:,kd),2)
+                write(prop_B_tor_i,trim(format_val)) &
+                    &grid_trim%r_F(kd)*2*pi/max_flux_F, &
+                    &0.5*sum(prop_B_tor_tot(:,kd,:),2)
+            end do
+            
+            ! close
+            close(prop_B_tor_i)
+        end if
+        
+        call lvl_ud(-1)
         
         ! clean up
         call grid_trim%dealloc()

@@ -8,7 +8,8 @@ module files_utilities
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public nextunit, get_file_info, get_full_PB3D_name, delete_file
+    public nextunit, get_file_info, get_full_PB3D_name, delete_file, &
+        &skip_comment
 
 contains
     ! Search for available  new unit where lun_min and lun_max  define the range
@@ -39,6 +40,34 @@ contains
         ! return unit number if present
         if (present(unit)) unit=nextunit
     end function nextunit
+    
+    ! Skips comment.
+    integer function skip_comment(unit,name) result(ierr)
+        character(*), parameter :: rout_name = 'skip_comment'
+        
+        ! input / output
+        integer, intent(in) :: unit                                             ! file identifier
+        character(len=*), intent(in), optional :: name                          ! file name
+        
+        ! local variables
+        character(len=1) :: loc_data_char                                       ! first data character
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        loc_data_char = '#'
+        do while (loc_data_char.eq.'#')
+            read(unit,*,IOSTAT=ierr) loc_data_char
+            if (present(name)) then
+                err_msg = 'failed to read "'//trim(name)//'"'
+            else
+                err_msg = 'failed to read file'
+            end if
+            CHCKERR(err_msg)
+        end do
+        backspace(unit)
+    end function skip_comment
     
     ! Gets file information
     ! The  time informations  can be  converted to  strings using  the intrinsic

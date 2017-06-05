@@ -919,3 +919,11 @@ Technische Universiteit Eindhoven
 * "write_flux_q_in_file_for_VMEC" now has some more output.
 * Changed the default EV guess.
 * In "write_flux_q_in_file_for_VMEC" the cases with full normal output are now interpolated.
+
+## 1.77:
+* UNFINISHED VERSION: The "write_flux_q_in_file_for_VMEC" is not functioning.
+* Bug fixes for POST.
+* If "compare_tor_pos" is not called properly, an error now results.
+* "compare_tor_pos" now outputs a ripple map file.
+* "write_flux_q_in_file_for_VMEC" is now renamed to "create_VMEC_input" and has been overhauled.
+* "create_VMEC_input" can now also read perturbations defined on R, Z and phi, corresponding to a custom origin R, Z. This is the output of DESCUR, for example.

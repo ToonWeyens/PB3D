@@ -378,6 +378,8 @@ contains
         
         ! apply chosen options for PB3D
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
+            use num_vars, only: n_procs
+            
             ! input / output
             integer :: id                                                       ! counter
             integer, intent(in) :: opt_nr                                       ! option number
@@ -396,9 +398,15 @@ contains
                     jump_to_sol = .true.
                 case (9)                                                        ! export HELENA
                     if (eq_style.eq.2) then
-                        call writo('option export_HEL chosen: Exporting to &
-                            &VMEC')
-                        export_HEL = .true.
+                        if (n_procs.eq.1) then
+                            call writo('option export_HEL chosen: Exporting to &
+                                &VMEC')
+                            export_HEL = .true.
+                        else
+                            call writo('Can only use export_HEL with 1 &
+                                &process',warning=.true.)
+                            export_HEL = .false.
+                        end if
                     else
                         call writo('Can only use export_HEL with HELENA',&
                             &warning=.true.)

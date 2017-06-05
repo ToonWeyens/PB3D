@@ -1205,7 +1205,7 @@ contains
             use grid_utilities, only: calc_XYZ_grid
             use sol_vars, only: alpha
             use num_vars, only: eq_style, plot_grid_style, swap_angles, &
-                &use_pol_flux_F
+                &use_pol_flux_F, POST_output_sol
             use eq_vars, only: max_flux_F
             use VMEC_utilities, onLy: calc_trigon_factors
             use MPI_utilities, only: wait_MPI
@@ -1321,8 +1321,9 @@ contains
                     CHCKERR(err_msg)
             end select
             
-            ! if VMEC, deallocate trigonometric factors of output grid
-            if (eq_style.eq.1) then
+            ! if  VMEC, deallocate trigonometric  factors of output grid  if not
+            ! necessary any more
+            if (eq_style.eq.1 .and. .not.POST_output_sol) then
                 deallocate(grid%trigon_factors)
             end if
             

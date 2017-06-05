@@ -550,9 +550,17 @@ contains
             real(dp), allocatable :: L_V_c_int(:,:), L_V_s_int(:,:)             ! interpolated version of L_V_c and L_V_s
             real(dp), allocatable :: R_loc(:,:,:)                               ! R in Cylindrical coordinates
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
+            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
+            
+            ! test
+            if (.not.allocated(grid_XYZ%trigon_factors)) then
+                ierr = 1
+                err_msg = 'trigon factors of grid_XYZ need to be allocated'
+                CHCKERR(err_msg)
+            end if
             
             ! set up interpolated R_V_c_int, ..
             allocate(R_V_c_int(mnmax_V,grid_XYZ%loc_n_r))
