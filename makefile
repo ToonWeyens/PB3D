@@ -103,6 +103,8 @@ LINK = -llapack -lblas \
   #$(SLEPC_LIB) \
   #libdfftpack.a libfoul.a# 3. GEORGE
 
+LINK := libdfftpack.a libfoul.a libbspline.a $(LINK)
+
 
 ##############################################################################
 #   Compiler
@@ -165,10 +167,10 @@ include $(OBJLIST)# Names of all the objects
 ##############################################################################
 all:	PB3D POST
 
-PB3D:	$(ObjectFiles) libdfftpack.a libfoul.a PB3D.o
+PB3D:	$(ObjectFiles) libdfftpack.a libfoul.a libbspline.a PB3D.o
 	$(LINKER) -o $@ $(ObjectFiles) PB3D.o $(LINK) $(LINK_FLAGS)
 
-POST:	$(ObjectFiles) libdfftpack.a libfoul.a POST.o
+POST:	$(ObjectFiles) libdfftpack.a libfoul.a libbspline.a POST.o
 	$(LINKER) -o $@ $(ObjectFiles) POST.o $(LINK) $(LINK_FLAGS)
 
 libdfftpack.a: 	dfft.o
@@ -176,6 +178,9 @@ libdfftpack.a: 	dfft.o
 
 libfoul.a: 	foul.o
 	ar -rcs libfoul.a foul.o
+
+libbspline.a: 	bspline_module.o
+	ar -rcs libbspline.a bspline_sub_module.o bspline_oo_module.o bspline_module.o
 
 %.o: %.f90
 	$(COMPILER) $(INCLUDE) $(COMP_FLAGS) -c $<
@@ -187,6 +192,15 @@ dfft.o: dfft.f
 	$(COMPILER) $(COMP_FLAGS_EX) -c $<
 
 foul.o: foul.f90
+	$(COMPILER) $(COMP_FLAGS_EX) -c $<
+
+bspline_module.o: bspline_module.f90
+	$(COMPILER) $(COMP_FLAGS_EX) -c $<
+
+bspline_sub_module.o: bspline_sub_module.f90
+	$(COMPILER) $(COMP_FLAGS_EX) -c $<
+
+bspline_oo_module.o: bspline_oo_module.f90
 	$(COMPILER) $(COMP_FLAGS_EX) -c $<
 
 clean:

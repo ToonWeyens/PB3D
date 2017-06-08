@@ -49,3 +49,7 @@ splines.o \
 ObjectFiles_Libraries = \
 dfft.o \
 foul.o \
+bspline_sub_module.f90 \
+bspline_oo_module.f90 \
+bspline_module.o \
+

@@ -53,8 +53,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.77_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.77_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.78_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.75_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
 #else
@@ -172,7 +172,7 @@ module num_vars
     integer, parameter :: mem_usage_i = 55                                      ! file number of memory usage file
     integer, parameter :: output_EV_i = 56                                      ! file number of output of EV
     integer, parameter :: decomp_i = 57                                         ! file number of output of EV decomposition
-    integer, parameter :: HEL_pert_i = 58                                       ! file number of output of HELENA equilibrium perturbation file
     integer, parameter :: HEL_export_i = 59                                     ! file number of output of HELENA equilibrium export file
-    integer, parameter :: prop_B_tor_i = 60                                     ! file number of output of B_tor proportionality factor file
+    integer, parameter :: HEL_pert_i = 58                                       ! file number of HELENA equilibrium perturbation file
+    integer, parameter :: prop_B_tor_i = 60                                     ! file number of B_tor proportionality factor file
 end module num_vars

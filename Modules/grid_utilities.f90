@@ -15,7 +15,7 @@ module grid_utilities
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
-        &nufft, find_compr_range
+        &nufft, find_compr_range, calc_arc_angle
 #if ldebug
     public debug_calc_int_vol, debug_calc_vec_comp
 #endif
@@ -3372,4 +3372,76 @@ contains
             end do
         end if
     end subroutine find_compr_range
+    
+    ! Calculate arclength  angle, based  on calculating  the arclength  from the
+    ! start of the grid, and then normalizing it from min(theta)..max(theta)
+    ! By  default, the  Flux variables are  used, but this  can be  changed with
+    ! "use_E".
+    ! Note:  For field-aligned  grids the  projection is  taken on  the poloidal
+    ! cross-section. For non-axisymmetric equilibria, this makes little sense.
+    integer function calc_arc_angle(grid,eq_1,eq_2,arc,use_E) result(ierr)
+        use eq_vars, only: eq_1_type, eq_2_type, &
+            &R_0
+        use num_vars, only: use_normalization, use_pol_flux_F
+        use num_utilities, only: c, calc_int
+        
+        character(*), parameter :: rout_name = 'calc_arc_angle'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
+        real(dp), intent(inout), allocatable :: arc(:,:,:)                      ! arclength angle
+        logical, intent(in), optional :: use_E                                  ! use E variables instead of F
+        
+        ! local variables
+        integer :: jd, kd                                                       ! counters
+        logical :: use_E_loc                                                    ! local use_E
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local use_E
+        use_E_loc = .false.
+        if (present(use_E)) use_E_loc = use_E
+        
+        ! calculate arclength: int dtheta |e_theta|
+        allocate(arc(grid%n(1),grid%n(2),grid%loc_n_r))
+        do kd = 1,grid%loc_n_r
+            do jd = 1,grid%n(2)
+                if (use_E_loc) then
+                    ierr = calc_int(&
+                        &eq_2%g_E(:,jd,kd,c([2,2],.true.),0,0,0)**(0.5),&
+                        &grid%theta_E(:,jd,kd),arc(:,jd,kd))
+                    CHCKERR('')
+                    if (use_normalization) arc(:,jd,kd) = arc(:,jd,kd) * R_0    ! not really necessary as we take fractional arc length
+                    arc(:,jd,kd) = grid%theta_E(1,jd,kd) + &
+                        &arc(:,jd,kd) / arc(grid%n(1),jd,kd) * &
+                        &(grid%theta_E(grid%n(1),jd,kd)-grid%theta_E(1,jd,kd))
+                else
+                    if (use_pol_flux_F) then
+                        ! e_arc = e_theta - q e_alpha
+                        ierr = calc_int((&
+                            &eq_2%g_FD(:,jd,kd,c([3,3],.true.),0,0,0) - &
+                            &eq_2%g_FD(:,jd,kd,c([1,3],.true.),0,0,0) * &
+                            &2*eq_1%q_saf_FD(kd,0) + &
+                            &eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0) * &
+                            &eq_1%q_saf_FD(kd,0)**2)**(0.5),&
+                            &grid%theta_F(:,jd,kd),arc(:,jd,kd))
+                        CHCKERR('')
+                    else
+                        ! e_arc = -e_alpha
+                        ierr = calc_int(&
+                            &(-eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0))&
+                            &**(0.5),grid%theta_F(:,jd,kd),arc(:,jd,kd))
+                        CHCKERR('')
+                    end if
+                    if (use_normalization) arc(:,jd,kd) = arc(:,jd,kd) * R_0    ! not really necessary as we take fractional arc length
+                    arc(:,jd,kd) = grid%theta_F(1,jd,kd) + &
+                        &arc(:,jd,kd) / arc(grid%n(1),jd,kd) * &
+                        &(grid%theta_F(grid%n(1),jd,kd)-grid%theta_F(1,jd,kd))
+                end if
+            end do
+        end do
+    end function calc_arc_angle
 end module grid_utilities

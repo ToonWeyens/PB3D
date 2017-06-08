@@ -1205,12 +1205,12 @@ contains
             use grid_utilities, only: calc_XYZ_grid
             use sol_vars, only: alpha
             use num_vars, only: eq_style, plot_grid_style, swap_angles, &
-                &use_pol_flux_F, POST_output_sol
+                &use_pol_flux_F
             use eq_vars, only: max_flux_F
             use VMEC_utilities, onLy: calc_trigon_factors
             use MPI_utilities, only: wait_MPI
             
-            character(*), parameter :: rout_name = 'setup_out_grids'
+            character(*), parameter :: rout_name = 'calc_XYZ_of_output_grid'
             
             ! input / output
             type(grid_type), intent(inout) :: grid                              ! output grid for which to calculate XYZ
@@ -1320,12 +1320,6 @@ contains
                     ierr = 1
                     CHCKERR(err_msg)
             end select
-            
-            ! if  VMEC, deallocate trigonometric  factors of output grid  if not
-            ! necessary any more
-            if (eq_style.eq.1 .and. .not.POST_output_sol) then
-                deallocate(grid%trigon_factors)
-            end if
             
             ! synchronize
             ierr = wait_MPI()

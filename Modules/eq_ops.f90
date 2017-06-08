@@ -246,11 +246,13 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
-                ! derivatives
+                ! derivatives if not yet done
                 call writo('Calculate R,Z,L...')
-                ierr = calc_trigon_factors(grid_eq%theta_E,grid_eq%zeta_E,&
-                    &grid_eq%trigon_factors)
-                CHCKERR('')
+                if (.not.allocated(grid_eq%trigon_factors)) then
+                    ierr = calc_trigon_factors(grid_eq%theta_E,grid_eq%zeta_E,&
+                        &grid_eq%trigon_factors)
+                    CHCKERR('')
+                end if
                 do id = 0,max_deriv+1
                     ierr = calc_RZL(grid_eq,eq_2,derivs(id))
                     CHCKERR('')
@@ -380,7 +382,7 @@ contains
                 if (export_HEL) then
                     call writo('Exporting HELENA equilibrium for VMEC porting')
                     call lvl_ud(1)
-                    ierr = create_VMEC_input(eq_1,eq_2)
+                    ierr = create_VMEC_input(grid_eq,eq_1,eq_2)
                     CHCKERR('')
                     call lvl_ud(-1)
                     call writo('Done exporting')
@@ -521,17 +523,20 @@ contains
         !   B_F_loc:  (pol modes, cos/sin)
         !   B_F:      (pol modes, tor modes, cos/sin (m theta), R/Z)
         !   B_F_pert: (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
-        integer function create_VMEC_input(eq_1,eq_2) result(ierr)
+        integer function create_VMEC_input(grid_eq,eq_1,eq_2) result(ierr)
             use eq_vars, only: pres_0, R_0, psi_0
             use grid_vars, only: n_r_eq
-            use grid_utilities, only: setup_interp_data, apply_disc, nufft
+            use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
+                &calc_arc_angle
             use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort
             use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
                 &norm_disc_prec_eq, prop_B_tor_i
-            use files_utilities, only: skip_comment
+            use files_utilities, only: skip_comment, count_lines
+            use bspline_sub_module, only: db2ink, db2val, get_status_message
+            use splines, only: spline3
 #if ldebug
             use grid_utilities, only: setup_deriv_data
 #endif
@@ -539,6 +544,7 @@ contains
             character(*), parameter :: rout_name = 'create_VMEC_input'
             
             ! input / output
+            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid varibles
             type(eq_1_type), intent(in) :: eq_1                                 ! flux equilibrium quantities
             type(eq_2_type), intent(in) :: eq_2                                 ! metric equilibrium quantities
             
@@ -548,45 +554,55 @@ contains
             integer :: n_B                                                      ! nr. of points in Fourier series
             integer :: nfp                                                      ! scale factor for toroidal mode numbers
             integer :: tot_nr_pert                                              ! total number of perturbations combinations (N,M)
-            integer :: nr_n                                                     ! number of different N
+            integer :: nr_n                                                     ! number of different N in perturbation
             integer :: n_loc, m_loc                                             ! local n_pert and m_pert
+            integer :: pert_map_n_loc                                           ! n_loc for perturbation map
             integer :: n_id                                                     ! index in bundled n_pert
-            integer :: istat                                                    ! status
+            integer :: n_pert_map(2)                                            ! number of points in perturbation map
             integer :: plot_dim(2)                                              ! plot dimensions
             integer :: rec_min_m                                                ! recommended minimum of poloidal modes
             integer :: pert_style                                               ! style of perturbation (1: r, 2: B_tor)
             integer :: pert_type                                                ! type of perturbation prescription
-            integer :: r_prop                                                   ! r at which to use proportionality factor
             integer :: max_n_B_output                                           ! max. nr. of modes written in output file (constant in VMEC)
-            integer :: n_prop_B_tor(2)                                          ! n of prop_B_tor
-            integer :: flux_type_prop_B_tor                                     ! 1 (poloidal) or 2 (toroidal) flux used in prop_B_tor
+            integer :: n_prop_B_tor                                             ! n of angular poins in prop_B_tor
+            integer :: spline_init(3)                                           ! spline initialization parameter
             integer, allocatable :: n_pert(:), m_pert(:,:)                      ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: m_pert_copy(:,:)                            ! copy of m_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
             integer, allocatable :: nr_m(:)                                     ! number of different M for every N
             integer, allocatable :: nr_m_copy(:)                                ! copy of nr_m, for sorting
-            character(len=1) :: loc_data_char                                   ! first data character
             character(len=2) :: plus                                            ! "+ " or ""
             character(len=8) :: flux_name(2)                                    ! "poloidal" or "toroidal"
             character(len=6) :: path_prefix = '../../'                          ! prefix of path
-            character(len=max_str_ln) :: dummy_string                           ! dummy string
             character(len=max_str_ln) :: HEL_pert_file_name                     ! name of perturbation file
             character(len=max_str_ln) :: err_msg                                ! error message
             character(len=max_str_ln) :: file_name                              ! name of file
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
             character(len=max_str_ln) :: prop_B_tor_file_name                   ! name of B_tor proportionality file
+            real(dp) :: max_pert_on_axis                                        ! maximum perturbation on axis (theta = 0)
             real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
             real(dp) :: plot_lims(2,2)                                          ! limits of plot dims [pi]
             real(dp) :: norm_B_H                                                ! normalization for R and Z Fourier modes
             real(dp) :: mult_fac                                                ! global multiplication factor
-            real(dp) :: min_theta_prop_B_tor                                    ! starting angle of prop_B_tor
             real(dp) :: RZ_B_0(2)                                               ! origin of R and Z of boundary
-            real(dp) :: dummy_input(4)                                          ! dummy variable
             real(dp) :: s_V(99)                                                 ! normal coordinate s for writing
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
+            real(dp) :: BH_pert_loc(2)                                          ! local BH_pert
+            real(dp), allocatable :: arc_ang_HEL(:,:,:)                         ! angle calculated from arclength on HELENA grid
+            real(dp), allocatable :: arc_ang(:,:)                               ! angle calculated from arclength on full grid
+            real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
+            real(dp), allocatable :: Z_plot(:,:,:)                              ! Z for plotting of ripple map
+            real(dp), allocatable :: spline_knots_R(:)                          ! knots of spline for R
+            real(dp), allocatable :: spline_knots_Z(:)                          ! knots of spline for Z
+            real(dp), allocatable :: spline_coeff(:,:)                          ! coefficients of spline
+            real(dp), allocatable :: pert_map_R(:)                              ! R of perturbation map
+            real(dp), allocatable :: pert_map_Z(:)                              ! Z of perturbation map
+            real(dp), allocatable :: pert_map(:,:)                              ! perturbation map
+            real(dp), allocatable :: pert_map_interp(:)                         ! interpolated perturbation from map
+            real(dp), allocatable :: pert_map_interp_F(:,:)                     ! Fourier coefficients of pert_map_interp
             real(dp), allocatable :: R_H_loc(:,:)                               ! local R_H
             real(dp), allocatable :: Z_H_loc(:,:)                               ! local Z_H
             real(dp), allocatable :: delta(:,:,:)                               ! amplitudes of perturbations (N,M,c/s)
@@ -599,15 +615,13 @@ contains
             real(dp), allocatable :: B_F_loc(:,:)                               ! Local B_F
             real(dp), allocatable :: u_norm(:,:)                                ! normalized unit vector
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
-            real(dp), allocatable :: prop_B_tor(:,:,:)                          ! proportionality between delta B_tor and delta_norm
-            real(dp), allocatable :: prop_B_tor_F_loc(:,:)                      ! local fourier coefficients of prop_B_tor
-            real(dp), allocatable :: s_prop_B_tor(:)                            ! normal positions at which prop_B_tor is tabulated
+            real(dp), allocatable :: prop_B_tor(:,:)                            ! proportionality between delta B_tor and delta_norm
+            real(dp), allocatable :: prop_B_tor_interp(:)                       ! proportionality between delta B_tor and delta_norm
             logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
             logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
             logical :: found                                                    ! whether something was found
-            logical :: choose_norm_pos                                          ! whether to choose a different normal position to use
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
 #if ldebug
             real(dp), allocatable :: BH_0_ALT(:,:)                              ! reconstructed R and Z
@@ -635,8 +649,89 @@ contains
                 Z_H_loc = Z_H*R_0
             end if
             
+            ! user output
+            call writo('Initialize boundary')
+            call lvl_ud(1)
+            
+            ! full 0..2pi boundary
+            if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
+                n_B = nchi*2-2                                                  ! -2 because of overlapping points at 0, pi
+            else                                                                ! asymmetric (so nchi is aumented by one)
+                n_B  = nchi-1                                                   ! -1 because of overlapping points at 0
+            end if
+            allocate(BH_0(n_B,2))                                               ! HELENA coords (no overlap at 0)
+            allocate(theta(n_B,2))                                              ! geometrical poloidal angle (overlap at 0)
+            if (ias.eq.0) then                                                  ! symmetric
+                BH_0(1:nchi,1) = R_H_loc(:,n_r_eq)
+                BH_0(1:nchi,2) = Z_H_loc(:,n_r_eq)
+                theta(1:nchi,2) = chi_H
+                do id = 1,nchi-2
+                    BH_0(nchi+id,1) = R_H_loc(nchi-id,n_r_eq)
+                    BH_0(nchi+id,2) = -Z_H_loc(nchi-id,n_r_eq)
+                    theta(nchi+id,2) = 2*pi-chi_H(nchi-id)
+                end do
+            else
+                BH_0(:,1) = R_H_loc(1:n_B,n_r_eq)
+                BH_0(:,2) = Z_H_loc(1:n_B,n_r_eq)
+                theta(:,2) = chi_H(1:n_B)
+            end if
+            RZ_B_0(1) = sum(R_H_loc(:,1))/size(R_H_loc,1)
+            RZ_B_0(2) = sum(Z_H_loc(:,1))/size(Z_H_loc,1)
+            theta(:,1) = atan2(BH_0(:,2)-RZ_B_0(2),BH_0(:,1)-RZ_B_0(1))
+            
+            !!! TEMPORARILY
+            !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
+            !!theta(:,1) = theta(:,2)
+            !!BH_0(:,1) = 1.5_dp + 0.5*cos(theta(:,1))
+            !!BH_0(:,2) = 0.5*sin(theta(:,1))
+            
+            ! plot angles
+            plot_name(1) = 'chi'
+            plot_title = ['theta_G','chi_H  ']
+            call print_ex_2D(plot_title(1:2),plot_name(1),theta/pi,&
+                &x=reshape([theta(:,2)],[n_B,1])/pi,&
+                &draw=.false.)
+            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
+            
+            ! plot R and Z
+            plot_name(1) = 'RZ'
+            plot_title = ['R_H','Z_H']
+            call print_ex_2D(plot_title(1:2),plot_name(1),BH_0,&
+                &x=reshape([theta(:,1)],[n_B,1])/pi,&
+                &draw=.false.)
+            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
+            
             ! set up auxiliary variable
             flux_name = ['poloidal','toroidal']
+            
+            call lvl_ud(-1)
+            
+            ! plot properties
+            plot_dim = [100,100]
+            plot_lims(:,1) = [0.0_dp,2.0_dp]
+            plot_lims(:,2) = [0.5_dp,2.0_dp]
+            call writo('Change plot properties from defaults?')
+            call lvl_ud(1)
+            do id = 1,2
+                call writo(trim(i2str(plot_dim(id)))//' '//flux_name(id)//&
+                    &' points on range '//trim(r2strt(plot_lims(1,id)))//&
+                    &' pi .. '//trim(r2strt(plot_lims(2,id)))//' pi')
+            end do
+            call lvl_ud(-1)
+            if (get_log(.false.)) then
+                call lvl_ud(1)
+                do id = 1,2
+                    call writo('number of '//flux_name(id)//' points?')
+                    plot_dim(id) = get_int(lim_lo=2)
+                    call writo('lower limit of '//flux_name(id)//&
+                        &' range [pi]?')
+                    plot_lims(1,id) = get_real()
+                    call writo('upper limit of '//flux_name(id)//&
+                        &' range [pi]?')
+                    plot_lims(2,id) = get_real()
+                end do
+                call lvl_ud(-1)
+            end if
             
             ! get input about equilibrium perturbation
             ! Note: negative N values will be converted to negative M values and
@@ -664,14 +759,28 @@ contains
                         read(*,*,IOSTAT=ierr) prop_B_tor_file_name
                         err_msg = 'failed to read prop_B_tor_file_name'
                         CHCKERR(err_msg)
-                        open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
-                            &IOSTAT=ierr,STATUS='old')
+                        
+                        ! open
+                        do kd = 0,2
+                            call writo('Trying "'//path_prefix(1:kd*3)//&
+                                &trim(prop_B_tor_file_name)//'"')
+                            open(prop_B_tor_i,FILE=path_prefix(1:kd*3)//&
+                                &trim(prop_B_tor_file_name),IOSTAT=ierr,&
+                                &STATUS='old')
+                            if (ierr.eq.0) then
+                                call lvl_ud(1)
+                                call writo("Success")
+                                call lvl_ud(-1)
+                                exit
+                            end if
+                        end do
                         if (ierr.eq.0) then
                             found = .true.
                         else
                             call writo('Could not open file "'//&
                                 &trim(prop_B_tor_file_name)//'"')
                         end if
+                        
                         call lvl_ud(-1)
                     end do
                     
@@ -679,60 +788,52 @@ contains
                     call writo('Analyzing perturbation proportionality file "'&
                         &//trim(prop_B_tor_file_name)//'"')
                     call lvl_ud(1)
-                    ierr = skip_comment(prop_B_tor_i,name=prop_B_tor_file_name)
+                    n_prop_B_tor = count_lines(prop_B_tor_i)
+                    allocate(prop_B_tor(n_prop_B_tor,2))
+                    ierr = skip_comment(prop_B_tor_i,&
+                        &file_name=prop_B_tor_file_name)
                     CHCKERR('')
-                    read(prop_B_tor_i,*,IOSTAT=ierr) dummy_input
-                    err_msg = 'failed to read dummy_input'
-                    CHCKERR(err_msg)
-                    n_prop_B_tor = nint(dummy_input(1:2))
-                    min_theta_prop_B_tor = dummy_input(3)
-                    flux_type_prop_B_tor = 1
-                    if (dummy_input(4).lt.1) flux_type_prop_B_tor = 2
-                    call writo(trim(i2str(n_prop_B_tor(1)))//' poloidal points')
-                    call writo(trim(i2str(n_prop_B_tor(2)))//' normal points &
-                        &in '//flux_name(flux_type_prop_B_tor)//' flux')
-                    call lvl_ud(1)
-                    allocate(prop_B_tor(n_prop_B_tor(1),n_prop_B_tor(2),2))
-                    allocate(s_prop_B_tor(n_prop_B_tor(2)))
-                    ierr = skip_comment(prop_B_tor_i,name=prop_B_tor_file_name)
-                    CHCKERR('')
-                    do kd = 1,n_prop_B_tor(2)
-                        do id = 1,2
-                            read(prop_B_tor_i,*,IOSTAT=ierr) dummy_input(id), &
-                                &prop_B_tor(:,kd,id)
-                            err_msg = 'failed to read dummy_input'
-                            CHCKERR(err_msg)
-                        end do
-                        if (abs(dummy_input(1)-dummy_input(2)).lt.&
-                            &10*tiny(1._dp)) then
-                            s_prop_B_tor(kd) = dummy_input(1)
-                            call writo(trim(i2str(kd))//'/'//&
-                                &trim(i2str(n_prop_B_tor(2)))//': s = '//&
-                                &trim(r2str(s_prop_B_tor(kd))))
-                        else
-                            ierr = 1
-                            err_msg = 'Check s-values in "'//&
-                                &trim(prop_B_tor_file_name)//'"'
-                            CHCKERR(err_msg)
-                        end if
+                    do id = 1,n_prop_B_tor
+                        read(prop_B_tor_i,*,IOSTAT=ierr) prop_B_tor(id,:)
                     end do
-                    call lvl_ud(-1)
                     
-                    call writo('Use last normal position?')
-                    choose_norm_pos = get_log(.true.)
-                    if (.not.choose_norm_pos) then
-                        call writo('Normal position to use, in normalized '//&
-                            &flux_name(flux_type_prop_B_tor)//' flux')
-                        r_prop = get_int(lim_lo=1,lim_hi=n_prop_B_tor(2),&
-                            &ind=.true.)
+                    ! user info
+                    call writo(trim(i2str(n_prop_B_tor))//&
+                        &' poloidal points '//&
+                        &trim(r2strt(minval(prop_B_tor(:,1))))//'..'//&
+                        &trim(r2strt(maxval(prop_B_tor(:,1)))))
+                    
+                    ! determine arclength angles for the tabulated HELENA points
+                    ierr = calc_arc_angle(grid_eq,eq_1,eq_2,arc_ang_HEL,&
+                        &use_E=.true.)
+                    CHCKERR('')
+                    allocate(arc_ang(n_B,grid_eq%n(2)))
+                    if (ias.eq.0) then                                          ! symmetric
+                        arc_ang(1:nchi,:) = arc_ang_HEL(:,:,n_r_eq)
+                        do id = 1,nchi-2
+                            arc_ang(nchi+id,:) = &
+                                &2*pi-arc_ang_HEL(nchi-id,:,n_r_eq)
+                        end do
                     else
-                        r_prop = n_prop_B_tor(2)
+                        arc_ang = arc_ang_HEL(1:n_B,:,n_r_eq)
                     end if
+                    deallocate(arc_ang_HEL)
+                    
+                    ! interpolate the  proportionality factor  on the  arc angle
+                    ! used  here  (as  opposed  to  the  one  in  which  it  was
+                    ! tabulated)
+                    allocate(prop_B_tor_interp(n_B))
+                    ierr = spline3(norm_disc_prec_eq,prop_B_tor(:,1),&
+                        &prop_B_tor(:,2),arc_ang(:,1),ynew=prop_B_tor_interp)   ! There should be only 1 geodesic position
+                    CHCKERR('')
+                    if (grid_eq%n(2).ne.1) call writo('There should be only 1 &
+                        &geodesical position, but there are '//&
+                        &trim(i2str(grid_eq%n(2))),warning=.true.)
+                    deallocate(prop_B_tor)
+                    if (use_normalization) &
+                        &prop_B_tor_interp = prop_B_tor_interp  * R_0
                     
                     call lvl_ud(-1)
-                    
-                    call writo('toroidal modulation mode number?')
-                    n_loc = get_int()
                 end if
                 
                 ! get perturbation type
@@ -746,19 +847,16 @@ contains
                 call writo('Rows starting with "#" are ignored')
                 call lvl_ud(-1)
                 call writo('2: same as 1 but interactively')
-                call writo('3: through a file with Fourier modes in general &
-                    &coordinates')
+                call writo('3: through a 2-D map in R, Z')
                 call lvl_ud(1)
-                call writo('It should provide R Z phi delta_r in four columns')
+                call writo('It should provide R, Z and delta')
                 call writo('Rows starting with "#" are ignored')
-                call writo('Note: You can use the output of DESCUR in the &
-                    &STELLOPT suite')
                 call lvl_ud(-1)
-                call writo('4: same as 3 but interactively')
-                pert_type = get_int(lim_lo=1,lim_hi=4)
+                pert_type = get_int(lim_lo=1,lim_hi=3)
+                call lvl_ud(-1)
                 
                 select case (pert_type)
-                    case (1,3)                                                  ! file with Fourier modes
+                    case (1,3)                                                  ! files
                         found = .false.
                         do while (.not.found)
                             ! user input
@@ -793,55 +891,113 @@ contains
                         end do
                         
                         call writo('Parsing "'//trim(HEL_pert_file_name)//'"')
+                        call lvl_ud(1)
                         
-                        if (pert_type.eq.1) then
+                        if (pert_type.eq.1) then                                ! Fourier modes in HELENA coordinates
                             ! get number of lines
-                            istat = 0
-                            tot_nr_pert = 0
-                            do while (istat.eq.0)
-                                ! read first character of data
-                                read(HEL_pert_i,*,IOSTAT=istat) loc_data_char
-                                if (istat.eq.0 .and. loc_data_char.ne.'#') then ! exclude comment lines
-                                    tot_nr_pert = tot_nr_pert + 1
-                                end if
+                            tot_nr_pert = count_lines(HEL_pert_i)
+                        else if (pert_type.eq.3) then                           ! 2-D map of perturbation
+                            ! get map
+                            ierr = skip_comment(HEL_pert_i,&
+                                &file_name=HEL_pert_file_name)
+                            CHCKERR('')
+                            read(HEL_pert_i,*) n_pert_map(1)                    ! nr. of points in R
+                            allocate(pert_map_R(n_pert_map(1)))
+                            do kd = 1,n_pert_map(1)
+                                read(HEL_pert_i,*) pert_map_R(kd)
                             end do
-                            rewind(HEL_pert_i)
-                            loc_data_char = '#'
-                        else
-                            ! set error message
-                            err_msg = 'Cannot read the file "'//&
-                                &trim(HEL_pert_file_name)//'"'
+                            ierr = skip_comment(HEL_pert_i,&
+                                &file_name=HEL_pert_file_name)
+                            CHCKERR('')
+                            read(HEL_pert_i,*) n_pert_map(2)                    ! nr. of points in R
+                            allocate(pert_map_Z(n_pert_map(2)))
+                            do kd = 1,n_pert_map(2)
+                                read(HEL_pert_i,*) pert_map_Z(kd)
+                            end do
+                            ierr = skip_comment(HEL_pert_i,&
+                                &file_name=HEL_pert_file_name)
+                            CHCKERR('')
+                            allocate(pert_map(n_pert_map(1),n_pert_map(2)))
+                            do kd = 1,n_pert_map(1)
+                                read(HEL_pert_i,*) pert_map(kd,:)
+                            end do
+                            allocate(R_plot(n_pert_map(1),n_pert_map(2),1))
+                            allocate(Z_plot(n_pert_map(1),n_pert_map(2),1))
+                            do kd = 1,n_pert_map(2)
+                                R_plot(:,kd,1) = pert_map_R
+                            end do
+                            do kd = 1,n_pert_map(1)
+                                Z_plot(kd,:,1) = pert_map_Z
+                            end do
+                            call plot_HDF5('pert_map','pert_map',&
+                                &reshape(pert_map,[n_pert_map,1]),&
+                                &x=R_plot,y=Z_plot,description=&
+                                &'perturbation map for '//&
+                                &trim(HEL_pert_file_name))
+                            deallocate(R_plot,Z_plot)
                             
-                            ! forward until 'MB'
-                            found = .false.
-                            do while (.not.found) 
-                                read(HEL_pert_i,*,IOSTAT=ierr) dummy_string
-                                if (trim(dummy_string).eq.'MB') then
-                                    found = .true.
-                                    tot_nr_pert = 0
-                                end if
+                            ! test
+                            if (minval(R_H_loc).lt.minval(pert_map_R) .or. &
+                                &maxval(R_H_loc).gt.maxval(pert_map_R) .or. &
+                                &minval(Z_H_loc).lt.minval(pert_map_Z) .or. &
+                                &maxval(Z_H_loc).gt.maxval(pert_map_Z)) then
+                                ierr = 1
+                                call writo('Are you sure you have specified &
+                                    &a normalization factor R_0?',alert=.true.)
+                                err_msg = 'R and Z are not contained in &
+                                    &perturbation map'
+                                CHCKERR(err_msg)
+                            end if
+                            
+                            ! get 2-D spline interpolation coefficients
+                            allocate(spline_coeff(n_pert_map(1),n_pert_map(2)))
+                            allocate(spline_knots_R(n_pert_map(1)+&
+                                &norm_disc_prec_eq))
+                            allocate(spline_knots_Z(n_pert_map(2)+&
+                                &norm_disc_prec_eq))
+                            allocate(pert_map_interp(n_b))
+                            call db2ink(pert_map_R,n_pert_map(1),&
+                                &pert_map_Z,n_pert_map(2),pert_map,&
+                                &norm_disc_prec_eq,norm_disc_prec_eq,&
+                                &0,spline_knots_R,spline_knots_Z,&
+                                &spline_coeff,ierr)
+                            err_msg = get_status_message(ierr)
+                            CHCKERR(err_msg)
+                            spline_init = 1
+                            
+                            ! get interpolated values
+                            do id = 1,n_b
+                                call db2val(BH_0(id,1),BH_0(id,2),0,0,&
+                                    &spline_knots_R,spline_knots_Z,&
+                                    &n_pert_map(1),n_pert_map(2),&
+                                    &norm_disc_prec_eq,norm_disc_prec_eq,&
+                                    &spline_coeff,pert_map_interp(id),ierr,&
+                                    &spline_init(1),spline_init(2),&
+                                    &spline_init(3))
+                                err_msg = get_status_message(ierr)
                                 CHCKERR(err_msg)
                             end do
+                            deallocate(spline_coeff)
+                            deallocate(spline_knots_R)
+                            deallocate(spline_knots_Z)
+                            call print_ex_2D('ripple','pert_map_interp',&
+                                &pert_map_interp,x=theta(:,2),draw=.false.)
+                            call draw_ex(['ripple'],'pert_map_interp',&
+                                &1,1,.false.)
                             
-                            ! count number of lines
-                            found = .false.
-                            do while (.not.found)
-                                read(HEL_pert_i,'(A)',IOSTAT=ierr) dummy_string
-                                if (trim(dummy_string).eq.'') then
-                                    found = .true.
-                                    write(*,*) ''
-                                else
-                                    tot_nr_pert = tot_nr_pert + 1
-                                end if
-                                err_msg = 'Cannot read the file "'//&
-                                    &trim(HEL_pert_file_name)//'"'
-                                CHCKERR(err_msg)
-                            end do
-                            do id = 1,tot_nr_pert+1
-                                backspace(HEL_pert_i)
-                            end do
+                            ! calculate NUFFT
+                            ierr = nufft(theta(:,2),pert_map_interp,&
+                                &pert_map_interp_F)                             ! HELENA pol. Fourier coefficients
+                            CHCKERR('')
+                            tot_nr_pert = size(pert_map_interp_F,1)*2           ! need both positive and negative n
+                            
+                            ! get toroidal mode number
+                            call writo('toiroidal period for 2-D map?')
+                            pert_map_n_loc = get_int(lim_lo=0)
                         end if
-                    case (2,4)                                                  ! interactively
+                        
+                        call lvl_ud(-1)
+                    case (2)                                                    ! interactively
                         ! user input
                         call writo('Prescribe interactively')
                         call writo('How many different combinations of &
@@ -849,50 +1005,26 @@ contains
                         tot_nr_pert = get_int(lim_lo=1)
                 end select
                 
-                ! ask for global multiplication factor
-                call writo('Globally multiply with some factor?')
-                call lvl_ud(1)
-                mult_fac = 0.01_dp
-                call writo('Current multiplication factor: '//&
-                    &trim(r2strt(mult_fac))//'m')
-                call lvl_ud(1)
-                call writo('minor radius: '//&
-                    &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
-                call writo('major radius: '//&
-                    &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
-                call lvl_ud(-1)
-                call lvl_ud(-1)
-                if (get_log(.false.)) mult_fac = get_real()
-                
                 ! set up n, m and delta  (use maximum possible size, possibly +1
                 ! if N=0 is not a perturbation, and limit afterwards)
                 allocate(n_pert(tot_nr_pert+1))
                 allocate(m_pert(tot_nr_pert+1,tot_nr_pert+1))
                 allocate(delta(tot_nr_pert+1,tot_nr_pert+1,2))
+                delta = 0._dp
                 allocate(nr_m(tot_nr_pert+1))
                 nr_n = 0
                 nr_m = 0
                 do jd = 1,tot_nr_pert
                     select case (pert_type)
                         case (1)                                                ! file with Fourier modes in HELENA coordinates
+                            ierr = skip_comment(HEL_pert_i,&
+                                &file_name=HEL_pert_file_name)
+                            CHCKERR('')
+                            read(HEL_pert_i,*,IOSTAT=ierr) n_loc, m_loc, &
+                                &delta_loc
                             err_msg = 'Could not read file '//&
                                 &trim(HEL_pert_file_name)
-                            do while (loc_data_char.eq.'#')
-                                ! read first character of data
-                                read(HEL_pert_i,*,IOSTAT=ierr) &
-                                    &loc_data_char
-                                CHCKERR(err_msg)
-                                if (loc_data_char.ne.'#') then                  ! exclude comment lines
-                                    backspace(UNIT=HEL_pert_i)                  ! go back one line
-                                    read(HEL_pert_i,*,IOSTAT=ierr) &
-                                        &n_loc, m_loc, delta_loc
-                                    CHCKERR(err_msg)
-                                    delta_loc = delta_loc*mult_fac
-                                end if
-                            end do
-                            loc_data_char = '#'
-                            
-                            close(HEL_pert_i)
+                            CHCKERR(err_msg)
                         case (2)                                                ! same as 1 but interactively
                             call writo('For mode '//trim(i2str(jd))//'/'//&
                                 &trim(i2str(tot_nr_pert))//':')
@@ -912,21 +1044,12 @@ contains
                                 &trim(i2str(n_loc))//' zeta)?')
                             delta_loc(2) = get_real()
                             
-                            delta_loc = delta_loc*mult_fac
-                            
                             call lvl_ud(-1)
                         case (3)                                                ! file with Fourier modes in general coordinates
-                            ! user input
-                            ierr = 1
-                            CHCKERR('NOT YET IMPLEMENTED')
-                        case (4)                                                ! same as 3 but interactively
-                            m_loc = jd/2
-                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-                            write(*,*) '!!!! THIS IS NOT CORRECT YET !!!!!!!!!!'
-                            write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-                            if (m_loc.ne.(jd-1)/2) m_loc = - m_loc
-                            delta_loc = mult_fac/prop_B_tor_F_loc(jd/2+1,:)
-                            if (m_loc.ne.0) delta_loc = delta_loc*0.5_dp        ! modes with nonzero m are counted double
+                            m_loc = (jd-1)/2                                    ! so the output is 0,0,1,1,2,2,3,3,4,4,...
+                            delta_loc = pert_map_interp_F(m_loc+1,:)*0.5_dp     ! both + and - helicity, so need to divide amplitude by 2
+                            n_loc = pert_map_n_loc
+                            if (mod(jd,2).eq.0) n_loc = -n_loc
                     end select
                     
                     ! has N = 0 been prescribed?
@@ -952,53 +1075,129 @@ contains
                     m_pert(n_id,nr_m(n_id)) = m_loc                             ! with value m_loc
                     delta(n_id,nr_m(n_id),:) = delta_loc                        ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
+                
+                if (pert_type.eq.1 .or. pert_type.eq.3) close(HEL_pert_i)
+                
+                ! ask for global rescaling
+                ! Note: This is only valid if R(theta=0) is not the maximum
+                max_pert_on_axis = sum(delta(:,:,1))
+                call writo('Maximum perturbation on axis: '//&
+                    &trim(r2str(max_pert_on_axis)))
+                call writo('Rescale to some value?')
+                call lvl_ud(1)
+                call writo('minor radius: '//&
+                    &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
+                call writo('major radius: '//&
+                    &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
+                call lvl_ud(-1)
+                mult_fac = max_pert_on_axis
+                if (get_log(.false.)) mult_fac = get_real()
+                delta = delta * mult_fac / max_pert_on_axis
             else
                 nr_n = 0
             end if
             
-            ! plot properties
-            plot_dim = [100,100]
-            plot_lims(:,1) = [0.0_dp,2.0_dp]
-            plot_lims(:,2) = [0.5_dp,2.0_dp]
-            call writo('Change plot properties from defaults?')
-            call lvl_ud(1)
-            do id = 1,2
-                call writo(trim(i2str(plot_dim(id)))//' '//flux_name(id)//&
-                    &' points on range '//trim(r2strt(plot_lims(1,id)))//&
-                    &' pi .. '//trim(r2strt(plot_lims(2,id)))//' pi')
-            end do
-            call lvl_ud(-1)
-            if (get_log(.false.)) then
-                call lvl_ud(1)
-                do id = 1,2
-                    call writo('number of '//flux_name(id)//' points?')
-                    plot_dim(id) = get_int(lim_lo=2)
-                    call writo('lower limit of '//flux_name(id)//&
-                        &' range [pi]?')
-                    plot_lims(1,id) = get_real()
-                    call writo('upper limit of '//flux_name(id)//&
-                        &' range [pi]?')
-                    plot_lims(2,id) = get_real()
-                end do
-                call lvl_ud(-1)
-            end if
-            
             ! possibly include N = 0 for equilibrium if not already done so
+            ! Note: after this routine, if not perturbing:
+            !   zero_N_pert = .false.
+            !   nr_n = 1
+            !   jd_min = 2
+            ! so this has no influence in any of the following routines.
+            ! If perturbing without N = 0:
+            !   zero_N_pert = .false.
+            !   nr_n increased by 1
+            !   jd_min = 2
+            ! so a perturbation is added to  the list with M=N=delta=0, but will
+            ! be skipped after sorting them ascendingly.
+            ! If perturbing with N = 0:
+            !   zero_N_pert = .true.
+            !   nr_n stays the same
+            !   jd_min = 1
+            ! so nothing needs to be done.
             if (.not.zero_N_pert) then                                          ! N = 0 was not already included
-                jd_min = 2
-                nr_n = nr_n + 1
-                if (pert_eq) then
-                    n_pert(nr_n) = 0
+                jd_min = 2                                                      ! start jd from 2 (i.e. N = 1)
+                nr_n = nr_n + 1                                                 ! so add another n
+                if (pert_eq) then                                               ! for perturbed equilibrium
+                    n_pert(nr_n) = 0                                            ! set N = 0
                     nr_m(nr_n) = 1
-                    m_pert(nr_n,1) = 0
-                    delta(nr_n,1,:) = 0
+                    m_pert(nr_n,1) = 0                                          ! and M = 0
+                    delta(nr_n,1,:) = 0                                         ! and delta = 0
                 end if
             else
-                jd_min = 1
+                jd_min = 1                                                      ! start jd from 1 (i.e. N = 0)
             end if
+            
+            ! user output
+            call writo('Set up axisymmetric data')
+            call lvl_ud(1)
+            
+            ! calculate output for unperturbed R and Z
+            plot_name(1) = 'R_F'
+            plot_name(2) = 'Z_F'
+            do kd = 1,2
+                ! user output
+                call writo('analyzing '//trim(plot_name(kd)))
+                call lvl_ud(1)
+                
+                ! NUFFT
+                ierr = nufft(theta(:,1),BH_0(:,kd),B_F_loc,plot_name(kd))       ! geometrical pol. Fourier coefficients
+                CHCKERR('')
+                if (kd.eq.1) then
+                    allocate(B_F(size(B_F_loc,1),-(nr_n-1):(nr_n-1),2,2))       ! (pol modes, tor modes, cos/sin (m theta), R/Z)
+                    B_F = 0._dp
+                end if
+                B_F(:,0,:,kd) = B_F_loc
+            
+#if ldebug
+                if (debug_create_VMEC_input) then
+                    allocate(BH_0_ALT(size(BH_0,1),size(B_F_loc,1)))
+                    
+                    call writo('Comparing R or Z with reconstruction &
+                        &through Fourier coefficients')
+                    BH_0_ALT(:,1) = B_F_loc(1,1)
+                    do id = 1,size(B_F_loc,1)-1
+                        BH_0_ALT(:,id+1) = BH_0_ALT(:,id) + &
+                            &B_F_loc(id+1,1)*cos(id*theta(:,1)) + &
+                            &B_F_loc(id+1,2)*sin(id*theta(:,1))
+                    end do
+                    call print_ex_2D(['orig BH','alt BH '],'',&
+                        &reshape([BH_0(:,kd),BH_0_ALT(:,size(B_F_loc,1))],&
+                        &[size(BH_0,1),2]),x=&
+                        &reshape([theta(:,1)],[size(BH_0,1),1]))
+                    
+                    call writo('Plotting Fourier approximation')
+                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series',BH_0_ALT,&
+                        &x=reshape([theta(:,1)],[size(BH_0,1),1]))
+                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series',size(B_F_loc,1),1,.false.)
+                    
+                    call writo('Making animation')
+                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series_anim',BH_0_ALT,&
+                        &x=reshape([theta(:,1)],[size(BH_0,1),1]))
+                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
+                        &'_F_series_anim',size(B_F_loc,1),1,.false.,&
+                        &is_animated=.true.)
+                    
+                    deallocate(BH_0_ALT)
+                end if
+#endif
+                
+                call lvl_ud(-1)
+            end do
+            
+            ! plot axisymetric boundary in 3D
+            call plot_boundary(B_F(:,0:0,:,:),[0],'last_fs',plot_dim,plot_lims)
+            
+            call lvl_ud(-1)
             
             ! sort and output
             if (pert_eq) then
+                ! user output
+                call writo('Set up perturbed data')
+                call lvl_ud(1)
+                
                 ! sort
                 allocate(m_pert_copy(size(m_pert,1),size(m_pert,2)))
                 allocate(delta_copy(size(delta,1),size(delta,2),size(delta,3)))
@@ -1038,123 +1237,7 @@ contains
                     end do
                 end do
                 call lvl_ud(-1)
-            end if
-            
-            ! user output
-            call writo('Set up axisymmetric data')
-            call lvl_ud(1)
-            
-            ! Fourier transform of boundary R and Z
-            if (ias.eq.0) then                                                  ! symmetric (so nchi is odd)
-                n_B = nchi*2-2                                                  ! -2 because of overlapping points at 0, pi
-            else                                                                ! asymmetric (so nchi is aumented by one)
-                n_B  = nchi-1                                                   ! -1 because of overlapping points at 0
-            end if
-            allocate(BH_0(n_B,2))                                               ! HELENA coords (no overlap at 0)
-            allocate(theta(n_B,2))                                              ! geometrical poloidal angle (overlap at 0)
-            if (ias.eq.0) then                                                  ! symmetric
-                BH_0(1:nchi,1) = R_H_loc(:,n_r_eq)
-                BH_0(1:nchi,2) = Z_H_loc(:,n_r_eq)
-                theta(1:nchi,2) = chi_H
-                do kd = 1,nchi-2
-                    BH_0(nchi+kd,1) = R_H_loc(nchi-kd,n_r_eq)
-                    BH_0(nchi+kd,2) = -Z_H_loc(nchi-kd,n_r_eq)
-                    theta(nchi+kd,2) = 2*pi-chi_H(nchi-kd)
-                end do
-            else
-                BH_0(:,1) = R_H_loc(1:n_B,n_r_eq)
-                BH_0(:,2) = Z_H_loc(1:n_B,n_r_eq)
-                theta(:,2) = chi_H(1:n_B)
-            end if
-            RZ_B_0(1) = sum(R_H_loc(:,1))/size(R_H_loc,1)
-            RZ_B_0(2) = sum(Z_H_loc(:,1))/size(Z_H_loc,1)
-            theta(:,1) = atan2(BH_0(:,2)-RZ_B_0(2),BH_0(:,1)-RZ_B_0(1))
-            
-            !!! TEMPORARILY
-            !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
-            !!theta(:,1) = theta(:,2)
-            !!BH_0(:,1) = 1.5_dp + 0.5*cos(theta(:,1))
-            !!BH_0(:,2) = 0.5*sin(theta(:,1))
-            
-            ! plot angles
-            plot_name(1) = 'chi'
-            plot_title = ['theta_G','chi_H  ']
-            call print_ex_2D(plot_title(1:2),plot_name(1),theta/pi,&
-                &x=reshape([theta(:,2)],[n_B,1])/pi,&
-                &draw=.false.)
-            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
-            
-            ! plot R and Z
-            plot_name(1) = 'RZ'
-            plot_title = ['R_H','Z_H']
-            call print_ex_2D(plot_title(1:2),plot_name(1),BH_0,&
-                &x=reshape([theta(:,1)],[n_B,1])/pi,&
-                &draw=.false.)
-            call draw_ex(plot_title(1:2),plot_name(1),2,1,.false.)
-            
-            ! calculate output for unperturbed R and Z
-            plot_name(1) = 'R_F'
-            plot_name(2) = 'Z_F'
-            do kd = 1,2
-                ! user output
-                call writo('analyzing '//trim(plot_name(kd)))
-                call lvl_ud(1)
                 
-                ! NUFFT
-                ierr = nufft(theta(:,1),BH_0(:,kd),B_F_loc,plot_name(kd))       ! geometrical pol. Fourier coefficients
-                CHCKERR('')
-                if (kd.eq.1) then
-                    allocate(B_F(size(B_F_loc,1),-(nr_n-1):(nr_n-1),2,2))       ! (pol modes, tor modes, cos/sin (m theta), R/Z)
-                    B_F = 0._dp
-                end if
-                B_F(:,0,:,kd) = B_F_loc
-            
-#if ldebug
-                if (debug_create_VMEC_input) then
-                    allocate(BH_0_ALT(size(BH_0,1),size(B_F_loc,1)))
-                    
-                    call writo('Comparing R or Z with reconstruction &
-                        &through Fourier coefficients')
-                    BH_0_ALT(:,1) = B_F_loc(1,1)
-                    do id = 1,size(B_F_loc,1)-1
-                        BH_0_ALT(:,id+1) = BH_0_ALT(:,id) + &
-                            &B_F_loc(id+1,1)*cos(id*theta(:,2)) + &
-                            &B_F_loc(id+1,2)*sin(id*theta(:,2))
-                    end do
-                    call print_ex_2D(['orig BH','alt BH '],'',&
-                        &reshape([BH_0(:,kd),BH_0_ALT(:,size(B_F_loc,1))],&
-                        &[size(BH_0,1),2]),x=&
-                        &reshape([theta(:,2)],[size(BH_0,1),1]))
-                    
-                    call writo('Plotting Fourier approximation')
-                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                        &'_F_series',BH_0_ALT,&
-                        &x=reshape([theta(:,2)],[size(BH_0,1),1]))
-                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                        &'_F_series',size(B_F_loc,1),1,.false.)
-                    
-                    call writo('Making animation')
-                    call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                        &'_F_series_anim',BH_0_ALT,&
-                        &x=reshape([theta(:,2)],[size(BH_0,1),1]))
-                    call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                        &'_F_series_anim',size(B_F_loc,1),1,.false.,&
-                        &is_animated=.true.)
-                    
-                    deallocate(BH_0_ALT)
-                end if
-#endif
-                
-                call lvl_ud(-1)
-            end do
-            
-            ! plot axisymetric boundary in 3D
-            call plot_boundary(B_F(:,0:0,:,:),[0],'last_fs',plot_dim,plot_lims)
-            
-            call lvl_ud(-1)
-            
-            ! user output
-            if (pert_eq) then
                 ! Calculate the  normal unit vector on  the HELENA (equidistant)
                 ! poloidal grid.
                 call writo('Modify axisymmetric equilibrium')
@@ -1224,8 +1307,8 @@ contains
             !   delta_s [sin(M theta)cos(N zeta) - cos(M theta) sin(N zeta) ],
             ! where theta is in Helena  straight-field line coordinates and zeta
             ! corresponds to the geometrical toroidal angle.
-            ! The terms  dependent on theta will  shift up and down  the Fourier
-            ! components of the axisymmetric R and Z, but the terms dependent on
+            ! The terms  depeding on theta  will shift  up and down  the Fourier
+            ! components of the axisymmetric R and  Z, but the terms depeding on
             ! zeta will not.
             ! The final output should be on the geometrical poloidal grid, so to
             ! calculate the Fourier components of the  perturbed R and Z on this
@@ -1260,15 +1343,18 @@ contains
                 BH_pert = 0._dp
                 do kd = 1,nr_m(jd)
                     ! user output
-                    call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
-                        &' cos('//trim(i2str(m_pert(jd,kd)))//' theta) + '//&
-                        &trim(r2strt(delta(jd,kd,2)))//&
-                        &' sin('//trim(i2str(m_pert(jd,kd)))//&
-                        &' theta) contributes')
+                    !!call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
+                        !!&' cos('//trim(i2str(m_pert(jd,kd)))//' theta) + '//&
+                        !!&trim(r2strt(delta(jd,kd,2)))//&
+                        !!&' sin('//trim(i2str(m_pert(jd,kd)))//&
+                        !!&' theta) contributes')
                     do id = 1,n_B
-                        BH_pert(id,:) = BH_pert(id,:) + u_norm(id,:)*(&
+                        BH_pert_loc = u_norm(id,:)*(&
                             &delta(jd,kd,1)*cos(m_pert(jd,kd)*theta(id,2)) + &
                             &delta(jd,kd,2)*sin(m_pert(jd,kd)*theta(id,2)))
+                        if (pert_style.eq.2) BH_pert_loc = BH_pert_loc * &
+                            &prop_B_tor_interp(id)                              ! translate from B_tor perturbation to position perturbation
+                        BH_pert(id,:) = BH_pert(id,:) + BH_pert_loc
                     end do
                 end do
                 
@@ -1281,7 +1367,7 @@ contains
                         !!!&x=theta(:,1))
                     ! NUFFT
                     ierr = nufft(theta(:,1),BH_pert(:,kd),B_F_loc,&
-                        &plot_name(kd))
+                        &plot_name(kd))                                         ! geometrical pol. Fourier coefficients
                     CHCKERR('')
                     B_F_pert(:,:,kd,1) = B_F_loc
                 end do
@@ -1298,15 +1384,18 @@ contains
                 BH_pert = 0._dp
                 do kd = 1,nr_m(jd)
                     ! user output
-                    call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
-                        &' sin('//trim(i2str(m_pert(jd,kd)))//' theta) - '//&
-                        &trim(r2strt(delta(jd,kd,2)))//&
-                        &' cos('//trim(i2str(m_pert(jd,kd)))//&
-                        &' theta) contributes')
+                    !!call writo('term '//trim(r2strt(delta(jd,kd,1)))//&
+                        !!&' sin('//trim(i2str(m_pert(jd,kd)))//' theta) - '//&
+                        !!&trim(r2strt(delta(jd,kd,2)))//&
+                        !!&' cos('//trim(i2str(m_pert(jd,kd)))//&
+                        !!&' theta) contributes')
                     do id = 1,n_B
-                        BH_pert(id,:) = BH_pert(id,:) + u_norm(id,:)*(&
+                        BH_pert_loc = u_norm(id,:)*(&
                             &delta(jd,kd,1)*sin(m_pert(jd,kd)*theta(id,2)) - &
                             &delta(jd,kd,2)*cos(m_pert(jd,kd)*theta(id,2)))
+                        if (pert_style.eq.2) BH_pert_loc = BH_pert_loc * &
+                            &prop_B_tor_interp(id)                              ! translate from B_tor perturbation to position perturbation
+                        BH_pert(id,:) = BH_pert(id,:) + BH_pert_loc
                     end do
                 end do
                 
@@ -1344,6 +1433,7 @@ contains
                     &'cos(k theta +/- '//trim(i2str(n_pert(jd)))//&
                     &' zeta) and sin(k theta +/- '//&
                     &trim(i2str(n_pert(jd)))//' zeta)')
+                call lvl_ud(-1)
                 
                 RZ: do kd = 1,2
                     ! terms with N
@@ -1372,8 +1462,32 @@ contains
             end do pert_N
             
             ! plot boundary in 3D
-            if (pert_eq) call plot_boundary(&
-                &B_F,n_pert(1:nr_n),'last_fs_pert',plot_dim,plot_lims)
+            if (pert_eq) then
+                call plot_boundary(B_F,n_pert(1:nr_n),'last_fs_pert',plot_dim,&
+                    &plot_lims)
+                call lvl_ud(-1)
+            end if
+            
+            ! user output
+            file_name = "input."//trim(eq_name)
+            if (pert_eq) then
+                select case (pert_type)
+                    case (1,2)                                                  ! Fourier modes in HELENA coordinates
+                        do jd = jd_min,nr_n
+                            file_name = trim(file_name)//'_N'//&
+                                &trim(i2str(n_pert(jd)))
+                            do id = 1,nr_m(jd)
+                                file_name = trim(file_name)//'M'//&
+                                    &trim(i2str(m_pert(jd,id)))
+                            end do
+                        end do
+                    case (3)                                                    ! 2-D map
+                        file_name = trim(file_name)//'_2DMAP'
+                end select
+            end if
+            call writo('Generate VMEC input file "'//trim(file_name)//'"')
+            call writo('This can be used for VMEC porting')
+            call lvl_ud(1)
             
             ! set up nfp
             if (pert_eq) then
@@ -1402,10 +1516,10 @@ contains
                 &.lt. m_tol) &                                                  ! R_c << Z_s
                 &stel_sym = .true.
             if (stel_sym) then
-                call writo("The equilibrium configuration contains &
-                    &stellarator symmetry")
+                call writo("The equilibrium configuration has stellarator &
+                    &symmetry")
             else
-                call writo("The equilibrium configuration does not contain &
+                call writo("The equilibrium configuration does not have &
                     &stellarator symmetry")
             end if
             
@@ -1430,35 +1544,6 @@ contains
                 max_n_B_output = get_int(lim_lo=1)
             end if
             
-            ! user output
-            if (pert_eq) then
-                call lvl_ud(-1)
-            end if
-            
-            ! user output
-            file_name = "input."//trim(eq_name)
-            if (pert_eq) then
-                select case (pert_type)
-                    case (1,2)                                                  ! Fourier modes in HELENA coordinates
-                        do jd = jd_min,nr_n
-                            file_name = trim(file_name)//'_N'//&
-                                &trim(i2str(n_pert(jd)))
-                            do id = 1,nr_m(jd)
-                                file_name = trim(file_name)//'M'//&
-                                    &trim(i2str(m_pert(jd,id)))
-                            end do
-                        end do
-                    case (3,4)                                                  ! Fourier modes in general coordinates
-                        ! user input
-                        ierr = 1
-                        CHCKERR('NOT YET IMPLEMENTED')
-                        file_name = trim(file_name)//'_MAP'
-                end select
-            end if
-            call writo('Generate VMEC input file "'//trim(file_name)//'"')
-            call writo('This can be used for VMEC porting')
-            call lvl_ud(1)
-            
             ! interpolate for VMEC output
             s_V = [((kd-1._dp)/(size(s_V)-1),kd=1,size(s_V))]
             ierr = setup_interp_data(&
@@ -1480,7 +1565,7 @@ contains
             write(HEL_export_i,"(A)") "!----- General Parameters -----"
             write(HEL_export_i,"(A)") "&INDATA"
             write(HEL_export_i,"(A)") "MGRID_FILE = 'NONE',"
-            write(HEL_export_i,"(A)") "PRECON_TYPE = 'GMRES'"
+            write(HEL_export_i,"(A)") "PRECON_TYPE = 'NONE'"
             write(HEL_export_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
             write(HEL_export_i,"(A)") "DELT = 1.00E+00,"
             write(HEL_export_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, &
@@ -1564,6 +1649,8 @@ contains
             
             ! user output
             call lvl_ud(-1)
+            
+            call writo('Done')
             
             ! wait
             call pause_prog
@@ -2971,6 +3058,7 @@ contains
         use num_utilities, only: c
         use eq_vars, only: vac_perm
         use splines, only: spline3
+        use num_vars, only: norm_disc_prec_eq
 #if ldebug
         use num_vars, only: use_pol_flux_F
         use num_utilities, only: calc_int
@@ -3103,8 +3191,9 @@ contains
             ! get derived sigma
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
-                    istat = spline3(ang_par_F(:,jd,kd),eq_2%sigma(:,jd,kd),&
-                        &ang_par_F(:,jd,kd),dynew=D3sigma(:,jd,kd))
+                    istat = spline3(norm_disc_prec_eq,ang_par_F(:,jd,kd),&
+                        &eq_2%sigma(:,jd,kd),ang_par_F(:,jd,kd),&
+                        &dynew=D3sigma(:,jd,kd))
                     CHCKSTT
                 end do
             end do
@@ -3873,12 +3962,13 @@ contains
     integer function delta_r_plot(grid_eq,eq_1,eq_2,XYZ,rich_lvl) &
         &result(ierr)
         
-        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid
+        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid, &
+            &calc_arc_angle
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, &
             &use_normalization, rank, use_pol_flux_F, ex_plot_style, n_procs, &
-            &prop_B_tor_i, min_theta_plot
-        use eq_vars, only: B_0, R_0, psi_0, max_flux_F
+            &prop_B_tor_i, min_theta_plot, max_theta_plot, max_r_plot
+        use eq_vars, only: B_0, R_0, psi_0
         use num_utilities, only: c, calc_int
         use MPI_utilities, only: get_ser_var
         
@@ -3895,7 +3985,6 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
-        real(dp) :: flux_code                                                   ! positive for poloidal flux, negative for toroidal
         real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: delta_B(:,:,:,:)                               ! delta_B/B
@@ -3905,17 +3994,13 @@ contains
         real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
         real(dp), allocatable :: rad(:,:,:)                                     ! minor radius
         real(dp), allocatable :: prev_rad(:)                                    ! rad of previous ranks
-        real(dp), allocatable :: arclen(:,:,:)                                  ! length along the arc for the proportionality factor
-        real(dp), allocatable :: arclen_tot(:,:,:)                              ! arclen in total grid
+        real(dp), allocatable :: arc(:,:,:)                                     ! angle calculated from normalized arclength
         real(dp), allocatable :: u_norm_com(:,:,:,:,:)                          ! covariant and contravariant components of u_norm (dim1,dim2,dim3,3,2)
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
         logical :: new_file_found                                               ! name for new file found
-        character(len=8) :: flux_name                                           ! either poloidal or toroidal
         character(len=25) :: base_name                                          ! base name
         character(len=25) :: plot_names(2)                                      ! plot names
         character(len=max_str_ln) :: prop_B_tor_file_name                       ! name of B_tor proportionality file
-        character(len=max_str_ln) :: format_head                                ! header format
-        character(len=max_str_ln) :: format_val                                 ! format
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
         ! initialize ierr
@@ -4069,9 +4154,9 @@ contains
         if (ex_plot_style.eq.2) r_lim_2D(1) = &
             &max(r_lim_2D(1),r_lim_2D(2)-127+1)                                 ! Bokeh can only handle 255/2 input arguments
         if (rank.eq.0) then
-            allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3),2))
             allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
         end if
+        allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3),2))
         if (use_pol_flux_F) then
             ang_par_F => grid_trim%theta_F
         else
@@ -4080,13 +4165,16 @@ contains
         do id = 1,grid_trim%n(1)
             do jd = 1,2
                 ierr = get_ser_var(delta_r(id,1,norm_id(1):norm_id(2))/&
-                    &delta_B(id,1,norm_id(1):norm_id(2),jd),var_tot_loc)
+                    &delta_B(id,1,norm_id(1):norm_id(2),jd),var_tot_loc,&
+                    &scatter=.true.)
                 CHCKERR('')
-                if (rank.eq.0) prop_B_tor_tot(id,:,jd) = var_tot_loc
+                prop_B_tor_tot(id,:,jd) = var_tot_loc
             end do
+            deallocate(var_tot_loc)
             ierr = get_ser_var(ang_par_F(id,1,:),var_tot_loc)
             CHCKERR('')
             if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
+            deallocate(var_tot_loc)
         end do
         if (rank.eq.0) then
             do jd = 1,2
@@ -4100,108 +4188,67 @@ contains
         
         call lvl_ud(-1)
         
-        call writo('Output to file as function of fractional arc length')
-        call lvl_ud(1)
-        
-        ! calculate arclength: int dtheta |e_theta|
-        allocate(arclen(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        do kd = 1,grid_eq%loc_n_r
-            do jd = 1,grid_eq%n(2)
-                if (use_pol_flux_F) then
-                    ! e_arc = e_theta - q e_alpha
-                    ierr = calc_int((&
-                        &eq_2%g_FD(:,jd,kd,c([3,3],.true.),0,0,0) - &
-                        &eq_2%g_FD(:,jd,kd,c([1,3],.true.),0,0,0) * &
-                        &2*eq_1%q_saf_FD(kd,0) + &
-                        &eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0) * &
-                        &eq_1%q_saf_FD(kd,0)**2)**(0.5),&
-                        &grid_eq%theta_F(:,jd,kd),arclen(:,jd,kd))
-                    CHCKERR('')
-                else
-                    ! e_arc = -e_alpha
-                    ierr = calc_int(&
-                        &(-eq_2%g_FD(:,jd,kd,c([1,1],.true.),0,0,0))**(0.5),&
-                        &grid_eq%theta_F(:,jd,kd),arclen(:,jd,kd))
-                    CHCKERR('')
-                end if
-                if (use_normalization) arclen(:,jd,kd) = arclen(:,jd,kd) * R_0  ! not really necessary as we take fractional arc length
-                arclen(:,jd,kd) = arclen(:,jd,kd) / arclen(grid_trim%n(1),jd,kd)
-            end do
-        end do
-        if (rank.eq.0) then
-            allocate(arclen_tot(grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)))
-        end if
-        do id = 1,grid_trim%n(1)
-            do jd = 1,grid_trim%n(2)
-                ierr = get_ser_var(arclen(id,jd,norm_id(1):norm_id(2)),&
-                    &var_tot_loc)
-                CHCKERR('')
-                if (rank.eq.0) arclen_tot(id,jd,:) = var_tot_loc
-            end do
-        end do
-        
-        ! only master outputs to file
-        if (rank.eq.0) then
-            ! find new file name
-            new_file_found = .false.
-            prop_B_tor_file_name = 'prop_B_tor'
-            kd = 1
-            do while (.not.new_file_found)
-                open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
-                    &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
-                if (ierr.eq.0) then
-                    kd = kd + 1
-                else
-                    prop_B_tor_file_name = trim(prop_B_tor_file_name)//'_'//&
-                        &trim(i2str(kd))//'.dat'
-                    new_file_found = .true.
-                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
-                        &IOSTAT=ierr,STATUS='new')
-                    CHCKERR('Failed to open file')
-                end if
-            end do
-            format_head = '("# ",'//trim(i2str(size(prop_B_tor_tot,1)+1))//&
-                &'(A23," "))'
-            format_val = '("  ",'//trim(i2str(size(prop_B_tor_tot,1)+1))//&
-                &'(ES23.16," "))'
+        if (min_theta_plot.le.0._dp .and. max_theta_plot.ge.2._dp &
+            &.and. max_r_plot.ge.1._dp) then
+            call writo('Output to file as function of fractional arc length &
+                &angle')
+            call lvl_ud(1)
             
-            ! user output
-            call writo('Save toroidal field proportionality factor in file "'//&
-                &trim(prop_B_tor_file_name)//'"')
+            ! calculate arclength angle
+            ierr = calc_arc_angle(grid_eq,eq_1,eq_2,arc)
+            CHCKERR('')
+            !call plot_HDF5('arc','arc',arc(:,:,norm_id(1):norm_id(2)),&
+                !&tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
+                !&loc_offset=[0,0,grid_trim%i_min-1],&
+                !&X=XYZ(:,:,norm_id(1):norm_id(2),1),&
+                !&Y=XYZ(:,:,norm_id(1):norm_id(2),2),&
+                !&Z=XYZ(:,:,norm_id(1):norm_id(2),3),&
+                !&cont_plot=eq_job_nr.gt.1)
             
-            ! write to output file
-            if (use_normalization) prop_B_tor_tot = prop_B_tor_tot / R_0
-            if (use_pol_flux_F) then
-                flux_name = 'poloidal'
-                flux_code = 1._dp
-            else
-                flux_name = 'toroidal'
-                flux_code = -1._dp
+            ! only last rank outputs to file (it has the last normal position)
+            if (rank.eq.n_procs-1) then
+                ! find new file name
+                new_file_found = .false.
+                prop_B_tor_file_name = 'prop_B_tor'
+                kd = 1
+                do while (.not.new_file_found)
+                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
+                        &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
+                    if (ierr.eq.0) then
+                        kd = kd + 1
+                    else
+                        prop_B_tor_file_name = trim(prop_B_tor_file_name)//&
+                            &'_'//trim(i2str(kd))//'.dat'
+                        new_file_found = .true.
+                        open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
+                            &IOSTAT=ierr,STATUS='new')
+                        CHCKERR('Failed to open file')
+                    end if
+                end do
+                
+                ! user output
+                call writo('Save toroidal field proportionality factor in &
+                    &file "'//trim(prop_B_tor_file_name)//'"',persistent=.true.)
+                
+                ! write to output file
+                if (use_normalization) prop_B_tor_tot = prop_B_tor_tot / R_0
+                write(prop_B_tor_i,'(A)') '# Proportionality factor to be &
+                    &multiplied by deltaB/B in order to get delta_r/R_0 &
+                    &necessary'
+                write(prop_B_tor_i,'("# ",2(A23," "))') &
+                    &'arc angle [ ]', 'prop. factor [ ]'
+                do id = 1,grid_trim%n(1)
+                    write(prop_B_tor_i,'("  ",2(ES23.16," "))') &
+                        &0.5*sum(arc(id,:,grid_eq%loc_n_r)), &
+                        &0.5*sum(prop_B_tor_tot(id,grid_trim%n(3),:))
+                end do
+                
+                ! close
+                close(prop_B_tor_i)
             end if
-            write(prop_B_tor_i,'(A)') '# Proportionality factor to be &
-                &multiplied by deltaB/B in order to get delta_r/R_0 necessary'
-            write(prop_B_tor_i,trim(format_head)) 'n_pol', 'n_r', &
-                &'ang_pol_start'
-            write(prop_B_tor_i,trim(format_val)) 1._dp*grid_trim%n(1), &
-                &1._dp*grid_trim%n(3), min_theta_plot*pi, flux_code
-            write(prop_B_tor_i,trim(format_head)) trim(flux_name)//' s', &
-                &'poloidal angle'
-            write(prop_B_tor_i,trim(format_head)) trim(flux_name)//' s', &
-                &'proportionality factor'
-            do kd = 1,grid_trim%n(3)
-                write(prop_B_tor_i,trim(format_val)) &
-                    &grid_trim%r_F(kd)*2*pi/max_flux_F, &
-                    &0.5*sum(arclen_tot(:,:,kd),2)
-                write(prop_B_tor_i,trim(format_val)) &
-                    &grid_trim%r_F(kd)*2*pi/max_flux_F, &
-                    &0.5*sum(prop_B_tor_tot(:,kd,:),2)
-            end do
             
-            ! close
-            close(prop_B_tor_i)
+            call lvl_ud(-1)
         end if
-        
-        call lvl_ud(-1)
         
         ! clean up
         call grid_trim%dealloc()
@@ -5672,7 +5719,7 @@ contains
         use num_utilities, only: c
         use grid_utilities, only: trim_grid
         use eq_vars, only: vac_perm
-        use num_vars, only: eq_style
+        use num_vars, only: eq_style, norm_disc_prec_eq
         use HELENA_vars, only: RBphi_H, h_H_11, h_H_12
         use splines, only: spline3
         
@@ -5797,7 +5844,7 @@ contains
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = spline3(grid_trim%loc_r_E,&
+                    ierr = spline3(norm_disc_prec_eq,grid_trim%loc_r_E,&
                         &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &RBphi_H(norm_id_f(1):norm_id_f(2))+&
                         &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
@@ -5831,7 +5878,7 @@ contains
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
-                    ierr = spline3(grid_eq%theta_E(:,jd,kd),&
+                    ierr = spline3(norm_disc_prec_eq,grid_eq%theta_E(:,jd,kd),&
                         &h_H_12(:,kd+grid_eq%i_min-1),grid_eq%theta_E(:,jd,kd),&
                         &dynew=res(:,jd,kd-norm_id(1)+1,2))
                     CHCKERR('')

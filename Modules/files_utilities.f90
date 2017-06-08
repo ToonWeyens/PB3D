@@ -9,7 +9,7 @@ module files_utilities
     implicit none
     private
     public nextunit, get_file_info, get_full_PB3D_name, delete_file, &
-        &skip_comment
+        &skip_comment, count_lines
 
 contains
     ! Search for available  new unit where lun_min and lun_max  define the range
@@ -42,12 +42,12 @@ contains
     end function nextunit
     
     ! Skips comment.
-    integer function skip_comment(unit,name) result(ierr)
+    integer function skip_comment(file_i,file_name) result(ierr)
         character(*), parameter :: rout_name = 'skip_comment'
         
         ! input / output
-        integer, intent(in) :: unit                                             ! file identifier
-        character(len=*), intent(in), optional :: name                          ! file name
+        integer, intent(in) :: file_i                                           ! file identifier
+        character(len=*), intent(in), optional :: file_name                     ! file name
         
         ! local variables
         character(len=1) :: loc_data_char                                       ! first data character
@@ -58,15 +58,15 @@ contains
         
         loc_data_char = '#'
         do while (loc_data_char.eq.'#')
-            read(unit,*,IOSTAT=ierr) loc_data_char
-            if (present(name)) then
-                err_msg = 'failed to read "'//trim(name)//'"'
+            read(file_i,*,IOSTAT=ierr) loc_data_char
+            if (present(file_name)) then
+                err_msg = 'failed to read "'//trim(file_name)//'"'
             else
                 err_msg = 'failed to read file'
             end if
             CHCKERR(err_msg)
         end do
-        backspace(unit)
+        backspace(file_i)
     end function skip_comment
     
     ! Gets file information
@@ -149,4 +149,28 @@ contains
         close(UNIT=file_i,STATUS='delete',IOSTAT=istat)
         CHCKSTT
     end function delete_file
+    
+    ! count non-comment lines
+    integer function count_lines(file_i) result(nr_lines)
+        ! input / output
+        integer, intent(in) :: file_i                                           ! file identifier
+        
+        ! local variables
+        integer :: istat                                                        ! status
+        character(len=1) :: loc_data_char                                       ! first data character
+        
+        ! initialize istat
+        istat = 0
+        
+        nr_lines = 0
+        rewind(file_i)
+        do while (istat.eq.0)
+            ! read first character of data
+            read(file_i,*,IOSTAT=istat) loc_data_char
+            if (istat.eq.0 .and. loc_data_char.ne.'#') then                     ! exclude comment lines
+                nr_lines = nr_lines + 1
+            end if
+        end do
+        rewind(file_i)
+    end function count_lines
 end module files_utilities

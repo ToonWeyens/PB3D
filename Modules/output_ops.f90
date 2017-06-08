@@ -643,7 +643,7 @@ contains
                 &CheckboxGroup'
             write(cmd_i,"(A)",IOSTAT=istat) 'from bokeh.models import CustomJS'
             write(cmd_i,"(A)",IOSTAT=istat) ''
-            write(cmd_i,"(A)",IOSTAT=istat) 'TOOLS="crosshair,pan,wheel_zoom,&
+            write(cmd_i,"(A)",IOSTAT=istat) 'TOOLS="hover,pan,wheel_zoom,&
                 &box_zoom,reset,save"'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             write(cmd_i,"(A)",IOSTAT=istat) 'output_file("'//trim(plot_dir)//&
@@ -654,7 +654,7 @@ contains
                 &trim(data_dir)//'/'//trim(data_name_loc)//'.dat")'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             write(cmd_i,"(A)",IOSTAT=istat) 'p = figure(toolbar_location=&
-                &"above",tools=TOOLS,active_drag="pan",active_scroll=&
+                &"above",tools=TOOLS,active_drag="box_zoom",active_scroll=&
                 &"wheel_zoom",plot_width=600, plot_height=600)'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             

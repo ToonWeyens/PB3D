@@ -512,6 +512,8 @@ contains
         !   if  comparing different  toroidal positions,  only 2  values can  be
         !   used.
         !   ex_plot_style should be 1 (GNUPlot) or 2 (Bokeh / Mayavi)
+        !   if toroidal positions are compared, theta_plot limits should contain
+        !   0..2pi and max_r_plot should be 1.
         integer function adapt_plot() result(ierr)
             use num_vars, only: compare_tor_pos
             
@@ -560,16 +562,31 @@ contains
                 ex_plot_style = 1
             end if
             if (prog_style.eq.2) then                                           ! only for POST
-                if (compare_tor_pos .and. n_zeta_plot.ne.2) then
-                    ierr = 1
-                    err_msg = 'For compare_tor_pos, you can only use n_zeta = 2'
-                    CHCKERR(err_msg)
-                end if
-                if (compare_tor_pos .and. POST_style.ne.1) then
-                    ierr = 1
-                    err_msg = 'For compare_tor_pos, you can only use &
-                        &POST_style = 2 (extended grid)'
-                    CHCKERR(err_msg)
+                if (compare_tor_pos) then
+                    if (n_zeta_plot.ne.2) then
+                        ierr = 1
+                        err_msg = 'For compare_tor_pos, you can only use &
+                            &n_zeta = 2'
+                        CHCKERR(err_msg)
+                    end if
+                    if (POST_style.ne.1) then
+                        ierr = 1
+                        err_msg = 'For compare_tor_pos, you can only use &
+                            &POST_style = 2 (extended grid)'
+                        CHCKERR(err_msg)
+                    end if
+                    if (min_theta_plot.gt.0._dp .or. max_theta_plot.lt.2._dp &
+                        &.or. max_r_plot.lt.1._dp) then
+                        call writo('No proportionality file will be created &
+                            &because',warning=.true.)
+                        call lvl_ud(1)
+                        if (min_theta_plot.gt.0._dp .or. &
+                            &max_theta_plot.lt.2._dp) &
+                            &call writo('theta_plot does not contain [0..2pi]')
+                        if (max_r_plot.lt.1._dp) &
+                            &call writo('max_r_plot is not 1')
+                        call lvl_ud(-1)
+                    end if
                 end if
             end if
         end function adapt_plot

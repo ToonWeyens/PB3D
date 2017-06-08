@@ -581,6 +581,7 @@ contains
         complex(dp), allocatable :: sol_vec_ser_tot(:,:)                        ! serial MPI Eigenvector for total number of modes
         complex(dp), allocatable :: sol_vec_ser_loc(:)                          ! local sol_vec_ser
         real(dp), allocatable :: sol_vec_phase(:,:)                             ! phase of sol_vec
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -744,6 +745,11 @@ contains
                     y_plot(ld_loc,1) = ld
                 end if
             end do
+            if (ld_loc.eq.0) then
+                ierr = 1
+                err_msg = 'None of the modes resonates'
+                CHCKERR(err_msg)
+            end if
             x_plot(ld_loc+1:n_mod_tot,1) = x_plot(ld_loc,1)                     ! identical copies of last point for numerical reasons
             y_plot(ld_loc+1:n_mod_tot,1) = y_plot(ld_loc,1)                     ! identical copies of last point for numerical reasons
             

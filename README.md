@@ -927,3 +927,9 @@ Technische Universiteit Eindhoven
 * "compare_tor_pos" now outputs a ripple map file.
 * "write_flux_q_in_file_for_VMEC" is now renamed to "create_VMEC_input" and has been overhauled.
 * "create_VMEC_input" can now also read perturbations defined on R, Z and phi, corresponding to a custom origin R, Z. This is the output of DESCUR, for example.
+
+## 1.78:
+* The ability to use a proportionality file to translate a B_tor perturbation to a position perturbation is now implemented but needs testing.
+* This file can be created using "compare_tor_pos".
+* The splines routines have been replaced by the "bspline_module" package by Jacob Williams (https://github.com/jacobwilliams/bspline-fortran.git), which is multi-dimensional.
+* Tweaked external output a bit.

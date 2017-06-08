@@ -53,7 +53,7 @@ contains
     ! perturbation grid.
     integer function calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_X
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use num_utilities, only: con2dis
         use grid_utilities, only: setup_interp_data, apply_disc
         use X_vars, only: sec_X_ind
@@ -161,7 +161,7 @@ contains
         
         ! setup normal interpolation data for equilibrium grid
         ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
+            &norm_interp_data,norm_disc_prec_sol)
         CHCKERR('')
         
         ! interpolate
@@ -208,8 +208,8 @@ contains
             
             ! derive
             do ld = 1,n_mod_tot
-                ierr = spline3(grid_X%loc_r_F,sol_vec_tot(ld,:),&
-                    &grid_X%loc_r_F,dynew=Dsol_vec_loc)
+                ierr = spline3(norm_disc_prec_sol,grid_X%loc_r_F,&
+                    &sol_vec_tot(ld,:),grid_X%loc_r_F,dynew=Dsol_vec_loc)
                 CHCKERR('')
                 Dsol_vec_tot(ld,:) = Dsol_vec_loc
             end do

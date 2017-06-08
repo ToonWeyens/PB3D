@@ -30,7 +30,7 @@ contains
     ! [MPI] only master
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
         use num_utilities, only: calc_int
-        use num_vars, only: eq_name, max_deriv
+        use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
         use grid_vars, only: disc_type
         use grid_utilities, only: apply_disc
         use splines, only: spline3
@@ -154,40 +154,41 @@ contains
         ! calculate data for normal derivatives  with the toroidal (or poloidal)
         ! flux, normalized wrt. to the  maximum flux, equidistantly, so the step
         ! size is 1/(n_r_in-1).
+        allocate(r_V(n_r_in))
         r_V = [((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]
-        ierr = spline3(r_V,q_saf_V(:,0),r_V,ynew=q_saf_V(:,0),&
+        ierr = spline3(norm_disc_prec_eq,r_V,q_saf_V(:,0),r_V,&
             &dynew=q_saf_V(:,1),d2ynew=q_saf_V(:,2))
         CHCKERR('')
-        ierr = spline3(r_V,rot_t_V(:,0),r_V,ynew=rot_t_V(:,0),&
+        ierr = spline3(norm_disc_prec_eq,r_V,rot_t_V(:,0),r_V,&
             &dynew=rot_t_V(:,1),d2ynew=rot_t_V(:,2))
         CHCKERR('')
-        ierr = spline3(r_V,pres_V(:,0),r_V,ynew=pres_V(:,0),&
+        ierr = spline3(norm_disc_prec_eq,r_V,pres_V(:,0),r_V,&
             &dynew=pres_V(:,1),d2ynew=pres_V(:,2))
         CHCKERR('')
-        ierr = spline3(r_V,flux_t_V(:,1),r_V,ynew=flux_t_V(:,1),&
+        ierr = spline3(norm_disc_prec_eq,r_V,flux_t_V(:,1),r_V,&
             &dynew=flux_t_V(:,2),d2ynew=flux_t_V(:,3))
         CHCKERR('')
-        ierr = spline3(r_V,flux_p_V(:,1),r_V,ynew=flux_p_V(:,1),&
+        ierr = spline3(norm_disc_prec_eq,r_V,flux_p_V(:,1),r_V,&
             &dynew=flux_p_V(:,2),d2ynew=flux_p_V(:,3))
         CHCKERR('')
         do id = 1,mnmax_V
-            ierr = spline3(r_V,R_V_c(id,:,0),r_V,ynew=R_V_c(id,:,0),&
+            ierr = spline3(norm_disc_prec_eq,r_V,R_V_c(id,:,0),r_V,&
                 &dynew=R_V_c(id,:,1),d2ynew=R_V_c(id,:,2))
             CHCKERR('')
-            ierr = spline3(r_V,R_V_s(id,:,0),r_V,ynew=R_V_s(id,:,0),&
+            ierr = spline3(norm_disc_prec_eq,r_V,R_V_s(id,:,0),r_V,&
                 &dynew=R_V_s(id,:,1),d2ynew=R_V_s(id,:,2))
             CHCKERR('')
-            ierr = spline3(r_V,Z_V_c(id,:,0),r_V,ynew=Z_V_c(id,:,0),&
+            ierr = spline3(norm_disc_prec_eq,r_V,Z_V_c(id,:,0),r_V,&
                 &dynew=Z_V_c(id,:,1),d2ynew=Z_V_c(id,:,2))
             CHCKERR('')
-            ierr = spline3(r_V,Z_V_s(id,:,0),r_V,ynew=Z_V_s(id,:,0),&
+            ierr = spline3(norm_disc_prec_eq,r_V,Z_V_s(id,:,0),r_V,&
                 &dynew=Z_V_s(id,:,1),d2ynew=Z_V_s(id,:,2))
             CHCKERR('')
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &L_c_H(id,2:n_r_in,0),r_V,ynew=L_V_c(id,:,0),&
                 &dynew=L_V_c(id,:,1),d2ynew=L_V_c(id,:,2))
             CHCKERR('')
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &L_s_H(id,2:n_r_in,0),r_V,ynew=L_V_s(id,:,0),&
                 &dynew=L_V_s(id,:,1),d2ynew=L_V_s(id,:,2))
             CHCKERR('')
@@ -240,25 +241,23 @@ contains
         ! conversion HM -> FM (B_V_sub(2:3), B_V, jac_V)
         do id = 1,mnmax_V
             do kd = 2,3
-                ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                    &B_V_sub_c_M(id,2:n_r_in,kd),r_V,&
-                    &ynew=B_V_sub_c(id,:,kd))
+                ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    &B_V_sub_c_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_c(id,:,kd))
                 CHCKERR('')
-                ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                    &B_V_sub_s_M(id,2:n_r_in,kd),r_V,&
-                    &ynew=B_V_sub_s(id,:,kd))
+                ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    &B_V_sub_s_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_s(id,:,kd))
                 CHCKERR('')
             end do
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &B_V_c_H(id,2:n_r_in),r_V,ynew=B_V_c(id,:))
             CHCKERR('')
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:))
             CHCKERR('')
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &jac_V_c_H(id,2:n_r_in),r_V,ynew=jac_V_c(id,:))
             CHCKERR('')
-            ierr = spline3(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &jac_V_s_H(id,2:n_r_in),r_V,ynew=jac_V_s(id,:))
             CHCKERR('')
         end do

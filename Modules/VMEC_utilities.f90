@@ -101,7 +101,8 @@ contains
         end do
         
         ! initialize trigon_factors
-        allocate(trigon_factors(mnmax_V,n_ang_1,n_ang_2,n_r,2))
+        allocate(trigon_factors(mnmax_V,n_ang_1,n_ang_2,n_r,2),STAT=ierr)
+        CHCKERR('Failed to allocate trigonometric factors')
         trigon_factors = 0.0_dp
         
         ! calculate cos(m theta - n zeta) =
