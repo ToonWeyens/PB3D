@@ -240,7 +240,7 @@ contains
         ! only master can receive input
         if (rank.eq.0) then
             call stop_time
-            read (*, *) hidden_msg
+            read (*,'(A)') hidden_msg
             call start_time
         end if
         

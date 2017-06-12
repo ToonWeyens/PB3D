@@ -382,7 +382,7 @@ contains
                 if (export_HEL) then
                     call writo('Exporting HELENA equilibrium for VMEC porting')
                     call lvl_ud(1)
-                    ierr = create_VMEC_input(grid_eq,eq_1,eq_2)
+                    ierr = create_VMEC_input(grid_eq,eq_1)
                     CHCKERR('')
                     call lvl_ud(-1)
                     call writo('Done exporting')
@@ -523,11 +523,11 @@ contains
         !   B_F_loc:  (pol modes, cos/sin)
         !   B_F:      (pol modes, tor modes, cos/sin (m theta), R/Z)
         !   B_F_pert: (pol modes, cos/sin (m theta), R/Z, cos/sin (N zeta))
-        integer function create_VMEC_input(grid_eq,eq_1,eq_2) result(ierr)
+        integer function create_VMEC_input(grid_eq,eq_1) result(ierr)
             use eq_vars, only: pres_0, R_0, psi_0
             use grid_vars, only: n_r_eq
             use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
-                &calc_arc_angle
+                &calc_XYZ_grid
             use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
@@ -546,7 +546,6 @@ contains
             ! input / output
             type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid varibles
             type(eq_1_type), intent(in) :: eq_1                                 ! flux equilibrium quantities
-            type(eq_2_type), intent(in) :: eq_2                                 ! metric equilibrium quantities
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
@@ -593,8 +592,6 @@ contains
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
             real(dp) :: BH_pert_loc(2)                                          ! local BH_pert
             real(dp) :: prop_B_tor_smooth = 1.0_dp                              ! smoothing of prop_B_tor_interp via Fourier transform
-            real(dp), allocatable :: arc_ang_HEL(:,:,:)                         ! angle calculated from arclength on HELENA grid
-            real(dp), allocatable :: arc_ang(:,:)                               ! angle calculated from arclength on full grid
             real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
             real(dp), allocatable :: Z_plot(:,:,:)                              ! Z for plotting of ripple map
             real(dp), allocatable :: spline_knots_R(:)                          ! knots of spline for R
@@ -617,9 +614,11 @@ contains
             real(dp), allocatable :: B_F_loc(:,:)                               ! Local B_F
             real(dp), allocatable :: u_norm(:,:)                                ! normalized unit vector
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
+            real(dp), allocatable :: theta_geo(:,:,:)                           ! geometric poloidal angle, for plotting
             real(dp), allocatable :: prop_B_tor(:,:)                            ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_interp(:)                       ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_interp_F(:,:)                   ! Fourier modes of prop_B_tor_interp
+            real(dp), allocatable :: XYZ_plot(:,:,:,:)                          ! plotting X, Y and Z
             logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
@@ -681,6 +680,30 @@ contains
             RZ_B_0(1) = sum(R_H_loc(:,1))/size(R_H_loc,1)
             RZ_B_0(2) = sum(Z_H_loc(:,1))/size(Z_H_loc,1)
             theta(:,1) = atan2(BH_0(:,2)-RZ_B_0(2),BH_0(:,1)-RZ_B_0(1))
+            call writo('Magnetic axis used for geometrical coordinates:')
+            call lvl_ud(1)
+            call writo('('//trim(r2str(RZ_B_0(1)))//','//&
+                &trim(r2str(RZ_B_0(2)))//')')
+            call lvl_ud(-1)
+            
+            ! plot with HDF5
+            allocate(theta_geo(grid_eq%n(1),1,grid_eq%loc_n_r))
+            do kd = 1,grid_eq%loc_n_r
+                theta_geo(:,1,kd) = atan2(Z_H_loc(:,kd)-RZ_B_0(2),&
+                    &R_H_loc(:,kd)-RZ_B_0(1))
+            end do
+            where (theta_geo.lt.0._dp) theta_geo = theta_geo + 2*pi
+            allocate(XYZ_plot(grid_eq%n(1),1,grid_eq%loc_n_r,3))
+            ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_plot(:,:,:,1),&
+                &XYZ_plot(:,:,:,2),XYZ_plot(:,:,:,3))
+            CHCKERR('')
+            call plot_HDF5('theta_geo','theta_geo',theta_geo,&
+                &tot_dim=[grid_eq%n(1),1,grid_eq%n(3),3],&
+                &loc_offset=[0,0,grid_eq%i_min-1,0],&
+                &x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),z=XYZ_plot(:,:,:,3),&
+                &description='geometric poloidal angle used to create the VMEC &
+                &input file')
+            deallocate(XYZ_plot)
             
             !!! TEMPORARILY
             !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
@@ -792,13 +815,17 @@ contains
                         &//trim(prop_B_tor_file_name)//'"')
                     call lvl_ud(1)
                     n_prop_B_tor = count_lines(prop_B_tor_i)
-                    allocate(prop_B_tor(n_prop_B_tor,2))
+                    allocate(prop_B_tor(2*n_prop_B_tor-1,2))                    ! take two periods -2pi..2pi
                     ierr = skip_comment(prop_B_tor_i,&
                         &file_name=prop_B_tor_file_name)
                     CHCKERR('')
-                    do id = 1,n_prop_B_tor
+                    do id = n_prop_B_tor,2*n_prop_B_tor-1
                         read(prop_B_tor_i,*,IOSTAT=ierr) prop_B_tor(id,:)
                     end do
+                    prop_B_tor(1:n_prop_B_tor,1) = &
+                        &prop_B_tor(n_prop_B_tor:2*n_prop_B_tor-1,1)-2*pi
+                    prop_B_tor(1:n_prop_B_tor,2) = &
+                        &prop_B_tor(n_prop_B_tor:2*n_prop_B_tor-1,2)
                     
                     ! user info
                     call writo(trim(i2str(n_prop_B_tor))//&
@@ -806,46 +833,31 @@ contains
                         &trim(r2strt(minval(prop_B_tor(:,1))))//'..'//&
                         &trim(r2strt(maxval(prop_B_tor(:,1)))))
                     
-                    ! determine arclength angles for the tabulated HELENA points
-                    ierr = calc_arc_angle(grid_eq,eq_1,eq_2,arc_ang_HEL,&
-                        &use_E=.true.)
-                    CHCKERR('')
-                    allocate(arc_ang(n_B,grid_eq%n(2)))
-                    if (ias.eq.0) then                                          ! symmetric
-                        arc_ang(1:nchi,:) = arc_ang_HEL(:,:,n_r_eq)
-                        do id = 1,nchi-2
-                            arc_ang(nchi+id,:) = &
-                                &2*pi-arc_ang_HEL(nchi-id,:,n_r_eq)
-                        end do
-                    else
-                        arc_ang = arc_ang_HEL(1:n_B,:,n_r_eq)
-                    end if
-                    deallocate(arc_ang_HEL)
-                    
-                    ! interpolate the  proportionality factor  on the  arc angle
-                    ! used  here  (as  opposed  to  the  one  in  which  it  was
-                    ! tabulated)
+                    ! interpolate the proportionality  factor on the geometrical
+                    ! poloidal angle used  here (as opposed to the  one in which
+                    ! it was tabulated)
+                    call writo('The proportionality factor should be tabulated &
+                        &in a geometrical angle that has the SAME origin as &
+                        &the one used here',alert=.true.)
                     allocate(prop_B_tor_interp(n_B))
                     ierr = spline3(norm_disc_prec_eq,prop_B_tor(:,1),&
-                        &prop_B_tor(:,2),arc_ang(:,1),ynew=prop_B_tor_interp)   ! There should be only 1 geodesic position
+                        &prop_B_tor(:,2),theta(:,1),ynew=prop_B_tor_interp)
                     CHCKERR('')
                     if (grid_eq%n(2).ne.1) call writo('There should be only 1 &
                         &geodesical position, but there are '//&
                         &trim(i2str(grid_eq%n(2))),warning=.true.)
                     deallocate(prop_B_tor)
-                    if (use_normalization) &
-                        &prop_B_tor_interp = prop_B_tor_interp  * R_0
                     
                     ! smooth prop_B_tor_interp
-                    ierr = nufft(theta(:,2),prop_B_tor_interp,&
+                    ierr = nufft(theta(:,1),prop_B_tor_interp,&
                         &prop_B_tor_interp_F)                                   ! helena pol. fourier coefficients
                     CHCKERR('')
                     prop_B_tor_interp = 0._dp
                     do id = 0,int((size(prop_B_tor_interp_F,1)-1)*&
                         &prop_B_tor_smooth)
                         prop_B_tor_interp = prop_B_tor_interp + (&
-                            &prop_B_tor_interp_F(id+1,1)*cos(id*theta(:,2)) + &
-                            &prop_B_tor_interp_F(id+1,2)*sin(id*theta(:,2)))
+                            &prop_B_tor_interp_F(id+1,1)*cos(id*theta(:,1)) + &
+                            &prop_B_tor_interp_F(id+1,2)*sin(id*theta(:,1)))
                     end do
                     call writo('Smoothing perturbation with factor '//&
                         &trim(r2str(prop_B_tor_smooth)))
@@ -1886,7 +1898,7 @@ contains
         integer function flux_q_plot_HDF5() result(ierr)
             use num_vars, only: eq_style
             use output_ops, only: plot_HDF5
-            use grid_utilities, only: calc_XYZ_grid, extend_grid_F, trim_grid
+            use grid_utilities, only: extend_grid_F, trim_grid, calc_XYZ_grid
             use VMEC_utilities, only: calc_trigon_factors
             
             character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
@@ -4012,14 +4024,14 @@ contains
     integer function delta_r_plot(grid_eq,eq_1,eq_2,XYZ,rich_lvl) &
         &result(ierr)
         
-        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid, &
-            &calc_arc_angle
+        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, &
             &use_normalization, rank, use_pol_flux_F, ex_plot_style, n_procs, &
             &prop_B_tor_i, min_theta_plot, max_theta_plot, max_r_plot
         use eq_vars, only: B_0, R_0, psi_0
         use num_utilities, only: c, calc_int
+        use input_utilities, only: get_real
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'delta_r_plot'
@@ -4035,8 +4047,8 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
+        real(dp) :: orig_geo(2)                                                 ! origin of geometrical coordinates
         real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface in trimmed grid
-        real(dp), allocatable :: XYZ_half(:,:,:,:)                              ! average XYZ
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: delta_B(:,:,:,:)                               ! delta_B/B
         real(dp), allocatable :: prop_B_tor_tot(:,:)                            ! delta_r / delta_B/B in total grid
@@ -4045,8 +4057,8 @@ contains
         real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
         real(dp), allocatable :: rad(:,:,:)                                     ! minor radius
         real(dp), allocatable :: prev_rad(:)                                    ! rad of previous ranks
-        real(dp), allocatable :: arc(:,:,:)                                     ! angle calculated from normalized arclength
         real(dp), allocatable :: u_norm_com(:,:,:,:,:)                          ! covariant and contravariant components of u_norm (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: theta_geo(:,:,:)                               ! geometrical poloidal angle for proportionality factor output
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
         logical :: new_file_found                                               ! name for new file found
         character(len=25) :: base_name                                          ! base name
@@ -4072,27 +4084,15 @@ contains
         
         ! calculate local X, Y and Z
         ! (Can be different from provided one for different plot grid styles)
-        allocate(XYZ_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        allocate(XYZ_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,4))
         ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_loc(:,:,:,1),XYZ_loc(:,:,:,2),&
-            &XYZ_loc(:,:,:,3))
+            &XYZ_loc(:,:,:,3),R=XYZ_loc(:,:,:,4))
         CHCKERR('')
         
-        ! take average toroidal XYZ in trimmed grid
-        allocate(XYZ_half(grid_trim%n(1),1,grid_trim%loc_n_r,3))
-        XYZ_half(:,1,:,:) = 0.5_dp*sum(XYZ(:,:,norm_id(1):norm_id(2),:),2)
-        
-        ! set up components of u_norm and calculate minor radius
-        allocate(u_norm_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        ! calculate minor radius
         allocate(rad(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         allocate(prev_rad(n_procs))
-        u_norm_com = 0._dp
         rad = 0._dp
-        u_norm_com(:,:,:,2,1) = &
-            &(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))**(-0.5_dp)                ! normal unit vector nabla psi / |nabla psi|
-        do id = 1,3
-            u_norm_com(:,:,:,id,2) = eq_2%h_FD(:,:,:,c([2,id],.true.),0,0,0)*&
-                &u_norm_com(:,:,:,2,1)
-        end do
         do jd = 1,grid_trim%n(2)
             do id = 1,grid_trim%n(1)
                 ierr = calc_int((eq_2%h_FD(id,jd,norm_id(1):norm_id(2),&
@@ -4116,6 +4116,16 @@ contains
             &cont_plot=eq_job_nr.gt.1,&
             &description='minor radius')
         
+        ! set up components of u_norm
+        allocate(u_norm_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        u_norm_com = 0._dp
+        u_norm_com(:,:,:,2,1) = &
+            &(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))**(-0.5_dp)                ! normal unit vector nabla psi / |nabla psi|
+        do id = 1,3
+            u_norm_com(:,:,:,id,2) = eq_2%h_FD(:,:,:,c([2,id],.true.),0,0,0)*&
+                &u_norm_com(:,:,:,2,1)
+        end do
+        
         ! transform coordinates, including the flux
         ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,u_norm_com,&
             &norm_disc_prec_eq,XYZ=XYZ,compare_tor_pos=.false.)
@@ -4127,8 +4137,8 @@ contains
         delta_r = 0._dp
         do id = 1,3
             delta_r(:,1,:) = delta_r(:,1,:) + 0.5_dp * &
-                &(u_norm_com(:,2,:,id,1)+u_norm_com(:,1,:,id,1)) * &
-                &(XYZ_loc(:,2,:,id)-XYZ_loc(:,1,:,id))
+                &(u_norm_com(:,3,:,id,1)+u_norm_com(:,1,:,id,1)) * &
+                &(XYZ_loc(:,3,:,id)-XYZ_loc(:,1,:,id))
         end do
         
         ! set plot variables for delta_r
@@ -4143,8 +4153,8 @@ contains
         call plot_HDF5(trim(plot_names(1)),trim(base_name),&
             &delta_r(:,:,norm_id(1):norm_id(2)),&
             &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],X=XYZ_half(:,:,:,1),&
-            &Y=XYZ_half(:,:,:,2),Z=XYZ_half(:,:,:,3),cont_plot=eq_job_nr.gt.1,&
+            &loc_offset=[0,0,grid_trim%i_min-1],x=XYZ(:,2:2,:,1),&
+            &y=XYZ(:,2:2,:,2),z=XYZ(:,2:2,:,3),cont_plot=eq_job_nr.gt.1,&
             &description='plasma position displacement')
         
         call lvl_ud(-1)
@@ -4167,8 +4177,8 @@ contains
         
         ! calculate
         allocate(delta_B(grid_eq%n(1),1,grid_eq%loc_n_r,3))
-        delta_B(:,:,:,2:3) = 2*(B_com(:,2:2,:,2,:)-B_com(:,1:1,:,2,:)) / &
-            &(B_com(:,2:2,:,2,:)+B_com(:,1:1,:,2,:))                            ! indices 2 and 3 hold sub and sup
+        delta_B(:,:,:,2:3) = 2*(B_com(:,3:3,:,2,:)-B_com(:,1:1,:,2,:)) / &
+            &(B_com(:,3:3,:,2,:)+B_com(:,1:1,:,2,:))                            ! indices 2 and 3 hold sub and sup
         delta_B(:,:,:,1) = 0.5_dp*sum(delta_B(:,:,:,2:3),4)                     ! index 1 holds average
         deallocate(B_com)
         
@@ -4180,12 +4190,12 @@ contains
                 &trim(i2str(rich_lvl))
         end if
         
-        ! plot
+        ! plot with HDF5
         call plot_HDF5(trim(plot_names(1)),trim(base_name),&
             &delta_B(:,:,norm_id(1):norm_id(2),1),&
             &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],X=XYZ_half(:,:,:,1),&
-            &Y=XYZ_half(:,:,:,2),Z=XYZ_half(:,:,:,3),cont_plot=eq_job_nr.gt.1,&
+            &loc_offset=[0,0,grid_trim%i_min-1],x=XYZ(:,2:2,:,1),&
+            &y=XYZ(:,2:2,:,2),z=XYZ(:,2:2,:,3),cont_plot=eq_job_nr.gt.1,&
             &description='plasma position displacement')
         
         call lvl_ud(-1)
@@ -4212,8 +4222,8 @@ contains
             &delta_B(:,:,norm_id(1):norm_id(2),:),&
             &tot_dim=[grid_trim%n(1),1,grid_trim%n(3),3],&
             &loc_offset=[0,0,grid_trim%i_min-1,0],&
-            &X=XYZ_half(:,:,:,1:1),Y=XYZ_half(:,:,:,2:2),&
-            &Z=XYZ_half(:,:,:,3:3),cont_plot=eq_job_nr.gt.1,&
+            &X=XYZ(:,2:2,:,1:1),Y=XYZ(:,2:2,:,2:2),&
+            &Z=XYZ(:,2:2,:,3:3),cont_plot=eq_job_nr.gt.1,&
             &description='delta_r divided by delta_B')
         
         ! plot in 2-D
@@ -4236,7 +4246,7 @@ contains
             CHCKERR('')
             prop_B_tor_tot(id,:) = max(min(var_tot_loc,2._dp),-2._dp)           ! limit to avoid division by small delta_B values
             deallocate(var_tot_loc)
-            ierr = get_ser_var(ang_par_F(id,1,:),var_tot_loc)
+            ierr = get_ser_var(ang_par_F(id,2,:),var_tot_loc)
             CHCKERR('')
             if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
             deallocate(var_tot_loc)
@@ -4253,20 +4263,35 @@ contains
         
         if (min_theta_plot.le.0._dp .and. max_theta_plot.ge.2._dp &
             &.and. max_r_plot.ge.1._dp) then
-            call writo('Output to file as function of fractional arc length &
-                &angle')
+            call writo('Output to file as function of poloidal flux angle')
             call lvl_ud(1)
             
-            ! calculate arclength angle
-            ierr = calc_arc_angle(grid_eq,eq_1,eq_2,arc)
-            CHCKERR('')
-            !call plot_HDF5('arc','arc',arc(:,:,norm_id(1):norm_id(2)),&
-                !&tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
-                !&loc_offset=[0,0,grid_trim%i_min-1],&
-                !&X=XYZ(:,:,norm_id(1):norm_id(2),1),&
-                !&Y=XYZ(:,:,norm_id(1):norm_id(2),2),&
-                !&Z=XYZ(:,:,norm_id(1):norm_id(2),3),&
-                !&cont_plot=eq_job_nr.gt.1)
+            call writo('Origin used to tabulate proportionality factor?')
+            call lvl_ud(1)
+            call writo('(This should be equal to the magnetic axis used &
+                &when exporting a HELENA equilibrium')
+            call writo('R = ?')
+            orig_geo(1) = get_real(lim_lo=0._dp)
+            call writo('Z = ?')
+            orig_geo(2) = get_real()
+            call lvl_ud(-1)
+            
+            ! calculate geometrical poloidal angle
+            allocate(theta_geo(grid_trim%n(1),1,grid_trim%loc_n_r))
+            theta_geo(:,1,:) = atan2(&
+                &XYZ_loc(:,2,norm_id(1):norm_id(2),3)-orig_geo(2),&
+                &XYZ_loc(:,2,norm_id(1):norm_id(2),4)-orig_geo(1))
+            where (theta_geo.lt.0._dp) theta_geo = theta_geo + 2*pi
+            theta_geo(1,:,:) = 0._dp                                            ! if user gives a non dp value, this is slightly negative and goes to 2pi
+            
+            ! plot with HDF5
+            call plot_HDF5('theta_geo','theta_geo',theta_geo,&
+                &tot_dim=[grid_trim%n(1),1,grid_trim%n(3),3],&
+                &loc_offset=[0,0,grid_trim%i_min-1,0],&
+                &X=XYZ(:,2:2,:,1),Y=XYZ(:,2:2,:,2),&
+                &Z=XYZ(:,2:2,:,3),cont_plot=eq_job_nr.gt.1,&
+                &description='geometric poloidal angle used to export &
+                &prop_B_tor')
             
             ! only last rank outputs to file (it has the last normal position)
             if (rank.eq.n_procs-1) then
@@ -4294,15 +4319,11 @@ contains
                     &file "'//trim(prop_B_tor_file_name)//'"',persistent=.true.)
                 
                 ! write to output file
-                if (use_normalization) prop_B_tor_tot = prop_B_tor_tot / R_0
-                write(prop_B_tor_i,'(A)') '# Proportionality factor to be &
-                    &multiplied by deltaB/B in order to get delta_r/R_0 &
-                    &necessary'
                 write(prop_B_tor_i,'("# ",2(A23," "))') &
-                    &'arc angle [ ]', 'prop. factor [ ]'
+                    &'pol. angle [ ]', 'prop. factor [ ]'
                 do id = 1,grid_trim%n(1)
                     write(prop_B_tor_i,'("  ",2(ES23.16," "))') &
-                        &0.5_dp*sum(arc(id,:,grid_eq%loc_n_r)), &
+                        &theta_geo(id,1,grid_trim%loc_n_r), &
                         &prop_B_tor_tot(id,grid_trim%n(3))
                 end do
                 

@@ -563,10 +563,10 @@ contains
             end if
             if (prog_style.eq.2) then                                           ! only for POST
                 if (compare_tor_pos) then
-                    if (n_zeta_plot.ne.2) then
+                    if (n_zeta_plot.ne.3) then
                         ierr = 1
                         err_msg = 'For compare_tor_pos, you can only use &
-                            &n_zeta = 2'
+                            &n_zeta = 3 (one point in the middle)'
                         CHCKERR(err_msg)
                     end if
                     if (POST_style.ne.1) then

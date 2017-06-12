@@ -300,7 +300,7 @@ contains
                     if (debug_calc_zero) call &
                         &plot_evolution(corrs(:,:,:,1:jd),values(:,:,:,1:jd))
 #endif
-        write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
+        !write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
                     return
                 else if (jd .eq. max_it_zero) then
 #if ldebug
@@ -326,7 +326,6 @@ contains
                 jd_tot = jd_tot + 1
             end do HH
         end do
-        write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
 #if ldebug
     contains
         ! plots corrections

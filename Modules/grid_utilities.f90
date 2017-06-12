@@ -2288,14 +2288,14 @@ contains
             plot_offset = [0,0,grid_trim%i_min-1,0]
             tor_id = [1,size(v_com,2)]
             if (compare_tor_pos_loc) then
-                if (plot_dim(2).ne.2) then
+                if (plot_dim(2).ne.3) then
                     ierr = 1
                     err_msg = 'When comparing toroidal positions, need to &
-                        &have 2 toroidal points'
+                        &have 3 toroidal points (one in the middle)'
                     CHCKERR(err_msg)
                 end if
                 plot_dim(2) = 1
-                tor_id(2) = 1
+                tor_id = [2,2]
             end if
             
             ! possibly modify if multiple equilibrium parallel jobs
@@ -2325,38 +2325,14 @@ contains
             allocate(X(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
             allocate(Y(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
             allocate(Z(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r,1))
-            if (compare_tor_pos_loc) then
-                if (present(XYZ)) then
-                    X(:,1,:,1) = 0.5_dp*&
-                        &(XYZ(:,1,norm_id(1):norm_id(2),1) + &
-                        &XYZ(:,2,norm_id(1):norm_id(2),1))
-                    Y(:,1,:,1) = 0.5_dp*&
-                        &(XYZ(:,1,norm_id(1):norm_id(2),2) + &
-                        &XYZ(:,2,norm_id(1):norm_id(2),2))
-                    Z(:,1,:,1) = 0.5_dp*&
-                        &(XYZ(:,1,norm_id(1):norm_id(2),3) + &
-                        &XYZ(:,2,norm_id(1):norm_id(2),3))
-                else
-                    X(:,1,:,1) = 0.5_dp*&
-                        &(XYZR(:,1,norm_id(1):norm_id(2),1) + &
-                        &XYZR(:,2,norm_id(1):norm_id(2),1))
-                    Y(:,1,:,1) = 0.5_dp*&
-                        &(XYZR(:,1,norm_id(1):norm_id(2),2) + &
-                        &XYZR(:,2,norm_id(1):norm_id(2),2))
-                    Z(:,1,:,1) = 0.5_dp*&
-                        &(XYZR(:,1,norm_id(1):norm_id(2),3) + &
-                        &XYZR(:,2,norm_id(1):norm_id(2),3))
-                end if
+            if (present(XYZ)) then
+                X(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),1)
+                Y(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),2)
+                Z(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),3)
             else
-                if (present(XYZ)) then
-                    X(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),1)
-                    Y(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),2)
-                    Z(:,:,:,1) = XYZ(:,:,norm_id(1):norm_id(2),3)
-                else
-                    X(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),1)
-                    Y(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),2)
-                    Z(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),3)
-                end if
+                X(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),1)
+                Y(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),2)
+                Z(:,:,:,1) = XYZR(:,:,norm_id(1):norm_id(2),3)
             end if
         end if
         
@@ -2434,9 +2410,9 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) * (R_0*B_0)                 ! norm factor for e^psi
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^theta
             end if
-            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
-                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
+                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2447,9 +2423,9 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
-                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
+                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -2555,9 +2531,9 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta
             end if
-            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
-                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
+                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2568,9 +2544,9 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
-                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
+                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -2908,9 +2884,9 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta or e^phi
             end if
-            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
-                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
+                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2921,9 +2897,9 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
-                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
+                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -3050,9 +3026,9 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^phi
                 !v_com(:,:,:,3,2) = v_com(:,:,:,3,2)                             ! norm factor for e^Z
             end if
-            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
-                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
+                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -3063,9 +3039,9 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
-                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
+                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -3143,9 +3119,9 @@ contains
                 var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
                     &trim(coord_names(id))
             end do
-            if (compare_tor_pos_loc) v_com(:,1,:,:,:) = 2._dp*&
-                &(v_com(:,2,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,2,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
+                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
+                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -3156,9 +3132,9 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,1,:) = 2._dp*&
-                    &(v_mag(:,2,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,2,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
+                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
+                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&

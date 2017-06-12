@@ -941,3 +941,8 @@ Technische Universiteit Eindhoven
 * There is now a check for physical consistency for the sign of the Alfven time.
 * "pause_prog" now takes a secret message "stop" that can be used to stop the program, which is useful when controlling PB3D in an automated way.
 * Improved the guess for theta_E as a function of theta_F in the procedure "coord_F2E" by using lambda. This greatly improves convergence sometimes.
+
+## 1.80:
+* Bug fixes.
+* The proportionality factor between magnetic and position ripples now use the geometric angle.
+* "compare_tor_pos" now needs 3 toroidal points, one in the middle. This makes toroidal comparisons easier.
