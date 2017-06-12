@@ -218,6 +218,7 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
+        integer :: jd_tot
         integer :: max_nr_tries_loc                                             ! local max_nr_tries
         integer :: mc_ind(3)                                                    ! index of maximum correction
         real(dp) :: corr(dims(1),dims(2),dims(3))                               ! correction
@@ -254,6 +255,7 @@ contains
         allocate(fun_vals(dims(1),dims(2),dims(3),0:ord))
         
         ! possibly multiple tries with different relaxation factors
+        jd_tot = 1
         do id = 1,max_nr_tries_loc
 #if ldebug
             if (debug_calc_zero) then
@@ -298,6 +300,7 @@ contains
                     if (debug_calc_zero) call &
                         &plot_evolution(corrs(:,:,:,1:jd),values(:,:,:,1:jd))
 #endif
+        write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
                     return
                 else if (jd .eq. max_it_zero) then
 #if ldebug
@@ -320,8 +323,10 @@ contains
                         zero = 0.0_dp
                     end if
                 end if
+                jd_tot = jd_tot + 1
             end do HH
         end do
+        write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
 #if ldebug
     contains
         ! plots corrections

@@ -580,6 +580,7 @@ contains
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
             character(len=max_str_ln) :: prop_B_tor_file_name                   ! name of B_tor proportionality file
+            real(dp) :: pert_map_shift                                          ! vertical shift in perturbation map
             real(dp) :: max_pert_on_axis                                        ! maximum perturbation on axis (theta = 0)
             real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
@@ -591,6 +592,7 @@ contains
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
             real(dp) :: BH_pert_loc(2)                                          ! local BH_pert
+            real(dp) :: prop_B_tor_smooth = 1.0_dp                              ! smoothing of prop_B_tor_interp via Fourier transform
             real(dp), allocatable :: arc_ang_HEL(:,:,:)                         ! angle calculated from arclength on HELENA grid
             real(dp), allocatable :: arc_ang(:,:)                               ! angle calculated from arclength on full grid
             real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
@@ -617,6 +619,7 @@ contains
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
             real(dp), allocatable :: prop_B_tor(:,:)                            ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_interp(:)                       ! proportionality between delta B_tor and delta_norm
+            real(dp), allocatable :: prop_B_tor_interp_F(:,:)                   ! Fourier modes of prop_B_tor_interp
             logical :: zero_N_pert                                              ! there is a perturbation with N = 0
             logical :: pert_eq                                                  ! whether equilibrium is perturbed
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
@@ -707,7 +710,7 @@ contains
             call lvl_ud(-1)
             
             ! plot properties
-            plot_dim = [100,100]
+            plot_dim = [100,20]
             plot_lims(:,1) = [0.0_dp,2.0_dp]
             plot_lims(:,2) = [0.5_dp,2.0_dp]
             call writo('Change plot properties from defaults?')
@@ -833,6 +836,20 @@ contains
                     if (use_normalization) &
                         &prop_B_tor_interp = prop_B_tor_interp  * R_0
                     
+                    ! smooth prop_B_tor_interp
+                    ierr = nufft(theta(:,2),prop_B_tor_interp,&
+                        &prop_B_tor_interp_F)                                   ! helena pol. fourier coefficients
+                    CHCKERR('')
+                    prop_B_tor_interp = 0._dp
+                    do id = 0,int((size(prop_B_tor_interp_F,1)-1)*&
+                        &prop_B_tor_smooth)
+                        prop_B_tor_interp = prop_B_tor_interp + (&
+                            &prop_B_tor_interp_F(id+1,1)*cos(id*theta(:,2)) + &
+                            &prop_B_tor_interp_F(id+1,2)*sin(id*theta(:,2)))
+                    end do
+                    call writo('Smoothing perturbation with factor '//&
+                        &trim(r2str(prop_B_tor_smooth)))
+                    
                     call lvl_ud(-1)
                 end if
                 
@@ -897,6 +914,20 @@ contains
                             ! get number of lines
                             tot_nr_pert = count_lines(HEL_pert_i)
                         else if (pert_type.eq.3) then                           ! 2-D map of perturbation
+                            ! ask for vertical shift
+                            call writo('Was the equilibrium shifted &
+                                &vertically?')
+                            pert_map_shift = 0._dp
+                            if (get_log(.true.)) then
+                                call writo('How much higher [m] should the &
+                                    &equilibrium be in the real world?')
+                                pert_map_shift = get_real()
+                                call writo('The perturbation map will be &
+                                    &shifted by '//&
+                                    &trim(r2strt(-pert_map_shift))//&
+                                    &'m to compensate for this')
+                            end if
+                            
                             ! get map
                             ierr = skip_comment(HEL_pert_i,&
                                 &file_name=HEL_pert_file_name)
@@ -914,6 +945,7 @@ contains
                             do kd = 1,n_pert_map(2)
                                 read(HEL_pert_i,*) pert_map_Z(kd)
                             end do
+                            pert_map_Z = pert_map_Z - pert_map_shift
                             ierr = skip_comment(HEL_pert_i,&
                                 &file_name=HEL_pert_file_name)
                             CHCKERR('')
@@ -1081,17 +1113,21 @@ contains
                 ! ask for global rescaling
                 ! Note: This is only valid if R(theta=0) is not the maximum
                 max_pert_on_axis = sum(delta(:,:,1))
-                call writo('Maximum perturbation on axis: '//&
-                    &trim(r2str(max_pert_on_axis)))
-                call writo('Rescale to some value?')
-                call lvl_ud(1)
-                call writo('minor radius: '//&
-                    &trim(r2strt((maxval(R_H_loc)-minval(R_H_loc))/2))//'m')
-                call writo('major radius: '//&
-                    &trim(r2strt((maxval(R_H_loc)+minval(R_H_loc))/2))//'m')
-                call lvl_ud(-1)
+                select case (pert_style)
+                    case (1)                                                    ! plasma boundary position
+                        max_pert_on_axis = max_pert_on_axis / &
+                            &BH_0(minloc(abs(theta(:,2)),1),1)                  ! R at HELENA theta closest to zero
+                    case (2)                                                    ! B_tor magnetic ripple with fixed N
+                        ! max_pert_on_axis is already relative
+                end select
+                call writo('Maximum relative perturbation on axis: '//&
+                    &trim(r2strt(100*max_pert_on_axis))//'%')
+                call writo('Rescale to some value [%]?')
                 mult_fac = max_pert_on_axis
-                if (get_log(.false.)) mult_fac = get_real()
+                if (get_log(.false.)) then
+                    mult_fac = get_real()
+                    mult_fac = mult_fac * 0.01_dp
+                end if
                 delta = delta * mult_fac / max_pert_on_axis
             else
                 nr_n = 0
@@ -3269,13 +3305,19 @@ contains
     end subroutine calc_derived_q
     
     ! Sets up normalization constants.
-    subroutine calc_normalization_const()
+    integer function calc_normalization_const() result(ierr)
         use num_vars, only: rank, eq_style, mu_0_original, use_normalization, &
             &rich_restart_lvl
         use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
         
+        character(*), parameter :: rout_name = 'calc_normalization_const'
+        
         ! local variables
         integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
         
         if (use_normalization) then
             ! user output
@@ -3307,6 +3349,14 @@ contains
             ! print constants
             call print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
                 &mu_0_original,T_0)
+            
+            ! check whether it is physically consistent
+            if (T_0.lt.0._dp) then
+                ierr = 1
+                err_msg = 'Alfven time is negative. Are you sure the &
+                    &equilibrium is consistent?'
+                CHCKERR(err_msg)
+            end if
             
             ! user output
             call lvl_ud(-1)
@@ -3496,7 +3546,7 @@ contains
                 &trim(r2str(mu_0))//' Tm/A')
             if (present(T_0)) call writo('T_0    = '//trim(r2str(T_0))//' s')
         end subroutine print_normalization_const
-    end subroutine calc_normalization_const
+    end function calc_normalization_const
     
     ! Normalize input quantities.
     subroutine normalize_input()
@@ -3985,10 +4035,11 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
-        real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface
+        real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface in trimmed grid
+        real(dp), allocatable :: XYZ_half(:,:,:,:)                              ! average XYZ
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: delta_B(:,:,:,:)                               ! delta_B/B
-        real(dp), allocatable :: prop_B_tor_tot(:,:,:)                          ! delta_r / delta_B/B in total grid
+        real(dp), allocatable :: prop_B_tor_tot(:,:)                            ! delta_r / delta_B/B in total grid
         real(dp), allocatable :: var_tot_loc(:)                                 ! auxilliary variable
         real(dp), allocatable :: x_2D(:,:)                                      ! x for 2-D plotting
         real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
@@ -3999,7 +4050,7 @@ contains
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle
         logical :: new_file_found                                               ! name for new file found
         character(len=25) :: base_name                                          ! base name
-        character(len=25) :: plot_names(2)                                      ! plot names
+        character(len=25) :: plot_names(3)                                      ! plot names
         character(len=max_str_ln) :: prop_B_tor_file_name                       ! name of B_tor proportionality file
         type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
         
@@ -4025,6 +4076,10 @@ contains
         ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_loc(:,:,:,1),XYZ_loc(:,:,:,2),&
             &XYZ_loc(:,:,:,3))
         CHCKERR('')
+        
+        ! take average toroidal XYZ in trimmed grid
+        allocate(XYZ_half(grid_trim%n(1),1,grid_trim%loc_n_r,3))
+        XYZ_half(:,1,:,:) = 0.5_dp*sum(XYZ(:,:,norm_id(1):norm_id(2),:),2)
         
         ! set up components of u_norm and calculate minor radius
         allocate(u_norm_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
@@ -4088,14 +4143,8 @@ contains
         call plot_HDF5(trim(plot_names(1)),trim(base_name),&
             &delta_r(:,:,norm_id(1):norm_id(2)),&
             &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &X=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),1)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),1)),&
-            &Y=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),2)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),2)),&
-            &Z=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),3)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),3)),&
-            &cont_plot=eq_job_nr.gt.1,&
+            &loc_offset=[0,0,grid_trim%i_min-1],X=XYZ_half(:,:,:,1),&
+            &Y=XYZ_half(:,:,:,2),Z=XYZ_half(:,:,:,3),cont_plot=eq_job_nr.gt.1,&
             &description='plasma position displacement')
         
         call lvl_ud(-1)
@@ -4116,38 +4165,56 @@ contains
             &max_transf=4)
         CHCKERR('')
         
-        ! set plot variables for prop_B_tor
-        base_name = 'prop_B_tor_from_eq'
-        plot_names(1) = trim(base_name)//'_sub'
-        plot_names(2) = trim(base_name)//'_sup'
+        ! calculate
+        allocate(delta_B(grid_eq%n(1),1,grid_eq%loc_n_r,3))
+        delta_B(:,:,:,2:3) = 2*(B_com(:,2:2,:,2,:)-B_com(:,1:1,:,2,:)) / &
+            &(B_com(:,2:2,:,2,:)+B_com(:,1:1,:,2,:))                            ! indices 2 and 3 hold sub and sup
+        delta_B(:,:,:,1) = 0.5_dp*sum(delta_B(:,:,:,2:3),4)                     ! index 1 holds average
+        deallocate(B_com)
+        
+        ! set plot variables for delta_B_tor
+        base_name = 'delta_B_tor'
+        plot_names(1) = 'delta_B_tor'
         if (present(rich_lvl)) then
             if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
                 &trim(i2str(rich_lvl))
         end if
-        allocate(delta_B(grid_eq%n(1),1,grid_eq%loc_n_r,2))
-        delta_B = 2*(B_com(:,2:2,:,2,:)-B_com(:,1:1,:,2,:)) / &
-            &(B_com(:,2:2,:,2,:)+B_com(:,1:1,:,2,:))
+        
+        ! plot
+        call plot_HDF5(trim(plot_names(1)),trim(base_name),&
+            &delta_B(:,:,norm_id(1):norm_id(2),1),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],X=XYZ_half(:,:,:,1),&
+            &Y=XYZ_half(:,:,:,2),Z=XYZ_half(:,:,:,3),cont_plot=eq_job_nr.gt.1,&
+            &description='plasma position displacement')
         
         call lvl_ud(-1)
         
-        call writo('Output ripple proportionality factor')
+        call writo('Calculate proportionality factor')
         call lvl_ud(1)
+        
+        ! set plot variables for prop_B_tor
+        base_name = 'prop_B_tor_from_eq'
+        plot_names(1) = trim(base_name)
+        plot_names(2) = trim(base_name)//'_sub'
+        plot_names(3) = trim(base_name)//'_sup'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
         
         ! plot with HDF5
         call plot_HDF5(plot_names,trim(base_name),&
             &reshape([delta_r(:,:,norm_id(1):norm_id(2)),&
+            &delta_r(:,:,norm_id(1):norm_id(2)),&
             &delta_r(:,:,norm_id(1):norm_id(2))],&
-            &[grid_trim%n(1),1,grid_trim%loc_n_r,2])/&
+            &[grid_trim%n(1),1,grid_trim%loc_n_r,3])/&
             &delta_B(:,:,norm_id(1):norm_id(2),:),&
-            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3),2],&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3),3],&
             &loc_offset=[0,0,grid_trim%i_min-1,0],&
-            &X=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),1:1)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),1:1)),&
-            &Y=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),2:2)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),2:2)),&
-            &Z=0.5_dp*(XYZ(:,1:1,norm_id(1):norm_id(2),3:3)+&
-            &XYZ(:,2:2,norm_id(1):norm_id(2),3:3)),&
-            &cont_plot=eq_job_nr.gt.1,description='delta_r divided by delta_B')
+            &X=XYZ_half(:,:,:,1:1),Y=XYZ_half(:,:,:,2:2),&
+            &Z=XYZ_half(:,:,:,3:3),cont_plot=eq_job_nr.gt.1,&
+            &description='delta_r divided by delta_B')
         
         ! plot in 2-D
         r_lim_2D = [1,grid_trim%n(3)]
@@ -4156,20 +4223,18 @@ contains
         if (rank.eq.0) then
             allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
         end if
-        allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3),2))
+        allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3)))
         if (use_pol_flux_F) then
             ang_par_F => grid_trim%theta_F
         else
             ang_par_F => grid_trim%zeta_F
         end if
         do id = 1,grid_trim%n(1)
-            do jd = 1,2
-                ierr = get_ser_var(delta_r(id,1,norm_id(1):norm_id(2))/&
-                    &delta_B(id,1,norm_id(1):norm_id(2),jd),var_tot_loc,&
-                    &scatter=.true.)
-                CHCKERR('')
-                prop_B_tor_tot(id,:,jd) = var_tot_loc
-            end do
+            ierr = get_ser_var(delta_r(id,1,norm_id(1):norm_id(2))/&
+                &delta_B(id,1,norm_id(1):norm_id(2),1),var_tot_loc,&
+                &scatter=.true.)
+            CHCKERR('')
+            prop_B_tor_tot(id,:) = max(min(var_tot_loc,2._dp),-2._dp)           ! limit to avoid division by small delta_B values
             deallocate(var_tot_loc)
             ierr = get_ser_var(ang_par_F(id,1,:),var_tot_loc)
             CHCKERR('')
@@ -4177,13 +4242,11 @@ contains
             deallocate(var_tot_loc)
         end do
         if (rank.eq.0) then
-            do jd = 1,2
-                call print_ex_2D([trim(plot_names(jd))],trim(base_name),&
-                    &prop_B_tor_tot(:,r_lim_2D(1):r_lim_2D(2),jd),&
-                    &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
-                call draw_ex([trim(plot_names(jd))],trim(base_name),&
-                    &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
-            end do
+            call print_ex_2D([trim(plot_names(1))],trim(base_name),&
+                &prop_B_tor_tot(:,r_lim_2D(1):r_lim_2D(2)),&
+                &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
+            call draw_ex([trim(plot_names(1))],trim(base_name),&
+                &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
         end if
         
         call lvl_ud(-1)
@@ -4239,8 +4302,8 @@ contains
                     &'arc angle [ ]', 'prop. factor [ ]'
                 do id = 1,grid_trim%n(1)
                     write(prop_B_tor_i,'("  ",2(ES23.16," "))') &
-                        &0.5*sum(arc(id,:,grid_eq%loc_n_r)), &
-                        &0.5*sum(prop_B_tor_tot(id,grid_trim%n(3),:))
+                        &0.5_dp*sum(arc(id,:,grid_eq%loc_n_r)), &
+                        &prop_B_tor_tot(id,grid_trim%n(3))
                 end do
                 
                 ! close

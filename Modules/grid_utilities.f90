@@ -137,11 +137,6 @@ contains
             allocate(L_V_c_loc(mnmax_V,dims(3)))
             allocate(L_V_s_loc(mnmax_V,dims(3)))
             
-            ! set up guess
-            allocate(theta_E_guess(dims(1),dims(2)))
-            allocate(theta_E_guess_3D(dims(1),dims(2),dims(3)))
-            theta_E_guess_3D = theta_F
-            
             ! set up interpolation data
             ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
                 &norm_disc_prec_eq)
@@ -155,10 +150,21 @@ contains
                 &norm_interp_data,L_V_s_loc,2)
             CHCKERR('')
             
+            ! set up guess
+            allocate(theta_E_guess(dims(1),dims(2)))
+            allocate(theta_E_guess_3D(dims(1),dims(2),dims(3)))
+            
+            ! set up guess: try theta_F - lambda(theta_F)
+            ! (lambda(theta_V) would be the exact solution)
+            ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_F,zeta_E,&
+                &theta_E_guess_3D,sym=[is_asym_V,.true.],deriv=[0,0])
+            CHCKERR('')
+            theta_E_guess_3D = theta_F - theta_E_guess_3D
+            
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
             err_msg = calc_zero_HH(dims,theta_E,fun_pol,3,&
-                &theta_E_guess_3D,relax_fac=1.0_dp)
+                &theta_E_guess_3D,relax_fac=0.99_dp)                            ! relax factor 1.0 gave problems sometimes
             if (err_msg.ne.'') then
                 ierr = 1
                 CHCKERR(err_msg)

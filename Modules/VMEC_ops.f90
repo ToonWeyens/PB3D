@@ -186,11 +186,11 @@ contains
             CHCKERR('')
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &L_c_H(id,2:n_r_in,0),r_V,ynew=L_V_c(id,:,0),&
-                &dynew=L_V_c(id,:,1),d2ynew=L_V_c(id,:,2))
+                &dynew=L_V_c(id,:,1),d2ynew=L_V_c(id,:,2),extrap=.true.)
             CHCKERR('')
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &L_s_H(id,2:n_r_in,0),r_V,ynew=L_V_s(id,:,0),&
-                &dynew=L_V_s(id,:,1),d2ynew=L_V_s(id,:,2))
+                &dynew=L_V_s(id,:,1),d2ynew=L_V_s(id,:,2),extrap=.true.)
             CHCKERR('')
         end do
         
@@ -242,23 +242,25 @@ contains
         do id = 1,mnmax_V
             do kd = 2,3
                 ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                    &B_V_sub_c_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_c(id,:,kd))
+                    &B_V_sub_c_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_c(id,:,kd),&
+                    &extrap=.true.)
                 CHCKERR('')
                 ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                    &B_V_sub_s_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_s(id,:,kd))
+                    &B_V_sub_s_M(id,2:n_r_in,kd),r_V,ynew=B_V_sub_s(id,:,kd),&
+                    &extrap=.true.)
                 CHCKERR('')
             end do
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &B_V_c_H(id,2:n_r_in),r_V,ynew=B_V_c(id,:))
+                &B_V_c_H(id,2:n_r_in),r_V,ynew=B_V_c(id,:),extrap=.true.)
             CHCKERR('')
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:))
+                &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:),extrap=.true.)
             CHCKERR('')
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &jac_V_c_H(id,2:n_r_in),r_V,ynew=jac_V_c(id,:))
+                &jac_V_c_H(id,2:n_r_in),r_V,ynew=jac_V_c(id,:),extrap=.true.)
             CHCKERR('')
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &jac_V_s_H(id,2:n_r_in),r_V,ynew=jac_V_s(id,:))
+                &jac_V_s_H(id,2:n_r_in),r_V,ynew=jac_V_s(id,:),extrap=.true.)
             CHCKERR('')
         end do
         

@@ -437,8 +437,6 @@ contains
         
         ! apply chosen options for POST
         subroutine apply_opt_POST(opt_nr)                                       ! POST version
-            use num_vars, only: min_theta_plot, max_theta_plot, max_r_plot
-            
             ! input / output
             integer, intent(in) :: opt_nr                                       ! option number
             

@@ -933,3 +933,11 @@ Technische Universiteit Eindhoven
 * This file can be created using "compare_tor_pos".
 * The splines routines have been replaced by the "bspline_module" package by Jacob Williams (https://github.com/jacobwilliams/bspline-fortran.git), which is multi-dimensional.
 * Tweaked external output a bit.
+
+## 1.79:
+* Bug fixes.
+* Further tweaks to the system of perturbations of HELENA equilibria.
+* Perturbation map can be shifted vertically, which is important for eqdisk files processed by HELENA, which shift the geometric axis to Z=0.
+* There is now a check for physical consistency for the sign of the Alfven time.
+* "pause_prog" now takes a secret message "stop" that can be used to stop the program, which is useful when controlling PB3D in an automated way.
+* Improved the guess for theta_E as a function of theta_F in the procedure "coord_F2E" by using lambda. This greatly improves convergence sometimes.

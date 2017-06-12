@@ -83,6 +83,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counters
         integer :: nchi_loc                                                     ! local nchi
+        integer :: max_loc_Z(2)                                                 ! location of maximum Z
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
@@ -92,6 +93,8 @@ contains
         real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t. magnetic axis
         real(dp) :: eps                                                         ! inverse aspect ratio
         real(dp) :: cpsurf                                                      ! poloidal flux on surface
+        real(dp) :: ellip                                                       ! ellipticity
+        real(dp) :: tria                                                        ! triangularity
         type(disc_type), allocatable :: norm_deriv_data(:)                      ! data for normal derivatives
         
         ! initialize ierr
@@ -218,6 +221,15 @@ contains
         Z_H(:,1) = 0._dp                                                        ! first normal point is degenerate, 0
         if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
+        
+        ! calculate ellipticity and triangularity
+        max_loc_Z = maxloc(Z_H)
+        ellip = (maxval(Z_H)-minval(Z_H))/(maxval(R_H)-minval(R_H))
+        tria = ((maxval(R_H)+minval(R_H))*0.5_dp-&
+            &R_H(max_loc_Z(1),max_loc_Z(2)))/&
+            &((maxval(Z_H)-minval(Z_H))*0.5_dp)
+        call writo('Calculated ellipticity: '//trim(r2str(ellip)))
+        call writo('Calculated triangularity: '//trim(r2str(tria)))
         
         ! calculate data for normal derivatives with flux_p_H/2pi
         allocate(norm_deriv_data(max_deriv+1))

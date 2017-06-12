@@ -225,6 +225,7 @@ contains
         character(len=11) :: empty_str = ''                                     ! empty string
         integer :: istat                                                        ! status
         logical :: ind_loc                                                      ! local version of ind
+        character(len=max_str_ln) :: hidden_msg                                 ! hidden message
         
         ! output message
         if (rank.eq.0) then
@@ -239,7 +240,7 @@ contains
         ! only master can receive input
         if (rank.eq.0) then
             call stop_time
-            read (*, *)
+            read (*, *) hidden_msg
             call start_time
         end if
         
@@ -249,6 +250,9 @@ contains
             if (istat.ne.0) call writo('In pause_prog, something went &
                 &wrong. Continuing.',warning=.true.)
         end if
+        
+        ! hidden message
+        if (trim(hidden_msg).eq.'stop') stop 0
     end subroutine pause_prog
     
     ! Cleans up input from equilibrium codes.

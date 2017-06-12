@@ -100,6 +100,7 @@ sol_utilities.o : \
     X_vars.o \
     sol_vars.o \
     grid_utilities.o \
+    splines.o \
 
 grid_utilities.o : \
     str_utilities.o \
@@ -317,6 +318,7 @@ eq_ops.o : \
     X_utilities.o \
     rich_vars.o \
     bspline_sub_module.o \
+    splines.o \
 
 eq_utilities.o : \
     str_utilities.o \

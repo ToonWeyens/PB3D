@@ -19,7 +19,7 @@ module splines
 contains
     ! This procedure  makes use of the  bspline library, but makes  it easier to
     ! use for 1-D applications where speed is not the main priority.
-    integer function spline3_real(ord,x,y,xnew,ynew,dynew,d2ynew) &
+    integer function spline3_real(ord,x,y,xnew,ynew,dynew,d2ynew,extrap) &
         &result(ierr)                                                           ! real version
         use bspline_sub_module, only: db1ink, db1val, get_status_message
         
@@ -30,6 +30,7 @@ contains
         real(dp), intent(in) :: x(:), xnew(:)                                   ! coordinates
         real(dp), intent(in) :: y(:)                                            ! function value
         real(dp), intent(out), optional :: ynew(:), dynew(:), d2ynew(:)         ! function values and derivatives
+        logical, intent(in), optional :: extrap                                 ! whether extrapolation is allowed
         
         ! local variables
         integer :: kd                                                           ! counter
@@ -55,25 +56,25 @@ contains
         do kd = 1,size(xnew)
             if (present(ynew)) then
                 call db1val(xnew(kd),0,spline_knots,n,ord,&
-                    &spline_coeff,ynew(kd),ierr,spline_init)
+                    &spline_coeff,ynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
             end if
             if (present(dynew)) then
                 call db1val(xnew(kd),1,spline_knots,n,ord,&
-                    &spline_coeff,dynew(kd),ierr,spline_init)
+                    &spline_coeff,dynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
             end if
             if (present(d2ynew)) then
                 call db1val(xnew(kd),2,spline_knots,n,ord,&
-                    &spline_coeff,d2ynew(kd),ierr,spline_init)
+                    &spline_coeff,d2ynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
             end if
         end do
     end function spline3_real
-    integer function spline3_complex(ord,x,y,xnew,ynew,dynew,d2ynew) &
+    integer function spline3_complex(ord,x,y,xnew,ynew,dynew,d2ynew,extrap) &
         &result(ierr)                                                           ! complex version
         use bspline_sub_module, only: db1ink, db1val, get_status_message
         
@@ -84,6 +85,7 @@ contains
         real(dp), intent(in) :: x(:), xnew(:)                                   ! coordinates
         complex(dp), intent(in) :: y(:)                                         ! function value
         complex(dp), intent(out), optional :: ynew(:), dynew(:), d2ynew(:)      ! function values and derivatives
+        logical, intent(in), optional :: extrap                                 ! whether extrapolation is allowed
         
         ! local variables
         integer :: kd, id                                                       ! counters
@@ -114,7 +116,8 @@ contains
             if (present(ynew)) then
                 do id = 1,2
                     call db1val(xnew(kd),0,spline_knots(:,id),n,ord,&
-                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init)
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
                     err_msg = get_status_message(ierr)
                     CHCKERR(err_msg)
                 end do
@@ -123,7 +126,8 @@ contains
             if (present(dynew)) then
                 do id = 1,2
                     call db1val(xnew(kd),1,spline_knots(:,id),n,ord,&
-                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init)
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
                     err_msg = get_status_message(ierr)
                     CHCKERR(err_msg)
                 end do
@@ -132,7 +136,8 @@ contains
             if (present(d2ynew)) then
                 do id = 1,2
                     call db1val(xnew(kd),2,spline_knots(:,id),n,ord,&
-                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init)
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
                     err_msg = get_status_message(ierr)
                     CHCKERR(err_msg)
                 end do

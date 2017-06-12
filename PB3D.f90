@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.78                                                              !
+!   Version: 1.79                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -93,7 +93,8 @@ program PB3D
         if (rich_restart_lvl.eq.1) then
             ierr = read_input_eq()                                              ! read input equilibrium file
             CHCKERR
-            call calc_normalization_const()                                     ! set up normalization constants
+            ierr = calc_normalization_const()                                     ! set up normalization constants
+            CHCKERR
             call normalize_input()                                              ! normalize the input
         end if
         ierr = open_output()                                                    ! open output file
