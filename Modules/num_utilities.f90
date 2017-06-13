@@ -12,7 +12,7 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD
+        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -62,6 +62,9 @@ module num_utilities
     end interface
     interface bubble_sort
         module procedure bubble_sort_int, bubble_sort_real
+    end interface
+    interface order_per_fun
+        module procedure order_per_fun_1, order_per_fun_2
     end interface
     
 contains
@@ -1943,4 +1946,73 @@ contains
             res = v
         end if
     end function GCD
+    
+    ! Order a periodic function to include 0..2pi and an overlap.
+    subroutine order_per_fun_1(x,y,x_out,y_out,overlap)                         ! version with separate x_out, y_out
+        ! input / output
+        real(dp), intent(in) :: x(:), y(:)                                      ! abscissa and ordinate
+        real(dp), intent(inout), allocatable :: x_out(:), y_out(:)              ! ordered x and y
+        integer, intent(in) :: overlap                                          ! overlap to include
+        
+        ! local variables
+        real(dp), allocatable :: x_fund(:)                                      ! x on fundamental interval 0..2pi
+        integer :: ml_x                                                         ! location of maximum of x
+        integer :: lim(2)                                                       ! limits in x
+        integer :: lim_loc(2)                                                   ! limits in loc_x
+        
+        ! initialize
+        allocate(x_fund(size(x)))
+        x_fund = mod(x,2*pi)
+        where(x_fund.lt.0._dp) x_fund = x_fund+2*pi
+        ml_x = maxloc(x_fund,1)
+        
+        allocate(x_out(size(x)+2*overlap))
+        allocate(y_out(size(x)+2*overlap))
+        
+        ! left overlap
+        lim = [max(ml_x-overlap+1,1),ml_x]                                      ! all possible points to the left of ml_x, u
+        lim_loc = [overlap-lim(2)+lim(1),overlap]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))-2*pi
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+        lim_loc = [1,lim_loc(1)-1]
+        lim = [size(x)-(lim_loc(2)-lim_loc(1)),size(x)]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))-2*pi
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+        
+        ! bulk
+        lim = [ml_x+1,size(x)]                                                  ! points after max, until last
+        lim_loc = [overlap+1,overlap+lim(2)-lim(1)+1]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+        lim = [1,ml_x]                                                          ! points from start, until max
+        lim_loc = lim_loc(2) + [1,lim(2)-lim(1)+1]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+        
+        ! right overlap
+        lim = [ml_x+1,min(ml_X+overlap,size(x))]                                ! all possible poinst to the right of ml_X
+        lim_loc = lim_loc(2) + [1,lim(2)-lim(1)+1]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))+2*pi
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+        lim_loc = [lim_loc(2)+1,size(x)+2*overlap]                              ! remaining point loop around
+        lim = [1,lim_loc(2)-lim_loc(1)+1]
+        x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))+2*pi
+        y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
+    end subroutine order_per_fun_1
+    subroutine order_per_fun_2(xy,xy_out,overlap)
+        ! input / output
+        real(dp), intent(in) :: xy(:,:)                                         ! abscissa and ordinate
+        real(dp), intent(inout), allocatable :: xy_out(:,:)                     ! ordered xy
+        integer, intent(in) :: overlap                                          ! overlap to include
+        
+        ! local variables
+        real(dp), allocatable :: x_out(:)                                       ! local x_out
+        real(dp), allocatable :: y_out(:)                                       ! local y_out
+        
+        call order_per_fun_1(xy(:,1),xy(:,2),x_out,y_out,overlap)
+        
+        allocate(xy_out(size(x_out),2))
+        xy_out(:,1) = x_out
+        xy_out(:,2) = y_out
+    end subroutine order_per_fun_2
 end module num_utilities

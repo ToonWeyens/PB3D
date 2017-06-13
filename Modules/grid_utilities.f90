@@ -1562,8 +1562,8 @@ contains
     ! Optionally  also  a normalization  length  can  be  provided so  that  the
     ! individual terms in  the interpolation do not blow up.  This can be useful
     ! for example for interpolation with many points.
-    integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len) &
-        &result(ierr)
+    integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len,&
+        &tol) result(ierr)
         use grid_vars, only: disc_type
         use num_utilities, only: con2dis
         
@@ -1576,6 +1576,7 @@ contains
         integer, intent(in) :: ord                                              ! order of derivative
         logical, intent(in), optional :: is_trigon                              ! trigonometric interpolation
         real(dp), intent(in), optional :: norm_len                              ! custom normalization length
+        real(dp), intent(in), optional :: tol                                   ! tolerance
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -1583,7 +1584,7 @@ contains
         integer :: n_loc                                                        ! nr. of points used for interpolation locally
         real(dp) :: len                                                         ! interval length
         real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
-        real(dp), parameter :: tol = 1.0E-8                                     ! tolerance
+        real(dp) :: tol_loc                                                     ! tolerance
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: weight(:)                                      ! weights w_j
         real(dp) :: weight_loc                                                  ! local weight factor
@@ -1592,9 +1593,11 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! set local is_trigon
+        ! set local is_trigon and tolerance
         is_trigon_loc = .false.
         if (present(is_trigon)) is_trigon_loc = is_trigon
+        tol_loc = 1.E-8_dp
+        if (present(tol)) tol_loc = tol
         
         ! tests
         if (ord.lt.1) then
@@ -1638,7 +1641,7 @@ contains
             end if
             
             ! check for (near) exact match
-            if (mod(x_interp_disc,1._dp).lt.tol) then
+            if (mod(x_interp_disc,1._dp).lt.tol_loc) then
                 ! directly set the correct index to 1
                 A%dat(id,:) = 0._dp
                 A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
@@ -3198,6 +3201,8 @@ contains
     ! Note that the fundamental interval is  assumed to be 0..2pi but that there
     ! should be no overlap between the first and last point.
     integer function nufft(x,f,f_F,plot_name) result(ierr)
+        use num_utilities, only: order_per_fun
+        
         character(*), parameter :: rout_name = 'nufft'
         
         ! input / output
@@ -3211,10 +3216,6 @@ contains
         integer :: n_x                                                          ! nr. of points
         integer :: interp_ord = 4                                               ! order of interpolation
         integer :: id                                                           ! counter
-        integer :: ml_x                                                         ! location of maximum of x
-        integer :: lim(2)                                                       ! limits in x
-        integer :: lim_loc(2)                                                   ! limits in loc_x
-        real(dp), allocatable :: x_fund(:)                                      ! x on fundamental interval 0..2pi
         real(dp), allocatable :: x_loc(:)                                       ! local x, extended
         real(dp), allocatable :: work(:)                                        ! work array
         real(dp), allocatable :: f_loc(:)                                       ! local f, extended
@@ -3235,35 +3236,7 @@ contains
         
         ! create local x and  f that go from <0 to <2pi,  with enough points for
         ! full order precision
-        allocate(x_fund(size(x)))
-        x_fund = mod(x,2*pi)
-        where(x_fund.lt.0._dp) x_fund = x_fund+2*pi
-        allocate(x_loc(size(x)+2*interp_ord))
-        allocate(f_loc(size(x)+2*interp_ord))
-        ml_x = maxloc(x_fund,1)
-        lim_loc = [1,interp_ord]
-        lim = [ml_x-interp_ord+1,ml_x]
-        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))-2*pi
-        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
-        lim_loc = [interp_ord+1,interp_ord+size(x)-ml_x]
-        lim = [ml_x+1,size(x)]
-        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
-        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
-        lim_loc = [interp_ord+size(x)-ml_x+1,size(x)+interp_ord]
-        lim = [1,ml_x]
-        x_loc(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))
-        f_loc(lim_loc(1):lim_loc(2)) = f(lim(1):lim(2))
-        lim_loc(1) = lim_loc(2)+1
-        do id = ml_x+1,min(size(x),ml_x+interp_ord)
-            x_loc(lim_loc(1)) = x_fund(id)+2*pi
-            f_loc(lim_loc(1)) = f(id)
-            lim_loc(1) = lim_loc(1)+1
-        end do
-        do id = 1,ml_x+interp_ord-size(x)
-            x_loc(lim_loc(1)) = x_fund(id)+2*pi
-            f_loc(lim_loc(1)) = f(id)
-            lim_loc(1) = lim_loc(1)+1
-        end do
+        call order_per_fun(x,f,x_loc,f_loc,interp_ord)
         
         ! set local f and interpolate
         n_x = size(x)
@@ -3274,7 +3247,6 @@ contains
         CHCKERR('')
         
         ! clean up
-        deallocate(x_fund)
         deallocate(x_loc)
         deallocate(f_loc)
         call trigon_interp_data%dealloc()

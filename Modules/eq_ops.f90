@@ -531,7 +531,7 @@ contains
             use HELENA_vars, only: nchi, R_H, Z_H, ias, chi_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
-            use num_utilities, only: GCD, bubble_sort
+            use num_utilities, only: GCD, bubble_sort, order_per_fun
             use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
                 &norm_disc_prec_eq, prop_B_tor_i
             use files_utilities, only: skip_comment, count_lines
@@ -591,7 +591,7 @@ contains
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
             real(dp) :: BH_pert_loc(2)                                          ! local BH_pert
-            real(dp) :: prop_B_tor_smooth = 1.0_dp                              ! smoothing of prop_B_tor_interp via Fourier transform
+            real(dp) :: prop_B_tor_smooth                                       ! smoothing of prop_B_tor_interp via Fourier transform
             real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
             real(dp), allocatable :: Z_plot(:,:,:)                              ! Z for plotting of ripple map
             real(dp), allocatable :: spline_knots_R(:)                          ! knots of spline for R
@@ -616,6 +616,7 @@ contains
             real(dp), allocatable :: theta(:,:)                                 ! pol. angle: (geometric, HELENA (equidistant))
             real(dp), allocatable :: theta_geo(:,:,:)                           ! geometric poloidal angle, for plotting
             real(dp), allocatable :: prop_B_tor(:,:)                            ! proportionality between delta B_tor and delta_norm
+            real(dp), allocatable :: prop_B_tor_ord(:,:)                        ! ordered prop_B_tor
             real(dp), allocatable :: prop_B_tor_interp(:)                       ! proportionality between delta B_tor and delta_norm
             real(dp), allocatable :: prop_B_tor_interp_F(:,:)                   ! Fourier modes of prop_B_tor_interp
             real(dp), allocatable :: XYZ_plot(:,:,:,:)                          ! plotting X, Y and Z
@@ -625,6 +626,7 @@ contains
             logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
             logical :: found                                                    ! whether something was found
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
+            type(disc_type) :: pol_interp_data                                  ! data for poloidal interpolation
 #if ldebug
             real(dp), allocatable :: BH_0_ALT(:,:)                              ! reconstructed R and Z
             type(disc_type) :: deriv_data                                       ! data for derivatives in theta
@@ -680,6 +682,7 @@ contains
             RZ_B_0(1) = sum(R_H_loc(:,1))/size(R_H_loc,1)
             RZ_B_0(2) = sum(Z_H_loc(:,1))/size(Z_H_loc,1)
             theta(:,1) = atan2(BH_0(:,2)-RZ_B_0(2),BH_0(:,1)-RZ_B_0(1))
+            where (theta(:,1).lt.0) theta(:,1) = theta(:,1) + 2*pi
             call writo('Magnetic axis used for geometrical coordinates:')
             call lvl_ud(1)
             call writo('('//trim(r2str(RZ_B_0(1)))//','//&
@@ -815,52 +818,57 @@ contains
                         &//trim(prop_B_tor_file_name)//'"')
                     call lvl_ud(1)
                     n_prop_B_tor = count_lines(prop_B_tor_i)
-                    allocate(prop_B_tor(2*n_prop_B_tor-1,2))                    ! take two periods -2pi..2pi
+                    allocate(prop_B_tor(n_prop_B_tor,2))
                     ierr = skip_comment(prop_B_tor_i,&
                         &file_name=prop_B_tor_file_name)
                     CHCKERR('')
-                    do id = n_prop_B_tor,2*n_prop_B_tor-1
+                    do id = 1,n_prop_B_tor
                         read(prop_B_tor_i,*,IOSTAT=ierr) prop_B_tor(id,:)
                     end do
-                    prop_B_tor(1:n_prop_B_tor,1) = &
-                        &prop_B_tor(n_prop_B_tor:2*n_prop_B_tor-1,1)-2*pi
-                    prop_B_tor(1:n_prop_B_tor,2) = &
-                        &prop_B_tor(n_prop_B_tor:2*n_prop_B_tor-1,2)
                     
                     ! user info
                     call writo(trim(i2str(n_prop_B_tor))//&
                         &' poloidal points '//&
                         &trim(r2strt(minval(prop_B_tor(:,1))))//'..'//&
                         &trim(r2strt(maxval(prop_B_tor(:,1)))))
+                    call writo('The proportionality factor should be tabulated &
+                        &in a geometrical angle that has the SAME origin as &
+                        &the one used here',alert=.true.)
                     
                     ! interpolate the proportionality  factor on the geometrical
                     ! poloidal angle used  here (as opposed to the  one in which
                     ! it was tabulated)
-                    call writo('The proportionality factor should be tabulated &
-                        &in a geometrical angle that has the SAME origin as &
-                        &the one used here',alert=.true.)
+                    call order_per_fun(prop_B_tor(1:size(prop_B_tor,1)-1,:),&
+                        &prop_B_tor_ord,norm_disc_prec_eq)                      ! last and first point should match, so throw one away
+                    deallocate(prop_B_tor)
                     allocate(prop_B_tor_interp(n_B))
-                    ierr = spline3(norm_disc_prec_eq,prop_B_tor(:,1),&
-                        &prop_B_tor(:,2),theta(:,1),ynew=prop_B_tor_interp)
-                    CHCKERR('')
+                    ierr = setup_interp_data(prop_B_tor_ord(:,1),theta(:,1),&
+                        &pol_interp_data,norm_disc_prec_eq/2*2,is_trigon=.true.)
+                    do kd = 1,pol_interp_data%n
+                    end do
+                    ierr = apply_disc(prop_B_tor_ord(:,2),pol_interp_data,&
+                        &prop_B_tor_interp)
+                    call pol_interp_data%dealloc()
+                    deallocate(prop_B_tor_ord)
                     if (grid_eq%n(2).ne.1) call writo('There should be only 1 &
                         &geodesical position, but there are '//&
                         &trim(i2str(grid_eq%n(2))),warning=.true.)
-                    deallocate(prop_B_tor)
                     
                     ! smooth prop_B_tor_interp
                     ierr = nufft(theta(:,1),prop_B_tor_interp,&
                         &prop_B_tor_interp_F)                                   ! helena pol. fourier coefficients
                     CHCKERR('')
                     prop_B_tor_interp = 0._dp
+                    prop_B_tor_smooth = 1._dp
+                    call writo('Do you want to smooth the perturbation?')
+                    if (get_log(.false.)) &
+                        &prop_B_tor_smooth = get_real(lim_lo=0._dp,lim_hi=1._dp)
                     do id = 0,int((size(prop_B_tor_interp_F,1)-1)*&
                         &prop_B_tor_smooth)
                         prop_B_tor_interp = prop_B_tor_interp + (&
                             &prop_B_tor_interp_F(id+1,1)*cos(id*theta(:,1)) + &
                             &prop_B_tor_interp_F(id+1,2)*sin(id*theta(:,1)))
                     end do
-                    call writo('Smoothing perturbation with factor '//&
-                        &trim(r2str(prop_B_tor_smooth)))
                     
                     call lvl_ud(-1)
                 end if
@@ -4028,7 +4036,7 @@ contains
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, &
             &use_normalization, rank, use_pol_flux_F, ex_plot_style, n_procs, &
-            &prop_B_tor_i, min_theta_plot, max_theta_plot, max_r_plot
+            &prop_B_tor_i, min_theta_plot, max_theta_plot, max_r_plot, tol_zero
         use eq_vars, only: B_0, R_0, psi_0
         use num_utilities, only: c, calc_int
         use input_utilities, only: get_real
@@ -4261,8 +4269,8 @@ contains
         
         call lvl_ud(-1)
         
-        if (min_theta_plot.le.0._dp .and. max_theta_plot.ge.2._dp &
-            &.and. max_r_plot.ge.1._dp) then
+        if (abs(max_theta_plot-min_theta_plot-2).le.tol_zero .and. &
+            &max_r_plot.ge.1._dp) then
             call writo('Output to file as function of poloidal flux angle')
             call lvl_ud(1)
             
@@ -4282,7 +4290,6 @@ contains
                 &XYZ_loc(:,2,norm_id(1):norm_id(2),3)-orig_geo(2),&
                 &XYZ_loc(:,2,norm_id(1):norm_id(2),4)-orig_geo(1))
             where (theta_geo.lt.0._dp) theta_geo = theta_geo + 2*pi
-            theta_geo(1,:,:) = 0._dp                                            ! if user gives a non dp value, this is slightly negative and goes to 2pi
             
             ! plot with HDF5
             call plot_HDF5('theta_geo','theta_geo',theta_geo,&

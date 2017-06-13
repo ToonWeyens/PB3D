@@ -946,3 +946,7 @@ Technische Universiteit Eindhoven
 * Bug fixes.
 * The proportionality factor between magnetic and position ripples now use the geometric angle.
 * "compare_tor_pos" now needs 3 toroidal points, one in the middle. This makes toroidal comparisons easier.
+
+## 1.81:
+* Fixed a bug in the interpolation of non-symmetric prop_B_tor.
+* Introduced "order_per_fun" to order periodic functions and possible add an extra overlap left and right.
