@@ -1948,17 +1948,39 @@ contains
     end function GCD
     
     ! Order a periodic function to include 0..2pi and an overlap.
-    subroutine order_per_fun_1(x,y,x_out,y_out,overlap)                         ! version with separate x_out, y_out
+    integer function order_per_fun_1(x,y,x_out,y_out,overlap,tol) result(ierr)  ! version with separate x_out, y_out
+        use num_vars, only: tol_zero
+        
+        character(*), parameter :: rout_name = 'order_per_fun_1'
+        
         ! input / output
         real(dp), intent(in) :: x(:), y(:)                                      ! abscissa and ordinate
         real(dp), intent(inout), allocatable :: x_out(:), y_out(:)              ! ordered x and y
         integer, intent(in) :: overlap                                          ! overlap to include
+        real(dp), intent(in), optional :: tol                                   ! tolerance for error
         
         ! local variables
+        real(dp) :: tol_loc                                                     ! local tolerance
         real(dp), allocatable :: x_fund(:)                                      ! x on fundamental interval 0..2pi
         integer :: ml_x                                                         ! location of maximum of x
         integer :: lim(2)                                                       ! limits in x
         integer :: lim_loc(2)                                                   ! limits in loc_x
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local tol
+        tol_loc = tol_zero
+        if (present(tol)) tol_loc = tol
+        
+        ! tests
+        if (abs(cos(x(size(x)))-cos(x(1))).lt.tol_loc .and. &
+            &abs(sin(x(size(x)))-sin(x(1))).lt.tol_loc) then
+            ierr = 1
+            err_msg = 'First and last point cannot be identical. Remove one.'
+            CHCKERR(err_msg)
+        end if
         
         ! initialize
         allocate(x_fund(size(x)))
@@ -1998,21 +2020,28 @@ contains
         lim = [1,lim_loc(2)-lim_loc(1)+1]
         x_out(lim_loc(1):lim_loc(2)) = x_fund(lim(1):lim(2))+2*pi
         y_out(lim_loc(1):lim_loc(2)) = y(lim(1):lim(2))
-    end subroutine order_per_fun_1
-    subroutine order_per_fun_2(xy,xy_out,overlap)
+    end function order_per_fun_1
+    integer function order_per_fun_2(xy,xy_out,overlap,tol) result(ierr)
+        character(*), parameter :: rout_name = 'order_per_fun_2'
+        
         ! input / output
         real(dp), intent(in) :: xy(:,:)                                         ! abscissa and ordinate
         real(dp), intent(inout), allocatable :: xy_out(:,:)                     ! ordered xy
         integer, intent(in) :: overlap                                          ! overlap to include
+        real(dp), intent(in), optional :: tol                                   ! tolerance for error
         
         ! local variables
         real(dp), allocatable :: x_out(:)                                       ! local x_out
         real(dp), allocatable :: y_out(:)                                       ! local y_out
         
-        call order_per_fun_1(xy(:,1),xy(:,2),x_out,y_out,overlap)
+        ! initialize ierr
+        ierr = 0
+        
+        ierr = order_per_fun_1(xy(:,1),xy(:,2),x_out,y_out,overlap,tol)
+        CHCKERR('')
         
         allocate(xy_out(size(x_out),2))
         xy_out(:,1) = x_out
         xy_out(:,2) = y_out
-    end subroutine order_per_fun_2
+    end function order_per_fun_2
 end module num_utilities

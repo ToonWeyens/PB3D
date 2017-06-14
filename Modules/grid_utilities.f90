@@ -3216,13 +3216,13 @@ contains
         integer :: n_x                                                          ! nr. of points
         integer :: interp_ord = 4                                               ! order of interpolation
         integer :: id                                                           ! counter
+        logical :: print_log = .false.                                          ! print log plot as well
         real(dp), allocatable :: x_loc(:)                                       ! local x, extended
         real(dp), allocatable :: work(:)                                        ! work array
         real(dp), allocatable :: f_loc(:)                                       ! local f, extended
         real(dp), allocatable :: f_int(:)                                       ! interpolated f, later Fourier modes
-        type(disc_type) :: trigon_interp_data                                   ! data for non-equidistant sampling fourier coefficients
         character(len=max_str_ln) :: plot_title(2)                              ! name of plot
-        logical :: print_log = .false.                                          ! print log plot as well
+        type(disc_type) :: trigon_interp_data                                   ! data for non-equidistant sampling fourier coefficients
         
         ! tests
         if (size(x).ne.size(f)) then
@@ -3236,7 +3236,8 @@ contains
         
         ! create local x and  f that go from <0 to <2pi,  with enough points for
         ! full order precision
-        call order_per_fun(x,f,x_loc,f_loc,interp_ord)
+        ierr = order_per_fun(x,f,x_loc,f_loc,interp_ord)
+        CHCKERR('')
         
         ! set local f and interpolate
         n_x = size(x)

@@ -950,3 +950,9 @@ Technische Universiteit Eindhoven
 ## 1.81:
 * Fixed a bug in the interpolation of non-symmetric prop_B_tor.
 * Introduced "order_per_fun" to order periodic functions and possible add an extra overlap left and right.
+
+## 1.82:
+* There is a large error with the calculation of the modes for "create_VMEC_input". It can most easily be seen when plotting the cross-section inverted.
+* Fixed some bugs and added some checks in the calculation of the proportionality factors prop_B_tor.
+* "delta_r_plot" now returns half the differences of r and delta_B/B, which corresponds to the ripple definition in the litterature.
+* Improved the whole "create_VMEC_input" procedure, fixed the plotting.
