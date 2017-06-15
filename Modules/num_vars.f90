@@ -32,6 +32,7 @@ module num_vars
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
         &rich_restart_lvl, plot_size, jump_to_sol, compare_tor_pos, &
         &export_HEL, plot_VMEC_modes, ex_plot_style, pert_mult_factor_POST, &
+        &RZ_0, &
         &POST_output_full, POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
         &HEL_pert_i, HEL_export_i, input_i, PB3D_i, PB3D_name, eq_i, output_i, &
@@ -53,7 +54,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.82_dp                               ! version number
+    real(dp), parameter :: prog_version = 1.83_dp                               ! version number
     real(dp), parameter :: min_PB3D_version = 1.75_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
@@ -162,6 +163,9 @@ module num_vars
     character(len=max_str_ln) :: input_name                                     ! will hold the full name of the input file
     integer :: ex_plot_style                                                    ! external plot style (1: GNUPlot, 2: Bokeh for 2D, Mayavi for 3D)
     real(dp) :: pert_mult_factor_POST                                           ! factor with which to multiply perturbation strength for POST
+    
+    ! Concerning comparing toroidal positions
+    real(dp) :: RZ_0(2)                                                         ! origin of geometrical poloidal coordinate
     
     ! Concerning file numbers
     integer, parameter :: input_i = 50                                          ! file number of input file

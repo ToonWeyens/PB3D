@@ -575,18 +575,21 @@ contains
                             &POST_style = 2 (extended grid)'
                         CHCKERR(err_msg)
                     end if
-                    if (abs(max_theta_plot-min_theta_plot-2).gt.tol_zero .or. &
-                        &max_r_plot.lt.1._dp) then
-                        call writo('No proportionality file will be created &
-                            &because',warning=.true.)
-                        call lvl_ud(1)
-                        if (min_theta_plot.gt.0._dp .or. &
-                            &max_theta_plot.lt.2._dp) &
-                            &call writo('theta_plot does not contain the &
-                            &fundamental interval of 2pi')
-                        if (max_r_plot.lt.1._dp) &
-                            &call writo('max_r_plot is not 1')
-                        call lvl_ud(-1)
+                    if (min_r_plot.lt.tol_zero) then
+                        ierr = 1
+                        err_msg = 'min_r_plot has to be greater than 0.'
+                        CHCKERR(err_msg)
+                    end if
+                    if (max_r_plot.lt.1._dp) then
+                        ierr = 1
+                        err_msg = 'max_r_plot has to be 1.'
+                        CHCKERR(err_msg)
+                    end if
+                    if (abs(min_theta_plot-0).gt.tol_zero .or. &
+                        &abs(max_theta_plot-2).gt.tol_zero) then
+                        ierr = 1
+                        err_msg = 'theta limits of plot need to be 0..2pi'
+                        CHCKERR(err_msg)
                     end if
                 end if
             end if

@@ -956,3 +956,11 @@ Technische Universiteit Eindhoven
 * Fixed some bugs and added some checks in the calculation of the proportionality factors prop_B_tor.
 * "delta_r_plot" now returns half the differences of r and delta_B/B, which corresponds to the ripple definition in the litterature.
 * Improved the whole "create_VMEC_input" procedure, fixed the plotting.
+
+## 1.83:
+* Rewrote and greatly simplified "create_VMEC_input". It now uses the geometrical poloidal angle, as this angle needs to be kept constant for any reasonable comparison.
+* Did the same thing for the "delta_r_plot".
+* Changed "calc_vec_comp" so that it also uses the geometric angle and radius.
+* Splines is now merged into the more logical num_utilities module.
+* The origin of the geometrical poloidal angle now has to be provided on the command line for compare_tor_pos.
+* For compare_tor_pos, the fundamental theta interval is now needed always. Otherwise the interpolation in geometrical poloidal angle becomes quite messy.

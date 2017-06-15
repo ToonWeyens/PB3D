@@ -55,7 +55,7 @@ contains
                 opt_args = ''
                 opt_args(7) = '--swap_angles'
                 opt_args(8) = '--compare_tor_pos'
-                inc_args(7:8) = [0,0]
+                inc_args(7:8) = [0,2]
         end select
         
         ! set common option arguments
@@ -357,7 +357,7 @@ contains
                                         case(1)                                 ! PB3D
                                             call apply_opt_PB3D(jd,id)
                                         case(2)                                 ! POST
-                                            call apply_opt_POST(jd)
+                                            call apply_opt_POST(jd,id)
                                     end select
                             end select
                             opt_taken(jd) = .true.
@@ -381,9 +381,11 @@ contains
             use num_vars, only: n_procs
             
             ! input / output
-            integer :: id                                                       ! counter
             integer, intent(in) :: opt_nr                                       ! option number
             integer, intent(in) :: arg_nr                                       ! argument number
+            
+            ! local variables
+            integer :: id                                                       ! counter
             character(len=max_str_ln) :: opt_str                                ! string with option information
             
             select case(opt_nr)
@@ -436,9 +438,15 @@ contains
         end subroutine apply_opt_PB3D
         
         ! apply chosen options for POST
-        subroutine apply_opt_POST(opt_nr)                                       ! POST version
+        subroutine apply_opt_POST(opt_nr,arg_nr)                                ! POST version
+            use num_vars, only: RZ_0
+            
             ! input / output
             integer, intent(in) :: opt_nr                                       ! option number
+            integer, intent(in) :: arg_nr                                       ! argument number
+            
+            ! local variables
+            integer :: id                                                       ! counter
             
             select case(opt_nr)
                 case (7)                                                        ! disable guessing Eigenfunction from previous Richardson level
@@ -448,7 +456,24 @@ contains
                 case (8)                                                        ! disable guessing Eigenfunction from previous Richardson level
                     call writo('option compare_tor_pos chosen: Comparing &
                         &B, J and kappa at different toroidal positions')
+                    call lvl_ud(1)
                     compare_tor_pos = .true.
+                    do id = 1,inc_args(opt_nr)
+                        if (arg_nr+id.gt.size(command_arg)) then
+                            ierr = 1
+                        else
+                            read(command_arg(arg_nr+id),*,IOSTAT=ierr) RZ_0(id)
+                        end if
+                        if (ierr.ne.0) then
+                            call writo('Did you provide an origin for the &
+                                &geometrical poloidal angle in the form')
+                            call writo('"--compare_tor_pos R_0, Z_0"?')
+                        end if
+                        CHCKERR('failed to read RZ_0')
+                    end do
+                    call writo('Origin for geometrical poloidal angle: ('//&
+                        &trim(r2str(RZ_0(1)))//','//trim(r2str(RZ_0(2)))//')')
+                    call lvl_ud(-1)
                 case default
                     call writo('Invalid option number',warning=.true.)
             end select

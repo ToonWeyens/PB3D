@@ -44,7 +44,6 @@ test.o \
 PB3D_utilities.o \
 PB3D_ops.o \
 vac.o \
-splines.o \
 
 ObjectFiles_Libraries = \
 dfft.o \

@@ -100,7 +100,6 @@ sol_utilities.o : \
     X_vars.o \
     sol_vars.o \
     grid_utilities.o \
-    splines.o \
 
 grid_utilities.o : \
     str_utilities.o \
@@ -318,7 +317,6 @@ eq_ops.o : \
     X_utilities.o \
     rich_vars.o \
     bspline_sub_module.o \
-    splines.o \
 
 eq_utilities.o : \
     str_utilities.o \
@@ -421,7 +419,6 @@ VMEC_ops.o : \
     grid_utilities.o \
     eq_vars.o \
     VMEC_vars.o \
-    splines.o \
 
 VMEC_utilities.o : \
     num_vars.o \
@@ -469,6 +466,7 @@ num_utilities.o : \
     num_vars.o \
     messages.o \
     str_utilities.o \
+    bspline_sub_module.o \
 
 num_ops.o : \
     num_vars.o \
@@ -513,11 +511,6 @@ str_utilities.o : \
     num_vars.o \
 
 num_vars.o : \
-
-splines.o : \
-    num_vars.o \
-    output_ops.o \
-    bspline_sub_module.o \
 
 foul.o : \
 

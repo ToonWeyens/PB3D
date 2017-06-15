@@ -54,10 +54,9 @@ contains
     integer function calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
         &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
-        use num_utilities, only: con2dis
+        use num_utilities, only: con2dis, spline3
         use grid_utilities, only: setup_interp_data, apply_disc
         use X_vars, only: sec_X_ind
-        use splines, only: spline3
 #if ldebug
         use num_utilities, only: calc_int
 #endif

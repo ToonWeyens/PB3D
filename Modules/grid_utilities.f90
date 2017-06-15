@@ -15,7 +15,7 @@ module grid_utilities
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
         &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
         &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
-        &nufft, find_compr_range, calc_arc_angle
+        &nufft, find_compr_range, calc_arc_angle, calc_tor_diff
 #if ldebug
     public debug_calc_int_vol, debug_calc_vec_comp
 #endif
@@ -37,6 +37,9 @@ module grid_utilities
     end interface
     interface setup_deriv_data
         module procedure setup_deriv_data_eqd, setup_deriv_data_reg
+    end interface
+    interface calc_tor_diff
+        module procedure calc_tor_diff_0D, calc_tor_diff_2D
     end interface
     interface apply_disc
         module procedure &
@@ -2172,9 +2175,9 @@ contains
         use eq_vars, only: eq_1_type, eq_2_type, max_flux_F
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
-            &use_normalization, rank, tol_zero, &
+            &use_normalization, rank, tol_zero, RZ_0, &
             &compare_tor_pos_glob => compare_tor_pos
-        use num_utilities, only: c, calc_int
+        use num_utilities, only: c, calc_int, order_per_fun
         use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
@@ -2202,9 +2205,9 @@ contains
         integer :: id, jd, kd                                                   ! counter
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: c_loc                                                        ! local c
         integer :: tor_id(2)                                                    ! toroidal indices
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         logical :: cont_plot                                                    ! continued plot
         logical :: do_plot                                                      ! perform plotting
         logical :: compare_tor_pos_loc                                          ! local compare_tor_pos
@@ -2217,6 +2220,7 @@ contains
         real(dp), allocatable :: q_saf(:,:)                                     ! interpolated q_saf_FD and derivative
         real(dp), allocatable :: jac(:,:,:)                                     ! interpolated jac_FD
         real(dp), allocatable :: XYZR(:,:,:,:)                                  ! X, Y, Z and R of surface in cylindrical coordinates, untrimmed grid
+        real(dp), allocatable :: theta_geo(:,:,:)                               ! geometrical theta
         real(dp), allocatable :: X(:,:,:,:), Y(:,:,:,:), Z(:,:,:,:)             ! copy of X, Y and Z, trimmed grid
         real(dp), allocatable :: v_temp(:,:,:,:,:)                              ! temporary variable for v
         real(dp), allocatable :: v_ser_temp(:)                                  ! temporary serial variable
@@ -2283,6 +2287,13 @@ contains
         ! set up local compare_tor_pos
         compare_tor_pos_loc = compare_tor_pos_glob
         if (present(compare_tor_pos)) compare_tor_pos_loc = compare_tor_pos
+        
+        ! get geometrical poloidal angle if comparing toroidal position
+        if (compare_tor_pos_loc) then
+            allocate(theta_geo(grid%n(1),grid%n(2),grid%loc_n_r))
+            theta_geo = atan2(XYZR(:,:,:,3)-RZ_0(2),XYZR(:,:,:,4)-RZ_0(1))
+            where (theta_geo.lt.0) theta_geo = theta_geo + 2*pi
+        end if
         
         ! if plotting is required
         if (do_plot) then
@@ -2376,7 +2387,7 @@ contains
         v_temp = v_com
         
         ! set up plot variables
-        if (do_plot) then
+        if (do_plot .and. .not.compare_tor_pos_loc) then                        ! comparison only works for periodic quantities
             coord_names(1) = 'alpha'
             coord_names(2) = 'psi'
             if (use_pol_flux_F) then
@@ -2400,11 +2411,6 @@ contains
             file_names(1) = trim(base_name)//'_F_sub'
             file_names(2) = trim(base_name)//'_F_sup'
             file_names(3) = trim(base_name)//'_F_mag'
-            if (compare_tor_pos_loc) then
-                do id = 1,3
-                    file_names(id) = trim(file_names(id))//'_COMP'
-                end do
-            end if
             if (use_normalization) then
                 v_com(:,:,:,1,1) = v_com(:,:,:,1,1) * R_0                       ! norm factor for e_alpha
                 v_com(:,:,:,2,1) = v_com(:,:,:,2,1) / (R_0*B_0)                 ! norm factor for e_psi
@@ -2413,9 +2419,6 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) * (R_0*B_0)                 ! norm factor for e^psi
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^theta
             end if
-            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
-                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2426,9 +2429,6 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
-                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,3,:) + v_mag(:,1,:))
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -2534,9 +2534,10 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta
             end if
-            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
-                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) then
+                ierr = calc_tor_diff(v_com,theta_geo,norm_disc_prec)
+                CHCKERR('')
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2547,9 +2548,10 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
-                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,3,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) then
+                    ierr = calc_tor_diff(v_mag,theta_geo,norm_disc_prec)
+                    CHCKERR('')
+                end if
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -2887,9 +2889,10 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^theta
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2) / R_0                       ! norm factor for e^zeta or e^phi
             end if
-            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
-                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) then
+                ierr = calc_tor_diff(v_com,theta_geo,norm_disc_prec)
+                CHCKERR('')
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -2900,9 +2903,10 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
-                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,3,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) then
+                    ierr = calc_tor_diff(v_mag,theta_geo,norm_disc_prec)
+                    CHCKERR('')
+                end if
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -3029,9 +3033,10 @@ contains
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2) / R_0                       ! norm factor for e^phi
                 !v_com(:,:,:,3,2) = v_com(:,:,:,3,2)                             ! norm factor for e^Z
             end if
-            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
-                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) then
+                ierr = calc_tor_diff(v_com,theta_geo,norm_disc_prec)
+                CHCKERR('')
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -3042,9 +3047,10 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
-                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,3,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) then
+                    ierr = calc_tor_diff(v_mag,theta_geo,norm_disc_prec)
+                    CHCKERR('')
+                end if
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -3122,9 +3128,10 @@ contains
                 var_names(id,2) = trim(var_names(id,2))//'_sup_'//&
                     &trim(coord_names(id))
             end do
-            if (compare_tor_pos_loc) v_com(:,2,:,:,:) = 2._dp*&
-                &(v_com(:,3,:,:,:) - v_com(:,1,:,:,:))/&
-                &(v_com(:,3,:,:,:) + v_com(:,1,:,:,:))
+            if (compare_tor_pos_loc) then
+                ierr = calc_tor_diff(v_com,theta_geo,norm_disc_prec)
+                CHCKERR('')
+            end if
             do id = 1,2
                 call plot_HDF5(var_names(:,id),trim(file_names(id)),&
                     &v_com(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2),:,id),&
@@ -3135,9 +3142,10 @@ contains
                     &cont_plot=cont_plot,description=description(id))
             end do
             if (present(v_mag)) then
-                if (compare_tor_pos_loc) v_mag(:,2,:) = 2._dp*&
-                    &(v_mag(:,3,:) - v_mag(:,1,:))/&
-                    &(v_mag(:,3,:) + v_mag(:,1,:))
+                if (compare_tor_pos_loc) then
+                    ierr = calc_tor_diff(v_mag,theta_geo,norm_disc_prec)
+                    CHCKERR('')
+                end if
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
                     &v_mag(:,tor_id(1):tor_id(2),norm_id(1):norm_id(2)),&
                     &tot_dim=plot_dim(1:3),loc_offset=plot_offset(1:3),&
@@ -3162,6 +3170,127 @@ contains
         call norm_interp_data%dealloc()
         call grid_trim%dealloc()
     end function  calc_vec_comp
+
+    ! Calculates the  toroidal difference  for a  magnitude calculated  on three
+    ! toroidal points: two extremities and one in the middle.
+    ! The procedure also  needs the map between the flux  poloidal angle and the
+    ! geometrical poloidal angle.
+    ! In a first step the quantity is interpolated on an equidistant grid in the
+    ! geometrical poloidal angle.
+    ! The  difference  is  then  calculated for  values  of  constant  geometric
+    ! poloidal angle.
+    ! Finally, this result is transformed back to the Flux coordinates.
+    ! Note: The theta map should have first and last point equal.
+    ! Note: This routine should be used only for periodic quantities (so not for
+    ! some of the Flux quantities).
+    ! Note: This routine uses the formula
+    !   (b-a)/(b+a)
+    ! for the relative difference. This is useful when it is used to calculate a
+    ! toroidal ripple and a and b are the extreme points.
+    integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute) &
+        &result(ierr)                                                           ! 2-D version
+        use num_vars, only: min_theta_plot, max_theta_plot
+        use num_utilities, only: spline3, order_per_fun
+        
+        character(*), parameter :: rout_name = 'calc_tor_diff_2D'
+        
+        ! input / output
+        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             ! covariant and contravariant components of v (dim1,dim2,dim3,3,2)
+        real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
+        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
+        logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
+        
+        ! local variables
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: n_pol                                                        ! number of poloidal points to be used (1 less than total)
+        real(dp), allocatable :: theta_eqd(:)                                   ! equidistant grid
+        real(dp), allocatable :: v_com_interp(:,:)                              ! interpolated local v_com for outer points
+        real(dp), allocatable :: theta_ord(:)                                   ! ordered theta
+        real(dp), allocatable :: v_com_ord(:)                                   ! ordered v_com
+        logical :: absolute_loc                                                 ! local absolute
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up variables
+        n_pol = size(theta,1)-1
+        allocate(theta_eqd(n_pol))
+        allocate(v_com_interp(n_pol,3))
+        absolute_loc = .false.
+        if (present(absolute)) absolute_loc = absolute
+        
+        do kd = 1,size(v_com,3)
+            ! set up equidistant grid
+            ierr = calc_eqd_grid(theta_eqd,min_theta_plot*pi,max_theta_plot*pi,&
+                &excl_last=.true.)
+            CHCKERR('')
+            do id = 1,size(v_com,4)
+                do ld = 1,size(v_com,5)
+                    ! interpolate the geometric poloidal angle for outer points
+                    do jd = 1,3,2
+                        ! order
+                        ierr = order_per_fun(theta(1:n_pol,jd,kd),&
+                            &v_com(1:n_pol,jd,kd,id,ld),theta_ord,v_com_ord,&
+                            &norm_disc_prec)
+                        CHCKERR('')
+                        
+                        ierr = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                            &theta_eqd,ynew=v_com_interp(:,jd))
+                        CHCKERR('')
+                        
+                        deallocate(theta_ord,v_com_ord)
+                    end do
+                    
+                    ! calculate difference and save in middle point
+                    v_com_interp(:,2) = &
+                        &(v_com_interp(:,3)-v_com_interp(:,1))
+                    if (.not.absolute_loc) &                                    ! make it relative
+                        &v_com_interp(:,2) = v_com_interp(:,2)/&
+                        &(v_com_interp(:,3)+v_com_interp(:,1))
+                    
+                    ! order
+                    ierr = order_per_fun(theta_eqd,v_com_interp(:,2),&
+                        &theta_ord,v_com_ord,norm_disc_prec)
+                    CHCKERR('')
+                    
+                    ! interpolate back
+                    ierr = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                        &theta(:,2,kd),ynew=v_com(:,2,kd,id,ld))
+                    CHCKERR('')
+                    
+                    deallocate(theta_ord,v_com_ord)
+                end do
+            end do
+        end do
+    end function calc_tor_diff_2D
+    integer function calc_tor_diff_0D(v_mag,theta,norm_disc_prec,absolute) &
+        &result(ierr)                                                           ! 0-D version
+        character(*), parameter :: rout_name = 'calc_tor_diff_0D'
+        
+        ! input / output
+        real(dp), intent(inout) :: v_mag(:,:,:)                                 ! magnitude of v (dim1,dim2,dim3)
+        real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
+        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
+        logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
+        
+        ! local variable
+        real(dp), allocatable :: v_com_loc(:,:,:,:,:)                           ! local copy of v_mag
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local copy of v_mag
+        allocate(v_com_loc(size(v_mag,1),size(v_mag,2),size(v_mag,3),1,1))
+        v_com_loc(:,:,:,1,1) = v_mag
+        
+        ! call 2-D version
+        ierr = calc_tor_diff_2D(v_com_loc,theta,norm_disc_prec,&
+            &absolute=absolute)
+        CHCKERR('')
+        
+        ! copy
+        v_mag = v_com_loc(:,:,:,1,1)
+    end function calc_tor_diff_0D
     
     ! Calculates the  local number of  parallel grid points for  this Richardson
     ! level, taking into account that it ould be half the actual number.
@@ -3244,6 +3373,7 @@ contains
         allocate(f_int(n_x))
         ierr = setup_interp_data(x_loc,[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
             &trigon_interp_data,interp_ord,is_trigon=.true.)
+        CHCKERR('')
         ierr = apply_disc(f_loc,trigon_interp_data,f_int)
         CHCKERR('')
         

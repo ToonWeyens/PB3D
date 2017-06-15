@@ -3,6 +3,7 @@
 !------------------------------------------------------------------------------!
 module num_utilities
 #include <PB3D_macros.h>
+#include <wrappers.h>
     use str_utilities
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
@@ -12,7 +13,8 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun
+        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun, &
+        &shift_F, spline3
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -25,7 +27,7 @@ module num_utilities
     logical :: debug_con2dis_reg = .false.                                      ! plot debug information for con2dis_reg
     logical :: debug_calc_coeff_fin_diff = .false.                              ! plot debug information for calc_coeff_fin_diff
 #endif
-
+    
     ! interfaces
     interface add_arr_mult
         module procedure add_arr_mult_3_3, add_arr_mult_3_1, add_arr_mult_1_1
@@ -65,6 +67,9 @@ module num_utilities
     end interface
     interface order_per_fun
         module procedure order_per_fun_1, order_per_fun_2
+    end interface
+    interface spline3
+        module procedure spline3_real, spline3_complex
     end interface
     
 contains
@@ -2044,4 +2049,185 @@ contains
         xy_out(:,1) = x_out
         xy_out(:,2) = y_out
     end function order_per_fun_2
+    
+    ! Calculate multiplication through shifting of fourier  modes A and B into C
+    ! These all  are assumed to  have nonzero mode  numers starting from  0. Any
+    ! negative modes are converted into positive ones.
+    ! Note: modes that are larger than what C can hold are thrown away.
+    subroutine shift_F(A,B,C)
+        ! input / output
+        real(dp), intent(in) :: A(0:,:), B(0:,:)                                ! inputs
+        real(dp), intent(inout) :: C(0:,:)                                      ! result
+        
+        ! local variables
+        integer :: i_A, i_B, i_C                                                ! indices in A, B and C
+        integer :: n_A, n_B, n_C                                                ! number of modes for A, B and C
+        
+        ! set number of modes
+        n_A = size(A,1)-1
+        n_B = size(B,1)-1
+        n_C = size(C,1)-1
+        
+        ! initialize C
+        C = 0._dp
+        
+        ! loop over A
+        do i_A = 0,n_A
+            do i_B = 0,n_B
+                ! contribution to i_A + i_B
+                i_C = i_A + i_B
+                
+                if (i_C.le.n_C) then
+                    C(i_C,1) = C(i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
+                    C(i_C,2) = C(i_C,2) + 0.5* A(i_A,1)*B(i_B,2)
+                    C(i_C,2) = C(i_C,2) + 0.5* A(i_A,2)*B(i_B,1)
+                    C(i_C,1) = C(i_C,1) - 0.5* A(i_A,2)*B(i_B,2)
+                end if
+                
+                ! contribution to i_A + i_B
+                i_C = i_A - i_B
+                
+                if (i_C.ge.0) then
+                    C(i_C,1) = C(i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
+                    C(i_C,2) = C(i_C,2) - 0.5* A(i_A,1)*B(i_B,2)
+                    C(i_C,2) = C(i_C,2) + 0.5* A(i_A,2)*B(i_B,1)
+                    C(i_C,1) = C(i_C,1) + 0.5* A(i_A,2)*B(i_B,2)
+                else
+                    C(-i_C,1) = C(-i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
+                    C(-i_C,2) = C(-i_C,2) + 0.5* A(i_A,1)*B(i_B,2)
+                    C(-i_C,2) = C(-i_C,2) - 0.5* A(i_A,2)*B(i_B,1)
+                    C(-i_C,1) = C(-i_C,1) + 0.5* A(i_A,2)*B(i_B,2)
+                end if
+            end do
+        end do
+    end subroutine shift_F
+    
+    ! This procedure  makes use of the  bspline library, but makes  it easier to
+    ! use for 1-D applications where speed is not the main priority.
+    integer function spline3_real(ord,x,y,xnew,ynew,dynew,d2ynew,extrap) &
+        &result(ierr)                                                           ! real version
+        use bspline_sub_module, only: db1ink, db1val, get_status_message
+        
+        character(*), parameter :: rout_name = 'spline3_real'
+        
+        ! input / output
+        integer, intent(in) :: ord                                              ! order
+        real(dp), intent(in) :: x(:), xnew(:)                                   ! coordinates
+        real(dp), intent(in) :: y(:)                                            ! function value
+        real(dp), intent(out), optional :: ynew(:), dynew(:), d2ynew(:)         ! function values and derivatives
+        logical, intent(in), optional :: extrap                                 ! whether extrapolation is allowed
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        integer :: n                                                            ! size of x, y, ...
+        integer :: spline_init                                                  ! spline initialization parameter
+        real(dp), allocatable :: spline_knots(:)                                ! knots of spline
+        real(dp), allocatable :: spline_coeff(:)                                ! coefficients of spline
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize
+        n = size(x)
+        allocate(spline_coeff(n))
+        allocate(spline_knots(n+ord))
+        
+        ! calculate coefficients
+        call db1ink(x,n,y,ord,0,spline_knots,spline_coeff,ierr)
+        err_msg = get_status_message(ierr)
+        CHCKERR(err_msg)
+        spline_init = 1
+        do kd = 1,size(xnew)
+            if (present(ynew)) then
+                call db1val(xnew(kd),0,spline_knots,n,ord,&
+                    &spline_coeff,ynew(kd),ierr,spline_init,extrap=extrap)
+                err_msg = get_status_message(ierr)
+                CHCKERR(err_msg)
+            end if
+            if (present(dynew)) then
+                call db1val(xnew(kd),1,spline_knots,n,ord,&
+                    &spline_coeff,dynew(kd),ierr,spline_init,extrap=extrap)
+                err_msg = get_status_message(ierr)
+                CHCKERR(err_msg)
+            end if
+            if (present(d2ynew)) then
+                call db1val(xnew(kd),2,spline_knots,n,ord,&
+                    &spline_coeff,d2ynew(kd),ierr,spline_init,extrap=extrap)
+                err_msg = get_status_message(ierr)
+                CHCKERR(err_msg)
+            end if
+        end do
+    end function spline3_real
+    integer function spline3_complex(ord,x,y,xnew,ynew,dynew,d2ynew,extrap) &
+        &result(ierr)                                                           ! complex version
+        use bspline_sub_module, only: db1ink, db1val, get_status_message
+        
+        character(*), parameter :: rout_name = 'spline3_complex'
+        
+        ! input / output
+        integer, intent(in) :: ord                                              ! order
+        real(dp), intent(in) :: x(:), xnew(:)                                   ! coordinates
+        complex(dp), intent(in) :: y(:)                                         ! function value
+        complex(dp), intent(out), optional :: ynew(:), dynew(:), d2ynew(:)      ! function values and derivatives
+        logical, intent(in), optional :: extrap                                 ! whether extrapolation is allowed
+        
+        ! local variables
+        integer :: kd, id                                                       ! counters
+        integer :: n                                                            ! size of x, y, ...
+        integer :: spline_init                                                  ! spline initialization parameter
+        real(dp) :: dummy_var(2)                                                ! dummy variable
+        real(dp), allocatable :: spline_knots(:,:)                              ! knots of spline
+        real(dp), allocatable :: spline_coeff(:,:)                              ! coefficients of spline
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! initialize
+        n = size(x)
+        allocate(spline_coeff(n,2))
+        allocate(spline_knots(n+ord,2))
+        
+        ! calculate coefficients for real part and complex part
+        call db1ink(x,n,rp(y),ord,0,spline_knots(:,1),spline_coeff(:,1),ierr)
+        err_msg = get_status_message(ierr)
+        CHCKERR(err_msg)
+        call db1ink(x,n,ip(y),ord,0,spline_knots(:,2),spline_coeff(:,2),ierr)
+        err_msg = get_status_message(ierr)
+        CHCKERR(err_msg)
+        spline_init = 1
+        do kd = 1,size(xnew)
+            if (present(ynew)) then
+                do id = 1,2
+                    call db1val(xnew(kd),0,spline_knots(:,id),n,ord,&
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
+                    err_msg = get_status_message(ierr)
+                    CHCKERR(err_msg)
+                end do
+                ynew(kd) = dummy_var(1) + iu*dummy_var(2)
+            end if
+            if (present(dynew)) then
+                do id = 1,2
+                    call db1val(xnew(kd),1,spline_knots(:,id),n,ord,&
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
+                    err_msg = get_status_message(ierr)
+                    CHCKERR(err_msg)
+                end do
+                dynew(kd) = dummy_var(1) + iu*dummy_var(2)
+            end if
+            if (present(d2ynew)) then
+                do id = 1,2
+                    call db1val(xnew(kd),2,spline_knots(:,id),n,ord,&
+                        &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
+                        &extrap=extrap)
+                    err_msg = get_status_message(ierr)
+                    CHCKERR(err_msg)
+                end do
+                d2ynew(kd) = dummy_var(1) + iu*dummy_var(2)
+            end if
+        end do
+    end function spline3_complex
 end module num_utilities
