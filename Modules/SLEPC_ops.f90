@@ -1510,40 +1510,48 @@ contains
             ! set n_EV_prev
             n_EV_prev = size(sol%val)
             
-            ! allocate guess vectors
-            allocate(guess_vec(n_EV_prev))
-            
-            ! create vecctor guess_vec and set values
-            do kd = 1,n_EV_prev
-                ! create the vectors
-                !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)         ! get compatible parallel vectors to matrix A (petsc 3.5.3)
-                call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)      ! get compatible parallel vectors to matrix A (petsc 3.6.1)
-                CHCKERR('Failed to create vector')
+            if (n_EV_prev.gt.0) then
+                ! user output
+                call writo('Set '//trim(i2str(n_EV_prev))//' vectors as guess')
                 
-                ! get pointer
-                call VecGetArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
-                CHCKERR('Failed to get pointer')
+                ! allocate guess vectors
+                allocate(guess_vec(n_EV_prev))
                 
-                ! copy the values
-                guess_vec_ptr = reshape([sol%vec(:,:,kd)],&
-                    &[size(sol%vec(:,:,kd))])
+                ! create vecctor guess_vec and set values
+                do kd = 1,n_EV_prev
+                    ! create the vectors
+                    !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)    ! get compatible parallel vectors to matrix A (petsc 3.5.3)
+                    call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)  ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                    CHCKERR('Failed to create vector')
+                    
+                    ! get pointer
+                    call VecGetArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    CHCKERR('Failed to get pointer')
+                    
+                    ! copy the values
+                    guess_vec_ptr = reshape([sol%vec(:,:,kd)],&
+                        &[size(sol%vec(:,:,kd))])
+                    
+                    ! return pointer
+                    call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    CHCKERR('Failed to restore pointer')
+                    
+                    !! visualize guess
+                    !call VecView(guess_vec(kd),PETSC_VIEWER_STDOUT_WORLD,ierr)
+                    !CHCKERR('Cannot view vector')
+                end do
                 
-                ! return pointer
-                call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
-                CHCKERR('Failed to restore pointer')
+                ! set guess
+                call EPSSetInitialSpace(solver,n_EV_prev,guess_vec,ierr)
+                CHCKERR('Failed to set guess')
                 
-                !! visualize guess
-                !call VecView(guess_vec(kd),PETSC_VIEWER_STDOUT_WORLD,ierr)
-                !CHCKERR('Cannot view vector')
-            end do
-                
-            ! set guess
-            call EPSSetInitialSpace(solver,n_EV_prev,guess_vec,ierr)
-            CHCKERR('Failed to set guess')
-            
-            ! destroy guess vector
-            call VecDestroy(guess_vec,ierr)                                     ! destroy guess vector
-            CHCKERR('Failed to destroy vector')
+                ! destroy guess vector
+                call VecDestroy(guess_vec,ierr)                                 ! destroy guess vector
+                CHCKERR('Failed to destroy vector')
+                deallocate(guess_vec)
+            else
+                call writo('No vectors saved to use as guess')
+            end if
         end if
         
         call lvl_ud(-1)
@@ -1791,7 +1799,7 @@ contains
             sol_val_loc = sol%val(id)
             
             ! tests
-            tol_complex = tol_SLEPC(rich_lvl)
+            tol_complex = 10*tol_SLEPC(rich_lvl)
             if (abs(ip(sol%val(id))/rp(sol%val(id))).gt.tol_complex) then       ! test for unphysical complex solution
                 EV_err_str = '# WARNING: Unphysical complex Eigenvalue!'
                 n_err(1) = n_err(1)+1

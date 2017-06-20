@@ -515,10 +515,3 @@ num_vars.o : \
 foul.o : \
 
 bspline_sub_module.o : \
-
-bspline_oo_module.o : \
-    bspline_sub_module.o \
-
-bspline_module.o : \
-    bspline_sub_module.o \
-    bspline_oo_module.o \

@@ -1095,7 +1095,7 @@ contains
                         nr_n = n_id                                             ! increment number of N
                         n_pert(n_id) = n_loc                                    ! with value n_loc
                     end if
-                    delta(n_id,m_loc,:) = delta_loc                             ! and perturbation amplitude for cos and sin with value delta_loc
+                    delta(n_id,m_loc,:) = delta(n_id,m_loc,:) + delta_loc       ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
                 
                 if (pert_type.eq.1 .or. pert_type.eq.3) close(HEL_pert_i)
@@ -1106,14 +1106,14 @@ contains
                 max_pert_on_axis = sum(delta(:,:,1))
                 select case (pert_style)
                     case (1)                                                    ! plasma boundary position
-                        max_pert_on_axis = max_pert_on_axis / &
-                            &BH_0(minloc(abs(theta_B),1),1)                     ! R at geometrical theta closest to zero
+                        call writo('Maximum absolute perturbation on axis: '//&
+                            &trim(r2strt(100*max_pert_on_axis))//'cm')
+                        call writo('Rescale to some value [cm]?')
                     case (2)                                                    ! B_tor magnetic ripple with fixed N
-                        ! max_pert_on_axis is already relative
+                        call writo('Maximum relative perturbation on axis: '//&
+                            &trim(r2strt(100*max_pert_on_axis))//'%')
+                        call writo('Rescale to some value [%]?')
                 end select
-                call writo('Maximum relative perturbation on axis: '//&
-                    &trim(r2strt(100*max_pert_on_axis))//'%')
-                call writo('Rescale to some value [%]?')
                 mult_fac = max_pert_on_axis
                 if (get_log(.false.)) then
                     mult_fac = get_real()
@@ -1263,6 +1263,8 @@ contains
                     end do
                 end do
                 call lvl_ud(-1)
+            else
+                id_n_0 = 1
             end if
             
             ! loop  over all  toroidal  modes N  and  include the  corresponding
@@ -1279,28 +1281,31 @@ contains
             ! Note  that for  perturbation type  2 (2D map),  there is  an extra
             ! shift before.
             pert_N: do jd = 1,nr_n
-                ! initialize
-                allocate(B_F_loc(0:nr_m_max,2))
-                
-                ! shift due to proportionality map
-                if (pert_style.eq.2) then
-                    call shift_F(delta(jd,:,:),prop_B_tor_interp_F,B_F_loc(:,:))
-                    delta(jd,:,:) = B_F_loc
+                if (pert_eq) then
+                    ! initialize
+                    allocate(B_F_loc(0:nr_m_max,2))
+                    
+                    ! shift due to proportionality map
+                    if (pert_style.eq.2) then
+                        call shift_F(delta(jd,:,:),prop_B_tor_interp_F,&
+                            &B_F_loc(:,:))
+                        delta(jd,:,:) = B_F_loc
+                    end if
+                    
+                    ! for R, shift due to cos(theta)
+                    loc_F(0,:) = [0._dp,0._dp]
+                    loc_F(1,:) = [1._dp,0._dp]
+                    call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
+                    B_F(jd,:,:,1) = B_F(jd,:,:,1) + B_F_loc
+                    
+                    ! for Z, shift due to sin(theta)
+                    loc_F(0,:) = [0._dp,0._dp]
+                    loc_F(1,:) = [0._dp,1._dp]
+                    call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
+                    B_F(jd,:,:,2) = B_F(jd,:,:,2) + B_F_loc
+                    
+                    deallocate(B_F_loc)
                 end if
-                
-                ! for R, shift due to cos(theta)
-                loc_F(0,:) = [0._dp,0._dp]
-                loc_F(1,:) = [1._dp,0._dp]
-                call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
-                B_F(jd,:,:,1) = B_F(jd,:,:,1) + B_F_loc
-                
-                ! for Z, shift due to sin(theta)
-                loc_F(0,:) = [0._dp,0._dp]
-                loc_F(1,:) = [0._dp,1._dp]
-                call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
-                B_F(jd,:,:,2) = B_F(jd,:,:,2) + B_F_loc
-                
-                deallocate(B_F_loc)
             end do pert_N
             
             ! plot boundary in 3D

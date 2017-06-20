@@ -964,3 +964,10 @@ Technische Universiteit Eindhoven
 * Splines is now merged into the more logical num_utilities module.
 * The origin of the geometrical poloidal angle now has to be provided on the command line for compare_tor_pos.
 * For compare_tor_pos, the fundamental theta interval is now needed always. Otherwise the interpolation in geometrical poloidal angle becomes quite messy.
+
+## 1.84:
+* Bug fixes for unperturbed HELENA equilibrium export.
+* Removed the object oriented bspline module as it is unused and more difficult to compile in certain clusters.
+* Bug fixes in SLEPC_ops.
+* The maximum perturbation on axis is now specified absolutely for position perturbation.
+* Fixed a bug in the creation of VMEC input files where modes that resulted in the same (m,n) were not added up but overwritten.

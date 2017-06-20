@@ -2152,11 +2152,12 @@ contains
                     call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1)),&
                         &X_int%KV_2(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
+                
+                ! copy vacuum part (already integrated)
+                X_int%vac_res(lim_sec_X(1,1)-1+k,lim_sec_X(1,2)-1+m) = &
+                    &X%vac_res(k,m)
             end do
         end do
-        
-        ! copy vacuum part (already integrated)
-        X_int%vac_res = X%vac_res
         
         ! clean up
         nullify(ang_par_F)
