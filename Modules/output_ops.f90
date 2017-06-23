@@ -495,9 +495,6 @@ contains
         ! closing the command
         close(cmd_i)
         
-        ! stop timer
-        call stop_time
-        
         ! run shell if necessary
         istat = 0
         cmdstat = 0
@@ -533,9 +530,6 @@ contains
                 end if
             end if
         end if
-        
-        ! start timer
-        call start_time
     contains
         ! GNUPlot version: wxt terminal or pdf output
         subroutine draw_ex_GNUPlot

@@ -971,3 +971,11 @@ Technische Universiteit Eindhoven
 * Bug fixes in SLEPC_ops.
 * The maximum perturbation on axis is now specified absolutely for position perturbation.
 * Fixed a bug in the creation of VMEC input files where modes that resulted in the same (m,n) were not added up but overwritten.
+
+## 1.85: 
+* There seems to be an error in energy reconstruction.
+* Time is not stopped and started any more in output_ops.
+* POST driver was doing some work twice. This has been removed.
+* Slightly changed "calc_E" to avoid segmentation faults in intel compilers caused by large temporary arrays.
+* Fixed a bug for "compare_tor_pos" with multiple processes: RZ_0 was not broadcasted.
+* If no solution is found for "compare_tor_pos", the difference is set to 0 and a warning is displayed'

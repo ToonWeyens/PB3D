@@ -454,9 +454,9 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use grid_vars, only: disc_type
-        use eq_ops, only: calc_eq, calc_derived_q, calc_T_HF, B_plot, J_plot, &
+        use eq_ops, only: calc_eq, calc_T_HF, B_plot, J_plot, &
             &kappa_plot, delta_r_plot
-        use eq_utilities, only: calc_F_derivs, calc_inv_met
+        use eq_utilities, only: calc_inv_met
         use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
         use X_ops, only: calc_X, setup_nm_X
         use sol_ops, only: plot_sol_vec, decompose_energy
@@ -527,13 +527,6 @@ contains
                 ! Calculate the metric equilibrium quantitities
                 ierr = calc_eq(grids(1),eq_1,eq_2)
                 CHCKERR('')
-                
-                ! Transform E into F derivatives
-                ierr = calc_F_derivs(eq_2)
-                CHCKERR('')
-                
-                ! Calculate derived metric quantities
-                call calc_derived_q(grids(1),eq_1,eq_2)
                 
                 ! calculate X variables, vector phase
                 ierr = calc_X(grids(1),grids(2),eq_1,eq_2,X)

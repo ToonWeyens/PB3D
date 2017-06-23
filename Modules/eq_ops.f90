@@ -3898,7 +3898,8 @@ contains
             &description='geometrical radius')
         
         ! calculate perturbation delta_r on radius
-        ierr = calc_tor_diff(r_geo,theta_geo,norm_disc_prec_eq,absolute=.true.)
+        ierr = calc_tor_diff(r_geo,theta_geo,norm_disc_prec_eq,&
+            &absolute=.true.,r=grid_eq%loc_r_F)
         CHCKERR('')
         allocate(delta_r(grid_eq%n(1),1,grid_eq%loc_n_r))
         delta_r(:,1,:) = r_geo(:,2,:)*0.5_dp                                    ! take factor half as this is absolute
@@ -3942,7 +3943,8 @@ contains
         CHCKERR('')
         
         ! calculate perturbation
-        ierr = calc_tor_diff(B_com,theta_geo,norm_disc_prec_eq)
+        ierr = calc_tor_diff(B_com,theta_geo,norm_disc_prec_eq,&
+            &r=grid_eq%loc_r_F)
         CHCKERR('')
         allocate(delta_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
         delta_B_tor(:,1,:) = 0.5_dp*sum(B_com(:,2,:,2,:),3)
@@ -3972,7 +3974,8 @@ contains
         call lvl_ud(1)
         
         allocate(prop_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
-        prop_B_tor = delta_r / delta_B_tor
+        prop_B_tor = 0.0_dp
+        where (delta_B_tor.gt.0._dp) prop_B_tor = delta_r / delta_B_tor
         
         ! set plot variables for prop_B_tor
         base_name = 'prop_B_tor'
@@ -4003,14 +4006,15 @@ contains
         allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3)))
         do id = 1,grid_trim%n(1)
             ! prop_B_tor (all procs)
-            ierr = get_ser_var(prop_B_tor(id,1,:),var_tot_loc,&
-                &scatter=.true.)
+            ierr = get_ser_var(prop_B_tor(id,1,norm_id(1):norm_id(2)),&
+                &var_tot_loc,scatter=.true.)
             CHCKERR('')
             prop_B_tor_tot(id,:) = max(min(var_tot_loc,2._dp),-2._dp)           ! limit to avoid division by small delta_B_tor values
             deallocate(var_tot_loc)
             
             ! theta_geo (only master)
-            ierr = get_ser_var(theta_geo(id,2,:),var_tot_loc)
+            ierr = get_ser_var(theta_geo(id,2,norm_id(1):norm_id(2)),&
+                &var_tot_loc)
             CHCKERR('')
             if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
             deallocate(var_tot_loc)

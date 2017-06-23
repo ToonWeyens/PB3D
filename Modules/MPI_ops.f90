@@ -237,7 +237,8 @@ contains
             &max_tot_mem, max_X_mem, plot_size, &
             &do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
-            &PB3D_name
+            &PB3D_name, &
+            &RZ_0
         use grid_vars, only: min_par_X, max_par_X
         use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
@@ -419,6 +420,9 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(pert_mult_factor_POST,1,&
                         &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(RZ_0,2,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case default
                     err_msg = 'No program style associated with '//&

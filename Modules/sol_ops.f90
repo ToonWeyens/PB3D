@@ -1102,27 +1102,38 @@ contains
             i_lo = floor(loc_r_eq)
             i_hi = ceiling(loc_r_eq)
             
-            h22(:,:,kd) = eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)+&
-                &(loc_r_eq-i_lo)*&
-                &(eq_2%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)&
-                &-eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0))
-            g33(:,:,kd) = eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)+&
-                &(loc_r_eq-i_lo)*&
-                &(eq_2%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)&
-                &-eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0))
-            J(:,:,kd) = eq_2%jac_FD(:,:,i_lo,0,0,0)+(loc_r_eq-i_lo)*&
-                &(eq_2%jac_FD(:,:,i_hi,0,0,0)&
-                &-eq_2%jac_FD(:,:,i_lo,0,0,0))
-            kappa_n(:,:,kd) = eq_2%kappa_n(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq_2%kappa_n(:,:,i_hi)-eq_2%kappa_n(:,:,i_lo))
-            kappa_g(:,:,kd) = eq_2%kappa_g(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq_2%kappa_g(:,:,i_hi)-eq_2%kappa_g(:,:,i_lo))
-            sigma(:,:,kd) = eq_2%sigma(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                &(eq_2%sigma(:,:,i_hi)-eq_2%sigma(:,:,i_lo))
-            D2p(:,:,kd) = eq_1%pres_FD(i_lo,1)+(loc_r_eq-i_lo)*&
-                &(eq_1%pres_FD(i_hi,1)-eq_1%pres_FD(i_lo,1))
-            rho(:,:,kd) = eq_1%rho(i_lo)+(loc_r_eq-i_lo)*&
-                &(eq_1%rho(i_hi)-eq_1%rho(i_lo))
+            h22(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)
+            h22(:,:,kd) = h22(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)
+            g33(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)
+            g33(:,:,kd) = g33(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)
+            J(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%jac_FD(:,:,i_lo,0,0,0)
+            J(:,:,kd) = J(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%jac_FD(:,:,i_hi,0,0,0)
+            kappa_n(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%kappa_n(:,:,i_lo)
+            kappa_n(:,:,kd) = kappa_n(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%kappa_n(:,:,i_hi)
+            kappa_g(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%kappa_g(:,:,i_lo)
+            kappa_g(:,:,kd) = kappa_g(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%kappa_g(:,:,i_hi)
+            sigma(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_2%sigma(:,:,i_lo)
+            sigma(:,:,kd) = sigma(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_2%sigma(:,:,i_hi)
+            D2p(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_1%pres_FD(i_lo,1)
+            D2p(:,:,kd) = D2p(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_1%pres_FD(i_hi,2)
+            rho(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
+                &eq_1%rho(i_lo)
+            rho(:,:,kd) = rho(:,:,kd) + (loc_r_eq-i_lo)*&
+                &eq_1%rho(i_hi)
 #if ldebug
             if (debug_calc_E) then
                 S(:,:,kd) = eq_2%S(:,:,i_lo)+(loc_r_eq-i_lo)*&

@@ -283,76 +283,110 @@ display_usage() {
             echo -e ""
             echo -e "               21 cdxu"
             echo -e ""
-            echo -e "               31 qps"
+            echo -e "               41 D_ped4.0"
+            echo -e "               42 D_ped4.0_HELENA"
+            echo -e "               43 D_ped3.0"
+            echo -e "               44 D_ped3.0_HELENA"
+            echo -e "               45 D_ped2.0"
+            echo -e "               46 D_ped2.0_HELENA"
+            echo -e "               47 D_ped1.0"
+            echo -e "               48 D_ped1.0_HELENA"
+            echo -e "               49 D_ped0.9"
+            echo -e "               50 D_ped0.9_HELENA"
+            echo -e "               51 D_ped0.8"
+            echo -e "               52 D_ped0.8_HELENA"
+            echo -e "               53 D_ped0.7"
+            echo -e "               54 D_ped0.7_HELENA"
+            echo -e "               55 D_ped0.6"
+            echo -e "               56 D_ped0.6_HELENA"
+            echo -e "               57 D_ped0.5"
+            echo -e "               58 D_ped0.5_HELENA"
+            echo -e "               59 D_ped0.4"
+            echo -e "               60 D_ped0.4_HELENA"
+            echo -e "               61 D_ped0.3"
+            echo -e "               62 D_ped0.3_HELENA"
             echo -e ""
-            echo -e "               41 Hmode_ped3.0"
-            echo -e "               42 Hmode_ped3.0_HELENA"
-            echo -e "               43 Hmode_ped2.0"
-            echo -e "               44 Hmode_ped2.0_HELENA"
-            echo -e "               45 Hmode_ped1.5"
-            echo -e "               46 Hmode_ped1.5_HELENA"
-            echo -e "               47 Hmode_ped1.0"
-            echo -e "               48 Hmode_ped1.0_HELENA"
-            echo -e "               49 Hmode_ped0.8"
-            echo -e "               50 Hmode_ped0.8_HELENA"
-            echo -e "               51 Hmode_ped0.7"
-            echo -e "               52 Hmode_ped0.7_HELENA"
-            echo -e "               53 Hmode_ped0.6"
-            echo -e "               54 Hmode_ped0.6_HELENA"
-            echo -e "               55 Hmode_ped0.5"
-            echo -e "               56 Hmode_ped0.5_HELENA"
-            echo -e "               57 Hmode_ped0.4"
-            echo -e "               58 Hmode_ped0.4_HELENA"
-            echo -e "               59 Hmode_ped0.3"
-            echo -e "               60 Hmode_ped0.3_HELENA"
+            echo -e "               71 D_BS_ped4.0"
+            echo -e "               72 D_BS_ped4.0_HELENA"
+            echo -e "               73 D_BS_ped3.0"
+            echo -e "               74 D_BS_ped3.0_HELENA"
+            echo -e "               75 D_BS_ped2.0"
+            echo -e "               76 D_BS_ped2.0_HELENA"
+            echo -e "               77 D_BS_ped1.0"
+            echo -e "               78 D_BS_ped1.0_HELENA"
+            echo -e "               79 D_BS_ped0.9"
+            echo -e "               80 D_BS_ped0.9_HELENA"
+            echo -e "               81 D_BS_ped0.8"
+            echo -e "               82 D_BS_ped0.8_HELENA"
+            echo -e "               83 D_BS_ped0.7"
+            echo -e "               84 D_BS_ped0.7_HELENA"
+            echo -e "               85 D_BS_ped0.6"
+            echo -e "               86 D_BS_ped0.6_HELENA"
+            echo -e "               87 D_BS_ped0.5"
+            echo -e "               88 D_BS_ped0.5_HELENA"
+            echo -e "               89 D_BS_ped0.4"
+            echo -e "               90 D_BS_ped0.4_HELENA"
+            echo -e "               91 D_BS_ped0.3"
+            echo -e "               92 D_BS_ped0.3_HELENA"
             echo -e ""
-            echo -e "               61 Hmode_ped1.5_0.91"
-            echo -e "               62 Hmode_ped1.5_0.91_HELENA"
-            echo -e "               63 Hmode_ped1.5_0.92"
-            echo -e "               64 Hmode_ped1.5_0.92_HELENA"
-            echo -e "               65 Hmode_ped1.5_0.93"
-            echo -e "               66 Hmode_ped1.5_0.93_HELENA"
-            echo -e "               67 Hmode_ped1.5_0.94"
-            echo -e "               68 Hmode_ped1.5_0.94_HELENA"
-            echo -e "               69 Hmode_ped1.5_0.95"
-            echo -e "               70 Hmode_ped1.5_0.95_HELENA"
-            echo -e "               71 Hmode_ped1.5_0.96"
-            echo -e "               72 Hmode_ped1.5_0.96_HELENA"
-            echo -e "               73 Hmode_ped1.5_0.97"
-            echo -e "               74 Hmode_ped1.5_0.97_HELENA"
-            echo -e "               75 Hmode_ped1.5_0.98"
-            echo -e "               76 Hmode_ped1.5_0.98_HELENA"
-            echo -e "               77 Hmode_ped1.5_0.99"
-            echo -e "               78 Hmode_ped1.5_0.99_HELENA"
+            echo -e "              141 D_ripple1.0_ped4.0"
+            echo -e "              142 D_ripple1.0_ped4.0_HELENA"
+            echo -e "              143 D_ripple1.0_ped3.0"
+            echo -e "              144 D_ripple1.0_ped3.0_HELENA"
+            echo -e "              145 D_ripple1.0_ped2.0"
+            echo -e "              146 D_ripple1.0_ped2.0_HELENA"
+            echo -e "              147 D_ripple1.0_ped1.0"
+            echo -e "              148 D_ripple1.0_ped1.0_HELENA"
+            echo -e "              149 D_ripple1.0_ped0.9"
+            echo -e "              150 D_ripple1.0_ped0.9_HELENA"
+            echo -e "              151 D_ripple1.0_ped0.8"
+            echo -e "              152 D_ripple1.0_ped0.8_HELENA"
+            echo -e "              153 D_ripple1.0_ped0.7"
+            echo -e "              154 D_ripple1.0_ped0.7_HELENA"
+            echo -e "              155 D_ripple1.0_ped0.6"
+            echo -e "              156 D_ripple1.0_ped0.6_HELENA"
+            echo -e "              157 D_ripple1.0_ped0.5"
+            echo -e "              158 D_ripple1.0_ped0.5_HELENA"
+            echo -e "              159 D_ripple1.0_ped0.4"
+            echo -e "              160 D_ripple1.0_ped0.4_HELENA"
+            echo -e "              161 D_ripple1.0_ped0.3"
+            echo -e "              162 D_ripple1.0_ped0.3_HELENA"
             echo -e ""
-            echo -e "               81 Hmode_JET_HELENA_4.0"
-            echo -e "               82 Hmode_JET_HELENA_4.0_HELENA"
-            echo -e "               83 Hmode_JET_HELENA_3.0"
-            echo -e "               84 Hmode_JET_HELENA_3.0_HELENA"
-            echo -e "               85 Hmode_JET_HELENA_2.0"
-            echo -e "               86 Hmode_JET_HELENA_2.0_HELENA"
+            echo -e "              171 D_BS_ripple1.0_ped4.0"
+            echo -e "              172 D_BS_ripple1.0_ped4.0_HELENA"
+            echo -e "              173 D_BS_ripple1.0_ped3.0"
+            echo -e "              174 D_BS_ripple1.0_ped3.0_HELENA"
+            echo -e "              175 D_BS_ripple1.0_ped2.0"
+            echo -e "              176 D_BS_ripple1.0_ped2.0_HELENA"
+            echo -e "              177 D_BS_ripple1.0_ped1.0"
+            echo -e "              178 D_BS_ripple1.0_ped1.0_HELENA"
+            echo -e "              179 D_BS_ripple1.0_ped0.9"
+            echo -e "              180 D_BS_ripple1.0_ped0.9_HELENA"
+            echo -e "              181 D_BS_ripple1.0_ped0.8"
+            echo -e "              182 D_BS_ripple1.0_ped0.8_HELENA"
+            echo -e "              183 D_BS_ripple1.0_ped0.7"
+            echo -e "              184 D_BS_ripple1.0_ped0.7_HELENA"
+            echo -e "              185 D_BS_ripple1.0_ped0.6"
+            echo -e "              186 D_BS_ripple1.0_ped0.6_HELENA"
+            echo -e "              187 D_BS_ripple1.0_ped0.5"
+            echo -e "              188 D_BS_ripple1.0_ped0.5_HELENA"
+            echo -e "              189 D_BS_ripple1.0_ped0.4"
+            echo -e "              190 D_BS_ripple1.0_ped0.4_HELENA"
+            echo -e "              191 D_BS_ripple1.0_ped0.3"
+            echo -e "              192 D_BS_ripple1.0_ped0.3_HELENA"
             echo -e ""
-            for ((i=131; i <= 180 ; i++)); do
-                echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
-                (( $((($i-101)%10+1)) == 10 )) && echo -e ""
-            done
-            echo -e ""
-            echo -e "               201 Hmode_ped3.0_ripple16_10.0"
-            echo -e "               202 Hmode_ped3.0_ripple16_1.00"
-            echo -e "               203 Hmode_ped3.0_ripple16_0.01"
-            echo -e "               204 Hmode_ped3.0_ripple16_0.001"
-            echo -e "               205 Hmode_ped2.0_ripple16_1.0"
-            echo -e "               301 circular"
-            echo -e "               302 circular_ripple1"
-            echo -e "               303 circular_ripple16_0.005"
-            echo -e "               304 circular_ripple16_0.001"
-            echo -e "               305 circular_ripple16_0.0001"
-            echo -e "               306 circular_ripple6_0.001"
-            echo -e "               307 circular_ripple1_0.001"
-            echo -e "               401 Hmode_ped2.0_ripple16"
-            echo -e "               501 circular_ped2.0"
-            echo -e "               502 circular_ped2.0_HELENA"
-            echo -e "               601 test_ripple_M0_0.05"
+            echo -e "              201 Hmode_PHD_ped0.3_HELENA"
+            echo -e "              202 Hmode_PHD_ped0.4_HELENA"
+            echo -e "              203 Hmode_PHD_ped0.5_HELENA"
+            echo -e "              204 Hmode_PHD_ped0.6_HELENA"
+            echo -e "              205 Hmode_PHD_ped0.7_HELENA"
+            echo -e "              206 Hmode_PHD_ped0.8_HELENA"
+            echo -e "              207 Hmode_PHD_ped0.9_HELENA"
+            echo -e "              208 Hmode_PHD_ped1.0_HELENA"
+            echo -e "              209 Hmode_PHD_ped1.5_HELENA"
+            echo -e "              210 Hmode_PHD_ped2.0_HELENA"
+            echo -e "              211 Hmode_PHD_ped3.0_HELENA"
+            echo -e "              212 Hmode_PHD_ped4.0_HELENA"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -475,13 +509,10 @@ set_input() {
                 21)
                     input_name=cdxu
                 ;;
-                31)
-                    input_name=qps
-                ;;
-                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2])
+                4[1-9]|5[0-9]|6[0-2]|7[1-9]|8[0-9]|9[0-2]|301|501)
                     input_name=Hmode
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|20[1-5]|30[2-7]|401|601)
+                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|20[1-5]|30[2-7]|401|502|60[1-5]|70[1-3])
                     input_name=Hmode_ripple
                 ;;
                 *)
@@ -532,191 +563,305 @@ set_input() {
                 21)
                     eq_name=wout_cdxu.nc
                 ;;
-                31)
-                    eq_name=wout_qps.nc
-                ;;
                 41)
-                    eq_name=wout_Hmode_ped3.0.nc
+                    eq_name=wout_D_ped4.0.nc
                 ;;
                 42)
-                    eq_name=Hmode_ped3.0
+                    eq_name=D_ped4.0
                 ;;
                 43)
-                    eq_name=wout_Hmode_ped2.0.nc
+                    eq_name=wout_D_ped3.0.nc
                 ;;
                 44)
-                    eq_name=Hmode_ped2.0
+                    eq_name=D_ped3.0
                 ;;
                 45)
-                    eq_name=wout_Hmode_ped1.5.nc
+                    eq_name=wout_D_ped2.0.nc
                 ;;
                 46)
-                    eq_name=Hmode_ped1.5
+                    eq_name=D_ped2.0
                 ;;
                 47)
-                    eq_name=wout_Hmode_ped1.0.nc
+                    eq_name=wout_D_ped1.0.nc
                 ;;
                 48)
-                    eq_name=Hmode_ped1.0
+                    eq_name=D_ped1.0
                 ;;
                 49)
-                    eq_name=wout_Hmode_ped0.8.nc
+                    eq_name=wout_D_ped0.9.nc
                 ;;
                 50)
-                    eq_name=Hmode_ped0.8
+                    eq_name=D_ped0.9
                 ;;
                 51)
-                    eq_name=wout_Hmode_ped0.7.nc
+                    eq_name=wout_D_ped0.8.nc
                 ;;
                 52)
-                    eq_name=Hmode_ped0.7
+                    eq_name=D_ped0.8
                 ;;
                 53)
-                    eq_name=wout_Hmode_ped0.6.nc
+                    eq_name=wout_D_ped0.7.nc
                 ;;
                 54)
-                    eq_name=Hmode_ped0.6
+                    eq_name=D_ped0.7
                 ;;
                 55)
-                    eq_name=wout_Hmode_ped0.5.nc
+                    eq_name=wout_D_ped0.6.nc
                 ;;
                 56)
-                    eq_name=Hmode_ped0.5
+                    eq_name=D_ped0.6
                 ;;
                 57)
-                    eq_name=wout_Hmode_ped0.4.nc
+                    eq_name=wout_D_ped0.5.nc
                 ;;
                 58)
-                    eq_name=Hmode_ped0.4
+                    eq_name=D_ped0.5
                 ;;
                 59)
-                    eq_name=wout_Hmode_ped0.3.nc
+                    eq_name=wout_D_ped0.4.nc
                 ;;
                 60)
-                    eq_name=Hmode_ped0.3
+                    eq_name=D_ped0.4
                 ;;
                 61)
-                    eq_name=wout_Hmode_ped1.5_0.91.nc
+                    eq_name=wout_D_ped0.3.nc
                 ;;
                 62)
-                    eq_name=Hmode_ped1.5_0.91
-                ;;
-                63)
-                    eq_name=wout_Hmode_ped1.5_0.92.nc
-                ;;
-                64)
-                    eq_name=Hmode_ped1.5_0.92
-                ;;
-                65)
-                    eq_name=wout_Hmode_ped1.5_0.93.nc
-                ;;
-                66)
-                    eq_name=Hmode_ped1.5_0.93
-                ;;
-                67)
-                    eq_name=wout_Hmode_ped1.5_0.94.nc
-                ;;
-                68)
-                    eq_name=Hmode_ped1.5_0.94
-                ;;
-                69)
-                    eq_name=wout_Hmode_ped1.5_0.95.nc
-                ;;
-                70)
-                    eq_name=Hmode_ped1.5_0.95
+                    eq_name=D_ped0.3
                 ;;
                 71)
-                    eq_name=wout_Hmode_ped1.5_0.96.nc
+                    eq_name=wout_D_BS_ped4.0.nc
                 ;;
                 72)
-                    eq_name=Hmode_ped1.5_0.96
+                    eq_name=D_BS_ped4.0
                 ;;
                 73)
-                    eq_name=wout_Hmode_ped1.5_0.97.nc
+                    eq_name=wout_D_BS_ped3.0.nc
                 ;;
                 74)
-                    eq_name=Hmode_ped1.5_0.97
+                    eq_name=D_BS_ped3.0
                 ;;
                 75)
-                    eq_name=wout_Hmode_ped1.5_0.98.nc
+                    eq_name=wout_D_BS_ped2.0.nc
                 ;;
                 76)
-                    eq_name=Hmode_ped1.5_0.98
+                    eq_name=D_BS_ped2.0
                 ;;
                 77)
-                    eq_name=wout_Hmode_ped1.5_0.99.nc
+                    eq_name=wout_D_BS_ped1.0.nc
                 ;;
                 78)
-                    eq_name=Hmode_ped1.5_0.99
+                    eq_name=D_BS_ped1.0
+                ;;
+                79)
+                    eq_name=wout_D_BS_ped0.9.nc
+                ;;
+                80)
+                    eq_name=D_BS_ped0.9
                 ;;
                 81)
-                    eq_name=wout_Hmode_JET_4.0.nc
+                    eq_name=wout_D_BS_ped0.8.nc
                 ;;
                 82)
-                    eq_name=Hmode_JET_4.0
+                    eq_name=D_BS_ped0.8
                 ;;
                 83)
-                    eq_name=wout_Hmode_JET_3.0.nc
+                    eq_name=wout_D_BS_ped0.7.nc
                 ;;
                 84)
-                    eq_name=Hmode_JET_3.0
+                    eq_name=D_BS_ped0.7
                 ;;
                 85)
-                    eq_name=wout_Hmode_JET_2.0.nc
+                    eq_name=wout_D_BS_ped0.6.nc
                 ;;
                 86)
-                    eq_name=Hmode_JET_2.0
+                    eq_name=D_BS_ped0.6
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
-                    eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc
+                87)
+                    eq_name=wout_D_BS_ped0.5.nc
+                ;;
+                88)
+                    eq_name=D_BS_ped0.5
+                ;;
+                89)
+                    eq_name=wout_D_BS_ped0.4.nc
+                ;;
+                90)
+                    eq_name=D_BS_ped0.4
+                ;;
+                91)
+                    eq_name=wout_D_BS_ped0.3.nc
+                ;;
+                92)
+                    eq_name=D_BS_ped0.3
+                ;;
+                141)
+                    eq_name=wout_D_ripple1.0_ped4.0.nc
+                ;;
+                142)
+                    eq_name=D_ripple1.0_ped4.0
+                ;;
+                143)
+                    eq_name=wout_D_ripple1.0_ped3.0.nc
+                ;;
+                144)
+                    eq_name=D_ripple1.0_ped3.0
+                ;;
+                145)
+                    eq_name=wout_D_ripple1.0_ped2.0.nc
+                ;;
+                146)
+                    eq_name=D_ripple1.0_ped2.0
+                ;;
+                147)
+                    eq_name=wout_D_ripple1.0_ped1.0.nc
+                ;;
+                148)
+                    eq_name=D_ripple1.0_ped1.0
+                ;;
+                149)
+                    eq_name=wout_D_ripple1.0_ped0.9.nc
+                ;;
+                150)
+                    eq_name=D_ripple1.0_ped0.9
+                ;;
+                151)
+                    eq_name=wout_D_ripple1.0_ped0.8.nc
+                ;;
+                152)
+                    eq_name=D_ripple1.0_ped0.8
+                ;;
+                153)
+                    eq_name=wout_D_ripple1.0_ped0.7.nc
+                ;;
+                154)
+                    eq_name=D_ripple1.0_ped0.7
+                ;;
+                155)
+                    eq_name=wout_D_ripple1.0_ped0.6.nc
+                ;;
+                156)
+                    eq_name=D_ripple1.0_ped0.6
+                ;;
+                157)
+                    eq_name=wout_D_ripple1.0_ped0.5.nc
+                ;;
+                158)
+                    eq_name=D_ripple1.0_ped0.5
+                ;;
+                159)
+                    eq_name=wout_D_ripple1.0_ped0.4.nc
+                ;;
+                160)
+                    eq_name=D_ripple1.0_ped0.4
+                ;;
+                161)
+                    eq_name=wout_D_ripple1.0_ped0.3.nc
+                ;;
+                162)
+                    eq_name=D_ripple1.0_ped0.3
+                ;;
+                171)
+                    eq_name=wout_D_BS_ripple1.0_ped4.0.nc
+                ;;
+                172)
+                    eq_name=D_BS_ripple1.0_ped4.0
+                ;;
+                173)
+                    eq_name=wout_D_BS_ripple1.0_ped3.0.nc
+                ;;
+                174)
+                    eq_name=D_BS_ripple1.0_ped3.0
+                ;;
+                175)
+                    eq_name=wout_D_BS_ripple1.0_ped2.0.nc
+                ;;
+                176)
+                    eq_name=D_BS_ripple1.0_ped2.0
+                ;;
+                177)
+                    eq_name=wout_D_BS_ripple1.0_ped1.0.nc
+                ;;
+                178)
+                    eq_name=D_BS_ripple1.0_ped1.0
+                ;;
+                179)
+                    eq_name=wout_D_BS_ripple1.0_ped0.9.nc
+                ;;
+                180)
+                    eq_name=D_BS_ripple1.0_ped0.9
+                ;;
+                181)
+                    eq_name=wout_D_BS_ripple1.0_ped0.8.nc
+                ;;
+                182)
+                    eq_name=D_BS_ripple1.0_ped0.8
+                ;;
+                183)
+                    eq_name=wout_D_BS_ripple1.0_ped0.7.nc
+                ;;
+                184)
+                    eq_name=D_BS_ripple1.0_ped0.7
+                ;;
+                185)
+                    eq_name=wout_D_BS_ripple1.0_ped0.6.nc
+                ;;
+                186)
+                    eq_name=D_BS_ripple1.0_ped0.6
+                ;;
+                187)
+                    eq_name=wout_D_BS_ripple1.0_ped0.5.nc
+                ;;
+                188)
+                    eq_name=D_BS_ripple1.0_ped0.5
+                ;;
+                189)
+                    eq_name=wout_D_BS_ripple1.0_ped0.4.nc
+                ;;
+                190)
+                    eq_name=D_BS_ripple1.0_ped0.4
+                ;;
+                191)
+                    eq_name=wout_D_BS_ripple1.0_ped0.3.nc
+                ;;
+                192)
+                    eq_name=D_BS_ripple1.0_ped0.3
                 ;;
                 201)
-                    eq_name=wout_Hmode_ped3.0_ripple16_10.0.nc
+                    eq_name=Hmode_PHD_ped0.3
                 ;;
                 202)
-                    eq_name=wout_Hmode_ped3.0_ripple16_1.00.nc
+                    eq_name=Hmode_PHD_ped0.4
                 ;;
                 203)
-                    eq_name=wout_Hmode_ped3.0_ripple16_0.01.nc
+                    eq_name=Hmode_PHD_ped0.5
                 ;;
                 204)
-                    eq_name=wout_Hmode_ped3.0_ripple16_0.001.nc
+                    eq_name=Hmode_PHD_ped0.6
                 ;;
                 205)
-                    eq_name=wout_Hmode_ped2.0_ripple16_1.00.nc
+                    eq_name=Hmode_PHD_ped0.7
                 ;;
-                301)
-                    eq_name=wout_circular.nc
+                206)
+                    eq_name=Hmode_PHD_ped0.8
                 ;;
-                302)
-                    eq_name=wout_circular_ripple1.nc
+                207)
+                    eq_name=Hmode_PHD_ped0.9
                 ;;
-                303)
-                    eq_name=wout_circular_ripple16_0.005.nc
+                208)
+                    eq_name=Hmode_PHD_ped1.0
                 ;;
-                304)
-                    eq_name=wout_circular_ripple16_0.001.nc
+                209)
+                    eq_name=Hmode_PHD_ped1.5
                 ;;
-                305)
-                    eq_name=wout_circular_ripple16_0.0001.nc
+                210)
+                    eq_name=Hmode_PHD_ped2.0
                 ;;
-                306)
-                    eq_name=wout_circular_ripple6_0.001.nc
+                211)
+                    eq_name=Hmode_PHD_ped3.0
                 ;;
-                307)
-                    eq_name=wout_circular_ripple1_0.001.nc
-                ;;
-                401)
-                    eq_name=wout_Hmode_ped2.0_ripple16.nc
-                ;;
-                501)
-                    eq_name=wout_circular_ped2.0.nc
-                ;;
-                502)
-                    eq_name=circular_ped2.0
-                ;;
-                601)
-                    eq_name=wout_test_ripple_M0_0.05.nc
+                212)
+                    eq_name=Hmode_PHD_ped4.0
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -849,7 +994,8 @@ create_loc_script() {
         MPI_command="$(init_MPI_command)"
         
         # run mpi command
-        echo "$(echo $debug_opt mpirun | xargs) -np $nr_procs \$MPI_command" > command_$prog_name
+        my_mpirun=$(which mpirun)
+        echo "$(echo $debug_opt \$my_mpirun | xargs) -np $nr_procs \$MPI_command" > command_$prog_name
         . command_$prog_name
         
         # go back to base directory
@@ -908,7 +1054,7 @@ setup_pbs_script_1() {
         #PBS -M toon.weyens@gmail.com
         
         # set up general variables
-        . /home/ITER/weyenst/load_MVAPICH2.sh
+        . /home/ITER/weyenst/load_MPICH3.1.3_nomods.sh
         
         # user output
         echo "Job statistics:"

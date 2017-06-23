@@ -101,7 +101,7 @@ contains
             
             ! get input
             do
-                write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
+                write(*,'(A)',advance='no') empty_str                           ! first print empty string so that output is visible
                 write(*,'(A)',advance='no') 'Input a value'
                 if (present(lim_lo).or.present(lim_hi)) then
                     write(*,'(A)',advance='no') ' ['
@@ -174,7 +174,7 @@ contains
             
             ! get input
             do
-                write(*,'(A)',advance='no') empty_str                               ! first print empty string so that output is visible
+                write(*,'(A)',advance='no') empty_str                           ! first print empty string so that output is visible
                 write(*,'(A)',advance='no') 'Input a value'
                 if (present(lim_lo).or.present(lim_hi)) then
                     write(*,'(A)',advance='no') ' ['

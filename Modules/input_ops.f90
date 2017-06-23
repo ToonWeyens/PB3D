@@ -572,7 +572,7 @@ contains
                     if (POST_style.ne.1) then
                         ierr = 1
                         err_msg = 'For compare_tor_pos, you can only use &
-                            &POST_style = 2 (extended grid)'
+                            &POST_style = 1 (extended grid)'
                         CHCKERR(err_msg)
                     end if
                     if (min_r_plot.lt.tol_zero) then

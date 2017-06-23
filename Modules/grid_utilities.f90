@@ -3187,7 +3187,7 @@ contains
     !   (b-a)/(b+a)
     ! for the relative difference. This is useful when it is used to calculate a
     ! toroidal ripple and a and b are the extreme points.
-    integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute) &
+    integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
         &result(ierr)                                                           ! 2-D version
         use num_vars, only: min_theta_plot, max_theta_plot
         use num_utilities, only: spline3, order_per_fun
@@ -3199,10 +3199,12 @@ contains
         real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
         integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
         logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
+        real(dp), intent(in), optional :: r(:)                                  ! normal positions for theta
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
         integer :: n_pol                                                        ! number of poloidal points to be used (1 less than total)
+        integer :: istat                                                        ! status
         real(dp), allocatable :: theta_eqd(:)                                   ! equidistant grid
         real(dp), allocatable :: v_com_interp(:,:)                              ! interpolated local v_com for outer points
         real(dp), allocatable :: theta_ord(:)                                   ! ordered theta
@@ -3219,7 +3221,7 @@ contains
         absolute_loc = .false.
         if (present(absolute)) absolute_loc = absolute
         
-        do kd = 1,size(v_com,3)
+        norm: do kd = 1,size(v_com,3)
             ! set up equidistant grid
             ierr = calc_eqd_grid(theta_eqd,min_theta_plot*pi,max_theta_plot*pi,&
                 &excl_last=.true.)
@@ -3234,11 +3236,15 @@ contains
                             &norm_disc_prec)
                         CHCKERR('')
                         
-                        ierr = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                        istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
                             &theta_eqd,ynew=v_com_interp(:,jd))
-                        CHCKERR('')
-                        
                         deallocate(theta_ord,v_com_ord)
+                        
+                        if (istat.ne.0) then
+                            call display_interp_warning(r)
+                            v_com(:,2,kd,:,:) = 0._dp
+                            cycle norm
+                        end if
                     end do
                     
                     ! calculate difference and save in middle point
@@ -3254,16 +3260,41 @@ contains
                     CHCKERR('')
                     
                     ! interpolate back
-                    ierr = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                    istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
                         &theta(:,2,kd),ynew=v_com(:,2,kd,id,ld))
-                    CHCKERR('')
-                    
                     deallocate(theta_ord,v_com_ord)
+                    
+                    if (istat.ne.0) then
+                        call display_interp_warning(r)
+                        v_com(:,2,kd,:,:) = 0._dp
+                        cycle norm
+                    end if
                 end do
             end do
-        end do
+        end do norm
+    contains
+        ! Displays warning if no interpolation possible.
+        ! Uses variable kd from parent procedure.
+        subroutine display_interp_warning(r)
+            ! input / output
+            real(dp), intent(in), optional :: r(:)                              ! normal positions for theta
+            
+            if (present(r)) then
+                call writo('Cannot interpolate geometrical &
+                    &theta at normal position '//&
+                    &trim(r2str(r(kd))),warning=.true.)
+            else
+                call writo('Cannot interpolate geometrical &
+                    &theta',warning=.true.)
+            end if
+            call lvl_ud(1)
+            call writo('Are you sure the origin is chosen &
+                &correctly?')
+            call writo('Skipping this normal position')
+            call lvl_ud(-1)
+        end subroutine display_interp_warning
     end function calc_tor_diff_2D
-    integer function calc_tor_diff_0D(v_mag,theta,norm_disc_prec,absolute) &
+    integer function calc_tor_diff_0D(v_mag,theta,norm_disc_prec,absolute,r) &
         &result(ierr)                                                           ! 0-D version
         character(*), parameter :: rout_name = 'calc_tor_diff_0D'
         
@@ -3272,6 +3303,7 @@ contains
         real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
         integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
         logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
+        real(dp), intent(in), optional :: r(:)                                  ! normal positions for theta
         
         ! local variable
         real(dp), allocatable :: v_com_loc(:,:,:,:,:)                           ! local copy of v_mag
@@ -3285,7 +3317,7 @@ contains
         
         ! call 2-D version
         ierr = calc_tor_diff_2D(v_com_loc,theta,norm_disc_prec,&
-            &absolute=absolute)
+            &absolute=absolute,r=r)
         CHCKERR('')
         
         ! copy
