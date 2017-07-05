@@ -45,12 +45,13 @@ contains
         real(dp), allocatable :: r_V(:)                                         ! normal coordinate
         real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
+        real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
+        real(dp), allocatable :: jac_s_H(:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
 #if ldebug
         real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
         real(dp), allocatable :: B_V_c_H(:,:), B_V_s_H(:,:)                     ! Coeff. of magnitude of B (HM)
-        real(dp), allocatable :: jac_V_c_H(:,:), jac_V_s_H(:,:)                 ! Jacobian in VMEC coordinates (HM)
 #endif
         
         ! initialize ierr
@@ -133,21 +134,28 @@ contains
         allocate(Z_V_s(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_c(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_s(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(jac_V_c(mnmax_V,n_r_in,0:max_deriv+1))
+        allocate(jac_V_s(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_c_H(mnmax_V,n_r_in,0:0))
         allocate(L_s_H(mnmax_V,n_r_in,0:0))
+        allocate(jac_c_H(mnmax_V,n_r_in,0:0))
+        allocate(jac_s_H(mnmax_V,n_r_in,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
         R_V_c(:,:,0) = rmnc(1:mnmax_V,:)
         Z_V_s(:,:,0) = zmns(1:mnmax_V,:)
         L_s_H(:,:,0) = lmns(1:mnmax_V,:)
+        jac_c_H(:,:,0) = gmnc(1:mnmax_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             R_V_s(:,:,0) = rmns(1:mnmax_V,:)
             Z_V_c(:,:,0) = zmnc(1:mnmax_V,:)
             L_c_H(:,:,0) = lmnc(1:mnmax_V,:)
+            jac_s_H(:,:,0) = gmns(1:mnmax_V,:)
         else
             R_V_s(:,:,0) = 0._dp
             Z_V_c(:,:,0) = 0._dp
             L_c_H(:,:,0) = 0._dp
+            jac_s_H(:,:,0) = 0._dp
         end if
         
         ! calculate data for normal derivatives  with the toroidal (or poloidal)
@@ -191,6 +199,14 @@ contains
                 &L_s_H(id,2:n_r_in,0),r_V,ynew=L_V_s(id,:,0),&
                 &dynew=L_V_s(id,:,1),d2ynew=L_V_s(id,:,2),extrap=.true.)
             CHCKERR('')
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &jac_c_H(id,2:n_r_in,0),r_V,ynew=jac_V_c(id,:,0),&
+                &dynew=jac_V_c(id,:,1),d2ynew=jac_V_c(id,:,2),extrap=.true.)
+            CHCKERR('')
+            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                &jac_s_H(id,2:n_r_in,0),r_V,ynew=jac_V_s(id,:,0),&
+                &dynew=jac_V_s(id,:,1),d2ynew=jac_V_s(id,:,2),extrap=.true.)
+            CHCKERR('')
         end do
         
         !!! to check, as these are not supposed to be necessary
@@ -206,27 +222,22 @@ contains
         allocate(B_V_sub_s_M(mnmax_V,n_r_in,3)); B_V_sub_s_M = 0._dp
         allocate(B_V_c_H(mnmax_V,n_r_in)); B_V_c_H = 0._dp
         allocate(B_V_s_H(mnmax_V,n_r_in)); B_V_s_H = 0._dp
-        allocate(jac_V_c_H(mnmax_V,n_r_in)); jac_V_c_H = 0._dp
-        allocate(jac_V_s_H(mnmax_V,n_r_in))
         
         ! store in helper variables
         B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_V,:)
         B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_V,:)
         B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_V,:)
         B_V_c_H(:,:) = bmnc(1:mnmax_V,:)
-        jac_V_c_H(:,:) = gmnc(1:mnmax_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_V,:)
             B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_V,:)
             B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_V,:)
             B_V_s_H(:,:) = bmns(1:mnmax_V,:)
-            jac_V_s_H(:,:) = gmns(1:mnmax_V,:)
         else
             B_V_sub_c_M(:,:,1) = 0._dp
             B_V_sub_s_M(:,:,2) = 0._dp
             B_V_sub_s_M(:,:,3) = 0._dp
             B_V_s_H(:,:) = 0._dp
-            jac_V_s_H(:,:) = 0._dp
         end if
         
         ! allocate FM variables
@@ -234,10 +245,7 @@ contains
         allocate(B_V_sub_s(mnmax_V,n_r_in,3))
         allocate(B_V_c(mnmax_V,n_r_in))
         allocate(B_V_s(mnmax_V,n_r_in))
-        allocate(jac_V_c(mnmax_V,n_r_in))
-        allocate(jac_V_s(mnmax_V,n_r_in))
         
-        ! conversion HM -> FM (B_V_sub(2:3), B_V, jac_V)
         do id = 1,mnmax_V
             do kd = 2,3
                 ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
@@ -255,18 +263,7 @@ contains
             ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:),extrap=.true.)
             CHCKERR('')
-            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &jac_V_c_H(id,2:n_r_in),r_V,ynew=jac_V_c(id,:),extrap=.true.)
-            CHCKERR('')
-            ierr = spline3(norm_disc_prec_eq,-0.5_dp/n_r_in+r_V(2:n_r_in),&
-                &jac_V_s_H(id,2:n_r_in),r_V,ynew=jac_V_s(id,:),extrap=.true.)
-            CHCKERR('')
         end do
-        
-        ! deallocate helper variables
-        deallocate(B_V_sub_c_M,B_V_sub_s_M)
-        deallocate(B_V_c_H,B_V_s_H)
-        deallocate(jac_V_c_H,jac_V_s_H)
 #endif
         
         ! deallocate repacked variables
@@ -295,13 +292,13 @@ contains
         Z_V_s = Z_V_s/R_0
         L_V_c = L_V_c
         L_V_s = L_V_s
+        jac_V_c = jac_V_c/(R_0**3)
+        jac_V_s = jac_V_s/(R_0**3)
 #if ldebug
         B_V_sub_s = B_V_sub_s/(R_0*B_0)
         B_V_sub_c = B_V_sub_c/(R_0*B_0)
         B_V_c = B_V_c/B_0
         B_V_s = B_V_s/B_0
-        jac_V_c = jac_V_c/(R_0**3)
-        jac_V_s = jac_V_s/(R_0**3)
 #endif
     end subroutine normalize_VMEC
 end module VMEC_ops

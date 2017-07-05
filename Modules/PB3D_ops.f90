@@ -50,12 +50,11 @@ contains
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
-            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mn_V, rot_t_V, &
-            &q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
+            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
+            &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, &
-            &jac_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s
 #endif
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
@@ -235,6 +234,16 @@ contains
                 L_V_s = dum_4D(:,:,:,6)
                 call dealloc_var_1D(var_1D)
                 
+                ! jac_V
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'jac_V')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_4D)
+                allocate(jac_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
+                allocate(jac_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
+                jac_V_c = dum_4D(:,:,:,1)
+                jac_V_s = dum_4D(:,:,:,2)
+                call dealloc_var_1D(var_1D)
+                
 #if ldebug
                 ! B_V_sub
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'B_V_sub')
@@ -254,16 +263,6 @@ contains
                 allocate(B_V_s(mnmax_V,n_r_eq))
                 B_V_c = dum_3D(:,:,1)
                 B_V_s = dum_3D(:,:,2)
-                call dealloc_var_1D(var_1D)
-                
-                ! jac_V
-                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'jac_V')
-                CHCKERR('')
-                call conv_1D2ND(var_1D,dum_3D)
-                allocate(jac_V_c(mnmax_V,n_r_eq))
-                allocate(jac_V_s(mnmax_V,n_r_eq))
-                jac_V_c = dum_3D(:,:,1)
-                jac_V_s = dum_3D(:,:,2)
                 call dealloc_var_1D(var_1D)
 #endif
             case (2)                                                            ! HELENA

@@ -975,7 +975,7 @@ contains
                         CHCKERR('')
                     case (2)
                         ierr = set_BC_2(kd-1,kd-grid_X%i_min+1,X,A,B,&
-                            &i_geo,grid_X%n(3),norm_disc_coeff,.false.)       ! indices start at 0
+                            &i_geo,grid_X%n(3),norm_disc_coeff,.false.)         ! indices start at 0
                         CHCKERR('')
                     case (3)
                         err_msg = 'Left BC''s cannot have BC type 3'
@@ -1110,7 +1110,7 @@ contains
         ! set BC style 2:
         !   minimization of surface energy term (see [ADD REF])
         integer function set_BC_2(r_id,r_id_loc,X,A,B,i_geo,n_sol,&
-            &norm_disc_coeff,BC_right)                                          result(ierr)
+            &norm_disc_coeff,BC_right) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output

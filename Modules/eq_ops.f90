@@ -53,9 +53,6 @@ module eq_ops
     interface calc_g_F
         module procedure calc_g_F_ind, calc_g_F_arr
     end interface
-    interface calc_jac_C
-        module procedure calc_jac_C_ind, calc_jac_C_arr
-    end interface
     interface calc_jac_V
         module procedure calc_jac_V_ind, calc_jac_V_arr
     end interface
@@ -273,13 +270,6 @@ contains
                     CHCKERR('')
                 end do
                 
-                ! calculate the jacobian in the cylindrical coordinate system
-                call writo('Calculate jac_C')
-                do id = 0,max_deriv
-                    ierr = calc_jac_C(eq_2,derivs(id))
-                    CHCKERR('')
-                end do
-                
                 ! calculate the transformation matrix C(ylindrical) -> V(MEC)
                 call writo('Calculate T_VC')
                 do id = 0,max_deriv
@@ -297,7 +287,7 @@ contains
                 ! calculate the jacobian in the VMEC coordinate system
                 call writo('Calculate jac_V')
                 do id = 0,max_deriv
-                    ierr = calc_jac_V(eq_2,derivs(id))
+                    ierr = calc_jac_V(grid_eq,eq_2,derivs(id))
                     CHCKERR('')
                 end do
                 
@@ -331,8 +321,8 @@ contains
                 ! possibly deallocate
                 if (dealloc_vars_loc) then
                     deallocate(eq_2%R_E,eq_2%Z_E,eq_2%L_E)
-                    deallocate(eq_2%g_C,eq_2%jac_C)
-                    deallocate(eq_2%T_VC,eq_2%det_T_VC)
+                    deallocate(eq_2%g_C)
+                    deallocate(eq_2%T_VC)
                 end if
             case (2)                                                            ! HELENA
 #if ldebug
@@ -1428,7 +1418,8 @@ contains
             write(HEL_export_i,"(A)") "TCON0 = 1"
             write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
                 &1.E-10, 1.E-14, 2.000E-18, "
-            write(HEL_export_i,"(A)") "NITER = 20000, NSTEP = 200,"
+            write(HEL_export_i,"(A)") "NITER = 20000,"
+            write(HEL_export_i,"(A)") "NSTEP = 200,"
             write(HEL_export_i,"(A)") "NFP = "//trim(i2str(nfp))
             if (use_normalization) then
                 write(HEL_export_i,"(A)") "PHIEDGE = "//&
@@ -1874,13 +1865,11 @@ contains
     integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
         use VMEC_utilities, only: fourier2real
         use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, is_asym_V
-        use num_utilities, only: check_deriv
-        use num_vars, only: max_deriv
         
         character(*), parameter :: rout_name = 'calc_RZL_ind'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigonometric factors
+        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate R, Z and L
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(3)                                         ! derivatives
         
@@ -1891,7 +1880,7 @@ contains
         ierr = check_deriv(deriv,max_deriv+1,'calc_RZL')
         CHCKERR('')
         
-        ! calculate the variables R,Z and their angular derivative
+        ! calculate the variables R,Z and their derivatives
         ierr = fourier2real(R_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &R_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[.true.,is_asym_V],&
@@ -1912,7 +1901,7 @@ contains
         character(*), parameter :: rout_name = 'calc_RZL_arr'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to prepare the trigonometric factors
+        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate R, Z and L
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(:,:)
         
@@ -1982,7 +1971,6 @@ contains
     ! NOTE: It is assumed that the  lower order derivatives have been calculated
     !       already. If not, the results will be incorrect!
     integer function calc_g_V_ind(eq,deriv) result(ierr)
-        use num_vars, only: max_deriv
         use eq_utilities, only: calc_g
         
         character(*), parameter :: rout_name = 'calc_g_V_ind'
@@ -2027,7 +2015,7 @@ contains
     ! could be remedied by choosing the  interval larger. Currently, this is not
     ! done automatically.
     integer function calc_h_H_ind(grid,eq,deriv) result(ierr)
-        use num_vars, only: max_deriv, norm_disc_prec_eq
+        use num_vars, only: norm_disc_prec_eq
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
         use num_utilities, only: c
         use grid_utilities, only: setup_deriv_data, apply_disc
@@ -2151,7 +2139,6 @@ contains
     ! the  metric coefficients  in  the equilibrium  coordinate  system and  the
     ! trans- formation matrices
     integer function calc_g_F_ind(eq,deriv) result(ierr)
-        use num_vars, only: max_deriv
         use eq_utilities, only: calc_g
         
         character(*), parameter :: rout_name = 'calc_g_F_ind'
@@ -2190,53 +2177,15 @@ contains
         end do
     end function calc_g_F_arr
     
-    ! calculate the jacobian in cylindrical coordinates
-    integer function calc_jac_C_ind(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_jac_C_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_J_C')
-        CHCKERR('')
-        
-        eq%jac_C(:,:,:,deriv(1),deriv(2),deriv(3)) = &
-            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3))
-    end function calc_jac_C_ind
-    integer function calc_jac_C_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_jac_C_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_jac_C_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_jac_C_arr
-    
-    ! calculate the jacobian in equilibrium V(MEC) coordinates from 
-    !   jac_V = det(T_VC) jac_C
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
-    integer function calc_jac_V_ind(eq,deriv) result(ierr)
-        use num_utilities, only: add_arr_mult
+    ! calculate the jacobian in equilibrium V(MEC) coordinates from VMEC output.
+    integer function calc_jac_V_ind(grid,eq,deriv) result(ierr)
+        use VMEC_utilities, only: fourier2real
+        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
         
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
         
         ! input / output
+        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate Jacobian
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(:)
         
@@ -2250,15 +2199,18 @@ contains
         ! initialize
         eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         
-        ! calculate determinant
-        ierr = add_arr_mult(eq%jac_C,eq%det_T_VC,&
-            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
+        ! calculate the Jacobian and its derivatives
+        ierr = fourier2real(jac_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
+            &jac_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[.true.,is_asym_V],&
+            &deriv=[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_jac_V_ind
-    integer function calc_jac_V_arr(eq,deriv) result(ierr)
+    integer function calc_jac_V_arr(grid,eq,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_jac_V_arr'
         
         ! input / output
+        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate Jacobian
         type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
         integer, intent(in) :: deriv(:,:)
         
@@ -2269,7 +2221,7 @@ contains
         ierr = 0
         
         do id = 1, size(deriv,2)
-            ierr = calc_jac_V_ind(eq,deriv(:,id))
+            ierr = calc_jac_V_ind(grid,eq,deriv(:,id))
             CHCKERR('')
         end do
     end function calc_jac_V_arr
@@ -2475,15 +2427,6 @@ contains
         end if
         eq%T_VC(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
             &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
-        
-        ! determinant
-        eq%det_T_VC(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        ierr = add_arr_mult(eq%R_E(:,:,:,0:,1:,0:),eq%Z_E(:,:,:,1:,0:,0:),&
-            &eq%det_T_VC(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-        ierr = add_arr_mult(-eq%R_E(:,:,:,1:,0:,0:),eq%Z_E(:,:,:,0:,1:,0:),&
-            &eq%det_T_VC(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
     end function calc_T_VC_ind
     integer function calc_T_VC_arr(eq,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_T_VC_arr'
@@ -5290,11 +5233,9 @@ contains
     
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,eq) result(ierr)
-        use grid_utilities, only: trim_grid, nufft
+        use grid_utilities, only: trim_grid
         use VMEC_utilities, only: fourier2real
-        use input_utilities, only: get_int, get_log
-        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
-        use num_vars, only: rank, n_procs, max_deriv
+        use num_utilities, only: calc_det
         
         character(*), parameter :: rout_name = 'test_jac_V'
         
@@ -5304,12 +5245,7 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
-        integer :: deriv(2)                                                     ! angular derivatives
-        logical :: done                                                         ! done
-        logical :: do_NUFFT                                                     ! do the NUFFT
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
-        real(dp), allocatable :: F(:,:)                                         ! fourier components
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -5319,72 +5255,34 @@ contains
         ierr = 0
         
         ! output
-        call writo('Going to test whether the Jacobian in the VMEC &
-            &coords. jac_V is calculated correctly')
+        call writo('Going to test the calculation of the Jacobian in the VMEC &
+            &coords.')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
         ierr = trim_grid(grid_eq,grid_trim,norm_id)
         CHCKERR('')
         
-        ! set norm_id_f for quantities tabulated on full grid
-        norm_id_f = grid_eq%i_min+norm_id-1
+        ! set up res
+        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
         
         ! set total and local dimensions and local offset
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
         
-        ! set up res
-        allocate(res(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+        ! calculate Jacobian from determinant of g_V
+        ierr = calc_det(res,eq%g_E(:,:,norm_id(1):norm_id(2),:,0,0,0),3)
+        CHCKERR('')
         
         ! set some variables
-        description = 'Testing calculated with given value for jac_V'
+        file_name = 'TEST_jac_V'
+        description = 'Testing whether the Jacobian in VMEC coordinates is &
+            &consistent with determinant of metric matrix'
         
-        done = .false.
-        do while (.not.done)
-            call writo('derivative in theta_E?')
-            deriv(1) = get_int(lim_lo=0,lim_hi=max_deriv)
-            
-            call writo('derivative in zeta_E?')
-            deriv(2) = get_int(lim_lo=0,lim_hi=max_deriv)
-            
-            ! get jac_V from VMEC
-            ierr = fourier2real(jac_V_c(:,norm_id_f(1):norm_id_f(2)),&
-                &jac_V_s(:,norm_id_f(1):norm_id_f(2)),&
-                &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
-                &res,sym=[.true.,is_asym_V],deriv=deriv)
-            CHCKERR('')
-            
-            ! plot difference
-            file_name = 'TEST_jac_V'
-            call plot_diff_HDF5(res(:,:,:),&
-                &eq%jac_E(:,:,norm_id(1):norm_id(2),0,deriv(1),deriv(2)),&
-                &file_name,tot_dim,loc_offset,description,output_message=.true.)
-            
-            ! calculate NUFFT
-            call writo('Calculate NUFFT?')
-            do_NUFFT = get_log(.false.)
-            if (do_NUFFT .and. rank.eq.n_procs-1) then
-                call print_ex_2D('VMEC last surface','VMEC_lf',&
-                    &res(:,1,grid_trim%loc_n_r),&
-                    &x=grid_trim%theta_E(:,1,grid_trim%loc_n_r))
-                call print_ex_2D('PB3D last surface','PB3D_lf',&
-                    &eq%jac_E(:,1,grid_eq%loc_n_r,0,0,0),&
-                    &x=grid_eq%theta_E(:,1,grid_eq%loc_n_r))
-                
-                ierr = nufft(grid_trim%theta_E(:,1,grid_trim%loc_n_r),&
-                    &res(:,1,grid_trim%loc_n_r),F,plot_name='VMEC')
-                CHCKERR('')
-                deallocate(F)
-                ierr = nufft(grid_eq%theta_E(:,1,grid_eq%loc_n_r),&
-                    &eq%jac_E(:,1,grid_eq%loc_n_r,0,0,0),F,plot_name='PB3D')
-                CHCKERR('')
-                deallocate(F)
-            end if
-            
-            call writo('Repeat?')
-            done = .not.get_log(.true.)
-        end do
+        ! plot difference
+        call plot_diff_HDF5(res(:,:,:),&
+            &eq%jac_E(:,:,norm_id(1):norm_id(2),0,0,0)**2,&
+            &file_name,tot_dim,loc_offset,description,output_message=.true.)
         
         ! clean up
         call grid_trim%dealloc()

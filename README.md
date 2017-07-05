@@ -979,3 +979,11 @@ Technische Universiteit Eindhoven
 * Slightly changed "calc_E" to avoid segmentation faults in intel compilers caused by large temporary arrays.
 * Fixed a bug for "compare_tor_pos" with multiple processes: RZ_0 was not broadcasted.
 * If no solution is found for "compare_tor_pos", the difference is set to 0 and a warning is displayed'
+
+## 1.86:
+* Fixed a bug where no solution variables were found if the first level failed.
+* Tweaked the calculation of the Jacobian in HELENA coordinates, as well as h_H_12.
+* Now the Jacobian in VMEC coordinates is taken directly from VMEC, as at psi=0 there is a singularity using the formulas. The testing routine is now different as well.
+* The plotting of fluxes now no longer fails for entire normal range.
+* Implemented a routine 'solve_vand' that solves a Vandermonde matrix system.
+* Using 'solve_vand' now in 'calc_deriv_data', instead of doing it manually with LAPACK.

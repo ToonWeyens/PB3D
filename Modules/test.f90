@@ -682,10 +682,11 @@ contains
                     call print_ex_2D('input variable','',varin,x=x)
                     
                     do kd = 1,max_deriv
-                        call print_ex_2D('analytical deriv. ord. '//&
-                            &trim(i2str(kd)),'',var_an(:,kd),x=x)
-                        call print_ex_2D('numerical deriv. ord. '//&
-                            &trim(i2str(kd)),'',var_nm(:,kd),x=x)
+                        call print_ex_2D(['analytical deriv. for  ord. '//&
+                            &trim(i2str(kd)),'numerical deriv. for  ord. '//&
+                            &trim(i2str(kd))//' '],'',&
+                            &reshape([var_an(:,kd),var_nm(:,kd)],[loc_max,2]),&
+                            &x=reshape(x,[loc_max,1]))
                         call print_ex_2D('diff deriv. ord. '//&
                             &trim(i2str(kd)),'',(var_an(:,kd)-var_nm(:,kd))&
                             &/maxval(abs(var_an(:,kd))),x=x)

@@ -1341,19 +1341,12 @@ contains
     !   mat_loc(j,k) = (x(k_tot)-X(i))^(j-1)
     ! where  j = 1..n_loc  and k  = -(n_mod-1)/2..(n_mod-1)/2. k_tot  is defined
     ! above.
-    ! The solution A_i of  mat_loc A_i = rhs_loc is then  saved in an individual
-    ! row i in the total matrix  A, where rhs_loc = [0,0,..,0,1,0,..,0] with the
-    ! unit indicating the order of the derivative.
-    ! However, instead of saving the entire matrix A, only the elements from A_i
-    ! are saved, omitting the zero's.
-    ! For equidistant  grids, the  situation becomes  easier as  D^j_i is  not a
-    ! function of id and the rows of local matrix are displaced copies while the
-    ! first  rows are  the mirror  image  of the  last  rows so  that the  local
-    ! matrices become symmetric. Also, the size of the total variables has to be
-    ! passed  in  n,  in contrast  to  the  regular  version,  where it  is  set
-    ! automatically.
+    ! This system  of equations  can be  solved by  relating to  the Vandermonde
+    ! matrix V and solving it using the specific formula's:
+    !   D = Diag(1/0!,1/1!,...,1/n_loc!) V^T
+    ! so that the solution is given by row number ord, multiplied by (ord!).
     integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)       ! equidistant version
-        use num_utilities, only: fac
+        use num_utilities, only: fac, solve_vand
         
         character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
         
@@ -1365,12 +1358,12 @@ contains
         integer, intent(in) :: prec                                             ! precision
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, kd                                                       ! counters
         integer :: kd_tot                                                       ! kd in total index
         integer :: n_loc                                                        ! local size of problem to solve
-        integer, allocatable :: ipiv(:)                                         ! pivot variable, used by lapack
-        real(dp), allocatable :: mat_loc(:,:)                                   ! local matrix
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
         real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -1398,10 +1391,9 @@ contains
         end if
         
         ! set variables
-        allocate(mat_loc(n_loc,n_loc))
+        allocate(mat_loc(n_loc))
         allocate(rhs_loc(n_loc))
-        allocate(ipiv(n_loc))
-        ipiv = 0
+        allocate(sol_loc(n_loc))
         ierr = A%init(n,n_loc)
         CHCKERR('')
         
@@ -1410,30 +1402,18 @@ contains
             ! for bulk of matrix, do calculation only once
             if (id.le.(n_loc+1)/2 .or. id.gt.n-(n_loc-1)/2) then                ! first, last, or first of bulk
                 ! calculate elements of local matrix
-                mat_loc(1,:) = 1._dp
                 do kd = -(n_loc-1)/2,(n_loc-1)/2
                     kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                    mat_loc(2,kd+(n_loc+1)/2) = (kd_tot-id)*step
-                    do jd = 3,n_loc
-                        mat_loc(jd,kd+(n_loc+1)/2) = 1._dp/fac(jd-1) * &
-                            &mat_loc(2,kd+(n_loc+1)/2)**(jd-1)
-                    end do
+                    mat_loc(kd+(n_loc+1)/2) = (kd_tot-id)*step
                 end do
                 
-                ! calculate rhs
+                ! solve Vandermonde system
                 rhs_loc = 0._dp
                 rhs_loc(ord+1) = 1._dp                                          ! looking for derivative of this order
-                
-                ! solve with lapack, making use of lu factorization
-                call dgetrf(n_loc,n_loc,mat_loc,n_loc,ipiv,ierr)                ! lu factorization
-                err_msg = 'lapack couldn''t find the lu factorization'
-                CHCKERR(err_msg)
-                call dgetrs('n',n_loc,1,mat_loc,n_loc,ipiv,rhs_loc,n_loc,ierr)  ! solve
-                err_msg = 'lapack couldn''t compute the inverse'
-                CHCKERR(err_msg)
+                call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
                 
                 ! save in A
-                A%dat(id,:) = rhs_loc
+                A%dat(id,:) = sol_loc*fac(ord)
                 A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
             else                                                                ! bulk of matrix
                 ! copy from first bulk element in matrix A
@@ -1443,7 +1423,7 @@ contains
         end do
     end function setup_deriv_data_eqd
     integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)            ! regular version
-        use num_utilities, only: fac
+        use num_utilities, only: fac, solve_vand
         use grid_vars, only: disc_type
         
         character(*), parameter :: rout_name = 'setup_deriv_data_reg'
@@ -1456,12 +1436,12 @@ contains
         
         ! local variables
         integer :: n                                                            ! size of x
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, kd                                                       ! counters
         integer :: kd_tot                                                       ! kd in total index
         integer :: n_loc                                                        ! local size of problem to solve
-        integer, allocatable :: ipiv(:)                                         ! pivot variable, used by lapack
-        real(dp), allocatable :: mat_loc(:,:)                                   ! local matrix
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
         real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -1490,40 +1470,27 @@ contains
         end if
         
         ! set variables
-        allocate(mat_loc(n_loc,n_loc))
+        allocate(mat_loc(n_loc))
         allocate(rhs_loc(n_loc))
-        allocate(ipiv(n_loc))
-        ipiv = 0
+        allocate(sol_loc(n_loc))
         ierr = A%init(n,n_loc)
         CHCKERR('')
         
         ! iterate over all x values
         do id = 1,n
             ! calculate elements of local matrix
-            mat_loc(1,:) = 1._dp
             do kd = -(n_loc-1)/2,(n_loc-1)/2
                 kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                mat_loc(2,kd+(n_loc+1)/2) = x(kd_tot)-x(id)
-                do jd = 3,n_loc
-                    mat_loc(jd,kd+(n_loc+1)/2) = 1._dp/fac(jd-1) * &
-                        &mat_loc(2,kd+(n_loc+1)/2)**(jd-1)
-                end do
+                mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
             end do
             
-            ! calculate local rhs
+            ! solve Vandermonde system
             rhs_loc = 0._dp
             rhs_loc(ord+1) = 1._dp                                              ! looking for derivative of this order
-            
-            ! solve with lapack, making use of lu factorization
-            call dgetrf(n_loc,n_loc,mat_loc,n_loc,ipiv,ierr)                    ! lu factorization
-            err_msg = 'lapack couldn''t find the lu factorization'
-            CHCKERR(err_msg)
-            call dgetrs('n',n_loc,1,mat_loc,n_loc,ipiv,rhs_loc,n_loc,ierr)      ! solve
-            err_msg = 'lapack couldn''t compute the inverse'
-            CHCKERR(err_msg)
+            call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
             
             ! save in total matrix A
-            A%dat(id,:) = rhs_loc
+            A%dat(id,:) = sol_loc*fac(ord)
             A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
         end do
     end function setup_deriv_data_reg
@@ -2261,18 +2228,6 @@ contains
         ierr = trim_grid(grid,grid_trim,norm_id)
         CHCKERR('')
         
-        ! if r starts at 0, take away first points as it is singular
-        if (abs(grid_trim%r_F(1)).lt.tol_zero) then
-            if (rank.eq.0) then
-                norm_id(1) = 1+norm_disc_prec
-                grid_trim%loc_n_r = grid_trim%loc_n_r-norm_disc_prec
-            else
-                grid_trim%i_min = grid_trim%i_min-norm_disc_prec
-            end if
-            grid_trim%n(3) = grid_trim%n(3)-norm_disc_prec
-            grid_trim%i_max = grid_trim%i_max-norm_disc_prec
-        end if
-        
         ! setup normal interpolation data for equilibrium grid
         ierr = setup_interp_data(grid_eq%loc_r_F,grid%loc_r_F,&
             &norm_interp_data,norm_disc_prec)
@@ -2599,14 +2554,6 @@ contains
                 call writo('r of the grid does not start at zero.',alert=.true.)
                 call lvl_ud(1)
                 call writo('This leaves out part of the fluxes.')
-                call lvl_ud(-1)
-            else
-                call writo('r of the grid starts at zero.', alert=.true.)
-                call lvl_ud(1)
-                call writo('To avoid singularities, the first '//&
-                    &trim(i2str(norm_disc_prec))//' normal points are left out')
-                call writo('This has some effect on the total integrated &
-                    &fluxes')
                 call lvl_ud(-1)
             end if
             

@@ -111,11 +111,9 @@ module eq_vars
         real(dp), allocatable :: T_EF(:,:,:,:,:,:,:)                            ! E(quilibrium) to F(lux)
         real(dp), allocatable :: T_FE(:,:,:,:,:,:,:)                            ! F(lux) to E(quilibrium)
         ! determinants of transformation matrices
-        real(dp), allocatable :: det_T_VC(:,:,:,:,:,:)                          ! determinant of T_VC
         real(dp), allocatable :: det_T_EF(:,:,:,:,:,:)                          ! determinant of T_EF
         real(dp), allocatable :: det_T_FE(:,:,:,:,:,:)                          ! determinant of T_FE
         ! Jacobians
-        real(dp), allocatable :: jac_C(:,:,:,:,:,:)                             ! jacobian of C(ylindrical) coord. system
         real(dp), allocatable :: jac_E(:,:,:,:,:,:)                             ! jacobian of E(quilibrium) coord. system
         real(dp), allocatable :: jac_F(:,:,:,:,:,:)                             ! jacobian of F(lux) coord. system with derivs. in V(MEC) system
         real(dp), allocatable :: jac_FD(:,:,:,:,:,:)                            ! jacobian of F(lux) coord. system with derivs. in F(lux) system
@@ -350,14 +348,6 @@ contains
                     
                     ! T_VC
                     allocate(eq%T_VC(dims(1),dims(2),dims(3),9,&
-                        &0:max_deriv,0:max_deriv,0:max_deriv))
-                    
-                    ! det_T_VC
-                    allocate(eq%det_T_VC(dims(1),dims(2),dims(3),&
-                        &0:max_deriv,0:max_deriv,0:max_deriv))
-                    
-                    ! jac_C
-                    allocate(eq%jac_C(dims(1),dims(2),dims(3),&
                         &0:max_deriv,0:max_deriv,0:max_deriv))
                     
                     ! R

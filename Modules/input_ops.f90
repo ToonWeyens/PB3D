@@ -422,7 +422,7 @@ contains
             ierr = 0
             
             ! find maximum levl
-            ierr = find_max_rich_lvl(max_PB3D_rich_lvl)
+            ierr = find_max_rich_lvl(PB3D_rich_lvl,max_PB3D_rich_lvl)
             CHCKERR('')
             if (max_PB3D_rich_lvl.le.0) then
                 call writo('No suitable Richardson level found, so only &
@@ -490,7 +490,7 @@ contains
                 CHCKERR(err_msg)
             end if
             if (rich_restart_lvl.gt.1) then
-                ierr = find_max_rich_lvl(PB3D_rich_lvl)
+                ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_rich_lvl)
                 CHCKERR('')
                 if (rich_restart_lvl.gt.PB3D_rich_lvl+1) then
                     ierr = 1
@@ -984,12 +984,12 @@ contains
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
-            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mn_V, &
-            &rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
+            &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
+            &jac_V_s, mnmax_V, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
+            &flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, jac_V_c, &
-            &jac_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s
 #endif
         
         character(*), parameter :: rout_name = 'print_output_in'
@@ -1032,13 +1032,13 @@ contains
             call print_ex_2D('L_V_s','L_V_s',&
                 &log10(maxval(abs(L_V_s(:,:,0)),2)),draw=.false.)
             call draw_ex(['L_V_s'],'L_V_s',1,1,.false.,ex_plot_style=1)
-#if ldebug
             call print_ex_2D('jac_V_c','jac_V_c',&
-                &log10(maxval(abs(jac_V_c),2)),draw=.false.)
+                &log10(maxval(abs(jac_V_c(:,:,0)),2)),draw=.false.)
             call draw_ex(['jac_V_c'],'jac_V_c',1,1,.false.,ex_plot_style=1)
             call print_ex_2D('jac_V_s','jac_V_s',&
-                &log10(maxval(abs(jac_V_s),2)),draw=.false.)
+                &log10(maxval(abs(jac_V_s(:,:,0)),2)),draw=.false.)
             call draw_ex(['jac_V_s'],'jac_V_s',1,1,.false.,ex_plot_style=1)
+#if ldebug
             call print_ex_2D('B_V_c','B_V_c',&
                 &log10(maxval(abs(B_V_c),2)),draw=.false.)
             call draw_ex(['B_V_c'],'B_V_c',1,1,.false.,ex_plot_style=1)
@@ -1206,6 +1206,20 @@ contains
                     &L_V_s(:,in_limits(1):in_limits(2),:)],&
                     &[6*mnmax_V*n_r_eq*size(R_V_c,3)]) 
                 
+                ! jac_V
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'jac_V'
+                allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
+                allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
+                in_1D_loc%loc_i_min = [1,1,0,1]
+                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,size(jac_V_c,3)-1,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*size(jac_V_c,3)))
+                in_1D_loc%p = reshape([jac_V_c(:,in_limits(1):in_limits(2),:),&
+                    &jac_V_s(:,in_limits(1):in_limits(2),:)],&
+                    &[2*mnmax_V*n_r_eq*size(jac_V_c,3)])
+                
 #if ldebug
                 ! B_V_sub
                 in_1D_loc => in_1D(id); id = id+1
@@ -1234,19 +1248,6 @@ contains
                 allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
                 in_1D_loc%p = reshape([B_V_c(:,in_limits(1):in_limits(2)),&
                     &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
-                
-                ! jac_V
-                in_1D_loc => in_1D(id); id = id+1
-                in_1D_loc%var_name = 'jac_V'
-                allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
-                allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
-                in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
-                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
-                in_1D_loc%p = reshape([jac_V_c(:,in_limits(1):in_limits(2)),&
-                    &jac_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
 #endif
             case (2)                                                            ! HELENA
                 ! misc_in_H

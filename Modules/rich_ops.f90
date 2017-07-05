@@ -484,7 +484,7 @@ contains
     end subroutine check_conv
     
     ! Probe to find out which Richardson levels are available.
-    integer function find_max_rich_lvl(max_lvl_rich_file) &
+    integer function find_max_rich_lvl(lvl_rich_req,max_lvl_rich_file) &
         &result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_utilities, only: probe_HDF5_group
@@ -492,6 +492,7 @@ contains
         character(*), parameter :: rout_name = 'find_max_rich_lvl'
         
         ! input / output
+        integer, intent(inout) :: lvl_rich_req                                  ! requested Richardson level
         integer, intent(inout) :: max_lvl_rich_file                             ! max. Richardson level found in file
         
         ! local variables
@@ -505,6 +506,7 @@ contains
         ! try openining solution for different Richardson extrapolation levels
         group_exists = .true.                                                   ! group_exists becomes stopping criterion
         ir = 1                                                                  ! initialize counter
+        if (lvl_rich_req.gt.0 .and. lvl_rich_req.lt.huge(1)) ir = lvl_rich_req  ! move to requested
         do while (group_exists)
             group_name = 'sol_R_'//trim(i2str(ir))
             ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)

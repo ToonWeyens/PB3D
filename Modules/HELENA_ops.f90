@@ -69,7 +69,7 @@ contains
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv
         use grid_utilities, only: setup_deriv_data, apply_disc
-        use num_utilities, only: calc_int
+        use num_utilities, only: calc_int, spline3
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
             &nchi, chi_H, ias, RBphi_H, R_H, Z_H
         
@@ -88,7 +88,6 @@ contains
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
-        real(dp) :: Dpres_H_0, Dpres_H_e                                        ! normal derivative of pressure on axis and surface
         real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
         real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t. magnetic axis
         real(dp) :: eps                                                         ! inverse aspect ratio
@@ -158,7 +157,11 @@ contains
             &(h_H_12(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (gem12)
         CHCKERR(err_msg)
-        h_H_12(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        do id = 1,nchi-1
+            ierr = spline3(norm_disc_prec_eq,s_H(2:n_r_in),h_H_12(id,2:n_r_in),&
+                &s_H(1:1),ynew=h_H_12(id,1:1),extrap=.true.)
+            CHCKERR('')
+        end do
         if (ias.ne.0) h_H_12(nchi,:) = h_H_12(1,:)
         
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
@@ -178,7 +181,7 @@ contains
         allocate(pres_H(n_r_in,0:max_deriv+1))                                  ! pressure profile
         read(eq_i,*,IOSTAT=ierr) (pres_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
-        read(eq_i,*,IOSTAT=ierr) Dpres_H_0,Dpres_H_e                            ! derivarives of pressure on axis and surface
+        read(eq_i,*,IOSTAT=ierr) pres_H(1,1),pres_H(n_r_in,1)                   ! first point, last point
         CHCKERR(err_msg)
         
         allocate(RBphi_H(n_r_in))                                               ! R B_phi (= F)

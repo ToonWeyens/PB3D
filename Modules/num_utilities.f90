@@ -14,7 +14,7 @@ module num_utilities
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
         &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun, &
-        &shift_F, spline3
+        &shift_F, spline3, solve_vand
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -2230,4 +2230,64 @@ contains
             end if
         end do
     end function spline3_complex
+    
+    ! Solve a Vandermonde system A * X = B, with
+    !       ( 1     a_1     a_1^2   ...     a_1^n)
+    !       ( 1     a_2     a_2^2   ...     a_2^n)
+    !   A = ( .      .        .               .  )
+    !       ( .      .        .               .  )
+    !       ( 1     a_n     a_n^2   ...     a_n^n)
+    ! through the use of the Björk-Pereyra Algorithm:
+    !    Ake Bjorck, Victor Pereyra,
+    !    Solution of Vandermonde Systems of Equations,
+    !    Mathematics of Computation,
+    !    Volume 24, Number 112, October 1970, pages 893-903.
+    ! Adapted from two routines dvand and pvand in
+    ! https://people.sc.fsu.edu/~jburkardt/f_src/vandermonde/vandermonde.html
+    subroutine solve_vand(n,a,b,x,transp)
+        ! input / output
+        integer, intent(in) :: n                                                ! matrix size
+        real(dp), intent(in) :: a(n)                                            ! parameters of Vandermonde matrix
+        real(dp), intent(in) :: b(n)                                            ! right-hand side
+        real(dp), intent(inout) :: x(n)                                         ! solution
+        logical, intent(in), optional :: transp                                 ! transposed Vandermonde matrix
+        
+        ! local variables
+        integer :: jd, kd                                                       ! counters
+        logical :: transp_loc                                                   ! local transp
+        
+        ! initialize
+        transp_loc = .false.
+        if (present(transp)) transp_loc = transp
+        x(1:n) = b(1:n)
+        
+        if (transp_loc) then
+            do kd = 1, n - 1
+                do jd = n, kd + 1, -1
+                    x(jd) = x(jd) - a(kd) * x(jd-1)
+                end do
+            end do
+            
+            do kd = n - 1, 1, -1
+                do jd = kd + 1, n
+                    x(jd) = x(jd) / ( a(jd) - a(jd-kd) )
+                end do
+                do jd = kd, n - 1
+                    x(jd) = x(jd) - x(jd+1)
+                end do
+            end do
+        else
+            do kd = 1, n - 1
+                do jd = n, kd + 1, -1
+                    x(jd) = ( x(jd) - x(jd-1) ) / ( a(jd) - a(jd-kd) )
+                end do
+            end do
+            
+            do kd = n - 1, 1, -1
+                do jd = kd, n - 1
+                    x(jd) = x(jd) - a(kd) * x(jd+1)
+                end do
+            end do
+        end if
+    end subroutine solve_vand
 end module num_utilities

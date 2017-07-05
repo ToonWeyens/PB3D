@@ -20,12 +20,12 @@ module VMEC_vars
     implicit none
     private
     public dealloc_VMEC, &
-        &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, mnmax_V, mpol_V, ntor_V, &
-        &mn_V, pres_V, rot_t_V, q_saf_V, is_asym_V, flux_t_V, flux_p_V, &
-        &VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, rmax_surf, &
-        &aspr_V, beta_V
+        &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, jac_V_s, mnmax_V, &
+        &mpol_V, ntor_V, mn_V, pres_V, rot_t_V, q_saf_V, is_asym_V, flux_t_V, &
+        &flux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, &
+        &rmax_surf, aspr_V, beta_V
 #if ldebug
-    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, jac_V_c, jac_V_s
+    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
 #endif
     
     ! local variables
@@ -39,10 +39,10 @@ module VMEC_vars
     real(dp), allocatable :: R_V_c(:,:,:), R_V_s(:,:,:)                         ! Coeff. of R in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: Z_V_c(:,:,:), Z_V_s(:,:,:)                         ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
     real(dp), allocatable :: L_V_c(:,:,:), L_V_s(:,:,:)                         ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
+    real(dp), allocatable :: jac_V_c(:,:,:), jac_V_s(:,:,:)                     ! Jacobian in VMEC coordinates (HM and FM) and norm. deriv.
 #if ldebug
     real(dp), allocatable :: B_V_sub_c(:,:,:), B_V_sub_s(:,:,:)                 ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
     real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             ! Coeff. of magnitude of B (HM and FM)
-    real(dp), allocatable :: jac_V_c(:,:), jac_V_s(:,:)                         ! Jacobian in VMEC coordinates (HM and FM)
 #endif
 contains
     ! deallocates VMEC quantities that are not used anymore
@@ -70,13 +70,13 @@ contains
         deallocate(Z_V_s)
         deallocate(L_V_c)
         deallocate(L_V_s)
+        deallocate(jac_V_c)
+        deallocate(jac_V_s)
 #if ldebug
         deallocate(B_V_sub_c)
         deallocate(B_V_sub_s)
         deallocate(B_V_c)
         deallocate(B_V_s)
-        deallocate(jac_V_c)
-        deallocate(jac_V_s)
         
         ! memory usage difference after deallocation
         if (print_mem_usage) then
