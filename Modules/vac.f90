@@ -22,12 +22,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! user message
-        call writo('Calculate vacuum response')
-        call lvl_ud(1)
-        
         X%vac_res = 0._dp
-        
-        call lvl_ud(-1)
     end function calc_vac
 end module vac

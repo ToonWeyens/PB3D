@@ -987,3 +987,11 @@ Technische Universiteit Eindhoven
 * The plotting of fluxes now no longer fails for entire normal range.
 * Implemented a routine 'solve_vand' that solves a Vandermonde matrix system.
 * Using 'solve_vand' now in 'calc_deriv_data', instead of doing it manually with LAPACK.
+
+## 1.87: 
+* Inverse iteration for the solution of the generalized eigenvalue problem is not done any more.
+* The minimization of surface energy now uses new theory, but it is still not correct.
+* There is a new possibility for the boundary condition to be used, by employing asymmetric finite differences, but it does not work properly either.
+* Looks like the best option is to use BC_style 3 that just neglects exterior points in the finite differences.
+* "calc_coeff_fin_diff" now uses the Vandermonde method, and it can optionally produce asymmetric formula's.
+* Fixed the bug where the vacuum contribution was not saved and therefore could not be used when jumping to the solution.

@@ -98,7 +98,7 @@ contains
         end if
         
         ! jump to solution if requested
-        if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
+        if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
             call writo('Prepare to jump to solution')
             call lvl_ud(1)
             
@@ -667,10 +667,6 @@ contains
                 &X_2,lim_sec_X=lims_loc)
             CHCKERR('')
             
-            ! calculate vacuum response
-            ierr = calc_vac(X_2)
-            CHCKERR('')
-            
 #if ldebug
             ! write field-aligned tensorial perturbation quantities to output
             if (debug_run_driver_X_2) then
@@ -806,6 +802,14 @@ contains
         end do X_jobs
         call lvl_ud(-1)
         call writo('Tensorial perturbation jobs finished')
+        
+        ! calculate vacuum response
+        call writo('Calculating vacuum response')
+        call lvl_ud(1)
+        ierr = calc_vac(X_2_int)
+        CHCKERR('')
+        call lvl_ud(-1)
+        call writo('Vacuum response calculated')
         
         ! write field-averaged tensorial perturbation variables to output
         if (eq_job_nr.eq.size(eq_jobs_lims,2)) then

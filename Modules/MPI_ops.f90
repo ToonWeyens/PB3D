@@ -233,7 +233,7 @@ contains
             &prog_style, POST_style, jump_to_sol, export_HEL, compare_tor_pos, &
             &plot_VMEC_modes, EV_guess, ex_plot_style, solver_SLEPC_style, &
             &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
-            &max_it_inv, tol_norm, max_it_slepc, &
+            &tol_norm, max_it_slepc, &
             &max_tot_mem, max_X_mem, plot_size, &
             &do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
@@ -341,9 +341,6 @@ contains
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&
-                        &ierr)
-                    CHCKERR(err_msg)
-                    call MPI_Bcast(max_it_inv,1,MPI_INTEGER,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(solver_SLEPC_style,1,MPI_INTEGER,0,&

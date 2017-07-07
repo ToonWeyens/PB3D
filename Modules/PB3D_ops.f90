@@ -1036,7 +1036,7 @@ contains
                 par_id = setup_par_id(grid_X,rich_lvl_loc,id,tot_rich=tot_rich,&
                     &par_lim=par_lim,par_id_mem=par_id_mem)
             end if
-        
+            
             ! loop over second dimension (horizontal)
             do m = 1,X%n_mod(2)
                 ! get contiguous range of modes of this m
@@ -1194,6 +1194,22 @@ contains
                     call dealloc_var_1D(var_1D)
                 end if
             end do
+            
+            ! RE_vac_res
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                &'RE_vac_res',rich_lvl=id,lim_loc=lim_sec_X)
+            CHCKERR('')
+            call conv_1D2ND(var_1D,dum_2D)
+            X%vac_res = dum_2D
+            call dealloc_var_1D(var_1D)
+            
+            ! IM_vac_res
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                &'IM_vac_res',rich_lvl=id,lim_loc=lim_sec_X)
+            CHCKERR('')
+            call conv_1D2ND(var_1D,dum_2D)
+            X%vac_res = X%vac_res + iu*dum_2D
+            call dealloc_var_1D(var_1D)
         end do
         
         ! clean up
@@ -1253,7 +1269,7 @@ contains
         lim_mem(2,:) = [grid_sol%i_min,grid_sol%i_max]
         lim_mem(3,:) = [-1,-1]
         if (present(lim_pos)) then
-            lim_mem(2,:) = lim_mem(2,:) + lim_pos(1,1) - 1                  ! take into account the grid limits (relative to position subset)
+            lim_mem(2,:) = lim_mem(2,:) + lim_pos(1,1) - 1                      ! take into account the grid limits (relative to position subset)
         end if
         
         ! restore variables

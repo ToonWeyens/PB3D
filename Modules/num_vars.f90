@@ -21,7 +21,6 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
         &solver_SLEPC_style, &
         &max_it_rich, tol_rich, &
-        &max_it_inv, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
         &def_relax_fac_HH, &
         &ex_max_size, eq_name, &
@@ -54,8 +53,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.86_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.75_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.87_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.87_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
 #else
@@ -120,9 +119,6 @@ module num_vars
     integer :: max_it_rich                                                      ! number of levels for Richardson extrapolation
     real(dp) :: tol_rich                                                        ! tolerance for Richardson extrapolation
     
-    ! concerning finding the inverse
-    integer :: max_it_inv                                                       ! maximum number of iterations to find the inverse
-
     ! concerning finding the magnetic field lines
     integer :: max_it_zero                                                      ! maximum number of iterations to find zeros
     integer :: max_nr_tries_HH                                                  ! maximum number of tries for Householder, relax. factors

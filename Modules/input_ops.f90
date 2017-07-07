@@ -24,7 +24,7 @@ contains
             &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, max_it_inv, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, &
             &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
@@ -60,7 +60,7 @@ contains
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
-            &BC_style, max_it_inv, max_it_slepc, norm_disc_prec_sol, &
+            &BC_style, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_HH, &
@@ -168,9 +168,6 @@ contains
                         ! adapt input / output variables if needed
                         ierr = adapt_inoutput_PB3D()
                         CHCKERR('')
-                        
-                        ! adapt variables for inverse if needed
-                        call adapt_inv
                         
                         ! adapt Householder variables if needed
                         call adapt_zero
@@ -301,9 +298,6 @@ contains
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
             tol_rich = 1.E-5_dp                                                 ! tolerance of 1E-5
-            
-            ! concerning calculating the inverse
-            max_it_inv = 1                                                      ! by default no iteration to calculate inverse
         end subroutine default_input_PB3D
         
         subroutine default_input_POST()
@@ -768,16 +762,6 @@ contains
                 call writo('max_it_rich has been increased to 1',warning=.true.)
             end if
         end subroutine adapt_rich
-        
-        ! Checks whether  the variables  concerning calculating the  inverse are
-        ! correct:
-        !   max_it_inv has to be at least 1.
-        subroutine adapt_inv
-            if (max_it_inv.lt.1) then
-                max_it_inv = 1
-                call writo('max_it_inv has been increased to 1',warning=.true.)
-            end if
-        end subroutine adapt_inv
         
         ! Checks whether the variables concerning finding zeros are correct:
         !   max_it_zero has to be at least 2,

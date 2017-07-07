@@ -58,8 +58,8 @@ contains
     ! To conclude, for  fast X type 2,  the number of modes (n_mod_X)  has to be
     ! chosen high enough  compared with the variation of the  mode numbers; i.e.
     ! the variation of the safety factor or rotational transform.
-    integer function insert_block_mat(block,mat,r_id,ind,n_sol,transp,&
-        &overwrite) result(ierr)
+    integer function insert_block_mat(block,mat,r_id,ind,n_r,transp,&
+        &overwrite,ind_insert) result(ierr)
         use X_vars, only: n_X, m_X, n_mod_X
         use num_vars, only: use_pol_flux_F
 #if ldebug
@@ -74,9 +74,10 @@ contains
         Mat, intent(inout) :: mat                                               ! matrix in which to insert block
         PetscInt, intent(in) :: r_id                                            ! normal position of corresponding V^0 (starting at 0)
         PetscInt, intent(in) :: ind(2)                                          ! 2D index in matrix, relative to r_id
-        PetscInt, intent(in) :: n_sol                                           ! number of grid points of solution grid
+        PetscInt, intent(in) :: n_r                                             ! number of grid points of solution grid
         PetscBool, intent(in), optional :: transp                               ! also set Hermitian transpose
         PetscBool, intent(in), optional :: overwrite                            ! overwrite
+        PetscBool, intent(in), optional :: ind_insert                           ! individual insert, only important for debugging
         
         ! local variables
         PetscInt :: k, m                                                        ! counters
@@ -86,15 +87,18 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         PetscInt :: operation                                                   ! either ADD_VALUES or INSERT_VALUES
         PetscScalar, allocatable :: block_loc(:,:)                              ! local block, possibly shifted from block
+        PetscBool :: ind_insert_loc                                             ! local ind_insert
         
         ! initialize ierr
         ierr = 0
         
-        ! set up local transp and overwrite
+        ! set up local transp, overwrite and ind_insert
         transp_loc = .false.
         if (present(transp)) transp_loc = transp
         overwrite_loc = .false.
         if (present(overwrite)) overwrite_loc = overwrite
+        ind_insert_loc = .false.
+        if (present(ind_insert)) ind_insert_loc = ind_insert
         
         ! set operation
         if (overwrite_loc) then
@@ -106,7 +110,7 @@ contains
 #if ldebug
         ! user output
         if (debug_insert_block_mat) then
-            call sleep(rank)
+            if (.not.ind_insert_loc) call sleep(rank)
             call writo('>>> at (k,m) = '//trim(i2str(r_id))//' + ('//&
                 &trim(i2str(ind(1)))//','//trim(i2str(ind(2)))//'):',&
                 &persistent=.true.)
@@ -115,7 +119,7 @@ contains
 #endif
         
         ! only set values if within matrix range
-        if (minval(r_id+ind).ge.0 .and. maxval(r_id+ind).lt.n_sol) then
+        if (minval(r_id+ind).ge.0 .and. maxval(r_id+ind).lt.n_r) then
             ! set error message
             err_msg = 'Couldn''t add values to matrix'
             
@@ -189,7 +193,7 @@ contains
         
 #if ldebug
         if (debug_insert_block_mat) then
-            call pause_prog()
+            call pause_prog(ind_insert_loc)
             call lvl_ud(-1)
         endif
 #endif

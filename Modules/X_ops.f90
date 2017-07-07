@@ -2152,10 +2152,6 @@ contains
                     call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1)),&
                         &X_int%KV_2(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
-                
-                ! copy vacuum part (already integrated)
-                X_int%vac_res(lim_sec_X(1,1)-1+k,lim_sec_X(1,2)-1+m) = &
-                    &X%vac_res(k,m)
             end do
         end do
         
@@ -2684,6 +2680,40 @@ contains
                     &[loc_size(2)])
             end if
         end do
+        
+        ! RE_vac_res
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'RE_vac_res'
+        allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
+        allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
+        X_1D_loc%tot_i_min = [1,1]
+        X_1D_loc%tot_i_max = [X%n_mod(1),X%n_mod(2)]
+        if (present(lim_sec_X)) then
+            X_1D_loc%loc_i_min = lim_sec_X(1,:)
+            X_1D_loc%loc_i_max = lim_sec_X(2,:)
+        else
+            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
+            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
+        end if
+        allocate(X_1D_loc%p(size(X%vac_res)))
+        X_1D_loc%p = reshape(rp(X%vac_res),[size(X%vac_res)])
+        
+        ! IM_vac_res
+        X_1D_loc => X_1D(id); id = id+1
+        X_1D_loc%var_name = 'IM_vac_res'
+        allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
+        allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
+        X_1D_loc%tot_i_min = [1,1]
+        X_1D_loc%tot_i_max = [X%n_mod(1),X%n_mod(2)]
+        if (present(lim_sec_X)) then
+            X_1D_loc%loc_i_min = lim_sec_X(1,:)
+            X_1D_loc%loc_i_max = lim_sec_X(2,:)
+        else
+            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
+            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
+        end if
+        allocate(X_1D_loc%p(size(X%vac_res)))
+        X_1D_loc%p = reshape(ip(X%vac_res),[size(X%vac_res)])
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&

@@ -30,6 +30,7 @@ module SLEPC_ops
 #endif
     
     ! global variables
+    PetscReal :: step_size                                                      ! step size in flux coordinates
     PetscInt :: n_r                                                             ! n_r of solution
     PetscInt :: loc_n_r                                                         ! loc_n_r of solution
     integer, allocatable :: c_tot(:,:,:)                                        ! total c corresponding to symmetric and asymmetric tensorial variables
@@ -37,7 +38,6 @@ module SLEPC_ops
 #if ldebug
     logical :: debug_setup_mats = .false.                                       ! plot debug information for setup_mats
     logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
-    logical :: debug_calc_V_0_mod = .false.                                     ! plot debug information for calc_V_0_mod
     logical :: test_diff = .false.                                              ! test introduction of numerical diff
     real(dp) :: diff_coeff                                                      ! diff coefficient
 #endif
@@ -57,8 +57,7 @@ contains
     integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,sol,i_geo) &
         &result(ierr)
         
-        use num_vars, only: max_it_inv, ndps => norm_disc_prec_sol, &
-            &matrix_SLEPC_style
+        use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style
         use num_utilities, only: calc_coeff_fin_diff
         use rich_vars, only: use_guess
 #if ldebug
@@ -80,11 +79,8 @@ contains
         Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
         PetscInt :: max_n_EV                                                    ! how many solutions saved
-        PetscInt :: inv_lvl_nr                                                  ! level of inverse calculation
         PetscInt :: i_geo_loc                                                   ! local copy of i_geo
         PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
-        PetscReal :: step_size                                                  ! step size in flux coordinates
-        PetscBool :: done_inverse                                               ! is it converged?
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -116,7 +112,7 @@ contains
         ! set up the matrix
         call writo('Set up matrices')
         call lvl_ud(1)
-        ierr = setup_mats(grid_X,grid_sol,X,A,B,i_geo_loc,norm_disc_coeff)
+        ierr = setup_mats(grid_X,grid_sol,X,A,B,i_geo_loc)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -136,111 +132,82 @@ contains
         end if
 #endif
         
-        ! iterate over matrix inverse
-        if (max_it_inv.gt.1) then
-            call writo('Iterating over the inverse')
-            call lvl_ud(1)
-        end if
+        ! set boundary conditions
+        call writo('Set up boundary conditions')
+        call lvl_ud(1)
         
-        done_inverse = .false.
-        inv_lvl_nr = 1
-        Inverse: do while (.not.done_inverse .and. inv_lvl_nr.le.max_it_inv)
-            if (max_it_inv.gt.1) then
-                call writo('Iteration '//trim(i2str(inv_lvl_nr))//&
-                    &' of calculation of inverse')
-                call lvl_ud(1)
-            end if
-            
-            ! set boundary conditions
-            call writo('Set up boundary conditions')
-            call lvl_ud(1)
-            
-            select case (matrix_SLEPC_style)
-                case (1)                                                        ! sparse
-                    ierr = set_BC(grid_X,X,A,B,i_geo_loc,grid_sol%n(3),&
-                        &norm_disc_coeff)
+        select case (matrix_SLEPC_style)
+            case (1)                                                            ! sparse
+                ierr = set_BC(grid_X,X,A,B,i_geo_loc,grid_sol%n(3))
+                CHCKERR('')
+        
+#if ldebug
+                if (debug_set_BC) then
+                    call writo('Testing if AFTER INSERTING BC''s, A and B &
+                        &are Hermitian by multiplying with their &
+                        &Hermitian Transpose and subtracting 1')
+                    call lvl_ud(1)
+                    
+                    ierr = test_mat_hermiticity(A,'A_BC')
                     CHCKERR('')
-            
-#if ldebug
-                    if (debug_set_BC) then
-                        call writo('Testing if AFTER INSERTING BC''s, A and B &
-                            &are Hermitian by multiplying with their &
-                            &Hermitian Transpose and subtracting 1')
-                        call lvl_ud(1)
-                        
-                        ierr = test_mat_hermiticity(A,'A_BC')
-                        CHCKERR('')
-                        
-                        ierr = test_mat_hermiticity(B,'B_BC')
-                        CHCKERR('')
-                        
-                        call lvl_ud(-1)
-                    end if
+                    
+                    ierr = test_mat_hermiticity(B,'B_BC')
+                    CHCKERR('')
+                    
+                    call lvl_ud(-1)
+                end if
 #endif
-                case (2)                                                        ! shell
-                    ierr = 1
-                    err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
-                    CHCKERR(err_msg)
-            end select
-            
-            call lvl_ud(-1)
-            
-            ! set up solver
-            call writo('Set up EV solver with defaults')
-            call lvl_ud(1)
+            case (2)                                                            ! shell
+                ierr = 1
+                err_msg = 'NOT YET IMPLEMENTED FOR SHELL MATRICES'
+                CHCKERR(err_msg)
+        end select
+        
+        call lvl_ud(-1)
+        
+        ! set up solver
+        call writo('Set up EV solver with defaults')
+        call lvl_ud(1)
 #if ldebug
-            if (ltest) then
-                call writo('Test spectrum of A or B instead of solving &
-                    &generalized Eigenvalue problem?')
-                if (get_log(.false.)) then
-                    call writo('Spectrum of A (true) or B (false)?')
-                    if (get_log(.true.)) then                                   ! A
-                        ierr = setup_solver(X,A,PETSC_NULL_OBJECT,solver)
-                        CHCKERR('')
-                    else                                                        ! B
-                        ierr = setup_solver(X,B,PETSC_NULL_OBJECT,solver)
-                        CHCKERR('')
-                    end if
-                else
-                    ierr = setup_solver(X,A,B,solver)
+        if (ltest) then
+            call writo('Test spectrum of A or B instead of solving &
+                &generalized Eigenvalue problem?')
+            if (get_log(.false.)) then
+                call writo('Spectrum of A (true) or B (false)?')
+                if (get_log(.true.)) then                                       ! A
+                    ierr = setup_solver(X,A,PETSC_NULL_OBJECT,solver)
+                    CHCKERR('')
+                else                                                            ! B
+                    ierr = setup_solver(X,B,PETSC_NULL_OBJECT,solver)
                     CHCKERR('')
                 end if
             else
-#endif
                 ierr = setup_solver(X,A,B,solver)
                 CHCKERR('')
-#if ldebug
             end if
+        else
 #endif
-            call lvl_ud(-1)
-            
-            ! set up guess
-            if (use_guess) then
-                call writo('Set up guess')
-                call lvl_ud(1)
-                ierr = setup_guess(sol,A,solver)
-                CHCKERR('')
-                call lvl_ud(-1)
-            end if
-            
-            ! get solution
-            call writo('Get solution')
-            
-            ierr = get_solution(solver)
+            ierr = setup_solver(X,A,B,solver)
             CHCKERR('')
-            
-            ! check for convergence
-            inv_lvl_nr = inv_lvl_nr+1
-            !!! TO BE IMPLEMENTED !!!
-            !!! ALSO, GUESS SHOULD BE ADAPTED TO PREVIOUS GUESS PROBABLY ???
-            
-            if (max_it_inv.gt.1) call lvl_ud(-1)
-        end do Inverse
-        
-        if (max_it_inv.gt.1) then
-            call lvl_ud(-1)
-            call writo('Done iterating over the inverse')
+#if ldebug
         end if
+#endif
+        call lvl_ud(-1)
+        
+        ! set up guess
+        if (use_guess) then
+            call writo('Set up guess')
+            call lvl_ud(1)
+            ierr = setup_guess(sol,A,solver)
+            CHCKERR('')
+            call lvl_ud(-1)
+        end if
+        
+        ! get solution
+        call writo('Get solution')
+        
+        ierr = get_solution(solver)
+        CHCKERR('')
         
         ! summarize solution
         call writo('Summarize solution')
@@ -252,7 +219,7 @@ contains
         call writo('Store results for '//trim(i2str(max_n_EV))//' least &
             &stable Eigenvalues')
         
-        ierr = store_results(grid_sol,sol,solver,max_n_EV,A,B,step_size)
+        ierr = store_results(grid_sol,sol,solver,max_n_EV,A,B)
         CHCKERR('')
         
         ! clean up
@@ -441,14 +408,14 @@ contains
     ! process sets up the part of the  grid that corresponds to their own normal
     ! range in the perturbation grid.
     ! Note: For normal usage, i_geo should be 1, or not present.
-    integer function setup_mats(grid_X,grid_sol,X,A,B,i_geo,norm_disc_coeff) &
-        &result(ierr)
+    integer function setup_mats(grid_X,grid_sol,X,A,B,i_geo) result(ierr)
         
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
-            &rank, sol_n_procs
+            &rank, sol_n_procs, BC_style
         use grid_utilities, only: trim_grid
         use SLEPC_utilities, only: insert_block_mat
         use X_vars, only: n_mod_X
+        use num_utilities, only: calc_coeff_fin_diff
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_real, get_log
@@ -464,7 +431,6 @@ contains
         type(X_2_type), intent(in), target :: X                                 ! field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A, B                                              ! matrix A and B
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
-        PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
@@ -484,7 +450,7 @@ contains
         ! user output
         call writo('Normal discretization with central finite differences of &
             &order '//trim(i2str(ndps))//', stencil width '//&
-            &trim(i2str(4*ndps+1)))
+            &trim(i2str(2*ndps+1)))
         
 #if ldebug
         if (ltest) then
@@ -587,8 +553,6 @@ contains
         ! Sets the limits of the indices of the bulk matrix, depending on the BC
         ! style.
         integer function set_bulk_lims(grid_X,i_lim) result(ierr)
-            use num_vars, only: BC_style
-            
             character(*), parameter :: rout_name = 'set_bulk_lims'
             
             ! input / output
@@ -602,10 +566,9 @@ contains
             select case (BC_style(1))
                 case (1)
                     i_lim(1) = grid_X%i_min                                     ! will be overwritten
-                case (2)
-                    i_lim(1) = max(grid_X%i_min,1+ndps)                        ! first norm_disc_prec_sol rows write left BC's
-                case (3)
-                    err_msg = 'Left BC''s cannot have BC type 3'
+                case (2:4)
+                    err_msg = 'Left BC''s cannot have BC type '//&
+                        &trim(i2str(BC_style(1)))
                     ierr = 1
                     CHCKERR(err_msg)
                 case default
@@ -621,7 +584,7 @@ contains
                     i_lim(2) = grid_X%i_max                                     ! will be overwritten
                 case (2)
                     i_lim(2) = min(grid_X%i_max,n_r-ndps)                       ! last norm_disc_prec_sol rows write right BC's
-                case (3)
+                case (3,4)
                     i_lim(2) = min(grid_X%i_max,n_r-1)                          ! last row writes right BC's
                 case default
                     err_msg = 'No BC style associated with '//&
@@ -645,7 +608,7 @@ contains
         !   the  corresponding  perturbation  grid. This  information,  as  well
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity.
-        ! Makes use of n_r, norm_disc_coeff, grid_X_trim and  grid_sol_trim
+        ! Makes use of n_r, grid_X_trim and  grid_sol_trim
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
             use num_utilities, only: con
             
@@ -661,9 +624,11 @@ contains
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
             PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
+            PetscReal, allocatable :: norm_disc_coeff(:)                        ! discretization coefficients
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: kd_loc                                                  ! kd in local variables
             PetscInt :: k, m                                                    ! counters
+            PetscInt :: norm_disc_coeff_asym                                    ! asymmetry of norm_disc_coeff
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -703,6 +668,17 @@ contains
                 ! set up local kd
                 kd_loc = kd+2-grid_X_trim%i_min
                 
+                ! set up norm_disc_coeff
+                if (BC_style(2).eq.4 .and. kd.gt.n_r-1-ndps) then               ! asymmetric finite differences: shifted indices
+                    norm_disc_coeff_asym = kd-(n_r-1-ndps)
+                else
+                    norm_disc_coeff_asym = 0
+                end if
+                ierr = calc_coeff_fin_diff(1,ndps,norm_disc_coeff,&
+                    &asym=norm_disc_coeff_asym)
+                CHCKERR('')
+                norm_disc_coeff = norm_disc_coeff/step_size                     ! scale by step size
+                
                 ! fill the blocks
                 
                 ! -------------!
@@ -739,11 +715,12 @@ contains
                     end do
                 end do
                 
-                ! add block to kd + (0,-p..p) + Hermitian conjugate
+                ! add  block to kd  + (0,-p..p) + Hermitian  conjugate, possibly
+                ! with a shift due to the asymmetric discretization
                 do jd = -ndps,ndps
                     ierr = insert_block_mat(loc_block*&
                         &norm_disc_coeff(jd+ndps+1),mat,kd,&
-                        &[0,jd],n_r,transp=.true.)
+                        &[0,jd-norm_disc_coeff_asym],n_r,transp=.true.)
                     CHCKERR('')
                 end do
                 
@@ -765,13 +742,15 @@ contains
                 end if
 #endif
             
-                ! add block to kd + (-p..p,-p..p)
+                ! add block to kd + (-p..p,-p..p),  possibly with a shift due to
+                ! the asymmetric discretization
                 do jd = -ndps,ndps
                     do id = -ndps,ndps
                         ierr = insert_block_mat(loc_block*&
                             &norm_disc_coeff(id+ndps+1)*&
-                            &norm_disc_coeff(jd+ndps+1),mat,&
-                            &kd,[id,jd],n_r)
+                            &norm_disc_coeff(jd+ndps+1),mat,kd,&
+                            &[id-norm_disc_coeff_asym,jd-norm_disc_coeff_asym],&
+                            &n_r)
                         CHCKERR('')
                     end do
                 end do
@@ -892,8 +871,7 @@ contains
     ! setting the  diagonal components  of A  to EV_BC and  of B  to 1,  and the
     ! off-diagonal elements to zero.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
-    integer function set_BC(grid_X,X,A,B,i_geo,n_sol,norm_disc_coeff) &
-        &result(ierr)
+    integer function set_BC(grid_X,X,A,B,i_geo,n_r) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC
         use X_vars, only: n_mod_X
         use MPI_utilities, only: get_ser_var, wait_MPI
@@ -907,13 +885,12 @@ contains
         type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
-        integer, intent(in) :: n_sol                                            ! number of grid points of solution grid
-        PetscReal, intent(in) :: norm_disc_coeff(:)                             ! discretization coefficients for normal derivatives
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
+        integer, intent(in) :: n_r                                              ! number of grid points of solution grid
         
         ! local variables
         PetscInt :: kd                                                          ! counter
+        PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -933,11 +910,10 @@ contains
         ! set up n_min, depending on BC style
         select case (BC_style(1))
             case (1)
-                n_min = 2*ndps                                                  ! dirichlet BC requires half stencil
-            case (2)
-                n_min = ndps                                                    ! mixed BC requires only one fourth of stencil
-            case (3)
-                err_msg = 'Left BC''s cannot have BC type 3'
+                n_min = 2*ndps                                                  ! dirichlet BC requires stencil
+            case (2:4)
+                err_msg = 'Left BC''s cannot have BC type '//&
+                    &trim(i2str(BC_style(1)))
                 ierr = 1
                 CHCKERR(err_msg)
             case default
@@ -950,10 +926,10 @@ contains
         ! set up n_max, depending on BC style
         select case (BC_style(2))
             case (1)
-                n_max = 2*ndps                                                  ! dirichlet BC requires half stencil
+                n_max = 2*ndps                                                  ! dirichlet BC requires stencil
             case (2)
-                n_max = ndps                                                    ! mixed BC requires only one fourth of stencil
-            case (3)
+                n_max = ndps                                                    ! mixed BC requires only half stencil
+            case (3,4)
                 n_max = 1                                                       ! only last element carries BC
             case default
                 err_msg = 'No BC style associated with '//&
@@ -973,12 +949,9 @@ contains
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
                         CHCKERR('')
-                    case (2)
-                        ierr = set_BC_2(kd-1,kd-grid_X%i_min+1,X,A,B,&
-                            &i_geo,grid_X%n(3),norm_disc_coeff,.false.)         ! indices start at 0
-                        CHCKERR('')
-                    case (3)
-                        err_msg = 'Left BC''s cannot have BC type 3'
+                    case (2:4)
+                        err_msg = 'Left BC''s cannot have BC type '//&
+                            &trim(i2str(BC_style(1)))
                         ierr = 1
                         CHCKERR(err_msg)
                     case default
@@ -1018,13 +991,11 @@ contains
                         CHCKERR('')
                     case (2)
                         ierr = set_BC_2(kd-1,kd-grid_X%i_min+1,X,A,B,i_geo,&
-                            &grid_X%n(3),norm_disc_coeff,.true.)                ! indices start at 0
+                            &grid_X%n(3))                                       ! indices start at 0
                         CHCKERR('')
-                    case (3)
-                        if (kd.eq.grid_X%n(3)) then                             ! only for last point, irrespective of discretization order
-                            ierr = set_BC_3(kd-1,X,A)                           ! indices start at 0
-                            CHCKERR('')
-                        end if
+                    case (3,4)
+                        ierr = set_BC_34(kd-1,X,A,BC_style(2))                  ! indices start at 0
+                        CHCKERR('')
                     case default
                         err_msg = 'No BC style associated with '//&
                             &trim(i2str(BC_style(1)))
@@ -1085,21 +1056,21 @@ contains
             end if
             
             ! set block r_id + (0,0)
-            ierr = insert_block_mat(EV_BC*loc_block,A,r_id,[0,0],n_sol,&
-                &overwrite=.true.)
+            ierr = insert_block_mat(EV_BC*loc_block,A,r_id,[0,0],n_r,&
+                &overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
-            ierr = insert_block_mat(loc_block,B,r_id,[0,0],n_sol,&
-                &overwrite=.true.)
+            ierr = insert_block_mat(loc_block,B,r_id,[0,0],n_r,&
+                &overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
             
             ! iterate over range 2
             do kd = 1,2*ndps
                 ! set block r_id +/- (0,kd) and Hermitian conjugate
                 ierr = insert_block_mat(0*loc_block,A,r_id,[0,-pmone*kd],&
-                    &n_sol,overwrite=.true.,transp=.true.)
+                    &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
                 CHCKERR('')
                 ierr = insert_block_mat(0*loc_block,B,r_id,[0,-pmone*kd],&
-                    &n_sol,overwrite=.true.,transp=.true.)
+                    &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
                 CHCKERR('')
             end do
             
@@ -1108,9 +1079,11 @@ contains
         end function set_BC_1
         
         ! set BC style 2:
-        !   minimization of surface energy term (see [ADD REF])
-        integer function set_BC_2(r_id,r_id_loc,X,A,B,i_geo,n_sol,&
-            &norm_disc_coeff,BC_right) result(ierr)
+        !   minimization of  surface energy term, using  the boundary conditions
+        !   to eliminate the terms ~ V^2. (see [ADD REF])
+        integer function set_BC_2(r_id,r_id_loc,X,A,B,i_geo,n_r) result(ierr)
+            use num_utilities, only: calc_coeff_fin_diff
+            
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
@@ -1119,13 +1092,13 @@ contains
             type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
             integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
-            integer, intent(in) :: n_sol                                        ! number of grid points of solution grid
-            PetscReal, intent(in) :: norm_disc_coeff(:)                         ! discretization coefficients for normal derivatives
-            logical :: BC_right                                                 ! if BC is at right (so there are vacuum terms)
+            integer, intent(in) :: n_r                                          ! number of grid points of solution grid
             
             ! local variables
             PetscInt :: jd                                                      ! counter
-            PetscScalar, allocatable :: V_int_0_mod(:,:,:)                      ! V_0 + (V_1+delta) V_2 (V_1+delta)^*T
+            PetscInt :: k, m                                                    ! counters
+            PetscReal, allocatable :: norm_disc_coeff(:)                        ! discretization coefficients
+            PetscScalar, allocatable :: loc_block(:,:,:)                        ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             
             ! initialize ierr
             ierr = 0
@@ -1134,229 +1107,104 @@ contains
             call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Minimization of surface energy',persistent=.true.)
             
-            ! -----------------!
-            ! BLOCKS ~ V_0,mod !
-            ! -----------------!
-            ! calculate modified terms V_int_0_mod
-            allocate(V_int_0_mod(n_mod_X,n_mod_X,2))
-            ierr = calc_V_0_mod(X%PV_0(1,i_geo,r_id_loc,:),&
-                &X%KV_0(1,i_geo,r_id_loc,:),&
-                &X%PV_1(1,i_geo,r_id_loc,:),&
-                &X%KV_1(1,i_geo,r_id_loc,:),&
-                &X%KV_2(1,i_geo,r_id_loc,:),V_int_0_mod)
+            ! initialize local blocks
+            allocate(loc_block(n_mod_X,n_mod_X,2))
+            
+            ! calculate  discretization  coefficients  with asymmetry  given  by
+            ! proximity to edge n_r-1: 0 for r_id = n_r-1-ndps and ndps for r_id
+            ! = n_r-1
+            ierr = calc_coeff_fin_diff(1,ndps,norm_disc_coeff,&
+                &asym=r_id-(n_r-1-ndps))
             CHCKERR('')
+            norm_disc_coeff = norm_disc_coeff/step_size                         ! scale by step size
+            
+            ! -------------!
+            ! BLOCKS ~ V_0 !
+            ! -------------!
+            ! fill local blocks for A and B
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
+                    loc_block(k,m,1) = &
+                        &con(X%PV_0(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &[k,m],.true.)                                          ! symmetric matrices need con()
+                    loc_block(k,m,2) = &
+                        &con(X%KV_0(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &[k,m],.true.)                                          ! symmetric matrices need con()
+                end do
+            end do
             
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(V_int_0_mod(:,:,1),A,r_id,[0,0],n_sol)
+            ierr = insert_block_mat(loc_block(:,:,1),A,r_id,[0,0],n_r,&
+                &ind_insert=.true.)
             CHCKERR('')
-            ierr = insert_block_mat(V_int_0_mod(:,:,2),B,r_id,[0,0],n_sol)
+            ! add block to r_id + (0,0)
+            ierr = insert_block_mat(loc_block(:,:,2),B,r_id,[0,0],n_r,&
+                &ind_insert=.true.)
             CHCKERR('')
             
-            ! deallocate modified V_0
-            deallocate(V_int_0_mod)
-            
-            ! -------------!
-            ! BLOCKS ~ vac !
-            ! -------------!
-            ! add block to r_id + (0,-p..p) + Hermitian conjugate
-            if (BC_right) then
-                do jd = -ndps,ndps
-                    if (r_id.lt.n_sol .and. r_id+jd.lt.n_sol) then
-                        ierr = insert_block_mat(-X%vac_res*&
-                            &norm_disc_coeff(jd+ndps+1),A,&
-                            &r_id,[0,jd],n_sol,transp=.true.)
-                        CHCKERR('')
-                    end if
+            ! --------------------!
+            ! BLOCKS ~ V1 and vac !
+            ! --------------------!
+            ! fill local blocks for A and B
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
+                    loc_block(k,m,1) = &
+                        &X%PV_1(1,i_geo,r_id_loc,c([k,m],.false.,n_mod_X))      ! asymetric matrices don't need con()
+                    loc_block(k,m,2) = &
+                        &X%KV_1(1,i_geo,r_id_loc,c([k,m],.false.,n_mod_X))      ! asymetric matrices don't need con()
                 end do
-            end if
+            end do
+            loc_block(:,:,1) = 0.5_dp*(loc_block(:,:,1) - X%vac_res)
+            loc_block(:,:,2) = 0.5_dp*(loc_block(:,:,2))
+            
+            ! add  block to  r_id +  (n_r-2*ndps-1-r_id,n_r-1-r_id) +  Hermitian
+            ! conjugate
+            do jd = n_r-2*ndps-1,n_r-1
+                ierr = insert_block_mat(loc_block(:,:,1)*&
+                    &norm_disc_coeff(jd-n_r+2*ndps+2),A,&
+                    &r_id,[0,jd-r_id],n_r,transp=.true.,ind_insert=.true.)
+                CHCKERR('')
+                ierr = insert_block_mat(loc_block(:,:,2)*&
+                    &norm_disc_coeff(jd-n_r+2*ndps+2),B,&
+                    &r_id,[0,jd-r_id],n_r,transp=.true.,ind_insert=.true.)
+                CHCKERR('')
+            end do
         end function set_BC_2
         
-        ! set BC style 3:
+        ! set BC style 3 and 4:
         !   minimization of vacuum energy (see [ADD REF])
-        integer function set_BC_3(r_id,X,A) result(ierr)
-            character(*), parameter :: rout_name = 'set_BC_3'
+        integer function set_BC_34(r_id,X,A,BC_style) result(ierr)
+            character(*), parameter :: rout_name = 'set_BC_34'
             
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
             type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
+            integer, intent(in) :: BC_style                                     ! style 3 of 4
             
             ! initialize ierr
             ierr = 0
             
             ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Minimization of vacuum energy',persistent=.true.)
+            select case (BC_style)
+                case (3)                                                        ! only delta_vac in last position
+                    call writo('Boundary style at row '//trim(i2str(r_id+1))//&
+                        &': Minimization of vacuum energy with neglect of &
+                        &exterior points',persistent=.true.)
+                case (4)                                                        ! delta_vac in last position and asymmetric finite differences
+                    call writo('Boundary style at row '//trim(i2str(r_id+1))//&
+                        &': Minimization of vacuum energy with asymmetric &
+                        &finite differences',persistent=.true.)
+            end select
             
             ! -------------!
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_sol)
+            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
+                &ind_insert=.true.)
             CHCKERR('')
-        end function set_BC_3
-        
-        ! calculates V_0 + (V_1+delta) V_2^-1 (V_1+delta)^*T
-        integer function calc_V_0_mod(PV_0,KV_0,PV_1,KV_1,KV_2,V_0_mod) &
-            &result(ierr)
-            character(*), parameter :: rout_name = 'calc_V_0_mod'
-            
-            ! input / output
-            complex(dp), intent(in) :: PV_0(:), KV_0(:)                         ! PV_0 and KV_0
-            complex(dp), intent(in) :: PV_1(:), KV_1(:)                         ! PV_1 and KV_1
-            complex(dp), intent(in) :: KV_2(:)                                  ! KV_2
-            complex(dp), intent(inout) :: V_0_mod(:,:,:)                        ! output V_0_mod
-            
-            ! local variables
-            complex(dp), allocatable :: KV_2_inv(:,:)                           ! inverse of KV_2
-            complex(dp), allocatable :: KV_1_loc(:,:)                           ! local copy of KV_1
-            complex(dp), allocatable :: PV_1_loc(:,:)                           ! local copy of PV_1
-            complex(dp), allocatable :: V_triple(:,:)                           ! product of 3 V's
-            character :: uplo                                                   ! upper or lower Cholesky factorization used to invert KV_2
-            PetscInt :: k, m                                                    ! counters
-#if ldebug
-            integer :: istat                                                    ! status
-#endif
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! initialize variables
-            allocate(KV_2_inv(n_mod_X,n_mod_X))
-            allocate(V_triple(n_mod_X,n_mod_X))
-            allocate(KV_1_loc(n_mod_X,n_mod_X))
-            allocate(PV_1_loc(n_mod_X,n_mod_X))
-            
-            ! make local copy of KV_2 into the inverse array
-            KV_2_inv = 0._dp
-            do m = 1,n_mod_X
-                do k = 1,m                                                      ! only save upper diagonal part
-                    KV_2_inv(k,m) = con(KV_2(c([k,m],.true.,n_mod_X)),&
-                        &[k,m],.true.)                                          ! symmetric matrices need con()
-                end do
-            end do
-            
-#if ldebug
-            if (debug_calc_V_0_mod) then
-                write(*,*,IOSTAT=istat) 'KV_2 = '
-                
-                write(*,*,IOSTAT=istat) 'real part:'
-                call print_ar_2(rp(KV_2_inv))
-                write(*,*,IOSTAT=istat) 'imaginary part:'
-                call print_ar_2(ip(KV_2_inv))
-            end if
-#endif
-            
-            ! invert matrix KV_2 using Lapack
-            uplo = 'U'                                                          ! only lower diagonal matters, but is arbitrary
-            call zpotrf(uplo,n_mod_X,KV_2_inv,n_mod_X,ierr)
-            CHCKERR('Failed to decompose KV_2')
-            call zpotri(uplo,n_mod_X,KV_2_inv,n_mod_X,ierr)
-            CHCKERR('Failed to invert KV_2')
-            do k = 1,n_mod_X
-                do m = 1,k-1
-                    KV_2_inv(k,m) = conjg(KV_2_inv(m,k))
-                end do
-            end do
-            
-            ! save local copy of KV_1 and PV_1
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    KV_1_loc(k,m) = KV_1(c([k,m],.false.,n_mod_X))              ! asymetric matrices don't need con()
-                    PV_1_loc(k,m) = PV_1(c([k,m],.false.,n_mod_X))              ! asymetric matrices don't need con()
-                end do
-            end do
-            
-            ! -------------!
-            ! BLOCKS in PV !
-            ! -------------!
-            
-            ! multiply PV_1 + delta^vac with inverse KV_2 and save in V_triple
-            V_triple = matmul(PV_1_loc+X%vac_res,KV_2_inv)
-            
-            ! multiply with KV_1^*T and save in V_triple
-            V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
-            
-            ! fill local block
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    V_0_mod(k,m,1) = &
-                        &con(PV_0(c([k,m],.true.,n_mod_X)),[k,m],.true.)        ! symmetric matrices need con()
-                end do
-            end do
-            V_0_mod(:,:,1) = V_0_mod(:,:,1) + &
-                &V_triple - conjg(transpose(V_triple))
-            
-            ! -------------!
-            ! BLOCKS in KV !
-            ! -------------!
-            
-            ! multiply KV_1 with inverse KV_2 and save in V_triple
-            V_triple = matmul(KV_1_loc,KV_2_inv)
-            
-            ! multiply with KV_1^*T and save in V_triple
-            V_triple = matmul(V_triple,conjg(transpose(KV_1_loc)))
-            
-            ! fill V_0_mod(1)
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    V_0_mod(k,m,2) = &
-                        &con(KV_0(c([k,m],.true.,n_mod_X)),[k,m],.true.)        ! symmetric matrices need con()
-                end do
-            end do
-            V_0_mod(:,:,2) = V_0_mod(:,:,2) - V_triple
-#if ldebug
-        if (debug_calc_V_0_mod) then
-            write(*,*,IOSTAT=istat) 'KV_2^-1 = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(KV_2_inv))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(KV_2_inv))
-            
-            write(*,*,IOSTAT=istat) 'PV_1 = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(PV_1_loc))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(PV_1_loc))
-            
-            write(*,*,IOSTAT=istat) 'vac = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(X%vac_res))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(X%vac_res))
-            
-            write(*,*,IOSTAT=istat) 'KV_1 = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(KV_1_loc))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(KV_1_loc))
-            
-            write(*,*,IOSTAT=istat) 'PV_0_mod = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(V_0_mod(:,:,1)))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(V_0_mod(:,:,1)))
-            
-            write(*,*,IOSTAT=istat) 'KV_0_mod = '
-            
-            write(*,*,IOSTAT=istat) 'real part:'
-            call print_ar_2(rp(V_0_mod(:,:,2)))
-            write(*,*,IOSTAT=istat) 'imaginary part:'
-            call print_ar_2(ip(V_0_mod(:,:,2)))
-        end if
-#endif
-            
-            ! clean up
-            deallocate(KV_2_inv)
-            deallocate(KV_1_loc)
-            deallocate(PV_1_loc)
-            deallocate(V_triple)
-        end function calc_V_0_mod
+        end function set_BC_34
     end function set_BC
     
     ! sets up EV solver
@@ -1653,13 +1501,13 @@ contains
     end function summarize_solution
     
     ! stores the results
-    integer function store_results(grid_sol,sol,solver,max_n_EV,A,B,&
-        &step_size) result(ierr)
+    integer function store_results(grid_sol,sol,solver,max_n_EV,A,B) &
+        &result(ierr)
         
         use eq_vars, only: T_0
         use X_vars, only: n_mod_X
         use num_vars, only: use_normalization, EV_BC, prog_name, output_name, &
-            &n_procs, rank, tol_SLEPC, eq_style, output_EV_i
+            &n_procs, rank, tol_SLEPC, eq_style, output_EV_i, retain_all_sol
         use MPI_utilities, only: get_ser_var
         use rich_vars, only: rich_lvl
         use grid_utilities, only: trim_grid
@@ -1672,7 +1520,6 @@ contains
         EPS, intent(inout) :: solver                                            ! EV solver
         PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
         Mat, intent(inout) :: A, B                                              ! matrix A and B
-        PetscReal, intent(in) :: step_size                                      ! step size in flux coordinates
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
@@ -1979,7 +1826,11 @@ contains
                 &infinite')
             
             call lvl_ud(-1)
-            call writo('(Override this behavior using "retain_all_sol")')
+            if (retain_all_sol) then
+                call writo('(But this was overriden using "retain_all_sol")')
+            else
+                call writo('(Override this behavior using "retain_all_sol")')
+            end if
         end if
         
         if (max_n_EV.gt.0) then
@@ -2005,8 +1856,6 @@ contains
         ! Removes id'th  Eigenvalue and  -vector. Optionally, all  the following
         ! can be removed as well.
         subroutine remove_EV(id,max_id,remove_next)
-            use num_vars, only: retain_all_sol
-            
             ! input / output
             PetscInt, intent(inout) :: id                                       ! id of faulty values
             PetscInt, intent(inout) :: max_id                                   ! maximum id

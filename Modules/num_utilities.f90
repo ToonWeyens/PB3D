@@ -1583,33 +1583,32 @@ contains
         val = vals(1)
     end function round_with_tol_ind
     
-    ! Calculate the  coefficients for central finite  differences representing a
+    ! Calculate the  coefficients for finite  differences representing a
     ! derivative of degree deriv and order  ord, referring to (half) the stencil
     ! width.
-    ! As stated in [ADD REF], these are found by solving the matrix equation
-    !   sum_(j=1)^(2ord+1) (j+1-ord)^(i-1)/(i-1)! coeff(j) = 2 for i = deriv ,
-    !                                                        0 else .
-    ! with i = 1..2ord+1.
-    ! The result  returned in coeff(j-1-ord), j=1..2ord+1 are used in
-    !   df/dx = sum_(j=-ord)^ord coeff(j-1-ord) f(j) .
-    integer function calc_coeff_fin_diff(deriv,ord,coeff) result(ierr)
+    ! These are found by solving a Vandermonde system, multiplied by the faculty
+    ! of the derivative.
+    ! The result  returned in coeff(1:2ord+1) are used in
+    !   df/dx = sum_(j=-ord)^ord coeff(j+1+ord) f(j) .
+    ! Note that they need to be divided by the step size first.
+    ! Optionally, the  derivative can be  made non-symmetric, by  indicating the
+    ! position  where the  derivative is  to be  returned, with  respect to  the
+    ! center (zero).
+    integer function calc_coeff_fin_diff(deriv,ord,coeff,asym) result(ierr)
         character(*), parameter :: rout_name = 'calc_coeff_fin_diff'
         
         ! input / output
         integer, intent(in) :: deriv                                            ! degree of derivative
         integer, intent(in) :: ord                                              ! order
         real(dp), intent(inout), allocatable :: coeff(:)                        ! output coefficients
+        integer, intent(in), optional :: asym                                   ! differs from zero for asymmetric derivatives
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: A(:,:)                                         ! matrix of problem
-        real(dp), allocatable :: b(:)                                           ! rhs of problem
-        integer, allocatable :: ipiv(:)                                         ! pivot indices
-        integer :: id, jd                                                       ! counter
-        integer :: fac                                                          ! (i-1)!
-#if ldebug
-        integer :: istat                                                        ! status
-#endif
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
+        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        integer :: id                                                           ! counter
+        integer :: asym_loc                                                     ! local asym
         
         ! initialize ierr
         ierr = 0
@@ -1625,6 +1624,7 @@ contains
             err_msg = 'The order of the finite differences has to be positive'
             CHCKERR(err_msg)
         end if
+        
         ! test whether order high enough for degree of derivative
         if (deriv.gt.2*ord+1) then
             ierr = 1
@@ -1636,56 +1636,20 @@ contains
         
         ! set up output
         if (allocated(coeff)) deallocate(coeff)
-        allocate(coeff(1:2*ord+1))
+        allocate(coeff(2*ord+1))
+        allocate(mat_loc(2*ord+1))
+        allocate(rhs_loc(2*ord+1))
+        asym_loc = 0
+        if (present(asym)) asym_loc = asym
         
-        ! set up matrix
-        allocate(A(1:2*ord+1,1:2*ord+1))
-        A = 0._dp
-        do jd = 1,2*ord+1
-            fac = 1
-            do id = 1,size(A,1)
-                A(id,jd) = (jd-1._dp-ord)**(id-1._dp)/fac
-                fac = fac*id
-            end do
+        ! set up matrix and rhs
+        do id = -ord,ord
+            mat_loc(id+1+ord) = id*1._dp - asym_loc
         end do
-        
-        ! set up rhs
-        allocate(b(1:2*ord+1))
-        b = 0._dp
-        b(1+deriv) = 1._dp
-        
-#if ldebug
-        if (debug_calc_coeff_fin_diff) then
-            write(*,*,IOSTAT=istat) 'solving system of linear equations A x = b'
-            write(*,*,IOSTAT=istat) 'with A = '
-            call print_ar_2(A)
-            write(*,*,IOSTAT=istat) 'and b = '
-            call print_ar_1(b)
-        end if
-#endif
-        
-        ! solve system
-        allocate(ipiv(1:2*ord+1))
-        call dgesv(size(b),1,A,size(b),ipiv,b,size(b),ierr)
-        CHCKERR('Could not find solution')
-        
-        ! set solution
-        coeff = b
-        
-#if ldebug
-        if (debug_calc_coeff_fin_diff) then
-            write(*,*,IOSTAT=istat) 'solution x = '
-            call print_ar_1(coeff)
-        end if
-#endif
-        
-        ! test whether numerical coefficients matrix has right size
-        if (size(coeff).ne.2*ord+1) then
-            ierr = 1
-            err_msg = 'Array of discretization coefficients needs to have &
-                &the correct size 2*ord+1'
-            CHCKERR(err_msg)
-        end if
+        rhs_loc = 0._dp
+        rhs_loc(deriv+1) = 1._dp                                                ! looking for this derivative
+        call solve_vand(2*ord+1,mat_loc,rhs_loc,coeff,transp=.true.)
+        coeff = coeff*fac(deriv)
     end function calc_coeff_fin_diff
     
     ! Convert 2D coordinates (i,j) to the storage convention used in matrices.
