@@ -16,7 +16,7 @@ module num_utilities
         &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun, &
         &shift_F, spline3, solve_vand
 #if ldebug
-    public debug_con2dis_reg, debug_calc_coeff_fin_diff
+    public debug_con2dis_reg, debug_calc_coeff_fin_diff, calc_coeff_fin_diff_OLD
 #endif
     
     ! global variables
@@ -1583,19 +1583,84 @@ contains
         val = vals(1)
     end function round_with_tol_ind
     
-    ! Calculate the  coefficients for finite  differences representing a
-    ! derivative of degree deriv and order  ord, referring to (half) the stencil
-    ! width.
+    ! Calculate  the   coefficients  for   finite  differences   representing  a
+    ! derivative of  degree deriv  at an  index ind,  by the  weighted sum  of a
+    ! number 'nr' of points with 1<=ind<=nr.
     ! These are found by solving a Vandermonde system, multiplied by the faculty
     ! of the derivative.
-    ! The result  returned in coeff(1:2ord+1) are used in
-    !   df/dx = sum_(j=-ord)^ord coeff(j+1+ord) f(j) .
-    ! Note that they need to be divided by the step size first.
-    ! Optionally, the  derivative can be  made non-symmetric, by  indicating the
-    ! position  where the  derivative is  to be  returned, with  respect to  the
-    ! center (zero).
-    integer function calc_coeff_fin_diff(deriv,ord,coeff,asym) result(ierr)
+    ! The result  returned in coeff(1:nr) are used in
+    !   df/dx = sum_(j=1)^nr coeff(j) f(ind+j) .
+    ! Note that they need to be divided by the step size before usage.
+    ! Examples:
+    !   - symmetric finite differences for derivative deriv of order ord:
+    !       nr_2 = ceiling((ord+deriv)/2) to guarantee the order
+    !       nr   = 1+2*nr_2
+    !       ind  = 1+nr_2
+    !   - left finite differences for derivative deriv of order ord:
+    !       nr   = 1+deriv+ord
+    !       ind  = n_r
+    integer function calc_coeff_fin_diff(deriv,nr,ind,coeff) result(ierr)
         character(*), parameter :: rout_name = 'calc_coeff_fin_diff'
+        
+        ! input / output
+        integer, intent(in) :: deriv                                            ! degree of derivative
+        integer, intent(in) :: nr                                               ! number of points
+        integer, intent(in) :: ind                                              ! position of derivative
+        real(dp), intent(inout), allocatable :: coeff(:)                        ! output coefficients
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
+        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! test  whether  number of  points  nr  and  position ind  positive  and
+        ! consistent
+        if (deriv.le.0) then
+            ierr = 1
+            err_msg = 'The degree of the derivative has to be positive'
+            CHCKERR(err_msg)
+        end if
+        if (nr.le.0) then
+            ierr = 1
+            err_msg = 'The number of points in the finite differences has to &
+                &be positive'
+            CHCKERR(err_msg)
+        end if
+        if (ind.lt.1 .or. ind.gt.nr) then
+            ierr = 1
+            err_msg = 'The position of the derivative is not in range.'
+            CHCKERR(err_msg)
+        end if
+        
+        ! test whether number of points enough for derivative
+        if (deriv.gt.nr-1) then
+            ierr = 1
+            err_msg = 'For derivatives of degree '//trim(i2str(deriv))//&
+                &' minimally '//trim(i2str(deriv+1))//' points are necessary'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up output
+        if (allocated(coeff)) deallocate(coeff)
+        allocate(coeff(nr))
+        allocate(mat_loc(nr))
+        allocate(rhs_loc(nr))
+        
+        ! set up matrix and rhs
+        do id = 1,nr
+            mat_loc(id) = (id-ind)*1._dp
+        end do
+        rhs_loc = 0._dp
+        rhs_loc(deriv+1) = 1._dp                                                ! looking for this derivative
+        call solve_vand(nr,mat_loc,rhs_loc,coeff,transp=.true.)
+        coeff = coeff*fac(deriv)
+    end function calc_coeff_fin_diff
+    integer function calc_coeff_fin_diff_OLD(deriv,ord,coeff,asym) result(ierr)
+        character(*), parameter :: rout_name = 'calc_coeff_fin_diff_OLD'
         
         ! input / output
         integer, intent(in) :: deriv                                            ! degree of derivative
@@ -1650,7 +1715,7 @@ contains
         rhs_loc(deriv+1) = 1._dp                                                ! looking for this derivative
         call solve_vand(2*ord+1,mat_loc,rhs_loc,coeff,transp=.true.)
         coeff = coeff*fac(deriv)
-    end function calc_coeff_fin_diff
+    end function calc_coeff_fin_diff_OLD
     
     ! Convert 2D coordinates (i,j) to the storage convention used in matrices.
     ! Their size is by default taken to be 3:

@@ -644,6 +644,8 @@ contains
             ! plot in file
             call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
                 &.false.,draw_ops=['with lines'],ex_plot_style=1)
+            call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+                &.false.,ex_plot_style=2)
             
             ! plot in file using decoupled 3D
             call draw_ex([trim(plot_title(1))//' - 3D'],&

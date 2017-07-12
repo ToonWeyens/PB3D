@@ -24,8 +24,8 @@ contains
             &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, BC_style, &
-            &tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, norm_disc_style_sol, &
+            &BC_style, tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
@@ -60,7 +60,7 @@ contains
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
-            &BC_style, max_it_slepc, norm_disc_prec_sol, &
+            &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_HH, &
@@ -242,6 +242,7 @@ contains
             norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
             norm_disc_prec_X = 1                                                ! precision 1 normal discretization of perturbation
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
+            norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
@@ -918,8 +919,8 @@ contains
     ! Print input quantities to an output file:
     !   - misc_in:   prog_version, eq_style, rho_style, R_0, pres_0, B_0, psi_0
     !                rho_0, T_0, vac_perm, use_pol_flux_F, use_pol_flux_E,
-    !                use_normalization, norm_disc_prec_eq, n_r_in, n_r_eq,
-    !                n_r_sol, debug_version
+    !                use_normalization, norm_disc_prec_eq, norm_disc_style_sol, 
+    !                n_r_in, n_r_eq, n_r_sol, debug_version
     !   - misc_in_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
     !   - flux_t_V
     !   - flux_p_V
@@ -954,7 +955,8 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes
+            &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
+            &norm_disc_style_sol
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -1389,12 +1391,13 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [8]
+        in_1D_loc%loc_i_max = [9]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(8))
+        allocate(in_1D_loc%p(9))
         in_1D_loc%p = [min_r_sol,max_r_sol,alpha,norm_disc_prec_sol*1._dp,&
-            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
+            &norm_disc_style_sol*1._dp,BC_style(1)*1._dp,BC_style(2)*1._dp,&
+            &EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))

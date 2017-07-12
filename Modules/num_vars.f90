@@ -18,8 +18,8 @@ module num_vars
         &plot_J, plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
         &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
         &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, EV_guess, &
-        &norm_disc_prec_X, norm_disc_prec_sol, POST_style, magn_int_style, &
-        &solver_SLEPC_style, &
+        &norm_disc_prec_X, norm_disc_prec_sol, norm_disc_style_sol, &
+        &POST_style, magn_int_style, solver_SLEPC_style, &
         &max_it_rich, tol_rich, &
         &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
         &def_relax_fac_HH, &
@@ -53,8 +53,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      ! name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 ! name of memory usage file
     integer :: mem_usage_count                                                  ! counter for memory usage output
-    real(dp), parameter :: prog_version = 1.87_dp                               ! version number
-    real(dp), parameter :: min_PB3D_version = 1.87_dp                           ! minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 1.88_dp                               ! version number
+    real(dp), parameter :: min_PB3D_version = 1.88_dp                           ! minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           ! debug version used
 #else
@@ -113,6 +113,7 @@ module num_vars
     integer :: norm_disc_prec_eq                                                ! precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 ! precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               ! precision for normal discretization for solution
+    integer :: norm_disc_style_sol                                              ! style for normal discretization for solution (1: central fin. diff., 2: left fin. diff.)
     integer :: magn_int_style                                                   ! style for magnetic integrals (1: trapezoidal, 2: Simpson 3/8)
     
     ! concerning Richardson extrapolation

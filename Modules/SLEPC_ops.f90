@@ -57,8 +57,7 @@ contains
     integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,sol,i_geo) &
         &result(ierr)
         
-        use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style
-        use num_utilities, only: calc_coeff_fin_diff
+        use num_vars, only: matrix_SLEPC_style
         use rich_vars, only: use_guess
 #if ldebug
         use num_vars, only: ltest
@@ -80,7 +79,6 @@ contains
         EPS :: solver                                                           ! EV solver
         PetscInt :: max_n_EV                                                    ! how many solutions saved
         PetscInt :: i_geo_loc                                                   ! local copy of i_geo
-        PetscReal, allocatable :: norm_disc_coeff(:)                            ! discretization coefficients
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -100,14 +98,6 @@ contains
         ! set up step size
         step_size = (grid_sol%r_F(grid_sol%n(3))-grid_sol%r_F(1))/&
             &(grid_sol%n(3)-1)
-        
-        ! get discretization coefficients
-        call writo('Get discretization coefficients')
-        call lvl_ud(1)
-        ierr = calc_coeff_fin_diff(1,ndps,norm_disc_coeff)
-        CHCKERR('')
-        norm_disc_coeff = norm_disc_coeff/step_size                             ! scale by step size
-        call lvl_ud(-1)
         
         ! set up the matrix
         call writo('Set up matrices')
@@ -221,9 +211,6 @@ contains
         
         ierr = store_results(grid_sol,sol,solver,max_n_EV,A,B)
         CHCKERR('')
-        
-        ! clean up
-        deallocate(norm_disc_coeff)
         
         ! finalize
         call writo('Finalize SLEPC')
@@ -409,13 +396,11 @@ contains
     ! range in the perturbation grid.
     ! Note: For normal usage, i_geo should be 1, or not present.
     integer function setup_mats(grid_X,grid_sol,X,A,B,i_geo) result(ierr)
-        
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
-            &rank, sol_n_procs, BC_style
+            &rank, sol_n_procs, BC_style, norm_disc_style_sol
         use grid_utilities, only: trim_grid
         use SLEPC_utilities, only: insert_block_mat
         use X_vars, only: n_mod_X
-        use num_utilities, only: calc_coeff_fin_diff
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_real, get_log
@@ -448,9 +433,21 @@ contains
         ierr = 0
         
         ! user output
-        call writo('Normal discretization with central finite differences of &
-            &order '//trim(i2str(ndps))//', stencil width '//&
-            &trim(i2str(2*ndps+1)))
+        select case (norm_disc_style_sol)
+            case (1)                                                            ! central finite differences
+                call writo('Normal discretization with central finite &
+                    &differences of order '//trim(i2str(ndps))//&
+                    &', stencil width '//trim(i2str(2*ndps+1)))                 ! ndps left and ndps right
+            case (2)                                                            ! left finite differences
+                call writo('Normal discretization with left finite &
+                    &differences of order '//trim(i2str(ndps))//&
+                    &', stencil width '//trim(i2str(ndps+1)))                   ! only ndps left
+            case default
+                err_msg = 'No solution normal discretization style associated &
+                    &with '//trim(i2str(norm_disc_style_sol))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
         
 #if ldebug
         if (ltest) then
@@ -500,6 +497,12 @@ contains
         ! set up bulk matrix absolute limits
         ierr = set_bulk_lims(grid_X_trim,bulk_i_lim)
         CHCKERR('')
+        
+        ! for BC_style 3 with symmetric finite differences, extend the grid
+        if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
+            n_r = n_r + ndps
+            if (rank.eq.sol_n_procs-1) loc_n_r = loc_n_r + ndps
+        end if
         
         ! setup matrix A and B
         select case (matrix_SLEPC_style)
@@ -565,7 +568,7 @@ contains
             ! set up i_min
             select case (BC_style(1))
                 case (1)
-                    i_lim(1) = grid_X%i_min                                     ! will be overwritten
+                    i_lim(1) = max(grid_X%i_min,ndps+1)                         ! first ndps rows write left BC's
                 case (2:4)
                     err_msg = 'Left BC''s cannot have BC type '//&
                         &trim(i2str(BC_style(1)))
@@ -581,14 +584,12 @@ contains
             ! set up i_max
             select case (BC_style(2))
                 case (1)
-                    i_lim(2) = grid_X%i_max                                     ! will be overwritten
-                case (2)
-                    i_lim(2) = min(grid_X%i_max,n_r-ndps)                       ! last norm_disc_prec_sol rows write right BC's
-                case (3,4)
-                    i_lim(2) = min(grid_X%i_max,n_r-1)                          ! last row writes right BC's
+                    i_lim(2) = min(grid_X%i_max,n_r-ndps)                       ! last ndps rows write right BC's
+                case (2:4)
+                    i_lim(2) = min(grid_X%i_max,n_r)                            ! right BC is added later
                 case default
                     err_msg = 'No BC style associated with '//&
-                        &trim(i2str(BC_style(1)))
+                        &trim(i2str(BC_style(2)))
                     ierr = 1
                     CHCKERR(err_msg)
             end select
@@ -610,7 +611,7 @@ contains
         !   calculation of every quantity.
         ! Makes use of n_r, grid_X_trim and  grid_sol_trim
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
-            use num_utilities, only: con
+            use num_utilities, only: con, calc_coeff_fin_diff
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -624,11 +625,12 @@ contains
             ! local variables (not to be used in child routines)
             character(len=max_str_ln) :: err_msg                                ! error message
             PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
-            PetscReal, allocatable :: norm_disc_coeff(:)                        ! discretization coefficients
+            PetscReal, allocatable :: ndc(:)                                    ! normal discretization coefficients
             PetscInt :: id, jd, kd                                              ! counters
             PetscInt :: kd_loc                                                  ! kd in local variables
             PetscInt :: k, m                                                    ! counters
-            PetscInt :: norm_disc_coeff_asym                                    ! asymmetry of norm_disc_coeff
+            PetscInt :: ndc_ind                                                 ! index for finite differences
+            PetscInt :: st_size                                                 ! stencil size
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -645,6 +647,9 @@ contains
             CHCKERR(err_msg)
             r_sol_start = r_sol_start/n_mod_X                                   ! count per block
             r_sol_end = r_sol_end/n_mod_X                                       ! count per block
+            if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
+                if (rank.eq.sol_n_procs-1) r_sol_end = r_sol_end - ndps
+            end if
             if (rank.lt.sol_n_procs) then
                 if (grid_sol_trim%i_min.ne.r_sol_start+1) then
                     ierr = 1
@@ -668,16 +673,23 @@ contains
                 ! set up local kd
                 kd_loc = kd+2-grid_X_trim%i_min
                 
-                ! set up norm_disc_coeff
-                if (BC_style(2).eq.4 .and. kd.gt.n_r-1-ndps) then               ! asymmetric finite differences: shifted indices
-                    norm_disc_coeff_asym = kd-(n_r-1-ndps)
-                else
-                    norm_disc_coeff_asym = 0
-                end if
-                ierr = calc_coeff_fin_diff(1,ndps,norm_disc_coeff,&
-                    &asym=norm_disc_coeff_asym)
+                ! set up ndc
+                select case (norm_disc_style_sol)
+                    case (1)                                                    ! central differences
+                        if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) &
+                            &.and. kd.gt.n_r-1-ndps) then                       ! asymmetric finite differences: shifted indices
+                            ndc_ind = 1+2*ndps - (n_r-1-kd)
+                        else
+                            ndc_ind = 1+ndps
+                        end if
+                        st_size = 2*ndps
+                    case (2)                                                    ! left differences
+                        ndc_ind = 1+ndps
+                        st_size = ndps
+                end select
+                ierr = calc_coeff_fin_diff(1,st_size+1,ndc_ind,ndc)
                 CHCKERR('')
-                norm_disc_coeff = norm_disc_coeff/step_size                     ! scale by step size
+                ndc = ndc/step_size                                             ! scale by step size
                 
                 ! fill the blocks
                 
@@ -715,12 +727,11 @@ contains
                     end do
                 end do
                 
-                ! add  block to kd  + (0,-p..p) + Hermitian  conjugate, possibly
-                ! with a shift due to the asymmetric discretization
-                do jd = -ndps,ndps
-                    ierr = insert_block_mat(loc_block*&
-                        &norm_disc_coeff(jd+ndps+1),mat,kd,&
-                        &[0,jd-norm_disc_coeff_asym],n_r,transp=.true.)
+                ! add block to kd +
+                ! (0,1-ndc_ind:1-st_size+jd)  +  Hermitian conjugate
+                do jd = 1,1+st_size
+                    ierr = insert_block_mat(loc_block*ndc(jd),mat,&
+                        &kd,[0,jd-ndc_ind],n_r,transp=.true.)                   ! so that jd = ndc_ind falls on [0,0]
                     CHCKERR('')
                 end do
                 
@@ -742,15 +753,12 @@ contains
                 end if
 #endif
             
-                ! add block to kd + (-p..p,-p..p),  possibly with a shift due to
-                ! the asymmetric discretization
-                do jd = -ndps,ndps
-                    do id = -ndps,ndps
-                        ierr = insert_block_mat(loc_block*&
-                            &norm_disc_coeff(id+ndps+1)*&
-                            &norm_disc_coeff(jd+ndps+1),mat,kd,&
-                            &[id-norm_disc_coeff_asym,jd-norm_disc_coeff_asym],&
-                            &n_r)
+                ! add block to kd +
+                ! (1-ndc_ind:1-st_size+id,1-ndc_ind:1-st_size+jd)
+                do jd = 1,1+st_size
+                    do id = 1,1+st_size
+                        ierr = insert_block_mat(loc_block*ndc(id)*ndc(jd),mat,&
+                            &kd,[id-ndc_ind,jd-ndc_ind],n_r)                    ! so that id,jd = ndc_ind,ndc_ind falls on [0,0]
                         CHCKERR('')
                     end do
                 end do
@@ -821,7 +829,12 @@ contains
             
             if (rank.lt.sol_n_procs) then
                 ! set (half) stencil size
-                st_size = 2*ndps
+                select case (norm_disc_style_sol)
+                    case (1)                                                    ! central finite differences
+                        st_size = 2*ndps
+                    case (2)                                                    ! left finite differences
+                        st_size = ndps
+                end select
                 
                 ! calculate number of total nonzero entries
                 tot_nz = 1+2*st_size
@@ -832,13 +845,15 @@ contains
                         &tot_nz(kd-grid_sol_trim%i_min+1) = &
                         &tot_nz(kd-grid_sol_trim%i_min+1) - (st_size+1-kd)
                 end do
-                do kd = n_r,n_r-st_size+1,-1
-                    ! limit due to right BC
-                    if (kd.ge.grid_sol_trim%i_min .and. &
-                        &kd.le.grid_sol_trim%i_max) &
-                        &tot_nz(kd-grid_sol_trim%i_min+1) = &
-                        &tot_nz(kd-grid_sol_trim%i_min+1) - (kd-n_r+st_size)
-                end do
+                if (norm_disc_style_sol.eq.1) then
+                    do kd = n_r,n_r-st_size+1,-1
+                        ! limit due to right BC
+                        if (kd.ge.grid_sol_trim%i_min .and. &
+                            &kd.le.grid_sol_trim%i_max) &
+                            &tot_nz(kd-grid_sol_trim%i_min+1) = &
+                            &tot_nz(kd-grid_sol_trim%i_min+1) - (kd-n_r+st_size)
+                    end do
+                end if
                 
                 ! calculate number of nonzero diagonal entries
                 if (loc_n_r.le.(st_size+1)) then                                ! up to (st_size+1) normal points in this process
@@ -866,13 +881,29 @@ contains
         end subroutine set_nonzeros
     end function setup_mats
     
-    ! Sets the  boundary conditions:
-    ! Deep  in the  plasma,  an  artificial Eigenvalue  EV_BC  is introduced  by
-    ! setting the  diagonal components  of A  to EV_BC and  of B  to 1,  and the
-    ! off-diagonal elements to zero.
+    ! Sets the  boundary conditions deep in the plasma (1) and at the edge (2):
+    !   1 - Set to zero:
+    !       An artificial Eigenvalue EV_BC is introduced by setting the diagonal
+    !       components  of A  to  EV_BC and  of  B to  1,  and the  off-diagonal
+    !       elements to zero.
+    !   2 - Minimization of surface energy through extension of grid:
+    !       For  symmetric  finite  differences,  ndps  extra  grid  points  are
+    !       introduced after the  edge and the vacuum term is  added to the edge
+    !       element. For left finite differences,  the vacuum term is just added
+    !       to the edge element, so this method is idential to 3.
+    !   3 - Minimization of surface energy through asymmetric fin. differences:
+    !       For  symmetric finite  differences, the  last ndps  grid points  are
+    !       treated asymmetrically in order not go  over the edge and the vacuum
+    !       term is  added to the  edge element.  For left differences,  this is
+    !       already standard, so the method becomes identical to 2.
+    !   4 - Explicit introduction of the surface energy minimization:
+    !       The  equation  due  to  the  minimization  of  the  vacuum  term  is
+    !       introduced explicitely  as an asymmetric finite  difference equation
+    !       in the last row. This is done using left finite differences.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
     integer function set_BC(grid_X,X,A,B,i_geo,n_r) result(ierr)
-        use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC
+        use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
+            &norm_disc_style_sol
         use X_vars, only: n_mod_X
         use MPI_utilities, only: get_ser_var, wait_MPI
         use num_utilities, only: con, c
@@ -910,7 +941,7 @@ contains
         ! set up n_min, depending on BC style
         select case (BC_style(1))
             case (1)
-                n_min = 2*ndps                                                  ! dirichlet BC requires stencil
+                n_min = ndps                                                    ! dirichlet BC requires stencil
             case (2:4)
                 err_msg = 'Left BC''s cannot have BC type '//&
                     &trim(i2str(BC_style(1)))
@@ -926,10 +957,17 @@ contains
         ! set up n_max, depending on BC style
         select case (BC_style(2))
             case (1)
-                n_max = 2*ndps                                                  ! dirichlet BC requires stencil
+                select case (norm_disc_style_sol)
+                    case (1)                                                    ! central differences
+                        n_max = ndps                                            ! dirichlet BC requires stencil
+                    case (2)                                                    ! left differences
+                        n_max = 1                                               ! dirichlet BC only on last point
+                end select
             case (2)
-                n_max = ndps                                                    ! mixed BC requires only half stencil
-            case (3,4)
+                n_max = 1                                                       ! only 1 element carries vacuum contribution
+            case (3)
+                n_max = 1                                                       ! only 1 element carries vacuum contribution
+            case (4)
                 n_max = 1                                                       ! only last element carries BC
             case default
                 err_msg = 'No BC style associated with '//&
@@ -990,15 +1028,18 @@ contains
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,kd-grid_X%i_min+1,X,A,B,i_geo,&
-                            &grid_X%n(3))                                       ! indices start at 0
+                        ierr = set_BC_2(kd-1,X,A)                               ! indices start at 0
                         CHCKERR('')
-                    case (3,4)
-                        ierr = set_BC_34(kd-1,X,A,BC_style(2))                  ! indices start at 0
+                    case (3)
+                        ierr = set_BC_3(kd-1,X,A)                               ! indices start at 0
+                        CHCKERR('')
+                    case (4)
+                        ierr = set_BC_4(kd-1,kd-grid_X%i_min+1,X,A,B,i_geo,&
+                            &grid_X%n(3))                                       ! indices start at 0
                         CHCKERR('')
                     case default
                         err_msg = 'No BC style associated with '//&
-                            &trim(i2str(BC_style(1)))
+                            &trim(i2str(BC_style(2)))
                         ierr = 1
                         CHCKERR(err_msg)
                 end select
@@ -1018,6 +1059,7 @@ contains
         call lvl_ud(-1)
     contains
         ! set BC style 1:
+        ! Set to zero
         !   A(ind,ind) = EV_BC, B(ind,ind) = 1,
         !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
         ! where ind indicates the row where the BC is centered.
@@ -1033,6 +1075,7 @@ contains
             integer :: kd                                                       ! counter
             PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             PetscInt :: pmone                                                   ! plus or minus one
+            PetscInt :: st_size                                                 ! stencil size
             
             ! initialize ierr
             ierr = 0
@@ -1055,6 +1098,14 @@ contains
                 pmone = -1
             end if
             
+            ! set up stencil size
+            select case (norm_disc_style_sol)
+                case (1)                                                        ! central differences
+                    st_size = 2*ndps
+                case (2)                                                        ! left differences
+                    st_size = ndps
+            end select
+            
             ! set block r_id + (0,0)
             ierr = insert_block_mat(EV_BC*loc_block,A,r_id,[0,0],n_r,&
                 &overwrite=.true.,ind_insert=.true.)
@@ -1064,7 +1115,7 @@ contains
             CHCKERR('')
             
             ! iterate over range 2
-            do kd = 1,2*ndps
+            do kd = 1,st_size
                 ! set block r_id +/- (0,kd) and Hermitian conjugate
                 ierr = insert_block_mat(0*loc_block,A,r_id,[0,-pmone*kd],&
                     &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
@@ -1079,12 +1130,67 @@ contains
         end function set_BC_1
         
         ! set BC style 2:
-        !   minimization of  surface energy term, using  the boundary conditions
-        !   to eliminate the terms ~ V^2. (see [ADD REF])
-        integer function set_BC_2(r_id,r_id_loc,X,A,B,i_geo,n_r) result(ierr)
+        ! Minimization of surface energy through asymmetric fin. differences
+        integer function set_BC_2(r_id,X,A) result(ierr)
+            character(*), parameter :: rout_name = 'set_BC_2'
+            
+            ! input / output
+            integer, intent(in) :: r_id                                         ! position at which to set BC
+            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
+            Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! user output
+            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
+                &': Minimization of surface energy through asymmetric finite &
+                & differences',persistent=.true.)
+            
+            ! -------------!
+            ! BLOCKS ~ vac !
+            ! -------------!
+            ! add block to r_id + (0,0)
+            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
+                &ind_insert=.true.)
+            CHCKERR('')
+        end function set_BC_2
+        
+        ! set BC style 3:
+        ! Minimization of surface energy through extension of grid
+        integer function set_BC_3(r_id,X,A) result(ierr)
+            character(*), parameter :: rout_name = 'set_BC_3'
+            
+            ! input / output
+            integer, intent(in) :: r_id                                         ! position at which to set BC
+            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
+            Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! user output
+            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
+                &': Minimization of surface energy through extension of grid',&
+                &persistent=.true.)
+            
+            ! -------------!
+            ! BLOCKS ~ vac !
+            ! -------------!
+            ! add block to r_id + (0,0)
+            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
+                &ind_insert=.true.)
+            CHCKERR('')
+        end function set_BC_3
+        
+        ! set  BC style 4:
+        ! Explicit introduction of the surface energy minimization
+        !   V1^T X + V2 X' + delta_vac X = 0 at surface
+        integer function set_BC_4(r_id,r_id_loc,X,A,B,i_geo,n_r) result(ierr)
+            use num_vars, only: norm_disc_style_sol
             use num_utilities, only: calc_coeff_fin_diff
             
-            character(*), parameter :: rout_name = 'set_BC_2'
+            character(*), parameter :: rout_name = 'set_BC_4'
             
             ! input / output
             integer, intent(in) :: r_id                                         ! global position at which to set BC (starting at 0)
@@ -1097,7 +1203,8 @@ contains
             ! local variables
             PetscInt :: jd                                                      ! counter
             PetscInt :: k, m                                                    ! counters
-            PetscReal, allocatable :: norm_disc_coeff(:)                        ! discretization coefficients
+            PetscInt :: st_size                                                 ! stencil size
+            PetscReal, allocatable :: ndc(:)                                    ! normal discretization coefficients
             PetscScalar, allocatable :: loc_block(:,:,:)                        ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             
             ! initialize ierr
@@ -1105,106 +1212,75 @@ contains
             
             ! user output
             call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Minimization of surface energy',persistent=.true.)
+                &': Explicit introduction of surface energy minimization',&
+                &persistent=.true.)
             
             ! initialize local blocks
             allocate(loc_block(n_mod_X,n_mod_X,2))
             
-            ! calculate  discretization  coefficients  with asymmetry  given  by
-            ! proximity to edge n_r-1: 0 for r_id = n_r-1-ndps and ndps for r_id
-            ! = n_r-1
-            ierr = calc_coeff_fin_diff(1,ndps,norm_disc_coeff,&
-                &asym=r_id-(n_r-1-ndps))
+            ! set up ndc
+            select case (norm_disc_style_sol)
+                case (1)                                                        ! central differences
+                    st_size = 2*ndps
+                case (2)                                                        ! left differences
+                    st_size = ndps
+            end select
+            ierr = calc_coeff_fin_diff(1,st_size+1,st_size+1,ndc)
             CHCKERR('')
-            norm_disc_coeff = norm_disc_coeff/step_size                         ! scale by step size
+            ndc = ndc/step_size                                                 ! scale by step size
+            
+            ! ----------------------!
+            ! BLOCKS ~ V1^T and vac !
+            ! ----------------------!
+            ! fill local blocks for A and B
+            do m = 1,n_mod_X
+                do k = 1,n_mod_X
+                    loc_block(k,m,1) = conjg(&
+                        &X%PV_1(1,i_geo,r_id_loc,c([m,k],.false.,n_mod_X)))     ! asymetric matrices don't need con()
+                    loc_block(k,m,2) = conjg(&
+                        &X%KV_1(1,i_geo,r_id_loc,c([m,k],.false.,n_mod_X)))     ! asymetric matrices don't need con()
+                end do
+            end do
+            loc_block(:,:,1) = loc_block(:,:,1) + X%vac_res
+            
+            ! set block r_id + (0,0)
+            ierr = insert_block_mat(loc_block(:,:,1)*ndc(1+st_size),A,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
+            ! set block r_id + (0,0)
+            ierr = insert_block_mat(loc_block(:,:,2)*ndc(1+st_size),B,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
             
             ! -------------!
-            ! BLOCKS ~ V_0 !
+            ! BLOCKS ~ V_2 !
             ! -------------!
             ! fill local blocks for A and B
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
                     loc_block(k,m,1) = &
-                        &con(X%PV_0(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &con(X%PV_2(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                     loc_block(k,m,2) = &
-                        &con(X%KV_0(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &con(X%KV_2(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
             
-            ! add block to r_id + (0,0)
-            ierr = insert_block_mat(loc_block(:,:,1),A,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
-            ! add block to r_id + (0,0)
-            ierr = insert_block_mat(loc_block(:,:,2),B,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
-            
-            ! --------------------!
-            ! BLOCKS ~ V1 and vac !
-            ! --------------------!
-            ! fill local blocks for A and B
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    loc_block(k,m,1) = &
-                        &X%PV_1(1,i_geo,r_id_loc,c([k,m],.false.,n_mod_X))      ! asymetric matrices don't need con()
-                    loc_block(k,m,2) = &
-                        &X%KV_1(1,i_geo,r_id_loc,c([k,m],.false.,n_mod_X))      ! asymetric matrices don't need con()
-                end do
-            end do
-            loc_block(:,:,1) = 0.5_dp*(loc_block(:,:,1) - X%vac_res)
-            loc_block(:,:,2) = 0.5_dp*(loc_block(:,:,2))
-            
-            ! add  block to  r_id +  (n_r-2*ndps-1-r_id,n_r-1-r_id) +  Hermitian
-            ! conjugate
-            do jd = n_r-2*ndps-1,n_r-1
+            ! set block r_id + (0,-st_size:0)
+            do jd = -st_size,0
                 ierr = insert_block_mat(loc_block(:,:,1)*&
-                    &norm_disc_coeff(jd-n_r+2*ndps+2),A,&
-                    &r_id,[0,jd-r_id],n_r,transp=.true.,ind_insert=.true.)
+                    &ndc(jd+st_size+1)*ndc(1+st_size),A,&
+                    &r_id,[0,jd],n_r,overwrite=.true.,&
+                    &ind_insert=.true.)
                 CHCKERR('')
                 ierr = insert_block_mat(loc_block(:,:,2)*&
-                    &norm_disc_coeff(jd-n_r+2*ndps+2),B,&
-                    &r_id,[0,jd-r_id],n_r,transp=.true.,ind_insert=.true.)
+                    &ndc(jd+st_size+1)*ndc(1+st_size),B,&
+                    &r_id,[0,jd],n_r,overwrite=.true.,&
+                    &ind_insert=.true.)
                 CHCKERR('')
             end do
-        end function set_BC_2
-        
-        ! set BC style 3 and 4:
-        !   minimization of vacuum energy (see [ADD REF])
-        integer function set_BC_34(r_id,X,A,BC_style) result(ierr)
-            character(*), parameter :: rout_name = 'set_BC_34'
-            
-            ! input / output
-            integer, intent(in) :: r_id                                         ! position at which to set BC
-            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
-            Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
-            integer, intent(in) :: BC_style                                     ! style 3 of 4
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            select case (BC_style)
-                case (3)                                                        ! only delta_vac in last position
-                    call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                        &': Minimization of vacuum energy with neglect of &
-                        &exterior points',persistent=.true.)
-                case (4)                                                        ! delta_vac in last position and asymmetric finite differences
-                    call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                        &': Minimization of vacuum energy with asymmetric &
-                        &finite differences',persistent=.true.)
-            end select
-            
-            ! -------------!
-            ! BLOCKS ~ vac !
-            ! -------------!
-            ! add block to r_id + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
-        end function set_BC_34
+        end function set_BC_4
     end function set_BC
     
     ! sets up EV solver
@@ -1540,6 +1616,7 @@ contains
         PetscScalar :: sol_val_loc                                              ! local X val
         PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
         PetscScalar :: E_val(2)                                                 ! X*AX and X*BX
+        PetscScalar, allocatable :: sol_vec_loc(:,:)                            ! local solution vector, possibly in extended grid
         PetscScalar, allocatable :: sol_vec_max(:)                              ! max of sol_vec of all processes, including phase at max
         character(len=max_str_ln) :: full_output_name                           ! full name
         character(len=max_str_ln) :: format_val                                 ! format
@@ -1625,6 +1702,7 @@ contains
         ! initialize helper variables
         allocate(sol_vec_max(n_procs))
         allocate(sol_vec_max_loc(2))
+        allocate(sol_vec_loc(n_mod_X,loc_n_r))
         
         ! start id
         id = 1
@@ -1632,12 +1710,13 @@ contains
         
         ! store them
         do while (id.le.max_n_EV)
-            ! get EV solution in vector X vec
-            call VecPlaceArray(sol_vec,sol%vec(:,:,id),ierr)                    ! place array sol_vec in solution vec
+            call VecPlaceArray(sol_vec,sol_vec_loc,ierr)                        ! place array local sol_vec in solution vec
             CHCKERR('Failed to place array')
             call EPSGetEigenpair(solver,id_tot-1,sol%val(id),PETSC_NULL_OBJECT,&
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
+            sol%vec(:,:,id) = sol_vec_loc(:,1:size(sol%vec,2))
+            call print_ex_2D(['sol_vec'],'sol_vec',rp(transpose(sol_vec_loc)))
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
             !call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0) (petsc 3.5.3)
             CHCKERR('EPSComputeError failed')

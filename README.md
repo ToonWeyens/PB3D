@@ -993,5 +993,17 @@ Technische Universiteit Eindhoven
 * The minimization of surface energy now uses new theory, but it is still not correct.
 * There is a new possibility for the boundary condition to be used, by employing asymmetric finite differences, but it does not work properly either.
 * Looks like the best option is to use BC_style 3 that just neglects exterior points in the finite differences.
+* There is a new possibility for the boundary condition to be used, by employing asymmetric finite differences, but it does not work properly either.
+* Looks like the best option is to use BC_style 3 that just neglects exterior points in the finite differences.
 * "calc_coeff_fin_diff" now uses the Vandermonde method, and it can optionally produce asymmetric formula's.
 * Fixed the bug where the vacuum contribution was not saved and therefore could not be used when jumping to the solution.
+
+## 1.88:
+* Changed the Boundary Conditions system through 'BC_style':
+* 1 to set to zero.
+* 2 to use asymmetric finite differences close to the edge and delta_vac on the edge.
+* 3 to extend the normal grid to accomodate finite differences on the edge, and delta_vac on the edge.
+* 4 to explicitely impose the boundary condition on the edge.
+* Intoruced "norm_disc_style_sol" to enable for left finite differences as well.
+* Boundary style 4 does not work well yet, which might be due to the absence of vacuum.
+* The best method is currently the default: left finite differences with boundary condition style 2 (3 is identical for left differences).

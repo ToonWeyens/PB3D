@@ -124,16 +124,22 @@ contains
             err_msg = 'Couldn''t add values to matrix'
             
             ! set up local block, possibly translated for fast PB3D
+            ! Note: For BC_style 3, there is  a grid extension beyond n_r, which
+            ! is why there is a 'min(..,size(n_X,1))' here.
             allocate(block_loc(size(block,1),size(block,2)))
             block_loc = 0._dp
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
                     if (use_pol_flux_F) then
-                        k_loc = k + m_X(r_id+1,k) - m_X(r_id+1+ind(1),k)
-                        m_loc = m + m_X(r_id+1,k) - m_X(r_id+1+ind(2),k)
+                        k_loc = k + m_X(r_id+1,k) - &
+                            &m_X(min(r_id+1+ind(1),size(m_X,1)),k)
+                        m_loc = m + m_X(r_id+1,k) - &
+                            &m_X(min(r_id+1+ind(2),size(m_X,1)),k)
                     else
-                        k_loc = k + n_X(r_id+1,k) - n_X(r_id+1+ind(1),k)
-                        m_loc = m + n_X(r_id+1,k) - n_X(r_id+1+ind(2),k)
+                        k_loc = k + n_X(r_id+1,k) - &
+                            &n_X(min(r_id+1+ind(1),size(n_X,1)),k)
+                        m_loc = m + n_X(r_id+1,k) - &
+                            &n_X(min(r_id+1+ind(2),size(n_X,1)),k)
                     end if
                     if (k_loc.ge.1 .and. m_loc.ge.1 .and. &
                         &k_loc.le.n_mod_X .and. m_loc.le.n_mod_X) &
