@@ -574,7 +574,6 @@ contains
         ! adapt tensorial perturbation quantities
         if (present(X_2)) then
             if (present(X_2_out)) then
-                X_2_out%vac_res = X_2%vac_res
                 ierr = interp_var_4D_complex(X_2%PV_0,X_2_out%PV_0,sym_type=1)
                 CHCKERR('')
                 ierr = interp_var_4D_complex(X_2%PV_1,X_2_out%PV_1,sym_type=1)

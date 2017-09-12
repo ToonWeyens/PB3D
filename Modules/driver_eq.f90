@@ -9,6 +9,7 @@ module driver_eq
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
+    use vac_vars, only: vac_type
     
     implicit none
     private
@@ -36,7 +37,7 @@ contains
     !   - grid_B_eq [out] before setting up
     !   - eq_2 [out] before setting up
     integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
-        &eq_2_out) result(ierr)
+        &eq_2_out,vac) result(ierr)
         
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
@@ -52,6 +53,7 @@ contains
         use num_utilities, only: derivs
         use rich_vars, only: rich_lvl
         use HDF5_ops, only: create_output_HDF5
+        use vac_ops, only: store_vac
         !!use num_utilities, only: calc_aux_utilities
         
         character(*), parameter :: rout_name = 'run_driver_eq'
@@ -61,6 +63,7 @@ contains
         type(grid_type), intent(inout), pointer :: grid_eq_B_out                ! redistributed field-aligned equilibrium grid
         type(eq_1_type), intent(inout) :: eq_1_out                              ! flux equilibrium variables in redistributed grid
         type(eq_2_type), intent(inout) :: eq_2_out                              ! metric equilibrium variables in redistributed grid
+        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
         
         ! local variables
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
@@ -173,7 +176,7 @@ contains
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
         call lvl_ud(1)
-        ierr = setup_grid_eq(grid_eq,eq_limits,only_half_grid=only_half_grid)
+        ierr = setup_grid_eq(grid_eq,eq_limits)
         call lvl_ud(-1)
         CHCKERR('')
         
@@ -247,6 +250,10 @@ contains
                 ierr = print_output_eq(grid_eq,eq_2,'eq_2',par_div=.false.)
                 CHCKERR('')
             end if
+            
+            ! store vacuum variables
+            ierr = store_vac(grid_eq,eq_1,eq_2,vac)
+            CHCKERR('')
         end if
         
         ! plot magnetic field if requested

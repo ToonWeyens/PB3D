@@ -320,7 +320,7 @@ contains
                 
                 ! possibly deallocate
                 if (dealloc_vars_loc) then
-                    deallocate(eq_2%R_E,eq_2%Z_E,eq_2%L_E)
+                    deallocate(eq_2%L_E)
                     deallocate(eq_2%g_C)
                     deallocate(eq_2%T_VC)
                 end if
@@ -4695,6 +4695,10 @@ contains
     ! for POST, there are  no Richardson levels, and there has  to be overlap of
     ! one always, in order to have  correct composite integrals of the different
     ! regions.
+    ! Note that  the n_par_X passed into  this procedure refers to  the quantity
+    ! that is already possibly halved if  the Richardson level is higher than 1.
+    ! This information is then reflected in the eq_jobs_lims, which refer to the
+    ! local limits, i.e. only the parallel points currently under consideration.
     integer function calc_eq_jobs_lims(n_par_X,n_div) result(ierr)
         use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
         use rich_vars, only: rich_lvl

@@ -2400,12 +2400,12 @@ contains
     end function print_output_X_1
     integer function print_output_X_2(grid_X,X,data_name,rich_lvl,par_div,&
         &lim_sec_X,is_field_averaged) result(ierr)                              ! tensorial version
-        use num_vars, only: PB3D_name,eq_jobs_lims, eq_job_nr
+        use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use grid_utilities, only: trim_grid
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
-        use X_utilities, only: is_necessary_X, sec_ind_loc2tot, get_sec_X_range
+        use X_utilities, only: is_necessary_X, get_sec_X_range
         use X_vars, only: set_nn_mod
         use num_utilities, only: c
         
@@ -2680,40 +2680,6 @@ contains
                     &[loc_size(2)])
             end if
         end do
-        
-        ! RE_vac_res
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'RE_vac_res'
-        allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
-        allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
-        X_1D_loc%tot_i_min = [1,1]
-        X_1D_loc%tot_i_max = [X%n_mod(1),X%n_mod(2)]
-        if (present(lim_sec_X)) then
-            X_1D_loc%loc_i_min = lim_sec_X(1,:)
-            X_1D_loc%loc_i_max = lim_sec_X(2,:)
-        else
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-        end if
-        allocate(X_1D_loc%p(size(X%vac_res)))
-        X_1D_loc%p = reshape(rp(X%vac_res),[size(X%vac_res)])
-        
-        ! IM_vac_res
-        X_1D_loc => X_1D(id); id = id+1
-        X_1D_loc%var_name = 'IM_vac_res'
-        allocate(X_1D_loc%tot_i_min(2),X_1D_loc%tot_i_max(2))
-        allocate(X_1D_loc%loc_i_min(2),X_1D_loc%loc_i_max(2))
-        X_1D_loc%tot_i_min = [1,1]
-        X_1D_loc%tot_i_max = [X%n_mod(1),X%n_mod(2)]
-        if (present(lim_sec_X)) then
-            X_1D_loc%loc_i_min = lim_sec_X(1,:)
-            X_1D_loc%loc_i_max = lim_sec_X(2,:)
-        else
-            X_1D_loc%loc_i_min = X_1D_loc%tot_i_min
-            X_1D_loc%loc_i_max = X_1D_loc%tot_i_max
-        end if
-        allocate(X_1D_loc%p(size(X%vac_res)))
-        X_1D_loc%p = reshape(ip(X%vac_res),[size(X%vac_res)])
         
         ! write
         ierr = print_HDF5_arrs(X_1D(1:id-1),PB3D_name,trim(data_name),&

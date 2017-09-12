@@ -48,6 +48,13 @@ contains
             call pause_prog
         end if
         
+        call writo('Test calculation of toroidal functions?')
+        if (get_log(.false.)) then
+            ierr = test_tor_fun()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
@@ -862,6 +869,85 @@ contains
             call writo('Test complete')
         end function test_calc_RZL_VMEC
     end function test_calc_RZL
+    
+    ! test calculation of toroidal functions
+    integer function test_tor_fun() result(ierr)
+        use num_vars, only: rank
+        use grid_utilities, only: calc_eqd_grid
+        use dtorh, only: dtorh1
+        
+        character(*), parameter :: rout_name = 'test_tor_fun'
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        integer :: npt                                                          ! number of points
+        real(dp) :: lim(2)                                                      ! limits
+        real(dp), allocatable :: x(:)                                           ! abscissa
+        real(dp), allocatable :: f(:,:,:)                                       ! ordinate P and Q
+        integer :: n                                                            ! degree
+        integer :: m                                                            ! order
+        integer :: max_n                                                        ! max. degree that can be calculated
+        logical :: done                                                         ! whether done
+        character(len=max_str_ln) :: plot_name(2)                               ! names of plot
+        character(len=max_str_ln), allocatable :: fun_names(:,:)                ! names of functions that are plot
+        
+        ! initialize ierr
+        ierr = 0
+        
+        done = .false.
+        
+        do while (.not.done .and. rank.eq.0)
+            ! user output
+            call writo('Lower bound to plot?')
+            lim(1) = get_real(lim_lo=1._dp)
+            call writo('Upper bound to plot?')
+            lim(2) = get_real(lim_lo=lim(1))
+            call writo('How many points?')
+            npt = get_int(lim_lo=1)
+            call writo('Max. degree? (subscript n in P_(n-0.5)^m)')
+            n = get_int(lim_lo=0)
+            call writo('Order? (superscript m in P_(n-0.5)^m)')
+            m = get_int(lim_lo=0)
+            
+            ! set up
+            allocate(x(npt))
+            allocate(f(npt,0:n,2))
+            ierr = calc_eqd_grid(x,lim(1),lim(2))
+            CHCKERR('')
+            plot_name(1) = 'tor_P'
+            plot_name(2) = 'tor_Q'
+            allocate(fun_names(0:n,2))
+            do kd = 0,n
+                fun_names(kd,1) = 'P_{'//trim(i2str(kd))//'-0.5}^'//&
+                    &trim(i2str(m))
+                fun_names(kd,2) = 'Q_{'//trim(i2str(kd))//'-0.5}^'//&
+                    &trim(i2str(m))
+            end do
+            
+            ! calculate
+            do kd = 1,npt
+                ierr = dtorh1(x(kd),m,n,f(kd,:,1),f(kd,:,2),max_n)
+                CHCKERR('')
+                if (max_n.lt.n) call writo('For point x = '//&
+                    &trim(r2str(x(kd)))//', the solution did not converge for &
+                    &degree > '//trim(i2str(max_n)),warning=.true.)
+            end do
+            
+            ! plot
+            do kd = 1,2
+                call print_ex_2D(fun_names(:,kd),trim(plot_name(kd)),f(:,:,kd),&
+                    &x=reshape(x,[npt,1]))
+                call draw_ex(fun_names(:,kd),trim(plot_name(kd)),n+1,1,.false.)
+            end do
+            
+            ! clean up
+            deallocate(x,f,fun_names)
+            
+            ! user input
+            call writo('Test again?')
+            done = .not.get_log(.true.)
+        end do
+    end function test_tor_fun
     
     ! tests reading of HDF5 subset
     integer function test_read_HDF5_subset() result(ierr)

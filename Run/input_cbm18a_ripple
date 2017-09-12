@@ -15,7 +15,6 @@
     n_mod_X                 = 40
     tol_rich                = 1.0E-04
     n_sol_requested         = 1
-    max_it_inv              = 1
     BC_style                = 1 1
     norm_style              = 1
     U_style                 = 3

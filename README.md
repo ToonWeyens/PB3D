@@ -6,7 +6,7 @@ Doctoral work by Toon Weyens
 Universidad Carlos III de Madrid
 ITER Organization
 Technische Universiteit Eindhoven
-2012-2016
+2012-2017
 
 ## To set up:
 1. git clone https://ToonWeyens@bitbucket.org/ToonWeyens/pb3d.git
@@ -18,11 +18,12 @@ Technische Universiteit Eindhoven
     * hdf5
     * netcdf
     * libstell
+    * StrumPack
 5. make all
 
 ## To run
 1. Go to Run/
-1. run "setup_Run.sh" and point to the folder.
+1. run 'setup_Run.sh' and point to the folder.
 
 ## Changelog
 
@@ -49,7 +50,7 @@ Technische Universiteit Eindhoven
 * Renamed broadcast_l to broadcast_log and extended it with broadcast_int, broadcast_real
 * Reimplemented generic tests of calc_deriv and conv_FHM to module test.
 * Fixed bug in calc_ang_grid: the parallel angle is always the first angle.
-* Tests now use global variables "debug_x" where "x" is the name of the routine tested.
+* Tests now use global variables 'debug_x' where 'x' is the name of the routine tested.
 * Implemented successful testing of g_V.
 * Moved checking of HELENA to testing routine.
 * Implemented checking of Jac_F also for Helena and it is found to be correct.
@@ -275,7 +276,7 @@ Technische Universiteit Eindhoven
 ## 1.00:
 * FIRST WORKING VERSION
 * Bug fixed where Hermitian conjugate was stored in stead of the real matrices in SLEPC.
-* Checked consistency of results when "intuitive" version of plasma potential energy is used.
+* Checked consistency of results when 'intuitive' version of plasma potential energy is used.
 
 ## 1.01:
 * UNUSABLE VERSION: See last comment.
@@ -319,7 +320,7 @@ Technische Universiteit Eindhoven
 * Reintroduced all terms in the energy equations.
 * New module for Richardson extrapolation.
 * Extrapolation is now done in main program, as X variables have to recalculated on a different grid for each Richardson level.
-* Involved routines "calc_U", "calc_KV" and "calc_PV" have been rewritten. "calc_U" is still not tested for VMEC.
+* Involved routines 'calc_U', 'calc_KV' and 'calc_PV' have been rewritten. 'calc_U' is still not tested for VMEC.
 * Updated the user output considering Richardson extrapolation in general.
 * Failure to read input file now results in error.
 * 'test_max_mem' now indicates whether memory is to be tested or not.
@@ -328,16 +329,16 @@ Technische Universiteit Eindhoven
 * FIRST USUABLE VERSION WITH CORRECT ENERGY DECOMPOSITION: PERTURBATION VARIABLES NOW CORRECTLY TABULATED IN OWN GRID.
 * Adapted POST to new X storage convention as well.
 * Fixed some bugs considering Richardson extrapolation.
-* POST now by default loads the highest found Richardson level, but this can be overriden using "PB3D_rich_lvl".
+* POST now by default loads the highest found Richardson level, but this can be overriden using 'PB3D_rich_lvl'.
 * Bugfixes considering the new tabulation of perturbation variables.
-* "debug_store_results" is now part of the standard programme.
-* HELENA always uses normalization, so "use_normalization" is always set to true.
+* 'debug_store_results' is now part of the standard programme.
+* HELENA always uses normalization, so 'use_normalization' is always set to true.
 
 ## 1.07:
-* FIRST VERSION WITH FAST OPTION. It seems to work for cbm18a if "max_r_sol" is not larger than 0.9.
-* Introduced variable "X_style", which allows the user to choose between prescribed modes (earlier default) and a fast version.
-* "check_X_modes" now has alternative actions for X style 2.
-* The original versions of "get_suffix", "set_nn_mod" and "is_necessary_X" do not exist any more: Everything works with X limits now.
+* FIRST VERSION WITH FAST OPTION. It seems to work for cbm18a if 'max_r_sol' is not larger than 0.9.
+* Introduced variable 'X_style', which allows the user to choose between prescribed modes (earlier default) and a fast version.
+* 'check_X_modes' now has alternative actions for X style 2.
+* The original versions of 'get_suffix', 'set_nn_mod' and 'is_necessary_X' do not exist any more: Everything works with X limits now.
 * Split some routines of PB3D_vars into new module PB3D_utilities.
 * Split some routines of X_vars into new module X_utilities.
 * Split some routines of SLEPC_ops into new module SLEPC_utilities.
@@ -346,89 +347,89 @@ Technische Universiteit Eindhoven
 * Split some routines of sol_ops into new module sol_utilities, which can also translate between local and total solution vectors.
 * Derivatives of the solution vectors have to be done on total variables.
 * Suffixes to names are now integer variables, not characters.
-* The limits of the modes and their values now have to be calculated from the equilibrium and have to be recalculated using "setup_nm_X".
-* Fixed a bug in "interp_fun".
-* Improved debugging of "calc_zero_NR".
-* Fixed a bug in "calc_res_surf" for dfun.
+* The limits of the modes and their values now have to be calculated from the equilibrium and have to be recalculated using 'setup_nm_X'.
+* Fixed a bug in 'interp_fun'.
+* Improved debugging of 'calc_zero_NR'.
+* Fixed a bug in 'calc_res_surf' for dfun.
 * Introduced local versus total mode numbers, which may differ for X style 2.
-* "plot_X_vec" has been modified as well as "resonance_plot" to correctly implement the difference between local and total mode numbers.
-* Fixed inconsistency with naming "X_vec" and "X_val", etc. "sol" Is now used.
+* 'plot_X_vec' has been modified as well as 'resonance_plot' to correctly implement the difference between local and total mode numbers.
+* Fixed inconsistency with naming 'X_vec' and 'X_val', etc. 'sol' Is now used.
 
 ## 1.08:
 * NOT USABLE FOR VMEC: ERRORS PRESENT!
 * Implemented routine to get info about file, though unused for now.
-* New flag "no_execute_command_line" that disables the execution of command line, as this sometimes causes a freeze, for unknown reasons.
-* Identified bug when reading VMEC with "lrfp" flag. Now, netcdf output is used instead, as it does not have this problem.
-* Fixed some bugs in "reconstruct_PB3D" considering the presence of field-aligned grids. These are now automatically set for both equilibrium styles.
-* Fixed a bug in the first derivative of "flux_p_E" for HELENA: factor 2pi is now taken into account.
-* Changed the storage convention for "PV_int" and "KV_int".
-* Generalized and automatized the "calc_deriv" routines and put them in "grid_utilities"; They can take any order and precision now.
-* Cleaned up "calc_flux_q".
+* New flag 'no_execute_command_line' that disables the execution of command line, as this sometimes causes a freeze, for unknown reasons.
+* Identified bug when reading VMEC with 'lrfp' flag. Now, netcdf output is used instead, as it does not have this problem.
+* Fixed some bugs in 'reconstruct_PB3D' considering the presence of field-aligned grids. These are now automatically set for both equilibrium styles.
+* Fixed a bug in the first derivative of 'flux_p_E' for HELENA: factor 2pi is now taken into account.
+* Changed the storage convention for 'PV_int' and 'KV_int'.
+* Generalized and automatized the 'calc_deriv' routines and put them in 'grid_utilities'; They can take any order and precision now.
+* Cleaned up 'calc_flux_q'.
 * Split HELENA in HELENA_ops and HELENA_vars.
 * Added interpolation capability similar to the derivation capability.
-* Both interpolation and derivation use "apply_disc" to apply the discretization operator.
-* "interp_fun" is still available to be used only when the interpolations are not repetitive and linear interpolation suffices.
+* Both interpolation and derivation use 'apply_disc' to apply the discretization operator.
+* 'interp_fun' is still available to be used only when the interpolations are not repetitive and linear interpolation suffices.
 
 ## 1.09:
 * FIRST VERSION THAT WORKS FOR AXISYMMETRIC VMEC. However, post-processing is not working well, and comparision with HELENA not yet perfect.
-* Normalization factors "R_0", "B_0", "pres_0", "psi_0" can now be user-provided, just like "rho_0", but NO checking for consistency!
-* Fixed a bug in "calc_interp_data" where the bounds of "x" were not respected.
+* Normalization factors 'R_0', 'B_0', 'pres_0', 'psi_0' can now be user-provided, just like 'rho_0', but NO checking for consistency!
+* Fixed a bug in 'calc_interp_data' where the bounds of 'x' were not respected.
 * Fixed bug in Post-processing for VMEC input where the plot output is calculated.
-* Removed "test_Dg_E" as it does not make sense: In general the equilibrium grid is not straight.
-* Removed the "repack" routine and started using the natural VMEC structure.
+* Removed 'test_Dg_E' as it does not make sense: In general the equilibrium grid is not straight.
+* Removed the 'repack' routine and started using the natural VMEC structure.
 * Fixed an error in the testing of B where only components in equilibrium coordinates were not properly translated to flux coordinates.
-* The structure of "SLEPC_ops" has been slightly rewritten for the future accomodation of shell matrices.
-* Fixed bug in "calc_U" where the part ~ n_frac was not used in the calculation of DU_1 and DU_2, as well as some erroneous indices.
-* Moved some of the routines from "calc_eq" to "calc_met". In fact, these routine structures should be rethought, possibly merged.
+* The structure of 'SLEPC_ops' has been slightly rewritten for the future accomodation of shell matrices.
+* Fixed bug in 'calc_U' where the part ~ n_frac was not used in the calculation of DU_1 and DU_2, as well as some erroneous indices.
+* Moved some of the routines from 'calc_eq' to 'calc_met'. In fact, these routine structures should be rethought, possibly merged.
 
 ## 1.10:
 * VMEC IS NOT WORKING WELL YET.
-* Added restart functionality within PB3D using "rich_restart_lvl" to enable for Richardson extrapolation to continue (2...max_it_rich) or to skip the pre-perturbation phase (1). If it is 0, no restart is done.
+* Added restart functionality within PB3D using 'rich_restart_lvl' to enable for Richardson extrapolation to continue (2...max_it_rich) or to skip the pre-perturbation phase (1). If it is 0, no restart is done.
 * The broadcast routines now only pass user options. All the rest is handled by HDF5 output and input.
 * Fixed confusion about the normalization: Now HELENA uses MISHKA normalization by default.
 * The miscellaneous output variables are merged with the input output variables, i.e. output variables due to the input of equilibrium code.
-* The system of reading and then reconstructing variables has been replaced by a direct one. "PB3D_vars" ceased to exist.
-* Split "rich" module in two parts: "rich_vars" and "rich_ops".
-* The deallocation of equilibrium input (VMEC or HELENA) now happens through "dealloc_in".
+* The system of reading and then reconstructing variables has been replaced by a direct one. 'PB3D_vars' ceased to exist.
+* Split 'rich' module in two parts: 'rich_vars' and 'rich_ops'.
+* The deallocation of equilibrium input (VMEC or HELENA) now happens through 'dealloc_in'.
 * Standardized the outline of driver routines, by making them start by reconstructing the necessary PB3D output and finish by deallocating.
 
 ## 1.11:
-* Bug fixed: The input phase now passes on a trimmed range. The "calc_norm_range" routine has been extended accordingly.
-* "misc_eq", "misc_eq_V" and "misc_eq_H" have been renamed to "misc_in", "misc_in_V" and "misc_in_H". "n_r_in" has been added.
-* "max_flux" now only refers to the maximum flux in the coordinate system used (i.e. poloidal or toroidal).
-* Fixed a bug in "calc_res_surf" where instead of the rotational transform the safety factor was used.
-* "flux_p_V" and "Dflux_p_V" are now calculated inside "read_VMEC" as the full input grid is needed.
-* "calc_XYZ" now requires the equilibrium grid for the routine to know how the input variables are tabulated.
-* "coord_E2F" and "coord_F2E" do not need the equilibrium variables any more. Also, "calc_loc_r" has been deleted.
-* VMEC now also uses magnetic field on axis as normalization, saved in "B_0_V" in VMEC.
+* Bug fixed: The input phase now passes on a trimmed range. The 'calc_norm_range' routine has been extended accordingly.
+* 'misc_eq', 'misc_eq_V' and 'misc_eq_H' have been renamed to 'misc_in', 'misc_in_V' and 'misc_in_H'. 'n_r_in' has been added.
+* 'max_flux' now only refers to the maximum flux in the coordinate system used (i.e. poloidal or toroidal).
+* Fixed a bug in 'calc_res_surf' where instead of the rotational transform the safety factor was used.
+* 'flux_p_V' and 'Dflux_p_V' are now calculated inside 'read_VMEC' as the full input grid is needed.
+* 'calc_XYZ' now requires the equilibrium grid for the routine to know how the input variables are tabulated.
+* 'coord_E2F' and 'coord_F2E' do not need the equilibrium variables any more. Also, 'calc_loc_r' has been deleted.
+* VMEC now also uses magnetic field on axis as normalization, saved in 'B_0_V' in VMEC.
 
 ## 1.12:
 * VMEC IS WORKING AND HAS BEEN TESTED FOR AXISYMMETRIC CBM18A.
 * HOWEVER, THE PROCESS OF CHANGING RICHARDSON EXTRAPOLATION IS NOT COMPLETED YET.
-* "eq_type" and "met_type" have been merged and split differently again in flux equilibrium variables and metric equilibrium variables.
-* "eq_ops" and "met_ops" have been merged and some routines have been split off in "eq_utilities".
-* "interp_HEL_on_grid" interpolates metric equilibrium variables only, though flux equilibrium variables are needed to do it.
-* "calc_flux_q" has been absorbed in "calc_eq_1".
-* Moved "print_output_in" and "read_eq" to input_ops and "dealloc_in" to input_utilities.
-* "rich_restart_lvl" now can take on values 1..max_lvl_rich, not 0.
+* 'eq_type' and 'met_type' have been merged and split differently again in flux equilibrium variables and metric equilibrium variables.
+* 'eq_ops' and 'met_ops' have been merged and some routines have been split off in 'eq_utilities'.
+* 'interp_HEL_on_grid' interpolates metric equilibrium variables only, though flux equilibrium variables are needed to do it.
+* 'calc_flux_q' has been absorbed in 'calc_eq_1'.
+* Moved 'print_output_in' and 'read_eq' to input_ops and 'dealloc_in' to input_utilities.
+* 'rich_restart_lvl' now can take on values 1..max_lvl_rich, not 0.
 * Streamlined output from reconstruct_PB3D routines.
 
 ## 1.13:
 * X_2 now holds only 6 variables, and is reused for the field-averaged variables as well.
 * Got rid of unnecessary and cluttering default case selection for variables that are checked in initialization.
 * Print_output routines need data set names provided, similar for reconstruction.
-* Now shell commands are saved in a log file that can be run afterwards, which is useful in combination with "--no_execute_command_line".
-* "rich_info_short" now always returns the Richardson level in the output.
-* Fixed bug in "find_max_lvl_rich" where groups were not properly closed.
+* Now shell commands are saved in a log file that can be run afterwards, which is useful in combination with '--no_execute_command_line'.
+* 'rich_info_short' now always returns the Richardson level in the output.
+* Fixed bug in 'find_max_lvl_rich' where groups were not properly closed.
 
 ## 1.14:
 * BOTH VMEC AND HELENA WORK FINE WITH RICHARDSON EXTRAPOLATION
 * Passing the Richardson level to be used in the data name for HDF5 output is now done using an optional integer.
-* "rich_info_short" has been removed.
-* For VMEC, variables saved in HDF5 from different levels are now combined correctly in the reconstruct_PB3D routines through "tot_rich".
-* "tol_SLEPC" is now an array to be passed for every Richardson level, or is set intelligently by default.
+* 'rich_info_short' has been removed.
+* For VMEC, variables saved in HDF5 from different levels are now combined correctly in the reconstruct_PB3D routines through 'tot_rich'.
+* 'tol_SLEPC' is now an array to be passed for every Richardson level, or is set intelligently by default.
 * The guess for different Richardson levels is set correctly again, keeping in mind that every level has the same nr. of normal points.
-* Migrated away completely from "interp_fun". The functionality is coverd by "setup_interp_data" and "apply_disc".
+* Migrated away completely from 'interp_fun'. The functionality is coverd by 'setup_interp_data' and 'apply_disc'.
 * The user can now provide the default relaxation factor for Newton-Rhapson.
 * Tweaked the calculation of magnetic field lines to make it faster
 * HDF5 datasets can be overwritten when Richardson restart is used.
@@ -437,21 +438,21 @@ Technische Universiteit Eindhoven
 ## 1.15:
 * IMPROVED MEMORY USAGE. CURRENTLY BEHAVIOR IS NOT COMPLETELY UNDERSTOOD BUT MEMORY USE SEEMS TO BE LIMITED.
 * Removed splines.
-* Fixed memory leaks concerning "disc", "grid", "eq_1", "eq_2", "X_1", "X_2" and "sol" variables and added a check.
+* Fixed memory leaks concerning 'disc', 'grid', 'eq_1', 'eq_2', 'X_1', 'X_2' and 'sol' variables and added a check.
 * Fixed memory leaks concerning the printing of variables to HDF5: previously there was no deallocation of var_1D.
-* Added color to the output, using the FOUL module. There is now the option "warning" to subroutine "writo".
-* Added option "--mem_usage" to print information about memory usage at the end of every message.
-* Simplified "create_grid".
+* Added color to the output, using the FOUL module. There is now the option 'warning' to subroutine 'writo'.
+* Added option '--mem_usage' to print information about memory usage at the end of every message.
+* Simplified 'create_grid'.
 
 ## 1.16:
 * Fixed a bug in POST where not the total Richardson variables were taken.
-* Fixed a bug in "reconstruct_PB3D_X_1" where the variable names were read incorrectly.
-* "calc_XUQ" does not need "grid_sol" any more, as stated in the header.
+* Fixed a bug in 'reconstruct_PB3D_X_1' where the variable names were read incorrectly.
+* 'calc_XUQ' does not need 'grid_sol' any more, as stated in the header.
 * Calculation of extended plot grids in POST is now much more economical.
 * Fixed a bug for negative normal coordinates, but the code has not been debugged properly for this!
 * min and max of theta and zeta_plot is now an input variable.
-* Moved "grid_plot_real" to the magnetic integral phase of driver_X because it needs the full field-aligned equilibrium grid.
-* Fixed bug concerning "test_p": The test should be done after F derivatives are calculated from E derivatives.
+* Moved 'grid_plot_real' to the magnetic integral phase of driver_X because it needs the full field-aligned equilibrium grid.
+* Fixed bug concerning 'test_p': The test should be done after F derivatives are calculated from E derivatives.
 * Command line is not any more executed by default.
 * Introduced multiple tries for Newton-Rhapson, with different relaxation factors.
 
@@ -459,7 +460,7 @@ Technische Universiteit Eindhoven
 * Fixed a bug in the calculation of the normal range for high discretization orders.
 * Fixed a bug in the interpolation routines for high discretization orders.
 * The routines that adapt input variables now have correct error handling.
-* New input flag "POST_post_style" that allows choice between POST output on extended grid (1) or field-aligned grid (2).
+* New input flag 'POST_post_style' that allows choice between POST output on extended grid (1) or field-aligned grid (2).
 * Reorganized the POST driver structure.
 * User can now use input variable 'slab_plots' to optionally generate slab plots.
 * Fixed bug in 'plot_HDF5' where plot was wrongly identified as having poloidal symmetry while it was just a slab plot.
@@ -477,18 +478,18 @@ Technische Universiteit Eindhoven
 ## 1.19:
 * Both the real and the imaginary part, as well as the phase, of the output vectors are now plotted in HDF5.
 * Fixed a bug with the radial coordinate of the plots for POST when multiple processes are used.
-* Replaced the workings of "setup_interp_data" to use Barycentric Lagrangian polynomials.
-* Renamed "utilities" to "num_utilities".
-* Fine-tuned usage of "calc_zero_NR" when calculating the magnetic field lines by using a better guess.
+* Replaced the workings of 'setup_interp_data' to use Barycentric Lagrangian polynomials.
+* Renamed 'utilities' to 'num_utilities'.
+* Fine-tuned usage of 'calc_zero_NR' when calculating the magnetic field lines by using a better guess.
 * Removed the restriction of the 3D decoupled GNUPlot plot of the modes as by default nothing gets plotted.
 
 ## 1.20:
 * Updated the manner in which Richardson extrapolation is done by reusing the previous magnetic integrals, and not the values.
-* The values of "X_2" are not any more written to HDF5, only the magnetic integrals.
+* The values of 'X_2' are not any more written to HDF5, only the magnetic integrals.
 * For HELENA, the grid is also halved for higher Richardson levels.
 * Apart from the trapezoidal rule, also Simpson's 3/8 rule can be used for magnetic integrals.
-* Renamed "plot_grid" and "plot_grid_real" to "plot_magn_grid" and "magn_grid_plot" for consistency.
-* Moved "magn_grid_plot" back to the equilibrium driver. The full grid is reconstructed specially.
+* Renamed 'plot_grid' and 'plot_grid_real' to 'plot_magn_grid' and 'magn_grid_plot' for consistency.
+* Moved 'magn_grid_plot' back to the equilibrium driver. The full grid is reconstructed specially.
 * Reorganized perturbation driver: It consistts now of 3 subdrivers.
 
 ## 1.21:
@@ -501,52 +502,52 @@ Technische Universiteit Eindhoven
 ## 1.22:
 * NOW THE MEMORY LIMITS ARE CORRECTLY HANDLED BY INTRODUCING EQUILIBRIUM JOBS.
 * Equilibrium jobs now handle a subset of the parallel grid.
-* Added option to deallocate unused variables on the fly in "calc_eq_2". Using this, the memory spikes for the equilibrium phase are lower.
+* Added option to deallocate unused variables on the fly in 'calc_eq_2'. Using this, the memory spikes for the equilibrium phase are lower.
 * Fixed bug where memory info was printed before the file existed.
-* Moved "divide_X_jobs" to "X_utilities".
-* Created an equilibrium version of "divide_X_jobs".
-* Removed the routine "test_max_mem".
-* Input variable "max_mem_per_proc" has been renamed to "max_tot_mem_per_proc", to distinguish from internal variable "max_X_mem_per_proc".
-* "read_HDF5_arrs" now has an array version as well, which uses the individual version.
-* The same for "retrieve_var_1D_id".
-* Using "minim_output", the output file size can be minimized, by not saving eq_2 and X_1 variables between Richardson levels.
-* "tol_SLEPC" for next Richardson levels is adapted to the maximum relative Richardson error.
+* Moved 'divide_X_jobs' to 'X_utilities'.
+* Created an equilibrium version of 'divide_X_jobs'.
+* Removed the routine 'test_max_mem'.
+* Input variable 'max_mem_per_proc' has been renamed to 'max_tot_mem_per_proc', to distinguish from internal variable 'max_X_mem_per_proc'.
+* 'read_HDF5_arrs' now has an array version as well, which uses the individual version.
+* The same for 'retrieve_var_1D_id'.
+* Using 'minim_output', the output file size can be minimized, by not saving eq_2 and X_1 variables between Richardson levels.
+* 'tol_SLEPC' for next Richardson levels is adapted to the maximum relative Richardson error.
 * Memory information is extended with the limits.
 
 ## 1.23:
 * FIRST OPTIMIZED VERSION TO FIND MAGNETIC FIELD LINES, BUT RESULTS ARE NOT COMPLETELY EQUAL TO BEFORE, AND POST DOES NOT WORK.
 * Removed shell matrix things, as they are not yet implemented.
-* Fixed a bug in "insert_block_mat" where "block_loc" was used erroneously.
+* Fixed a bug in 'insert_block_mat' where 'block_loc' was used erroneously.
 * Clean up a bit the SLEPC routines, all using n_mod_X now, fixed some minor memory leaks.
 * Time information in memory info now comes from MPI_Wtime.
-* "fourier2real" now also has a version that does not make use of trigonometric factors, but of theta and zeta directly.
-* Improved debug of "calc_ang_grid_eq_B" by checking whether F variables are recovered.
-* There is now also a 3D equivalent of "calc_zero_NR". It is used in "coord_F2E", so now the magnetic field lines are calculated faster.
+* 'fourier2real' now also has a version that does not make use of trigonometric factors, but of theta and zeta directly.
+* Improved debug of 'calc_ang_grid_eq_B' by checking whether F variables are recovered.
+* There is now also a 3D equivalent of 'calc_zero_NR'. It is used in 'coord_F2E', so now the magnetic field lines are calculated faster.
 * Implemented Zhang's method for root-finding, which is now used to calculate the resonant flux surfaces.
 
 ## 1.24:
-* FIRST COMPLETE PB3D VERSION. SUSPECTED PROBLEMS WITH 1.23 WERE DUE TO LOW "tol_SLEPC".
+* FIRST COMPLETE PB3D VERSION. SUSPECTED PROBLEMS WITH 1.23 WERE DUE TO LOW 'tol_SLEPC'.
 * Minimal outputs are also handled by POST now.
 * Fixed a bug where incompatibility between HELENA and minimal output was ignored.
-* Improved the handling of "tol_SLEPC".
+* Improved the handling of 'tol_SLEPC'.
 
 ## 1.25:
 * Added files from Alpha study.
 * The solution driver now does not need the equilbrium grid any more.
-* Split off some of the procedures in "HDF5_ops" into "HDF5_utilities".
-* Implemented "set_1D_vars" which sets the hyperslab of the 1D equivalent of a variable in multiple dimensions and/or chunk variables.
+* Split off some of the procedures in 'HDF5_ops' into 'HDF5_utilities'.
+* Implemented 'set_1D_vars' which sets the hyperslab of the 1D equivalent of a variable in multiple dimensions and/or chunk variables.
 * Fixed a bug in the conversion of half to full mesh of VMEC variables.
-* "norm_style" is now called "K_style" and "norm_style" is used to set the style of normalization (e.g. MISHKA, COBRA, ...).
+* 'norm_style' is now called 'K_style' and 'norm_style' is used to set the style of normalization (e.g. MISHKA, COBRA, ...).
 * Updated the run scripts to use Dr. Memory in stead of Valgrind.
-* "get_suffix" is renamed to "get_sec_ind_tot" as suffixes are not necessary any more, but total secondary index are.
-* Implemented "get_sec_X_range" that seeks a contiguous range for tensorial perturbation variables.
-* "read_HFD5_arrs" is now "read_HDF5_arr" and returns just one 1-D variable.
-* "retrieve_var_1D" is not necessary any more and has been removed.
+* 'get_suffix' is renamed to 'get_sec_ind_tot' as suffixes are not necessary any more, but total secondary index are.
+* Implemented 'get_sec_X_range' that seeks a contiguous range for tensorial perturbation variables.
+* 'read_HFD5_arrs' is now 'read_HDF5_arr' and returns just one 1-D variable.
+* 'retrieve_var_1D' is not necessary any more and has been removed.
 * Improved the MISHKA normalization by using the true value of B on axis, extrapolating half-mesh in VMEC. This changes T_0 slightly.
 * In the PB3D reconstruction routines, the normal limits are not passed any more, as this information is encoded in the grid already.
 
 ## 1.26:
-* Added a command-line variable "jump_to_sol" that can be used to jump straight to solution driver for first Richardson level.
+* Added a command-line variable 'jump_to_sol' that can be used to jump straight to solution driver for first Richardson level.
 * The integrated tensorial perturbation are deallocated in the SLEPC routines, instead of in the solution driver, to save memory.
 * The same is true for the previous solution variables.
 * Fixed bugs in the PB3D reconstruction routines, where the equilibrium jobs were not appropriately calculated for every Richardson level.
@@ -573,12 +574,12 @@ Technische Universiteit Eindhoven
 * Cleared confusion about COBRA normalization and fixed the erroneous situation that called for modification of the equations.
 
 ## 1.30:
-* "minim_output" is now also possible for POST.
+* 'minim_output' is now also possible for POST.
 * Tweaked setting up of guess using now a tolerance.
 * Fixed a bug considering plotting the grid from HELENA equilibria.
 * Fixed a bug determining the normal range in POST.
 * Changed the output of the modes at midplane to use lines, not points.
-* Updated "write_flux_q_in_file_for_VMEC" to also give the Fourier coefficients of the boundary shape.
+* Updated 'write_flux_q_in_file_for_VMEC' to also give the Fourier coefficients of the boundary shape.
 * read_HEL now calculates the toroidal flux on the full grid.
 * Moved read_HEL to HELENA_ops, as it needs grid utilities.
 
@@ -586,7 +587,7 @@ Technische Universiteit Eindhoven
 * Created new script to run PB3D, making use of cases, that bundles all the previous scripts.
 * run_PB3D.sh can also run on Uranus, making use of qsub. Selection of machine is automatical but new machines have to be added manually.
 * Fixed some memory leaks.
-* "lold_MPI" is no longer available.
+* 'lold_MPI' is no longer available.
 
 ## 1.32:
 * Makefile now uses shared libraries.
@@ -600,10 +601,10 @@ Technische Universiteit Eindhoven
 * For large numbers of procs, the code is slow as every HDF5 read and write is currently isolated using mutex. This is necessary as it is not possible to read from a file that is being written to, even though multiple procs can indeed access the same file at the same time. This needs to be resolved; either using SRMW from version 1.10, or another mechanism.
 
 ## 1.33:
-* Renamed "str_ops" to "str_utilities" for consistency.
+* Renamed 'str_ops' to 'str_utilities' for consistency.
 * Split num_utilities into num_utilities and num_ops, where the latter requires output_ops.
 * Bubble sort implemented in num_utilities.
-* Renamed "mutex" to lock.
+* Renamed 'mutex' to lock.
 * Implemented tests for the lock system.
 * Completely redesigned the lock system.
 * The lock system now supports blocking as well as non-blocking locks, which is good for HDF5 performance with many reads and few writes.
@@ -620,7 +621,7 @@ Technische Universiteit Eindhoven
 * Added the possibility to perform trigonometric interpolation, but only for an even order.
 * Added tests for interpolation routines.
 * Fixed the calculation of the fourier modes for exportation of HELENA to VMEC. Simulations have to be rerun.
-* Export of HELENA to VMEC now happens through the flag "--export_HEL".
+* Export of HELENA to VMEC now happens through the flag '--export_HEL'.
 * Procedure merge_GP was deleted.
 * GNUPlot 'GP' procedures are renamed to external 'ex' procedures.
 * Array versions of draw_ex and draw_aminated_ex, corresponding to multi-file versions, are deleted.
@@ -634,7 +635,7 @@ Technische Universiteit Eindhoven
 * Multiple 3D plots are again supported, for GNUPlot and Mayavi.
 * Unified external program drawing into one procedure.
 * A HELENA equilibrium can now be perturbed before exporting to VMEC format.
-* The modification of the equilibrium can be provided in a file as well. Examples are given in "pert_*.dat".
+* The modification of the equilibrium can be provided in a file as well. Examples are given in 'pert_*.dat'.
 
 ## 1.37:
 * The plotting variables of HELENA equilibria for VMEC export can now be adapted.
@@ -643,20 +644,20 @@ Technische Universiteit Eindhoven
 ## 1.38:
 * VERSION NOT INTENDED FOR USE.
 * Many changes to improve the resilience for input / output errors in order to work on the ITER cluster.
-* New precompile include that allows to run any command (typically I/O) to be repeated a number of times, using the CPP flag "lrIO" for "resilient I/O". This is going to be removed in the next commit, this commit serves solely to store the idea.
+* New precompile include that allows to run any command (typically I/O) to be repeated a number of times, using the CPP flag 'lrIO' for 'resilient I/O'. This is going to be removed in the next commit, this commit serves solely to store the idea.
 * Bug fixes.
 * Compatibility fixes with older compilers and INTEL compilers.
-* Support for INTEL compiler (checked with 12.0.1), using a wrapper include file and a compile flag "lwith_intel", as opposed to "lwith_gnu".
-* Workaround for recursive function "derivs" that did not work with INTEL (https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270127).
-* "search_file" has been deleted, as its functionality can be done using open.
+* Support for INTEL compiler (checked with 12.0.1), using a wrapper include file and a compile flag 'lwith_intel', as opposed to 'lwith_gnu'.
+* Workaround for recursive function 'derivs' that did not work with INTEL (https://software.intel.com/en-us/forums/intel-fortran-compiler-for-linux-and-mac-os-x/topic/270127).
+* 'search_file' has been deleted, as its functionality can be done using open.
 * Improved run scripts, with better support for TORQUE and SLURM clusters. This solves the I/O problems.
 * New script for extraction of results from array jobs.
 * New script for inspection of SLURM jobs.
 * Cleaned stellinstall and added it to this repository.
 
 ## 1.39:
-* Removed the "lrIO" precompiler option.
-* "--minim_output" is set by the run script by default. Remove it in "run_PB3D.sh" if you don't want this.
+* Removed the 'lrIO' precompiler option.
+* '--minim_output' is set by the run script by default. Remove it in 'run_PB3D.sh' if you don't want this.
 * stellinstall is now configured for 1. XPS-L501X, 2. ITER.
 * Updated run scripts and bundled everything into 'run.sh'.
 
@@ -665,13 +666,13 @@ Technische Universiteit Eindhoven
 * Fixed bug in run script variable substitution where min_r_sol was replaced instead of n_r_sol.
 * Add global multiplication factor to HELENA modification and export.
 * Changed the run script slightly.
-* NUFFT now happens in "grid_utilities".
+* NUFFT now happens in 'grid_utilities'.
 * The routine HELENA export now also plots the approximate proportionality constant between the toroidal field ripple and the plasma displacement, as well as the corresponding Fourier series.
 * HELENA export now also is able to automatically use this for the edge modification shape.
 
 ## 1.41:
-* Introduced variable "pert_mult_factor_POST", which is used to deterimine by how much to perturb the X, Y and Z values of the plot grid in POST. It works only for VMEC on an extended grid (POST style 1).
-* In "calc_pert_cart_comp" the Cartesian components of the perturbation are calculated. If "pert_mult_factor_POST" is not zero, these are then used to perturb the position.
+* Introduced variable 'pert_mult_factor_POST', which is used to deterimine by how much to perturb the X, Y and Z values of the plot grid in POST. It works only for VMEC on an extended grid (POST style 1).
+* In 'calc_pert_cart_comp' the Cartesian components of the perturbation are calculated. If 'pert_mult_factor_POST' is not zero, these are then used to perturb the position.
 
 ## 1.42:
 * Fixed a bug in the calculation of the Cartesian components of perturbation where the trimmed grid was erroneously used.
@@ -686,24 +687,24 @@ Technische Universiteit Eindhoven
 ## 1.44:
 * Changed institution to ITER Organization.
 * Fixed a bug where uninitialized pointers were used in the POST driver for non-full outputs. Now, the harmonics are plot separately.
-* "slab_plots" is now an integer variable "slab_plots_style" that can take value 2 as well, which stands for slab plots with the angular coordinates wrapped to the fundamental intervals.
-* Improved the run script for the ITER cluster, making use now of two auxiliary scripts "gen_node_file.sh" and "get_disk_space.sh".
+* 'slab_plots' is now an integer variable 'slab_plots_style' that can take value 2 as well, which stands for slab plots with the angular coordinates wrapped to the fundamental intervals.
+* Improved the run script for the ITER cluster, making use now of two auxiliary scripts 'gen_node_file.sh' and 'get_disk_space.sh'.
 
 ## 1.45:
 * The run script does not copy the HDF5 output file for POST on the ITER cluster, but instead creates a symbolic link.
 * Updated some comments in the code, for example concerning the wrong statement that HDF5 data read has to be contiguous. This is not any more the case.
-* The routines that call "divide_eq_jobs" now need to include derivatives the array size.
-* There is a new function "copy_grid" that allows the user to copy a grid to a new, unallocated grid, taking a possible subset of variables.
-* Part of the tasks of the POST driver is now done in an initalisation routine "init_POST".
+* The routines that call 'divide_eq_jobs' now need to include derivatives the array size.
+* There is a new function 'copy_grid' that allows the user to copy a grid to a new, unallocated grid, taking a possible subset of variables.
+* Part of the tasks of the POST driver is now done in an initalisation routine 'init_POST'.
 * The other parts are done for multiple equilibrium jobs.
 * These jobs are divided according to memory requirements.
-* "setup_par_id" has been generalized and can also output the indices in HDF5 memory.
+* 'setup_par_id' has been generalized and can also output the indices in HDF5 memory.
 * In HDF5 array reading, the indices of the dummy variables now start at 1 always. It is the job of the initialization of the various variables (e.g. eq_1, eq_2, ...) to set the range limits correct (e.g. starting at 0 for derivatives, ...).
 * This is an untested version.
 
 ## 1.46:
-* In "print_ex_2D" and "print_ex_3D", x (and y) variables can now be provided for 1 plot, and are then copied for the possible others.
-* Implemented a test procedure "test_read_HDF5_subset" for the subset reading capacities.
+* In 'print_ex_2D' and 'print_ex_3D', x (and y) variables can now be provided for 1 plot, and are then copied for the possible others.
+* Implemented a test procedure 'test_read_HDF5_subset' for the subset reading capacities.
 * This routine can test for the correct reading of subsets, with or without normally divided grids.
 * Some bugs have been fixed.
 * Tests have been concluded.
@@ -712,9 +713,9 @@ Technische Universiteit Eindhoven
 ## 1.47:
 * The problem was due to too small chunk sizes for the variables that were written by multiple processes, not just for HELENA.
 * Chunk sizes are now calculated different, by multiplying the total sizes for increasing dimensions until reaching more than the minimum requested (10kb set for now).
-* Chunk caching is not done any more, so "a_plist_id" from "set_1D_vars" is not available any more.
+* Chunk caching is not done any more, so 'a_plist_id' from 'set_1D_vars' is not available any more.
 * Added support for scalasca in the compilation, gprof is deprecated as it does not work properly, even for only 1 process.
-* Added a file "scorep.fil" with common scorep filters for the user-input routines that take up time. Use with -f scorep.fill when analyzing with scalasca.
+* Added a file 'scorep.fil' with common scorep filters for the user-input routines that take up time. Use with -f scorep.fill when analyzing with scalasca.
 
 ## 1.48:
 * Fixed a bug in the reading of subsets for X_1.
@@ -722,26 +723,26 @@ Technische Universiteit Eindhoven
 * For POST, the magnetic integration style is now set to 1, no matter what PB3D did, as the integration is done by volume, using the trapezoidal rule always.
 * Changed the structure of driver_POST a little bit, as the integrations of energy have to be added up for different parallel jobs.
 * The energy reconstruction now takes into account multiple equilibrium parallel jobs.
-* There is still one HDF5 output per equilibrium parallel job. This could be changed in the future. In Paraview, "group datasets" can be used.
+* There is still one HDF5 output per equilibrium parallel job. This could be changed in the future. In Paraview, 'group datasets' can be used.
 * A note considering the implementation: The division for POST is always done in the first coordinate, which commonly corresponds to theta when poloidal flux is used as normal coordinate. This makes the individual plots a bit weird when not viewed in their entirety. This should not be an issue if all the jobs are plotted together.
 
 ## 1.49:
 * Symmetry type can now be forced in HDF5 output and is also written to the file xdmf in an information element.
-* There is now an option "cont_plot" that indicates that the plot in HDF5 is a continuation of a previously started plot. This can be used to (over-)write HDF5 data, for example when dividing into jobs in POST.
+* There is now an option 'cont_plot' that indicates that the plot in HDF5 is a continuation of a previously started plot. This can be used to (over-)write HDF5 data, for example when dividing into jobs in POST.
 * POST now makes use of continued plots so that the plot outputs are single files.
 
 ## 1.50:
 * Version 1.49 suffered from an important flaw: It only worked when there were no multiple equilibrium jobs in PB3D.
 * The system of equilibrium jobs is now overhauled: There is only one group per Richardson level.
 * Many routines have been simplified.
-* "eq_job" has been removed in many routines.
-* "read_HDF5_arr" now only has one version, and "conv_1D2ND" only has individual versions.
+* 'eq_job' has been removed in many routines.
+* 'read_HDF5_arr' now only has one version, and 'conv_1D2ND' only has individual versions.
 
 ## 1.51:
 * The full output grids that were used in POST to later extract subsets for the different equilibrium jobs are not used any more. Everything is done for the subset directly.
-* The option "minim_output" does not exist any more, as it is the only option.
+* The option 'minim_output' does not exist any more, as it is the only option.
 * To get field-aligned output, the variables are calculated again in POST, without much penalty of time.
-* "slab_plots_style" is now "plot_grid_style" and admits a new style 3 that corresponds to a straight cylinder by unwrapping the torus.
+* 'slab_plots_style' is now 'plot_grid_style' and admits a new style 3 that corresponds to a straight cylinder by unwrapping the torus.
 
 ## 1.52:
 * Metric equilibrium variables are not written to file any more for VMEC, as this is slow for multiple equilibrium parallel jobs.
@@ -756,106 +757,106 @@ Technische Universiteit Eindhoven
 * The division of in parallel jobs now takes into account the fact that we have to be able to calculate the perturbation variables, which takes some memory as well.
 * A bit less output for perturbation driver.
 * Fixed a bug in the reconstruction of PB3D input variables.
-* INTEL has a strange bug in "calc_E", which is solved by setting an allocated array to zero.
+* INTEL has a strange bug in 'calc_E', which is solved by setting an allocated array to zero.
 * Fixed a bug that had not yet appeared where loc_n_r was used in the calculation of the X jobs size. This must be something that is not dependent on the process.
 * The first steps are taken for the plotting of the magnetic field.
 
 ## 1.54:
-* "calc_XYZ_grid" now also optionally outputs R.
-* Fixed a bug in "calc_XYZ_grid" where the inverse toroidal variable was taken wrongly.
+* 'calc_XYZ_grid' now also optionally outputs R.
+* Fixed a bug in 'calc_XYZ_grid' where the inverse toroidal variable was taken wrongly.
 * Previously in XDMF output, the dimensions and number of elements were only written if they were larger than 1. This was removed as it seemed not to work with ParaView.
-* "plot_HDF5" can now also handle vector plots with col=4. The implementation could be generalized and made more elegant and robust.
+* 'plot_HDF5' can now also handle vector plots with col=4. The implementation could be generalized and made more elegant and robust.
 
 ## 1.55:
 * Fixed a bug in the calculation of required memory.
 * Fixed bugs in the plotting of B for HELENA.
-* The routines in "calc_B" have been generalized for any vector in "calc_vec_comp" in grid_utilities and are called by "B_plot".
-* "calc_pert_cart_comp" should be replaced by "calc_vec_comp" but for this, the calc_vec_comp needs to interpolate transformation matrices.
+* The routines in 'calc_B' have been generalized for any vector in 'calc_vec_comp' in grid_utilities and are called by 'B_plot'.
+* 'calc_pert_cart_comp' should be replaced by 'calc_vec_comp' but for this, the calc_vec_comp needs to interpolate transformation matrices.
 
 ## 1.56:
-* Extended "calc_vec_comp" to include arbitrary grids.
-* "calc_pert_cart_comp" is not used any more.
-* "plot_HDF5" needs to be rewritten for general vectors, not using collection type 4, so that it can also take into account the possible projection of a vector on the symmetry plane. This is for the future.
-* "adapt_inoutput_POST" is removed, as also the solution grid can be perturbed for field-aligned grids as well.
+* Extended 'calc_vec_comp' to include arbitrary grids.
+* 'calc_pert_cart_comp' is not used any more.
+* 'plot_HDF5' needs to be rewritten for general vectors, not using collection type 4, so that it can also take into account the possible projection of a vector on the symmetry plane. This is for the future.
+* 'adapt_inoutput_POST' is removed, as also the solution grid can be perturbed for field-aligned grids as well.
 
 ## 1.57:
-* "plot_sol" is now split in two parts, "plot_sol_xi" and "plot_sol_Q" that can be used to indicate that the plasma perturbation and the magnetic perturbation have to be plotted.
-* "plot_kappa" can now be used to plot the curvature.
-* Fixed bug in "plot_sol_vec", where the normalization constants were not taken into account.
-* The output routines now should produce output that has been transformed back to unnormalized values and so does "calc_XYZ_grid". 
-* In "plot_kappa" there is the debug option to show the center of gravity, as a curiosity.
+* 'plot_sol' is now split in two parts, 'plot_sol_xi' and 'plot_sol_Q' that can be used to indicate that the plasma perturbation and the magnetic perturbation have to be plotted.
+* 'plot_kappa' can now be used to plot the curvature.
+* Fixed bug in 'plot_sol_vec', where the normalization constants were not taken into account.
+* The output routines now should produce output that has been transformed back to unnormalized values and so does 'calc_XYZ_grid'. 
+* In 'plot_kappa' there is the debug option to show the center of gravity, as a curiosity.
 
 ## 1.58:
 * Fixed some small bugs concerning the non-debug version.
-* Implemented "J_plot" that serves to plot the current, similar to "B_plot" that plotted the magnetic field.
+* Implemented 'J_plot' that serves to plot the current, similar to 'B_plot' that plotted the magnetic field.
 
 ## 1.59:
 * Fixed a bug for the tests on input variables. They were called too late.
-* Added a normalization to be used with "pert_mult_factor_POST" to provide X_0.
+* Added a normalization to be used with 'pert_mult_factor_POST' to provide X_0.
 
 ## 1.60:
 * Intel makefile now specifies that the heap should be used for arrays larger than 100kB, to avoid overflowing the stack.
-* "dealloc_vars" is back in use for the metric equilibrium routines, and has been extended to "broadcast_output_eq_2", where it is most critical.
+* 'dealloc_vars' is back in use for the metric equilibrium routines, and has been extended to 'broadcast_output_eq_2', where it is most critical.
 * The initialization of equilibrium variables is done more carefully now, avoiding unnecessary E variables where possible.
-* The calculation of memory in "divide_eq_jobs" was wrong in assuming that the normal perturbation range would be divided. Also, total memory usage is not available any more.
+* The calculation of memory in 'divide_eq_jobs' was wrong in assuming that the normal perturbation range would be divided. Also, total memory usage is not available any more.
 
 ## 1.61:
 * Extensive rewrite of the whole overarching system with drivers.
-* Variables come from the main program and are passed through the drivers. They are deallocated finally in "stop_MPI".
-* Input variables are now saved throughout the whole program, after reading them in "init_rich".
+* Variables come from the main program and are passed through the drivers. They are deallocated finally in 'stop_MPI'.
+* Input variables are now saved throughout the whole program, after reading them in 'init_rich'.
 * X jobs do not longer exist. They are not done in a large batch as before, but by iterating over the individual modes, possibly in blocks.
 * The normal grids in the perturbation phase are now also divided and equal to the trimmed equilibrium grids.
 * Implemented procedures to redistribute grids and equilibrium variables over a new normal range.
 * The division in equilibrium jobs is now different: For PB3D HELENA only nchi parallel values are calculated and their interpolation does not happen in batch.
-* "tol_norm" is not used any more to calculate the normal extent of the input variables, so that they match with the grids used later.
-* The maximum memory in total is now passed as input variable "max_tot_mem".
+* 'tol_norm' is not used any more to calculate the normal extent of the input variables, so that they match with the grids used later.
+* The maximum memory in total is now passed as input variable 'max_tot_mem'.
 * Started usin Valgrind again, in stead of Dr. Memory.
-* Fixed a bug where "pert_mult_factor_POST" was wrongly used when it was zero.
+* Fixed a bug where 'pert_mult_factor_POST' was wrongly used when it was zero.
 
 ## 1.62:
 * Well-functioning version.
 * Fixed bug: X_2 output is only written to HDF5 for last equilibrium job.
 * Updated and cleaned up the job distribution procedures.
-* Threw away many unnecessairy "wait_MPI" commands.
+* Threw away many unnecessairy 'wait_MPI' commands.
 * Updated the runtime parameters for SLEPC.
 
 ## 1.63:
 * In this version, the shell matrices were started to be implemented, but this is incomplete. Don't use this functionality.
 * The solution grid does have a ghost region now. The older versions crash for too small solution grids.
-* New file "SLEPC_vars.f90" that defines contexts for shell matrices as well as explicit interfaces.
-* New routine "get_ghost_vec" in SLEPC_utilities that allows one to get the ghost regions to the left and right.
+* New file 'SLEPC_vars.f90' that defines contexts for shell matrices as well as explicit interfaces.
+* New routine 'get_ghost_vec' in SLEPC_utilities that allows one to get the ghost regions to the left and right.
 * The solution variables are now stored in trimmed grid.
 
 ## 1.64:
 * Removed shell functionality again. In the future it might be restored and finalized.
-* Removed SLEPC_vars.f90 and its routines, as well as "get_ghost_vec".
-* Added new input variable "sol_n_procs" to control how many MPI processes are used for SLEPC. Often, 1 is better han multiple. A negative number sets it equal to all available.
+* Removed SLEPC_vars.f90 and its routines, as well as 'get_ghost_vec'.
+* Added new input variable 'sol_n_procs' to control how many MPI processes are used for SLEPC. Often, 1 is better han multiple. A negative number sets it equal to all available.
 * Started using block matrices in SLEPC, to improve legibility. No marked change in performance.
 * By default, the generalized Davidson method is used. If there is convergence to a positive (stable) mode, maybe you should choose ncv higher.
 * The run script has been changed somewhat, using only ncv=16 now.
 * Checking whether the resulting eigenpairs are valid is now also done for the release version.
 * Fixed a bug where the vacuum contribution was not copied to the integrated perturbation quantities.
-* Changed the "calc_norm_range" procedures somewhat, to take into account that the solution grid might have a different number of processes.
+* Changed the 'calc_norm_range' procedures somewhat, to take into account that the solution grid might have a different number of processes.
 * Added hard-coded option to use Hermiticity, but this does not work yet, as the SLEPC tolerance is much too low (see http://lists.mcs.anl.gov/pipermail/petsc-users/2016-October/030781.html). Forcing the matrix to be Hermitian artificially also does not work.
 
 ## 1.65:
 * Fixed a bug in the plotting of the magnetic grid.
 * Even if no solution found, POST can still output equilibrium quantities.
 * MUMPS warning has been removed, as it is not correct. The true source of slow SLEPC convergence was not using an optimzed version.
-* Now a target value is used through "EV_guess" in combination with shift-invert. By default, it is -1E-1. This speeds up convergence greatly.
-* Introduced a new input variable "solver_SLEPC_style" that can choose between a default setting for Krylov-Schur (1) or GD (2).
-* Some more user messages concerning "--jump_to_sol" as well as while setting up the SLEPC solver.
+* Now a target value is used through 'EV_guess' in combination with shift-invert. By default, it is -1E-1. This speeds up convergence greatly.
+* Introduced a new input variable 'solver_SLEPC_style' that can choose between a default setting for Krylov-Schur (1) or GD (2).
+* Some more user messages concerning '--jump_to_sol' as well as while setting up the SLEPC solver.
 * Changed message formatting somewhat.
 * B_aligned was not intialized in POST; it has been removed.
 * Extended grids can have monotomously decreasing coordinates now.
-* "calc_vec_comp" now takes into account possible bad points at r=0.
-* "calc_vec_comp" can now calculate fluxes.
+* 'calc_vec_comp' now takes into account possible bad points at r=0.
+* 'calc_vec_comp' can now calculate fluxes.
 
 ## 1.66:
 * The numerical derivatives in the normal direction are now performed before saving the HELENA and VMEC variables, in the full input grid.
-* The procedure "prepare_RZL" has been deleted and its functionality is now done in "read_VMEC".
-* The procedure "calc_eq_1" is now much lighter, and consists mainly of copying.
-* Fixed a bug in "B_plot" and "J_plot" where "plot_fluxes" was used wrongly while optional.
+* The procedure 'prepare_RZL' has been deleted and its functionality is now done in 'read_VMEC'.
+* The procedure 'calc_eq_1' is now much lighter, and consists mainly of copying.
+* Fixed a bug in 'B_plot' and 'J_plot' where 'plot_fluxes' was used wrongly while optional.
 * Fixed some small bugs.
 * The module VMEC has been split in three modules, the usual VMEC_ops, VMEC_utilities and VMEC_vars.
 
@@ -866,29 +867,29 @@ Technische Universiteit Eindhoven
 
 ## 1.68:
 * Fixed bug when solution was reconstructed even when it did not exist.
-* The "calc_vec_comp" procedure now also calculates the "Magnetic" components, which are in the (psi,theta,zeta) direction. This streamlines the integrated flux calculation as well.
+* The 'calc_vec_comp' procedure now also calculates the 'Magnetic' components, which are in the (psi,theta,zeta) direction. This streamlines the integrated flux calculation as well.
 * Fixed some bugs where normalization factors were not properly taken into account when calculating fluxes.
-* "extend_grid_E" is now called "extend_grid_F" and works on the Flux variables. This is very important for when integration happens in these grids, so that the non-varying coordinate should be constant.
+* 'extend_grid_E' is now called 'extend_grid_F' and works on the Flux variables. This is very important for when integration happens in these grids, so that the non-varying coordinate should be constant.
 * Fixed some small bug in the division of equilibrium jobs for POST, where no maximum was provided.
 * There is still an issue with the pressure balance. This is due to an inaccuracy in the calculation of the current from the magnetic field. This probably also causes a deviation from the correct results for the integrated current fluxes.
 
 ## 1.69:
-* Extended "debug_calc_derived_q" somewhat.
+* Extended 'debug_calc_derived_q' somewhat.
 * Splines have been implemented for derivatives. Only the third order (cubic) has been implemented. This is now fixed.
-* "conv_FHM" has been removed, replaced by splines.
+* 'conv_FHM' has been removed, replaced by splines.
 * Fixed issue in HDF5 plotting, where the symmetry type was not recoverable for vector plots.
 
 ## 1.70:
-* Fixed an important bug in the "fourier2real" where the incorrect sign was taken for the derivatives due to an incorrect application of integer division.
+* Fixed an important bug in the 'fourier2real' where the incorrect sign was taken for the derivatives due to an incorrect application of integer division.
 * The pressure balance is more correct, as is the test on D3sigma.
-* Changed the tests in "calc_derived_q" somewhat.
+* Changed the tests in 'calc_derived_q' somewhat.
 * Added a new test on the calculation of R, Z and L for VMEC, more specifically for the correct treatment of the derivatives.
-* "plot_HDF5" now also takes single X, Y and Z for a collection.
+* 'plot_HDF5' now also takes single X, Y and Z for a collection.
 
 ## 1.71:
 * The discrepancy between the fluxes is finally fixed, probably. Might have to test with bigger 3-D effects.
 * Fixed a bug in the calculation of fluxes. 
-* Using "--plot_VMEC_modes" the decay of the VMEC Fourier modes can be investigated.
+* Using '--plot_VMEC_modes' the decay of the VMEC Fourier modes can be investigated.
 
 ## 1.72:
 * Adapted to XPS 9360.
@@ -903,35 +904,35 @@ Technische Universiteit Eindhoven
 
 ## 1.74:
 * Fixed a bug in the export of HELENA, where modes with nonzero m were counted double.
-* As "prop_B_tor" has to be multiplied by the position ripple to yield the magnetic field ripple, its inverse needs to be used. This has been fixed.
+* As 'prop_B_tor' has to be multiplied by the position ripple to yield the magnetic field ripple, its inverse needs to be used. This has been fixed.
 * Currently, the implementation expects implicitly that the toroidal field ripple is constant for all poloidal positions. This is going to be changed.
 
 ## 1.75: 
 * The translation between magnetic and position perturbation is not correct.
-* "nufft" now correctly takes into account functions that are defined in any interval.
-* "export_HEL" now also works for non top-bottom symmetric configurations.
+* 'nufft' now correctly takes into account functions that are defined in any interval.
+* 'export_HEL' now also works for non top-bottom symmetric configurations.
 
 ## 1.76:
-* New option "compare_tor_pos" to compare quantities B, J and kappa at different toroidal positions.
-* "compare_tor_pos" also gives a resulting factor "prop_B_tor" that has to be multiplied by the B ripple to get the position ripple.
-* The old "prop_B_tor" that was used in "write_flux_q_in_file_for_VMEC" is not working correctly, as shown by direct comparison.
+* New option 'compare_tor_pos' to compare quantities B, J and kappa at different toroidal positions.
+* 'compare_tor_pos' also gives a resulting factor 'prop_B_tor' that has to be multiplied by the B ripple to get the position ripple.
+* The old 'prop_B_tor' that was used in 'write_flux_q_in_file_for_VMEC' is not working correctly, as shown by direct comparison.
 * This will be changed in the near future.
-* "write_flux_q_in_file_for_VMEC" now has some more output.
+* 'write_flux_q_in_file_for_VMEC' now has some more output.
 * Changed the default EV guess.
-* In "write_flux_q_in_file_for_VMEC" the cases with full normal output are now interpolated.
+* In 'write_flux_q_in_file_for_VMEC' the cases with full normal output are now interpolated.
 
 ## 1.77:
-* UNFINISHED VERSION: The "write_flux_q_in_file_for_VMEC" is not functioning.
+* UNFINISHED VERSION: The 'write_flux_q_in_file_for_VMEC' is not functioning.
 * Bug fixes for POST.
-* If "compare_tor_pos" is not called properly, an error now results.
-* "compare_tor_pos" now outputs a ripple map file.
-* "write_flux_q_in_file_for_VMEC" is now renamed to "create_VMEC_input" and has been overhauled.
-* "create_VMEC_input" can now also read perturbations defined on R, Z and phi, corresponding to a custom origin R, Z. This is the output of DESCUR, for example.
+* If 'compare_tor_pos' is not called properly, an error now results.
+* 'compare_tor_pos' now outputs a ripple map file.
+* 'write_flux_q_in_file_for_VMEC' is now renamed to 'create_VMEC_input' and has been overhauled.
+* 'create_VMEC_input' can now also read perturbations defined on R, Z and phi, corresponding to a custom origin R, Z. This is the output of DESCUR, for example.
 
 ## 1.78:
 * The ability to use a proportionality file to translate a B_tor perturbation to a position perturbation is now implemented but needs testing.
-* This file can be created using "compare_tor_pos".
-* The splines routines have been replaced by the "bspline_module" package by Jacob Williams (https://github.com/jacobwilliams/bspline-fortran.git), which is multi-dimensional.
+* This file can be created using 'compare_tor_pos'.
+* The splines routines have been replaced by the 'bspline_module' package by Jacob Williams (https://github.com/jacobwilliams/bspline-fortran.git), which is multi-dimensional.
 * Tweaked external output a bit.
 
 ## 1.79:
@@ -939,28 +940,28 @@ Technische Universiteit Eindhoven
 * Further tweaks to the system of perturbations of HELENA equilibria.
 * Perturbation map can be shifted vertically, which is important for eqdisk files processed by HELENA, which shift the geometric axis to Z=0.
 * There is now a check for physical consistency for the sign of the Alfven time.
-* "pause_prog" now takes a secret message "stop" that can be used to stop the program, which is useful when controlling PB3D in an automated way.
-* Improved the guess for theta_E as a function of theta_F in the procedure "coord_F2E" by using lambda. This greatly improves convergence sometimes.
+* 'pause_prog' now takes a secret message 'stop' that can be used to stop the program, which is useful when controlling PB3D in an automated way.
+* Improved the guess for theta_E as a function of theta_F in the procedure 'coord_F2E' by using lambda. This greatly improves convergence sometimes.
 
 ## 1.80:
 * Bug fixes.
 * The proportionality factor between magnetic and position ripples now use the geometric angle.
-* "compare_tor_pos" now needs 3 toroidal points, one in the middle. This makes toroidal comparisons easier.
+* 'compare_tor_pos' now needs 3 toroidal points, one in the middle. This makes toroidal comparisons easier.
 
 ## 1.81:
 * Fixed a bug in the interpolation of non-symmetric prop_B_tor.
-* Introduced "order_per_fun" to order periodic functions and possible add an extra overlap left and right.
+* Introduced 'order_per_fun' to order periodic functions and possible add an extra overlap left and right.
 
 ## 1.82:
-* There is a large error with the calculation of the modes for "create_VMEC_input". It can most easily be seen when plotting the cross-section inverted.
+* There is a large error with the calculation of the modes for 'create_VMEC_input'. It can most easily be seen when plotting the cross-section inverted.
 * Fixed some bugs and added some checks in the calculation of the proportionality factors prop_B_tor.
-* "delta_r_plot" now returns half the differences of r and delta_B/B, which corresponds to the ripple definition in the litterature.
-* Improved the whole "create_VMEC_input" procedure, fixed the plotting.
+* 'delta_r_plot' now returns half the differences of r and delta_B/B, which corresponds to the ripple definition in the litterature.
+* Improved the whole 'create_VMEC_input' procedure, fixed the plotting.
 
 ## 1.83:
-* Rewrote and greatly simplified "create_VMEC_input". It now uses the geometrical poloidal angle, as this angle needs to be kept constant for any reasonable comparison.
-* Did the same thing for the "delta_r_plot".
-* Changed "calc_vec_comp" so that it also uses the geometric angle and radius.
+* Rewrote and greatly simplified 'create_VMEC_input'. It now uses the geometrical poloidal angle, as this angle needs to be kept constant for any reasonable comparison.
+* Did the same thing for the 'delta_r_plot'.
+* Changed 'calc_vec_comp' so that it also uses the geometric angle and radius.
 * Splines is now merged into the more logical num_utilities module.
 * The origin of the geometrical poloidal angle now has to be provided on the command line for compare_tor_pos.
 * For compare_tor_pos, the fundamental theta interval is now needed always. Otherwise the interpolation in geometrical poloidal angle becomes quite messy.
@@ -976,9 +977,9 @@ Technische Universiteit Eindhoven
 * There seems to be an error in energy reconstruction.
 * Time is not stopped and started any more in output_ops.
 * POST driver was doing some work twice. This has been removed.
-* Slightly changed "calc_E" to avoid segmentation faults in intel compilers caused by large temporary arrays.
-* Fixed a bug for "compare_tor_pos" with multiple processes: RZ_0 was not broadcasted.
-* If no solution is found for "compare_tor_pos", the difference is set to 0 and a warning is displayed'
+* Slightly changed 'calc_E' to avoid segmentation faults in intel compilers caused by large temporary arrays.
+* Fixed a bug for 'compare_tor_pos' with multiple processes: RZ_0 was not broadcasted.
+* If no solution is found for 'compare_tor_pos', the difference is set to 0 and a warning is displayed'
 
 ## 1.86:
 * Fixed a bug where no solution variables were found if the first level failed.
@@ -995,7 +996,7 @@ Technische Universiteit Eindhoven
 * Looks like the best option is to use BC_style 3 that just neglects exterior points in the finite differences.
 * There is a new possibility for the boundary condition to be used, by employing asymmetric finite differences, but it does not work properly either.
 * Looks like the best option is to use BC_style 3 that just neglects exterior points in the finite differences.
-* "calc_coeff_fin_diff" now uses the Vandermonde method, and it can optionally produce asymmetric formula's.
+* 'calc_coeff_fin_diff' now uses the Vandermonde method, and it can optionally produce asymmetric formula's.
 * Fixed the bug where the vacuum contribution was not saved and therefore could not be used when jumping to the solution.
 
 ## 1.88:
@@ -1004,6 +1005,13 @@ Technische Universiteit Eindhoven
 * 2 to use asymmetric finite differences close to the edge and delta_vac on the edge.
 * 3 to extend the normal grid to accomodate finite differences on the edge, and delta_vac on the edge.
 * 4 to explicitely impose the boundary condition on the edge.
-* Intoruced "norm_disc_style_sol" to enable for left finite differences as well.
+* Intoruced 'norm_disc_style_sol' to enable for left finite differences as well.
 * Boundary style 4 does not work well yet, which might be due to the absence of vacuum.
 * The best method is currently the default: left finite differences with boundary condition style 2 (3 is identical for left differences).
+
+## 1.89:
+* NON-USABLE VERSION: IMPLEMENTING VACUUM.
+* eq_ops does not deallocate R_E and Z_E anymore, as they are needed for vacuum.
+* New module 'dtorh' that calculates toroidal functions.
+* Strumpack is going to be used to solve structured matrices resulting from the vacuum.
+* 'vac' is now split into 'vac_ops' and 'vac_vars'.

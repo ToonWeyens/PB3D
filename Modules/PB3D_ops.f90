@@ -13,6 +13,7 @@ module PB3D_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
+    use vac_vars, only: vac_type
     use sol_vars, only: sol_type
     use HDF5_vars, only: dealloc_var_1D, var_1D_type
     use PB3D_utilities, only: setup_rich_id, setup_par_id
@@ -21,7 +22,7 @@ module PB3D_ops
     private
     public reconstruct_PB3D_in, reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
         &reconstruct_PB3D_eq_2, reconstruct_PB3D_X_1, reconstruct_PB3D_X_2, &
-        &reconstruct_PB3D_sol, get_PB3D_grid_size
+        &reconstruct_PB3D_vac, reconstruct_PB3D_sol, get_PB3D_grid_size
     
     ! global variables
     real(dp), allocatable :: dum_1D(:)                                          ! dummy variables
@@ -410,7 +411,6 @@ contains
     end function reconstruct_PB3D_in
     
     ! Reconstructs grid variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
     ! name  if it  is  >  0.
     ! With "tot_rich"  the information  from previous  Richardson levels  can be
@@ -574,7 +574,6 @@ contains
     end function reconstruct_PB3D_grid
     
     ! Reconstructs the equilibrium variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
     ! directly passing its limits to the underlying HDF5 routine. This refers to
     ! the position dimensions only. If provided,  the normal limits of a divided
@@ -668,7 +667,6 @@ contains
     end function reconstruct_PB3D_eq_1
     
     ! Reconstructs the equilibrium variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
     ! name if it is > 0.
     ! With "tot_rich"  the information  from previous  Richardson levels  can be
@@ -805,7 +803,6 @@ contains
     end function reconstruct_PB3D_eq_2
     
     ! Reconstructs the vectorial perturbation variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
     ! name if it is > 0.
     ! With "tot_rich"  the information  from previous  Richardson levels  can be
@@ -956,7 +953,6 @@ contains
     end function reconstruct_PB3D_X_1
     
     ! Reconstructs the tensorial perturbation variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
     ! name if it is > 0.
     ! With "tot_rich"  the information  from previous  Richardson levels  can be
@@ -1195,30 +1191,90 @@ contains
                     call dealloc_var_1D(var_1D)
                 end if
             end do
-            
-            ! RE_vac_res
-            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                &'RE_vac_res',rich_lvl=id,lim_loc=lim_sec_X)
-            CHCKERR('')
-            call conv_1D2ND(var_1D,dum_2D)
-            X%vac_res = dum_2D
-            call dealloc_var_1D(var_1D)
-            
-            ! IM_vac_res
-            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                &'IM_vac_res',rich_lvl=id,lim_loc=lim_sec_X)
-            CHCKERR('')
-            call conv_1D2ND(var_1D,dum_2D)
-            X%vac_res = X%vac_res + iu*dum_2D
-            call dealloc_var_1D(var_1D)
         end do
         
         ! clean up
         deallocate(dum_4D)
     end function reconstruct_PB3D_X_2
     
+    ! Reconstructs the vacuum variables from PB3D output.
+    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
+    ! name if it is > 0.
+    integer function reconstruct_PB3D_vac(vac,data_name,rich_lvl) result(ierr)
+        use num_vars, only: PB3D_name
+        use HDF5_ops, only: read_HDF5_arr
+        use PB3D_utilities, only: conv_1D2ND
+        use X_utilities, only: get_sec_X_range
+        
+        character(*), parameter :: rout_name = 'reconstruct_PB3D_vac'
+        
+        ! input / output
+        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
+        character(len=*), intent(in) :: data_name                               ! name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        
+        ! local variables
+        type(var_1D_type) :: var_1D                                             ! 1D var
+        integer :: rich_lvl_loc                                                 ! local rich_lvl
+        integer :: style                                                        ! style of vacuum
+        integer :: n_bnd                                                        ! number of terms in boundary
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local rich_lvl
+        rich_lvl_loc = 0
+        if (present(rich_lvl)) rich_lvl_loc = rich_lvl
+        
+        ! misc_vac
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'misc_vac')
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_1D)
+        style = nint(dum_1D(1))
+        n_bnd = nint(dum_1D(2))
+        call dealloc_var_1D(var_1D)
+        
+        ! create vac
+        ierr = vac%init(style,n_bnd)
+        CHCKERR('')
+        
+        ! norm
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'norm',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%norm = dum_2D
+        call dealloc_var_1D(var_1D)
+        
+        ! x_vec
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'x_vec',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%x_vec = dum_2D
+        call dealloc_var_1D(var_1D)
+        
+        ! RE_vac_res
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'RE_vac_res',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%res = dum_2D
+        call dealloc_var_1D(var_1D)
+        
+        ! IM_vac_res
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'IM_vac_res',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%res = vac%res + iu*dum_2D
+        call dealloc_var_1D(var_1D)
+        
+        ! clean up
+        deallocate(dum_4D)
+    end function reconstruct_PB3D_vac
+    
     ! Reconstructs the solution variables from PB3D output.
-    ! Optionally, the grid limits can be provided.
     ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
     ! directly passing its limits to the underlying HDF5 routine. This refers to
     ! the position dimensions only. If provided,  the normal limits of a divided

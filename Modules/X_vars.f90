@@ -59,7 +59,6 @@ module X_vars
     
     ! tensorial perturbation type with arrays of the form:
     !   - (angle_1,angle_2,r,n_mod^2)       for PVi, KVi
-    !   - (n_mod,n_mod)                     for vac_res
     ! where it is refered to the discussion  of the grid type for an explanation
     ! of the angles angle_1 and angle_2.
     ! Note that this type is also used for field-averaged tensorial perturbation
@@ -76,7 +75,6 @@ module X_vars
         complex(dp), allocatable :: KV_0(:,:,:,:)                               ! ~KV^0 coefficient
         complex(dp), allocatable :: KV_1(:,:,:,:)                               ! ~KV^1 coefficient
         complex(dp), allocatable :: KV_2(:,:,:,:)                               ! ~KV^2 coefficient
-        complex(dp), allocatable :: vac_res(:,:)                                ! vacuum response
 #if ldebug
         real(dp) :: estim_mem_usage                                             ! estimated memory usage
 #endif
@@ -206,9 +204,6 @@ contains
         allocate(X%KV_1(n_par,n_geo,loc_n_r,product(X%n_mod)))                  ! not symmetric
         allocate(X%KV_2(n_par,n_geo,loc_n_r,nn_mod))                            ! symmetric
         
-        ! allocate vacuum response
-        allocate(X%vac_res(X%n_mod(1),X%n_mod(2)))
-        
 #if ldebug
         ! set estimated memory usage
         if (print_mem_usage) X%estim_mem_usage = &
@@ -258,7 +253,7 @@ contains
     ! different limits for the secundary mode  numbers (m_X for poloidal flux or
     ! n_X for toroidal flux).
     ! Note: n_X  and m_X need to  have been set up  with the same limits  as the
-    ! grid used here.
+    ! grid used here. This is done in setup_nm_X in X_ops.
     subroutine set_nm_X_1(grid_X,n_X_loc,m_X_loc,lim_sec_X)                     ! vectorial version
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid

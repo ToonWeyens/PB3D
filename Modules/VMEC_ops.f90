@@ -91,9 +91,6 @@ contains
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
             call writo('Free boundary VMEC')
-            err_msg = 'Free boundary VMEC is not yet supported by PB3D...'
-            ierr = 1
-            CHCKERR(err_msg)
         else
             call writo('Fixed boundary VMEC')
         end if

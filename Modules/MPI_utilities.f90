@@ -35,7 +35,8 @@ module MPI_utilities
     end interface
     interface broadcast_var
         module procedure broadcast_var_real, broadcast_var_int, &
-            &broadcast_var_log
+            &broadcast_var_log, broadcast_var_real_arr, broadcast_var_int_arr, &
+            &broadcast_var_log_arr
     end interface
     
 contains
@@ -591,6 +592,64 @@ contains
         call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_log
+    integer function broadcast_var_real_arr(var,source) result(ierr)            ! array version for reals
+        character(*), parameter :: rout_name = 'broadcast_var_real_arr'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:)                                          ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,size(var),MPI_DOUBLE_PRECISION,source_loc,&
+            &MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_real_arr
+    integer function broadcast_var_int_arr(var,source) result(ierr)             ! array version for integers
+        character(*), parameter :: rout_name = 'broadcast_var_int_arr'
+        
+        ! input / output
+        integer, intent(in) :: var(:)                                           ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,size(var),MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_int_arr
+    integer function broadcast_var_log_arr(var,source) result(ierr)             ! array version for logicals
+        character(*), parameter :: rout_name = 'broadcast_var_log_arr'
+        
+        ! input / output
+        logical, intent(in) :: var(:)                                           ! variable to be broadcast
+        integer, intent(in), optional :: source                                 ! process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,size(var),MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_log_arr
     
     ! MPI wait
     integer function wait_MPI() result(ierr)

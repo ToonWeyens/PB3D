@@ -551,7 +551,6 @@ contains
         use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
         use X_utilities, only: do_X
-        use vac, only: calc_vac
         
         character(*), parameter :: rout_name = 'run_driver_X_2'
         
@@ -616,10 +615,6 @@ contains
             case (2)
                 call writo('magnetic interpolation style: 2 (Simpson 3/8 rule)')
         end select
-        call lvl_ud(-1)
-        call writo('The method for calculating the vacuum:')
-        call lvl_ud(1)
-        call writo('NOT YET IMPLEMENTED: SETTING TO ZERO')
         call lvl_ud(-1)
         
         call lvl_ud(-1)
@@ -802,14 +797,6 @@ contains
         end do X_jobs
         call lvl_ud(-1)
         call writo('Tensorial perturbation jobs finished')
-        
-        ! calculate vacuum response
-        call writo('Calculating vacuum response')
-        call lvl_ud(1)
-        ierr = calc_vac(X_2_int)
-        CHCKERR('')
-        call lvl_ud(-1)
-        call writo('Vacuum response calculated')
         
         ! write field-averaged tensorial perturbation variables to output
         if (eq_job_nr.eq.size(eq_jobs_lims,2)) then

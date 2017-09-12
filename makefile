@@ -11,24 +11,19 @@
 # BLAS/LAPACK
 BLASLAPACK_DIR=''# 1. XPS 9360
 #BLASLAPACK_DIR=$(COMPILE_DIR)# 2. ITER
-#BLASLAPACK_DIR=''# 3. GEORGE
 
 # LIBSTELL (Note that by default, unlogically, everything is in bin!)
 LIBSTELL_DIR=/opt/stellinstall/bin# 1. XPS 9360
 #LIBSTELL_DIR=$(COMPILE_DIR)/bin# 2. ITER
-#LIBSTELL_DIR=$(HOME)/bin# 3. GEORGE
 
 # HDF5
 # (from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef)
 HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 1. XPS 9360
 #HDF5_DIR=$(COMPILE_DIR)# 2. ITER
-#HDF5_DIR_INC=/usr/include/hdf5/openmpi# 3. GEORGE
-#HDF5_DIR_LIB=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 3. GEORGE
 
 # NETCDF
 NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
 #NETCDFF_DIR=$(COMPILE_DIR)#  2. ITER
-#NETCDFF_DIR=$(HOME)#  3. GEORGE
 
 # PETSC
 #PETSC_ARCH = debug-complex
@@ -36,17 +31,20 @@ PETSC_ARCH = complex# 1. XPS 93600
 #PETSC_ARCH = arch-linux2-c-opt# 2. ITER
 PETSC_DIR = /opt/petsc-3.7.6# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
-#PETSC_DIR = $(HOME)/Programs/petsc-3.6.4# 3. GEORGE
 
 # SLEPC
 SLEPC_DIR=/opt/slepc-3.7.4# 1. XPS 9360
 #SLEPC_DIR=$(COMPILE_DIR)# 2. ITER
-#SLEPC_DIR = $(HOME)/Programs/slepc-3.6.3# 3. GEORGE
 
 # PB3D
-PB3D_DIR = /opt/PB3D# 1. XPS 9360
-#PB3D_DIR = $(HOME)/Programs_MVAPICH2/PB3D# 2. ITER
-#PB3D_DIR = $(HOME)/Programs/PB3D# 3. GEORGE
+PB3D_DIR=/opt/PB3D# 1. XPS 9360
+#PB3D_DIR=$(HOME)/Programs_MVAPICH2/PB3D# 2. ITER
+
+# STRUMPACK
+STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
+#STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
+
+LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 
 
 ##############################################################################
@@ -59,51 +57,42 @@ INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   $(PETSC_FC_INCLUDES) \
   $(SLEPC_INCLUDE) \
   -I/usr/include/hdf5/openmpi \
+  -I$(STRUMPACK_DIR)/include \
   -I$(PB3D_DIR)/include#1. XPS 9360
 
 #INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   #$(PETSC_FC_INCLUDES) \
   #$(SLEPC_INCLUDE) \
+  #-I$(STRUMPACK_DIR)/include \
   #-I$(PB3D_DIR)/include#2. ITER
-
-#INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
-  #-I$(HDF5_DIR_INC) \
-  #$(PETSC_FC_INCLUDES) \
-  #$(SLEPC_INCLUDE) \
-  #-I$(PB3D_DIR)/include#3. GEORGE
 
 
 ##############################################################################
 #   Link
 #   Note: For reasons unknown to me, the linkin in ITER needs -lnetcdf.
 ##############################################################################
-LINK = -llapack -lblas \
-  $(LIBSTELL_DIR)/libstell.a \
+LINK = $(LIBSTELL_DIR)/libstell.a \
+  $(PETSC_LIB) \
+  $(SLEPC_LIB) \
   -L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
   -L$(NETCDFF_DIR)/lib -lnetcdff \
   -Wl,-R$(NETCDFF_DIR)/lib \
-  $(PETSC_LIB) \
-  $(SLEPC_LIB) \
-  libdfftpack.a libfoul.a# 1. XPS 9360
+  -L$(STRUMPACK_DIR)/lib -lstrumpack \
+  -lscalapack -lblacs -lblas -lm \
+  -lstdc++ -lmpi_cxx# 1. XPS 9360
 
+####!!!!!!!!!!! NEEDS TO BE ADAPTED FROM ABOVE CASE !!!!!!!!!!!
 #LINK = -L$(BLASLAPACK_DIR)/lib -lblas -llapack \
   #$(LIBSTELL_DIR)/libstell.a \
   #-L$(NETCDFF_DIR)/lib -lnetcdff -lnetcdf \
   #-L$(HDF5_DIR)/lib -lhdf5_hl -lhdf5 -lhdf5_fortran -ldl -lm -lz \
   #$(PETSC_LIB) \
   #$(SLEPC_LIB) \
+  #-L$(STRUMPACK_DIR)/lib -lstrumpack \
   #libdfftpack.a libfoul.a# 2. ITER
+####!!!!!!!!!!! NEEDS TO BE ADAPTED FROM ABOVE CASE !!!!!!!!!!!
 
-#LINK = -llapack -lblas \
-  #$(LIBSTELL_DIR)/libstell.a \
-  #-L$(HDF5_DIR_LIB) -lhdf5_fortran -lhdf5 \
-  #-L$(NETCDFF_DIR)/lib -lnetcdff \
-  #-Wl,-R$(NETCDFF_DIR)/lib \
-  #$(PETSC_LIB) \
-  #$(SLEPC_LIB) \
-  #libdfftpack.a libfoul.a# 3. GEORGE
-
-LINK := libdfftpack.a libfoul.a libbspline.a $(LINK)
+LINK := $(LIB_INTERNAL) $(LINK)
 
 
 ##############################################################################
@@ -167,10 +156,10 @@ include $(OBJLIST)# Names of all the objects
 ##############################################################################
 all:	PB3D POST
 
-PB3D:	$(ObjectFiles) libdfftpack.a libfoul.a libbspline.a PB3D.o
+PB3D:	$(ObjectFiles) $(LIB_INTERNAL) PB3D.o
 	$(LINKER) -o $@ $(ObjectFiles) PB3D.o $(LINK) $(LINK_FLAGS)
 
-POST:	$(ObjectFiles) libdfftpack.a libfoul.a libbspline.a POST.o
+POST:	$(ObjectFiles) $(LIB_INTERNAL) POST.o
 	$(LINKER) -o $@ $(ObjectFiles) POST.o $(LINK) $(LINK_FLAGS)
 
 libdfftpack.a: 	dfft.o

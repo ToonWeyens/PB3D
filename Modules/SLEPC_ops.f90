@@ -20,6 +20,7 @@ module SLEPC_ops
     use num_vars, only: iu, dp, max_str_ln
     use grid_vars, only: grid_type
     use X_vars, only: X_1_type, X_2_type
+    use vac_vars, only: vac_type
     use sol_vars, only: sol_type
 
     implicit none
@@ -54,7 +55,7 @@ contains
     ! technique,  using "get_norm_interp_data"  and  "interp_V" can  be seen  in
     ! builds previous to 1.06. These have been superseded by "setup_interp_data"
     ! followed by "apply_disc".
-    integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,sol,i_geo) &
+    integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol,i_geo) &
         &result(ierr)
         
         use num_vars, only: matrix_SLEPC_style
@@ -70,6 +71,7 @@ contains
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 ! solution grid
         type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
+        type(vac_type), intent(in) :: vac                                       ! vacuum variables
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
         
@@ -128,7 +130,7 @@ contains
         
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
-                ierr = set_BC(grid_X,X,A,B,i_geo_loc,grid_sol%n(3))
+                ierr = set_BC(grid_X,X,vac,A,B,i_geo_loc,grid_sol%n(3))
                 CHCKERR('')
         
 #if ldebug
@@ -901,7 +903,7 @@ contains
     !       introduced explicitely  as an asymmetric finite  difference equation
     !       in the last row. This is done using left finite differences.
     ! At the plasma surface, the surface energy is minimized as in [ADD REF].
-    integer function set_BC(grid_X,X,A,B,i_geo,n_r) result(ierr)
+    integer function set_BC(grid_X,X,vac,A,B,i_geo,n_r) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
             &norm_disc_style_sol
         use X_vars, only: n_mod_X
@@ -914,6 +916,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
         type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
+        type(vac_type), intent(in) :: vac                                       ! vacuum variables
         Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
         integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
         integer, intent(in) :: n_r                                              ! number of grid points of solution grid
@@ -1151,7 +1154,7 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
+            ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_2
@@ -1178,7 +1181,7 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(X%vac_res,A,r_id,[0,0],n_r,&
+            ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_3
@@ -1241,7 +1244,7 @@ contains
                         &X%KV_1(1,i_geo,r_id_loc,c([m,k],.false.,n_mod_X)))     ! asymetric matrices don't need con()
                 end do
             end do
-            loc_block(:,:,1) = loc_block(:,:,1) + X%vac_res
+            loc_block(:,:,1) = loc_block(:,:,1) + vac%res
             
             ! set block r_id + (0,0)
             ierr = insert_block_mat(loc_block(:,:,1)*ndc(1+st_size),A,r_id,&

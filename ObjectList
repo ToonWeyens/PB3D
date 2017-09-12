@@ -43,10 +43,11 @@ sol_vars.o \
 test.o \
 PB3D_utilities.o \
 PB3D_ops.o \
-vac.o \
+vac_ops.o \
+vac_vars.o \
+dtorh.o \
 
 ObjectFiles_Libraries = \
 dfft.o \
 foul.o \
-bspline_sub_module.f90 \
-
+bspline_sub_module.o \

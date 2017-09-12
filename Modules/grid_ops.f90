@@ -389,13 +389,9 @@ contains
     !   angular variables are calculated.
     !   - HELENA: The output is given on a poloidal grid (no toroidal dependency
     !   due to axisymmetry), which is used.
-    ! Note: by  setting the flag "only_half_grid",  only the even points  of the
-    ! parallel grid are set up. (Only for VMEC)
-    integer function setup_grid_eq(grid_eq,eq_limits,only_half_grid) &
-        &result(ierr)
+    integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
         use grid_vars, only: n_r_eq
-        use grid_utilities, only: calc_n_par_X_rich
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
         
@@ -404,11 +400,9 @@ contains
         ! input / output
         type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
         integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq grid of this process
-        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
         
         ! local variables
         integer :: id                                                           ! counter
-        integer :: n_par_X_rich                                                 ! n_par_X for this Richardson level
         
         ! initialize ierr
         ierr = 0
@@ -422,10 +416,6 @@ contains
                 ! user output
                 call writo('Field-aligned with '//trim(i2str(n_r_eq))//&
                     &' normal and '//trim(i2str(n_par_X))//' parallel points')
-                
-                ! set local n_par_X
-                ierr = calc_n_par_X_rich(n_par_X_rich,only_half_grid)
-                CHCKERR('')
                 
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq%init([eq_jobs_lims(2,eq_job_nr)-&
@@ -466,7 +456,6 @@ contains
     integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
         &result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
-        use grid_utilities, only: calc_n_par_X_rich
         
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
@@ -478,7 +467,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n_par_X_rich                                                 ! n_par_X for this Richardson level
         
         ! initialize ierr
         ierr = 0
@@ -493,10 +481,6 @@ contains
                 err_msg = 'The grid is already field-aligned for VMEC'
                 CHCKERR(err_msg)
             case (2)                                                            ! HELENA
-                ! set local n_par_X
-                ierr = calc_n_par_X_rich(n_par_X_rich,only_half_grid)
-                CHCKERR('')
-                
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq_B%init([eq_jobs_lims(2,eq_job_nr)-&
                     &eq_jobs_lims(1,eq_job_nr)+1,1,grid_eq%n(3)],&

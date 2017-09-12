@@ -14,7 +14,7 @@
 !   Institution: ITER Organization                                             !
 !   Contact: weyenst@gmail.com                                                 !
 !------------------------------------------------------------------------------!
-!   Version: 1.88                                                              !
+!   Version: 1.89                                                              !
 !------------------------------------------------------------------------------!
 !   References:                                                                !
 !       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
@@ -28,6 +28,7 @@ program PB3D
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
+    use vac_vars, only: vac_type
     use sol_vars, only: sol_type
     use HDF5_vars, only: init_HDF5
     use driver_eq, only: run_driver_eq
@@ -62,7 +63,8 @@ program PB3D
     type(eq_2_type) :: eq_2                                                     ! metric equilibrium variables
     type(X_1_type) :: X_1                                                       ! vectorial perturbation variables
     type(X_2_type) :: X_2                                                       ! integrated tensorial perturbation variables
-    type(sol_type) :: sol                                                       ! solution
+    type(vac_type) :: vac                                                       ! vacuum variables
+    type(sol_type) :: sol                                                       ! solution variables
     
     !-------------------------------------------------------
     !   Initialize some routines
@@ -158,7 +160,7 @@ program PB3D
             call writo('Equilibrium driver'//trim(rich_info())//&
                 &trim(eq_info()))
             call lvl_ud(1)
-            ierr = run_driver_eq(grid_eq,grid_eq_B,eq_1,eq_2)                   ! equilibrium driver
+            ierr = run_driver_eq(grid_eq,grid_eq_B,eq_1,eq_2,vac)               ! equilibrium driver
             CHCKERR
             call writo('')
             call passed_time
@@ -187,7 +189,7 @@ program PB3D
         call start_time
         call writo('Solution driver'//trim(rich_info()))
         call lvl_ud(1)
-        ierr = run_driver_sol(grid_X,grid_X_B,grid_sol,X_2,sol)                 ! solution driver
+        ierr = run_driver_sol(grid_X,grid_X_B,grid_sol,X_2,vac,sol)             ! solution driver
         CHCKERR
         call writo('')
         call passed_time

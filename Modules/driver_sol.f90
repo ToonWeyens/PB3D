@@ -10,6 +10,7 @@ module driver_sol
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use X_vars, only: X_2_type
+    use vac_vars, only: vac_type
     use sol_vars, only: sol_type
     
     implicit none
@@ -35,7 +36,8 @@ contains
     !   - sol
     ! deallocates:
     !   - sol before setting up (but after guess)
-    integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,sol) result(ierr)
+    integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,vac,sol) &
+        &result(ierr)
         use num_vars, only: EV_style, eq_style, rich_restart_lvl
         use grid_vars, only: n_r_sol
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
@@ -44,6 +46,7 @@ contains
         use sol_ops, only: print_output_sol
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
+        use vac_ops, only: calc_vac
         !!use num_utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
@@ -57,6 +60,7 @@ contains
         type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              ! solution grid
         type(X_2_type), intent(in) :: X                                         ! integrated tensorial perturbation variables
+        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
         type(sol_type), intent(inout) :: sol                                    ! solution variables
         
         ! local variables
@@ -86,6 +90,10 @@ contains
         
         !!! calculate auxiliary quantities for utilities
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
+        
+        ! calculate vacuum
+        ierr = calc_vac(vac)
+        CHCKERR('')
         
         ! set up solution grid if first level
         if (rich_lvl.eq.rich_restart_lvl) then
@@ -131,7 +139,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_X,grid_sol,X,sol)
+                ierr = solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
