@@ -313,7 +313,7 @@ contains
             character(*), parameter :: rout_name = 'calc_GH_2'
             
             ! local variables
-            real(dp) :: rho(:,:)                                                ! distance in projected poloidal plane
+            real(dp), allocatable :: rho(:,:)                                   ! distance in projected poloidal plane
             
             ! initialize ierr
             ierr = 0

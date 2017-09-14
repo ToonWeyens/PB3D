@@ -1015,3 +1015,6 @@ Technische Universiteit Eindhoven
 * New module 'dtorh' that calculates toroidal functions.
 * Strumpack is going to be used to solve structured matrices resulting from the vacuum.
 * 'vac' is now split into 'vac_ops' and 'vac_vars'.
+
+## 1.90:
+* Slightly extended 'export_HEL' to also give output for current coil matching with Javier Artola's routines in Jorek.

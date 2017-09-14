@@ -510,17 +510,17 @@ contains
         !   B_F_loc:  (pol modes, cos/sin)
         !   B_F:      (tor_modes, pol modes, cos/sin (m theta), R/Z)
         integer function create_VMEC_input(grid_eq,eq_1) result(ierr)
-            use eq_vars, only: pres_0, R_0, psi_0
+            use eq_vars, only: pres_0, R_0, psi_0, B_0
             use grid_vars, only: n_r_eq
             use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
                 &calc_XYZ_grid
-            use HELENA_vars, only: nchi, R_H, Z_H, ias
+            use HELENA_vars, only: nchi, R_H, Z_H, ias, RBphi_H, flux_p_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
             use num_utilities, only: GCD, bubble_sort, order_per_fun, &
                 &shift_F, spline3
             use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
-                &norm_disc_prec_eq, prop_B_tor_i, tol_zero
+                &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original
             use files_utilities, only: skip_comment, count_lines
             use bspline_sub_module, only: db2ink, db2val, get_status_message
 #if ldebug
@@ -577,6 +577,9 @@ contains
             real(dp) :: s_V(99)                                                 ! normal coordinate s for writing
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
+            real(dp) :: FFp_J(99)                                               ! FF' for writing
+            real(dp) :: q_saf_J(99)                                             ! q_saf for writing
+            real(dp), allocatable :: FFp(:)                                     ! FF' in total grid
             real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
             real(dp), allocatable :: Z_plot(:,:,:)                              ! Z for plotting of ripple map
             real(dp), allocatable :: spline_knots_R(:)                          ! knots of spline for R
@@ -632,6 +635,14 @@ contains
                 R_H_loc = R_H*R_0
                 Z_H_loc = Z_H*R_0
             end if
+            
+            ! set up FF'
+            allocate(FFp(n_r_eq))
+            ierr = spline3(norm_disc_prec_eq,flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
+                &RBphi_H,flux_p_H(:,0)/flux_p_H(n_r_eq,0),dynew=FFp)
+            CHCKERR('')
+            FFp = FFp*RBphi_H
+            if (use_normalization) FFp = FFp*(R_0*B_0)**2
             
             ! user output
             call writo('Initialize boundary')
@@ -1393,6 +1404,10 @@ contains
             ierr = apply_disc(eq_1%pres_E(:,0),norm_interp_data,pres_V)
             CHCKERR('')
             if (use_normalization) pres_V = pres_V*pres_0
+            ierr = apply_disc(FFp,norm_interp_data,FFp_J)
+            CHCKERR('')
+            ierr = apply_disc(eq_1%q_saf_E(:,0),norm_interp_data,q_saf_J)
+            CHCKERR('')
             ierr = apply_disc(-eq_1%rot_t_E(:,0),norm_interp_data,rot_T_V)
             CHCKERR('')
             call norm_interp_data%dealloc()
@@ -1483,6 +1498,21 @@ contains
             write(HEL_export_i,"(A,ES23.16)") "RAXIS = ", RZ_B_0(1)
             write(HEL_export_i,"(A,ES23.16)") "ZAXIS = ", RZ_B_0(2)
             write(HEL_export_i,"(A)") "&END"
+            
+            close(HEL_export_i)
+            
+            ! output to output file for free-boundary coil fitting
+            file_name = "flux_quantities_"//trim(eq_name)//'.javifile'
+            open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
+                &IOSTAT=ierr)
+            CHCKERR('Failed to open file')
+            
+            write(HEL_export_i,"('! ',4(A23,' '))") 'normalized pol. flux []', &
+                &'mu_0*pressure [T^2m]', '-FF [B^2 T^2]', 'safety factor []'
+            do kd = 1,size(s_V)
+                write(HEL_export_i,"('  ',4(ES23.16,' '))") s_V(kd)**2, &
+                    &mu_0_original*pres_V(kd), -FFp_J(kd), q_saf_J(kd)
+            end do
             
             close(HEL_export_i)
             

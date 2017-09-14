@@ -149,7 +149,8 @@ contains
         else
             call H5Fcreate_f(trim(full_file_name)//'.h5',H5F_ACC_TRUNC_F,&
                 &HDF5_i,ierr,access_prp=plist_id)
-            CHCKERR('Failed to create file')
+            err_msg = 'Failed to create file. Is '//trim(data_dir)//'/ present?'
+            CHCKERR(err_msg)
         end if
         
         ! close property list
