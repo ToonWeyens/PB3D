@@ -234,7 +234,7 @@ contains
             use num_vars, only: use_pol_flux_E
             
             ! concerning finding zeros
-            max_it_zero = 500                                                   ! maximum 500 iterations
+            max_it_zero = 100                                                   ! maximum 100 iterations
             tol_zero = 1.0E-10_dp                                               ! very low tolerance for calculation of field lines
             
             ! runtime variables

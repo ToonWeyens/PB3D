@@ -2149,6 +2149,7 @@ contains
         ! local variables
         integer :: kd                                                           ! counter
         integer :: n                                                            ! size of x, y, ...
+        integer :: ord_loc                                                      ! local order
         integer :: spline_init                                                  ! spline initialization parameter
         real(dp), allocatable :: spline_knots(:)                                ! knots of spline
         real(dp), allocatable :: spline_coeff(:)                                ! coefficients of spline
@@ -2157,31 +2158,40 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set up local order, which can be higher than ord if we have derivatives
+        ord_loc = ord
+        if (present(d2ynew)) then
+            ord_loc = ord_loc + 2
+        else if (present(dynew)) then
+            ord_loc = ord_loc + 1
+        end if
+        ord_loc = max(ord_loc,2)                                                ! db1val needs at least 2 (check_k)
+        
         ! initialize
         n = size(x)
         allocate(spline_coeff(n))
-        allocate(spline_knots(n+ord))
+        allocate(spline_knots(n+ord_loc))
         
         ! calculate coefficients
-        call db1ink(x,n,y,ord,0,spline_knots,spline_coeff,ierr)
+        call db1ink(x,n,y,ord_loc,0,spline_knots,spline_coeff,ierr)
         err_msg = get_status_message(ierr)
         CHCKERR(err_msg)
         spline_init = 1
         do kd = 1,size(xnew)
             if (present(ynew)) then
-                call db1val(xnew(kd),0,spline_knots,n,ord,&
+                call db1val(xnew(kd),0,spline_knots,n,ord_loc,&
                     &spline_coeff,ynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
             end if
             if (present(dynew)) then
-                call db1val(xnew(kd),1,spline_knots,n,ord,&
+                call db1val(xnew(kd),1,spline_knots,n,ord_loc,&
                     &spline_coeff,dynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
             end if
             if (present(d2ynew)) then
-                call db1val(xnew(kd),2,spline_knots,n,ord,&
+                call db1val(xnew(kd),2,spline_knots,n,ord_loc,&
                     &spline_coeff,d2ynew(kd),ierr,spline_init,extrap=extrap)
                 err_msg = get_status_message(ierr)
                 CHCKERR(err_msg)
@@ -2204,6 +2214,7 @@ contains
         ! local variables
         integer :: kd, id                                                       ! counters
         integer :: n                                                            ! size of x, y, ...
+        integer :: ord_loc                                                      ! local order
         integer :: spline_init                                                  ! spline initialization parameter
         real(dp) :: dummy_var(2)                                                ! dummy variable
         real(dp), allocatable :: spline_knots(:,:)                              ! knots of spline
@@ -2213,23 +2224,31 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set up local order, which can be higher than ord if we have derivatives
+        ord_loc = ord
+        if (present(d2ynew)) then
+            ord_loc = ord_loc + 2
+        else if (present(dynew)) then
+            ord_loc = ord_loc + 1
+        end if
+        
         ! initialize
         n = size(x)
         allocate(spline_coeff(n,2))
-        allocate(spline_knots(n+ord,2))
+        allocate(spline_knots(n+ord_loc,2))
         
         ! calculate coefficients for real part and complex part
-        call db1ink(x,n,rp(y),ord,0,spline_knots(:,1),spline_coeff(:,1),ierr)
+        call db1ink(x,n,rp(y),ord_loc,0,spline_knots(:,1),spline_coeff(:,1),ierr)
         err_msg = get_status_message(ierr)
         CHCKERR(err_msg)
-        call db1ink(x,n,ip(y),ord,0,spline_knots(:,2),spline_coeff(:,2),ierr)
+        call db1ink(x,n,ip(y),ord_loc,0,spline_knots(:,2),spline_coeff(:,2),ierr)
         err_msg = get_status_message(ierr)
         CHCKERR(err_msg)
         spline_init = 1
         do kd = 1,size(xnew)
             if (present(ynew)) then
                 do id = 1,2
-                    call db1val(xnew(kd),0,spline_knots(:,id),n,ord,&
+                    call db1val(xnew(kd),0,spline_knots(:,id),n,ord_loc,&
                         &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
                         &extrap=extrap)
                     err_msg = get_status_message(ierr)
@@ -2239,7 +2258,7 @@ contains
             end if
             if (present(dynew)) then
                 do id = 1,2
-                    call db1val(xnew(kd),1,spline_knots(:,id),n,ord,&
+                    call db1val(xnew(kd),1,spline_knots(:,id),n,ord_loc,&
                         &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
                         &extrap=extrap)
                     err_msg = get_status_message(ierr)
@@ -2249,7 +2268,7 @@ contains
             end if
             if (present(d2ynew)) then
                 do id = 1,2
-                    call db1val(xnew(kd),2,spline_knots(:,id),n,ord,&
+                    call db1val(xnew(kd),2,spline_knots(:,id),n,ord_loc,&
                         &spline_coeff(:,id),dummy_var(id),ierr,spline_init,&
                         &extrap=extrap)
                     err_msg = get_status_message(ierr)

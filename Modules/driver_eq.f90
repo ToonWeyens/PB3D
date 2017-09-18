@@ -51,6 +51,7 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
             &reconstruct_PB3D_eq_2
         use num_utilities, only: derivs
+        use MPI_utilities, only: wait_MPI
         use rich_vars, only: rich_lvl
         use HDF5_ops, only: create_output_HDF5
         use vac_ops, only: store_vac
@@ -371,7 +372,11 @@ contains
                 
                 ! reconstruct the full field-aligned grid
                 ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
-                    &rich_lvl=rich_lvl,tot_rich=.true.)
+                    &rich_lvl=rich_lvl,tot_rich=.true.,grid_limits=eq_limits)
+                CHCKERR('')
+                
+                ! wait for all processes (sometimes necessary to finish lock)
+                ierr = wait_MPI()
                 CHCKERR('')
                 
                 ! plot it

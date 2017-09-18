@@ -17,7 +17,7 @@
 !  extensions of the same algorithm into higher dimensions).
 !
 !### See also
-!  * An object-oriented interface can be found in [[bspline_oo_module]].
+!    An object-oriented interface can be found in [[bspline_oo_module]].
 !
 !### References
 !

@@ -41,7 +41,6 @@ contains
         use rich_vars, only: rich_lvl
         use MPI_utilities, only: broadcast_var
         use num_utilities, only: c
-        use grid_utilities, only: calc_vec_comp
         use grid_vars, only: n_r_eq
         
         character(*), parameter :: rout_name = 'store_vac'
@@ -72,13 +71,15 @@ contains
     contains
         integer function store_vac_VMEC() result(ierr)                          ! VMEC version
             use rich_vars, only: n_par_X
+            use eq_utilities, only: calc_inv_met
             
             character(*), parameter :: rout_name = 'store_vac_VMEC'
             
             ! local variables
             integer :: eq_job_lims(2)                                           ! local eq_jobs_lims
             integer, allocatable :: n_par_loc(:)                                ! local n_par
-            real(dp), allocatable :: norm_com(:,:,:,:,:)                        ! components of norm
+            real(dp), allocatable :: norm_com_C(:,:)                            ! Cylindrical components of norm
+            real(dp), allocatable :: T_CV_loc(:,:,:,:,:,:,:)                    ! local T_CV
             type(vac_type) :: vac_old                                           ! old vacuum variables
             
             ! initialize ierr
@@ -128,9 +129,8 @@ contains
             end if
             
             ! add results from current equilibrium job to the variables
+            eq_job_lims = eq_jobs_lims(:,eq_job_nr)
             if (rank.eq.n_procs-1) then
-                eq_job_lims = eq_jobs_lims(:,eq_job_nr)
-                
                 ! grid point to save is last local
                 r_id = grid%loc_n_r
                 
@@ -143,21 +143,26 @@ contains
                     &eq_2%Z_E(:,1,r_id,0,0,0)
                 
                 ! calculate Cartesian components of J nabla psi
-                allocate(norm_com(grid%n(1),1,1,3,2))
-                norm_com = 0._dp
-                norm_com(:,1,1,1,2) = eq_2%jac_FD(:,1,r_id,0,0,0)               ! covariant components
-                do id = 1,3
-                    norm_com(:,1,1,2,id) = eq_2%jac_FD(:,1,r_id,0,0,0) * &
-                        &eq_2%h_FD(:,1,r_id,c([id,2],.true.),0,0,0)             ! contravariant components
-                end do
-                ierr = calc_vec_comp(grid,grid,eq_1,eq_2,norm_com,&
-                    &norm_disc_prec_eq,max_transf=4)
+                !   = -J_V / (1+Lambda_theta) (T_C^V_^T) (e_V)
+                allocate(norm_com_C(grid%n(1),3))
+                norm_com_C = 0._dp
+                allocate(T_CV_loc(size(eq_2%T_VC,1),1:1,1:1,&
+                    &size(eq_2%T_VC,4),0:0,0:0,0:0))
+                ierr = calc_inv_met(T_CV_loc,eq_2%T_VC(:,1:1,1:1,:,:,:,:),&
+                    &[0,0,0])
                 CHCKERR('')
-                vac%norm(eq_job_lims(1):eq_job_lims(2),:) = &
-                    &norm_com(:,1,1,:,2)                                        ! take covariant components
+                do id = 1,3
+                    norm_com_C(:,id) = -eq_2%jac_E(:,1,r_id,0,0,0) * &
+                        &T_CV_loc(:,1,1,c([id,1],.false.),0,0,0)                ! Cylindrical components
+                end do
+                deallocate(T_CV_loc)
+                vac%norm(eq_job_lims(1):eq_job_lims(2),1) = &
+                    &norm_com_C(:,1)*cos(grid%zeta_E(:,1,r_id)) - &
+                    &norm_com_C(:,2)*sin(grid%zeta_E(:,1,r_id))                 ! ~ e_X
                 vac%norm(eq_job_lims(1):eq_job_lims(2),2) = &
-                    &vac%norm(eq_job_lims(1):eq_job_lims(2),1) * &
-                    &eq_2%R_E(:,1,r_id,0,0,0)                                   ! compensate for |e_zeta| = R
+                    &norm_com_C(:,1)*sin(grid%zeta_E(:,1,r_id)) + &
+                    &norm_com_C(:,2)*cos(grid%zeta_E(:,1,r_id))                 ! ~ e_Y
+                vac%norm(eq_job_lims(1):eq_job_lims(2),3) = norm_com_C(:,3)     ! ~ e_Z
             end if
             
             ! broadcast to other processes
@@ -349,32 +354,37 @@ contains
         ! local variables
         type(StrumpackDensePackage_F90_dcomplex) :: SDP_F90                     ! Strumpack object
         
-        call writo('Start calculation of vacuum')
-        
-        call lvl_ud(1)
-        
-        ! calculate matrices G and H
-        ierr = calc_GH(vac,only_even=rich_lvl.gt.1)
-        CHCKERR('')
-        
-        ! Initialize the solver and set parameters
-        call SDP_F90_dcomplex_init(SDP_F90,MPI_COMM_WORLD)
-        SDP_F90%use_HSS=1
-        !SDP_F90%levels_HSS=4
-        SDP_F90%min_rand_HSS=10
-        SDP_F90%lim_rand_HSS=5
-        SDP_F90%inc_rand_HSS=10
-        SDP_F90%max_rand_HSS=100
-        SDP_F90%tol_HSS=1D-12
-        SDP_F90%steps_IR=10
-        SDP_F90%tol_IR=1D-10
-        
         ! initialize ierr
         ierr = 0
         
-        call lvl_ud(-1)
+        call writo('NOT YET IMPLEMENTED!!!! SET TO ZERO!!!',warning=.true.)
+        vac%res = 0._dp
+        !call writo('Start calculation of vacuum')
         
-        call writo('Done calculating vacuum quantities')
+        !call lvl_ud(1)
+        
+        !! calculate matrices G and H
+        !ierr = calc_GH(vac,only_even=rich_lvl.gt.1)
+        !CHCKERR('')
+        
+        !! Initialize the solver and set parameters
+        !call SDP_F90_dcomplex_init(SDP_F90,MPI_COMM_WORLD)
+        !SDP_F90%use_HSS=1
+        !!SDP_F90%levels_HSS=4
+        !SDP_F90%min_rand_HSS=10
+        !SDP_F90%lim_rand_HSS=5
+        !SDP_F90%inc_rand_HSS=10
+        !SDP_F90%max_rand_HSS=100
+        !SDP_F90%tol_HSS=1D-12
+        !SDP_F90%steps_IR=10
+        !SDP_F90%tol_IR=1D-10
+        
+        !! initialize ierr
+        !ierr = 0
+        
+        !call lvl_ud(-1)
+        
+        !call writo('Done calculating vacuum quantities')
     end function calc_vac
     
     ! Print either vacuum quantities of a certain order to an output file:

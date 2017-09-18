@@ -116,7 +116,7 @@ contains
                     values(jd) = zero
                 end if
 #endif
-                zero = zero + relax_fac_loc/id*corr                             ! relaxation factor scaled by id
+                zero = zero + (relax_fac_loc*0.5_dp**id)*corr                   ! relaxation factor scaled by 2^id
                 
                 ! check for convergence
                 if (abs(corr).lt.tol_zero) then
@@ -142,6 +142,10 @@ contains
                             &trim(r2strt(corr))//' and final value '//&
                             &trim(r2strt(zero))
                         zero = 0.0_dp
+                    else
+                        call writo('Increasing relaxation factor to '//&
+                            &trim(r2strt(relax_fac_loc*0.5_dp**(id+1))),&
+                            &warning=.true.)
                     end if
                 end if
             end do HH
@@ -195,7 +199,7 @@ contains
 #endif
     end function calc_zero_HH_0D
     function calc_zero_HH_3D(dims,zero,fun,ord,guess,relax_fac,&
-        &max_nr_tries) result(err_msg)
+        &max_nr_tries,output) result(err_msg)
         use num_vars, only: max_it_zero, tol_zero, relax_fac_HH, max_nr_tries_HH
         
         ! input / output
@@ -214,6 +218,7 @@ contains
         real(dp), intent(in) :: guess(dims(1),dims(2),dims(3))                  ! first guess
         real(dp), intent(in), optional :: relax_fac                             ! relaxation factor
         integer, intent(in), optional :: max_nr_tries                           ! max nr. of tries with different relaxation factors
+        logical, intent(in), optional :: output                                 ! give output on convergence
         character(len=max_str_ln) :: err_msg                                    ! possible error message
         
         ! local variables
@@ -221,6 +226,7 @@ contains
         integer :: jd_tot
         integer :: max_nr_tries_loc                                             ! local max_nr_tries
         integer :: mc_ind(3)                                                    ! index of maximum correction
+        logical :: output_loc                                                   ! local output
         real(dp) :: corr(dims(1),dims(2),dims(3))                               ! correction
         real(dp) :: relax_fac_loc                                               ! local relaxation factor
         real(dp), allocatable :: fun_vals(:,:,:,:)                              ! function values
@@ -236,9 +242,13 @@ contains
         if (ord.lt.1 .or. ord.gt.3) then
             zero = 0.0_dp
             err_msg = 'only orders 1 (Newton-Rhapson), 2 (Halley) and 3 &
-                &implemented'
+                &implemented, not '//trim(i2str(ord))
             return
         end if
+        
+        ! set up local output
+        output_loc = .false.
+        if (present(output)) output_loc = output
         
         ! set up zero
         zero = guess
@@ -292,7 +302,8 @@ contains
                     values(:,:,:,jd) = zero
                 end if
 #endif
-                zero = zero + relax_fac_loc/id*corr                             ! relaxation factor scaled by id
+                where (abs(corr).gt.tol_zero) &
+                    &zero = zero + (relax_fac_loc*0.5_dp**id)*corr              ! relaxation factor scaled by 2^id
                 
                 ! check for convergence
                 if (maxval(abs(corr)).lt.tol_zero) then
@@ -300,7 +311,6 @@ contains
                     if (debug_calc_zero) call &
                         &plot_evolution(corrs(:,:,:,1:jd),values(:,:,:,1:jd))
 #endif
-        !write(*,*) 'NEEDED ',id,' TRIES, ',jd_tot,' ITERATIONS IN TOTAL'
                     return
                 else if (jd .eq. max_it_zero) then
 #if ldebug
@@ -321,7 +331,18 @@ contains
                             &//' and final value '//trim(r2strt(&
                             &zero(mc_ind(1),mc_ind(2),mc_ind(3))))
                         zero = 0.0_dp
+                    else
+                        call writo('Increasing relaxation factor to '//&
+                            &trim(r2strt(relax_fac_loc*0.5_dp**(id+1))),&
+                            &warning=.true.)
                     end if
+                else
+                    ! output
+                    if (output_loc) call writo(trim(i2str(jd))//' / '&
+                        &//trim(i2str(max_it_zero))//&
+                        &' - maximum relative error: '//&
+                        &trim(r2str(maxval(abs(corr))))//' > '//&
+                        &trim(r2str(tol_zero)))
                 end if
                 jd_tot = jd_tot + 1
             end do HH

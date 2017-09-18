@@ -455,6 +455,7 @@ vac_ops.o : \
     MPI_utilities.o \
     num_utilities.o \
     grid_utilities.o \
+    eq_utilities.o \
     num_vars.o \
     X_vars.o \
     vac_vars.o \

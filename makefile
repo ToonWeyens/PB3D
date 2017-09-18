@@ -119,7 +119,7 @@ LINKER=mpifort
 #   note: INTEL warning 6536 is suppressed, which informs about extra "USE".
 #   note: INTEL warning 6843 is suppressed, which informs about empty intent(out) variables
 ##############################################################################
-COMP_FLAGS = -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
+COMP_FLAGS = -finit-real=snan -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
 #COMP_FLAGS = -O3 -fbacktrace -g -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
 
 #COMP_FLAGS = -O0 -DlIB -Dldebug -g -heap-arrays 100 -recursive -ftrapuv -check bounds -check uninit -traceback -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# debug, profiling with gprof2dot, INTEL
@@ -133,7 +133,8 @@ COMP_FLAGS_F= -O2 -funroll-loops -fexpensive-optimizations
 ##############################################################################
 #   Link flags
 ##############################################################################
-LINK_FLAGS = -fPIC
+LINK_FLAGS = -fPIC -finit-real=snan# debug
+#LINK_FLAGS = -fPIC# optimized
 
 
 ##############################################################################

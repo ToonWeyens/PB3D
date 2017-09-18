@@ -839,10 +839,13 @@ contains
         ! convert  Flux  coordinates  to  Equilibrium  coordinates  (use
         ! custom flux_E and  flux_F because the Flux  quantities are not
         ! yet calculated)
+        call writo('convert F to E coordinates')
+        call lvl_ud(1)
         ierr = coord_F2E(grid_eq,grid_eq%loc_r_F,grid_eq%theta_F,&
             &grid_eq%zeta_F,r_E_loc,grid_eq%theta_E,grid_eq%zeta_E,&
             &r_F_array=flux_F/r_F_factor,r_E_array=flux_E/r_E_factor)
         CHCKERR('')
+        call lvl_ud(-1)
         
         ! test whether r_E_loc indeed corresponds to loc_r_E of eq grid
         if (maxval(abs(grid_eq%loc_r_E-r_E_loc)).gt.10*tol_zero) then
@@ -1115,7 +1118,7 @@ contains
             ! initialize ierr
             ierr = 0
             
-            ! only local masters
+            ! only master
             if (rank.eq.0) then
                 ! user output
                 call writo('Drawing animation with HDF5')

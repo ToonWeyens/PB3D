@@ -56,7 +56,7 @@ contains
     ! Standard, for E, the poloidal or  toroidal normalized flux is used and for
     ! F, the poloidal or toroidal flux in F coordinates, divided by 2pi.
     integer function coord_F2E_rtz(grid_eq,r_F,theta_F,zeta_F,r_E,&
-        &theta_E,zeta_E,r_F_array,r_E_array) result(ierr)                       ! version with r, theta and zeta
+        &theta_E,zeta_E,r_F_array,r_E_array,ord) result(ierr)                   ! version with r, theta and zeta
         use num_vars, only: tol_zero, eq_style
         use VMEC_utilities, only: fourier2real
         use VMEC_vars, only: L_V_c, L_V_s, is_asym_V
@@ -68,18 +68,24 @@ contains
         real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux coords.
         real(dp), intent(inout) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)        ! Equilibrium coords.
         real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
+        integer, intent(in), optional :: ord                                    ! order (only used for eq_style 1)
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: dims(3)                                                      ! dimensions of the grid
         real(dp), allocatable :: L_V_c_loc(:,:)                                 ! local version of L_V_c
         real(dp), allocatable :: L_V_s_loc(:,:)                                 ! local version of L_V_s
+        integer :: ord_loc                                                      ! local ord
         
         ! initialize ierr
         ierr = 0
         
         ! set up array sizes
         dims = shape(theta_E)
+        
+        ! set up local ord
+        ord_loc = 3
+        if (present(ord)) ord_loc = ord
         
         ! tests
         if (dims(3).ne.size(r_F) .or. dims(3).ne.size(r_E)) then
@@ -162,12 +168,12 @@ contains
             ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_F,zeta_E,&
                 &theta_E_guess_3D,sym=[is_asym_V,.true.],deriv=[0,0])
             CHCKERR('')
-            theta_E_guess_3D = theta_F - theta_E_guess_3D
+            theta_E_guess_3D = theta_F - theta_E_guess_3D*0.75_dp               ! relax guess (not linear problem!)
             
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
-            err_msg = calc_zero_HH(dims,theta_E,fun_pol,3,&
-                &theta_E_guess_3D,relax_fac=0.99_dp)                            ! relax factor 1.0 gave problems sometimes
+            err_msg = calc_zero_HH(dims,theta_E,fun_pol,ord_loc,&
+                &theta_E_guess_3D,relax_fac=0.75_dp,output=.true.)              ! relaxation in solution
             if (err_msg.ne.'') then
                 ierr = 1
                 CHCKERR(err_msg)
@@ -206,8 +212,8 @@ contains
             fun_pol = 0.0_dp
             
             ! calculate lambda
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,&
-                &theta_E_in,zeta_E,lam,sym=[is_asym_V,.true.],deriv=[dpol,0])
+            ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_E_in,zeta_E,lam,&
+                &sym=[is_asym_V,.true.],deriv=[dpol,0])
             CHCKERR('')
             
             ! calculate the output function
@@ -881,12 +887,10 @@ contains
         if (present(lim_zeta_plot)) lim_zeta_plot_loc = lim_zeta_plot
         
         ! user ouput
-#if ldebug
         call writo('Theta limits: '//trim(r2strt(lim_theta_plot_loc(1)))//&
             &'pi .. '//trim(r2strt(lim_theta_plot_loc(2)))//'pi')
         call writo('Zeta limits: '//trim(r2strt(lim_zeta_plot_loc(1)))//&
             &'pi .. '//trim(r2strt(lim_zeta_plot_loc(2)))//'pi')
-#endif
         
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in F coordinates
@@ -904,11 +908,16 @@ contains
         
         ! convert all F coordinates to E coordinates if requested
         if (present(grid_eq)) then
+            call writo('convert F to E coordinates')
+            call lvl_ud(1)
+            
             grid_ext%r_F = grid_in%r_F
             ierr = coord_F2E(grid_eq,&
                 &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F,&
                 &grid_ext%loc_r_E,grid_ext%theta_E,grid_ext%zeta_E)
             CHCKERR('')
+            
+            call lvl_ud(-1)
         end if
     end function extend_grid_F
     

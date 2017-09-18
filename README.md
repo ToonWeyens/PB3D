@@ -1018,3 +1018,13 @@ Technische Universiteit Eindhoven
 
 ## 1.90:
 * Slightly extended 'export_HEL' to also give output for current coil matching with Javier Artola's routines in Jorek.
+
+## 1.91:
+* First steps taken to use Doxygen.
+* Bug fixes in 'export_HEL'.
+* Fixed bug in splines with low order.
+* coord_F2E_rtz now has an optional option to choose the order.
+* Tuned the parameters in 'coord_F2E_rtz', because the current ones were too aggressive for pointy plasmas.
+* Fixed bug in 'store_vac' where 'calc_vec_comp' was used incorrectly and very redundantly.
+* 'calc_zero_HH' now shows output.
+* eq_ops does not deallocate T_VF and jac_E anymore, as they are needed for vacuum.

@@ -322,7 +322,6 @@ contains
                 if (dealloc_vars_loc) then
                     deallocate(eq_2%L_E)
                     deallocate(eq_2%g_C)
-                    deallocate(eq_2%T_VC)
                 end if
             case (2)                                                            ! HELENA
 #if ldebug
@@ -444,7 +443,7 @@ contains
         
         ! possibly deallocate
         if (dealloc_vars_loc) then
-            deallocate(eq_2%g_E,eq_2%jac_E)
+            deallocate(eq_2%g_E)
         end if
         
         ! Transform metric equilibrium E into F derivatives
@@ -513,7 +512,7 @@ contains
             use eq_vars, only: pres_0, R_0, psi_0, B_0
             use grid_vars, only: n_r_eq
             use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
-                &calc_XYZ_grid
+                &calc_XYZ_grid, setup_deriv_data
             use HELENA_vars, only: nchi, R_H, Z_H, ias, RBphi_H, flux_p_H
             use X_vars, only: min_r_sol, max_r_sol
             use input_utilities, only: pause_prog, get_log, get_int, get_real
@@ -523,9 +522,6 @@ contains
                 &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original
             use files_utilities, only: skip_comment, count_lines
             use bspline_sub_module, only: db2ink, db2val, get_status_message
-#if ldebug
-            use grid_utilities, only: setup_deriv_data
-#endif
             
             character(*), parameter :: rout_name = 'create_VMEC_input'
             
@@ -551,7 +547,7 @@ contains
             integer :: max_n_B_output                                           ! max. nr. of modes written in output file (constant in VMEC)
             integer :: n_prop_B_tor                                             ! n of angular poins in prop_B_tor
             integer :: spline_init(3)                                           ! spline initialization parameter
-            integer, parameter :: nr_m_max = 500                                ! maximum nr. of poloidal mode numbers
+            integer :: nr_m_max                                                 ! maximum nr. of poloidal mode numbers
             integer, allocatable :: n_pert(:)                                   ! tor. mode numbers and pol. mode numbers for each of them
             integer, allocatable :: n_pert_copy(:)                              ! copy of n_pert, for sorting
             integer, allocatable :: piv(:)                                      ! pivots for sorting
@@ -564,7 +560,8 @@ contains
             character(len=max_str_ln) :: plot_name(2)                           ! name of plot file
             character(len=max_str_ln) :: plot_title(2)                          ! name of plot
             character(len=max_str_ln) :: prop_B_tor_file_name                   ! name of B_tor proportionality file
-            real(dp) :: pert_map_shift                                          ! vertical shift in perturbation map
+            real(dp) :: eq_vert_shift                                           ! vertical shift in equilibrium
+            real(dp) :: pert_map_vert_shift                                     ! vertical shift in perturbation map
             real(dp) :: max_pert_on_axis                                        ! maximum perturbation on axis (theta = 0)
             real(dp) :: m_tol = 1.E-7_dp                                        ! tolerance for Fourier mode strength
             real(dp) :: delta_loc(2)                                            ! local delta
@@ -578,6 +575,7 @@ contains
             real(dp) :: pres_V(99)                                              ! pressure for writing
             real(dp) :: rot_T_V(99)                                             ! rotational transform for writing
             real(dp) :: FFp_J(99)                                               ! FF' for writing
+            real(dp) :: flux_J(99)                                              ! normalized flux for writing
             real(dp) :: q_saf_J(99)                                             ! q_saf for writing
             real(dp), allocatable :: FFp(:)                                     ! FF' in total grid
             real(dp), allocatable :: R_plot(:,:,:)                              ! R for plotting of ripple map
@@ -609,6 +607,7 @@ contains
             logical :: stel_sym                                                 ! whether there is stellarator symmetry
             logical :: change_max_n_B_output                                    ! whether to change max_n_B_output
             logical :: found                                                    ! whether something was found
+            type(disc_type) :: norm_deriv_data                                  ! data for normal derivatives
             type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             type(disc_type) :: pol_interp_data                                  ! data for poloidal interpolation
 #if ldebug
@@ -636,13 +635,28 @@ contains
                 Z_H_loc = Z_H*R_0
             end if
             
+            ! ask for vertical shift
+            ! Note: HELENA automatically shifts it zo Zvac = 0
+            call writo('Was the equilibrium shifted vertically?')
+            eq_vert_shift = 0._dp
+            if (get_log(.false.)) then
+                call writo('How much higher [m] should the &
+                    &equilibrium be in the real world?')
+                eq_vert_shift = get_real()
+                call writo('The equilibrium will be shifted by '//&
+                    &trim(r2strt(eq_vert_shift))//'m to compensate for this')
+                Z_H_loc = Z_H_loc + eq_vert_shift
+            end if
+            
             ! set up FF'
             allocate(FFp(n_r_eq))
-            ierr = spline3(norm_disc_prec_eq,flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
-                &RBphi_H,flux_p_H(:,0)/flux_p_H(n_r_eq,0),dynew=FFp)
+            ierr = setup_deriv_data(flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
+                &norm_deriv_data,1,norm_disc_prec_eq)
             CHCKERR('')
-            FFp = FFp*RBphi_H
+            ierr = apply_disc(RBphi_H**2*0.5_dp,norm_deriv_data,FFp)
+            CHCKERR('')
             if (use_normalization) FFp = FFp*(R_0*B_0)**2
+            call norm_deriv_data%dealloc()
             
             ! user output
             call writo('Initialize boundary')
@@ -654,6 +668,7 @@ contains
             else                                                                ! asymmetric (so nchi is aumented by one)
                 n_B  = nchi-1                                                   ! -1 because of overlapping points at 0
             end if
+            nr_m_max = (n_B-1)/2
             allocate(BH_0(n_B,2))                                               ! HELENA coords (no overlap at 0)
             allocate(theta_B(n_B))                                              ! geometrical poloidal angle at boundary (overlap at 0)
             if (ias.eq.0) then                                                  ! symmetric
@@ -673,8 +688,8 @@ contains
             where (theta_B.lt.0) theta_B = theta_B + 2*pi
             call writo('Magnetic axis used for geometrical coordinates:')
             call lvl_ud(1)
-            call writo('('//trim(r2str(RZ_B_0(1)))//','//&
-                &trim(r2str(RZ_B_0(2)))//')')
+            call writo('('//trim(r2str(RZ_B_0(1)))//'m, '//&
+                &trim(r2str(RZ_B_0(2)))//'m)')
             call lvl_ud(-1)
             
             ! plot with HDF5
@@ -914,14 +929,20 @@ contains
                             ! ask for vertical shift
                             call writo('Was the equilibrium shifted &
                                 &vertically?')
-                            pert_map_shift = 0._dp
-                            if (get_log(.true.)) then
+                            if (abs(eq_vert_shift).gt.0._dp) then
+                                call lvl_ud(1)
+                                call writo('Note: If you already shifted just &
+                                    &now, don''t do it again!',alert=.true.)
+                                call lvl_ud(-1)
+                            end if
+                            pert_map_vert_shift = 0._dp
+                            if (get_log(.false.)) then
                                 call writo('How much higher [m] should the &
                                     &equilibrium be in the real world?')
-                                pert_map_shift = get_real()
+                                pert_map_vert_shift = get_real()
                                 call writo('The perturbation map will be &
                                     &shifted by '//&
-                                    &trim(r2strt(-pert_map_shift))//&
+                                    &trim(r2strt(-pert_map_vert_shift))//&
                                     &'m to compensate for this')
                             end if
                             
@@ -942,7 +963,7 @@ contains
                             do kd = 1,n_pert_map(2)
                                 read(HEL_pert_i,*) pert_map_Z(kd)
                             end do
-                            pert_map_Z = pert_map_Z - pert_map_shift
+                            pert_map_Z = pert_map_Z - pert_map_vert_shift
                             ierr = skip_comment(HEL_pert_i,&
                                 &file_name=HEL_pert_file_name)
                             CHCKERR('')
@@ -1096,6 +1117,15 @@ contains
                         nr_n = n_id                                             ! increment number of N
                         n_pert(n_id) = n_loc                                    ! with value n_loc
                     end if
+                    if (m_loc.gt.nr_m_max) then                                 ! enlarge delta
+                        allocate(delta_copy(tot_nr_pert+1,0:nr_m_max,2))
+                        delta_copy = delta
+                        deallocate(delta)
+                        allocate(delta(tot_nr_pert+1,0:m_loc,2))
+                        delta(:,0:nr_m_max,:) = delta_copy
+                        deallocate(delta_copy)
+                        nr_m_max = m_loc
+                    end if
                     delta(n_id,m_loc,:) = delta(n_id,m_loc,:) + delta_loc       ! and perturbation amplitude for cos and sin with value delta_loc
                 end do
                 
@@ -1149,16 +1179,7 @@ contains
                 ! NUFFT
                 ierr = nufft(theta_B,BH_0(:,kd),B_F_loc,plot_name(kd))
                 CHCKERR('')
-                B_F(1,0:min(nr_m_max,size(B_F_loc,1)-1),:,kd) = &
-                    &B_F_loc(1:min(nr_m_max,size(B_F_loc,1)),:)
-                if (size(B_F_loc,1)-1.gt.nr_m_max) then
-                    call writo('Not using the last '//&
-                        &trim(i2str(size(B_F_loc,1)-1-nr_m_max))//' modes of &
-                        &unperturbed boundary',alert=.true.)
-                    call lvl_ud(1)
-                    call writo('Maybe you should increase "nr_m_max"?')
-                    call lvl_ud(-1)
-                end if
+                B_F(1,:,:,kd) = B_F_loc
             
 #if ldebug
                 if (debug_create_VMEC_input) then
@@ -1406,6 +1427,9 @@ contains
             if (use_normalization) pres_V = pres_V*pres_0
             ierr = apply_disc(FFp,norm_interp_data,FFp_J)
             CHCKERR('')
+            ierr = apply_disc(flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
+                &norm_interp_data,flux_J)
+            CHCKERR('')
             ierr = apply_disc(eq_1%q_saf_E(:,0),norm_interp_data,q_saf_J)
             CHCKERR('')
             ierr = apply_disc(-eq_1%rot_t_E(:,0),norm_interp_data,rot_T_V)
@@ -1502,16 +1526,25 @@ contains
             close(HEL_export_i)
             
             ! output to output file for free-boundary coil fitting
-            file_name = "flux_quantities_"//trim(eq_name)//'.javifile'
+            file_name = "flux_and_boundary_quantities_"//trim(eq_name)//&
+                &'.javifile'
             open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
                 &IOSTAT=ierr)
             CHCKERR('Failed to open file')
             
             write(HEL_export_i,"('! ',4(A23,' '))") 'normalized pol. flux []', &
                 &'mu_0*pressure [T^2m]', '-FF [B^2 T^2]', 'safety factor []'
-            do kd = 1,size(s_V)
-                write(HEL_export_i,"('  ',4(ES23.16,' '))") s_V(kd)**2, &
+            do kd = 1,size(flux_J)
+                write(HEL_export_i,"('  ',4(ES23.16,' '))") flux_J(kd), &
                     &mu_0_original*pres_V(kd), -FFp_J(kd), q_saf_J(kd)
+            end do
+            write(HEL_export_i,*) ''
+            write(HEL_export_i,*) '! R [m] and Z [m] of boundary at psi [ ]'
+            do kd = 1,n_B
+                write(HEL_export_i,"('R_boundary(',I4,') = ',ES23.16,&
+                    &', Z_boundary(',I4,') = ',ES23.16,&
+                    &', psi_boundary(',I4,') = ',ES23.16)") &
+                    &kd, BH_0(kd,1), kd, BH_0(kd,2), kd, 1._dp
             end do
             
             close(HEL_export_i)
@@ -1913,18 +1946,18 @@ contains
         ! calculate the variables R,Z and their derivatives
         ierr = fourier2real(R_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &R_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[.true.,is_asym_V],&
-            &deriv=[deriv(2),deriv(3)])
+            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(Z_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &Z_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[is_asym_V,.true.],&
-            &deriv=[deriv(2),deriv(3)])
+            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
         CHCKERR('')
         ierr = fourier2real(L_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &L_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[is_asym_V,.true.],&
-            &deriv=[deriv(2),deriv(3)])
+            &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_RZL_ind
     integer function calc_RZL_arr(grid,eq,deriv) result(ierr)
@@ -2232,8 +2265,8 @@ contains
         ! calculate the Jacobian and its derivatives
         ierr = fourier2real(jac_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &jac_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),sym=[.true.,is_asym_V],&
-            &deriv=[deriv(2),deriv(3)])
+            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
         CHCKERR('')
     end function calc_jac_V_ind
     integer function calc_jac_V_arr(grid,eq,deriv) result(ierr)
@@ -5268,7 +5301,6 @@ contains
     ! Tests whether jac_V is calculated correctly
     integer function test_jac_V(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
-        use VMEC_utilities, only: fourier2real
         use num_utilities, only: calc_det
         
         character(*), parameter :: rout_name = 'test_jac_V'
