@@ -1,5 +1,24 @@
 !------------------------------------------------------------------------------!
-!   Operations and variables pertaining to the vacuum response                 !
+!> Operations and variables pertaining to the vacuum response.
+!!
+!! The vacuum  response is calculated  using the Boundary Element  Method. There
+!! are two possibilities, indicated by the variable \c style in \c vac_vars.
+!!  -# 3-D field aligned:
+!!      - Makes  use of  the collocation  method for the  grid points  along the
+!!      magnetic field lines.
+!!      - The 3-D integrals are therefore integrated using Weyl's theorem
+!!      \cite Helander2014, p. 5.
+!!  -# axisymmetric:
+!!      - Makes use of an analytical  expression for the toroidal integration of
+!!      the Green's functions, as shown in \cite Cohl1999.
+!!      - The  integration in the poloidal  angle is done using  the collocation
+!!      method.
+!!
+!! The final matrix equation is solved through Strumpack \cite Meiser2016.
+!!
+!! \see See \cite Weyens3D.
+!!
+!! \todo The vacuum part of PB3D is still under construction and not usable yet.
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
@@ -20,20 +39,27 @@ module vac_ops
     public store_vac, calc_vac, print_output_vac
 
 contains
-    ! stores  calculation of  the  vacuum response  by  storing the  necessary
-    ! variables.  This is  done  by the  last  process, which  is  the one  that
-    ! contains the variables at the plasma edge, and then this is broadcasted to
-    ! the other processes.
-    ! For the  first equilibrium job, this  routine copies the results  from the
-    ! previous Richardson level into the appropriate subranges of the new vacuum
-    ! variables.
-    ! If the  previous G and H  variables are empty, they  are regenerated. This
-    ! indicates  that  either a  Richardson  restart  was  performed, or  a  new
-    ! Richardson level was started after a previous level in which it was jumped
-    ! straight to the solution.
-    ! Note: For HELENA, there  is only 1 equilibrium job, and  the vacuum has to
-    ! be calculated  only once. If there  is a jump  to solution or if  there is
-    ! Richardson restart, it needs to be reconstructed only.
+    !> Stores  calculation  of the  vacuum  response  by storing  the  necessary
+    !! variables.
+    !!
+    !! This is  done by  the last process,  which is the  one that  contains the
+    !! variables at the  plasma edge, and then this is  broadcasted to the other
+    !! processes.
+    !!
+    !! For the first  equilibrium job, this routine copies the  results from the
+    !! previous  Richardson level  into  the appropriate  subranges  of the  new
+    !! vacuum variables.
+    !!
+    !! If the previous \c G and \c  H variables are empty, they are regenerated.
+    !! This indicates that  either a Richardson restart was performed,  or a new
+    !! Richardson  level was  started after  a previous  level in  which it  was
+    !! jumped straight to the solution.
+    !!
+    !! \note For HELENA, there is only 1  equilibrium job, and the vacuum has to
+    !! be calculated only  once. If there is  a jump to solution or  if there is
+    !! Richardson restart, it needs to be reconstructed only.
+    !!
+    !! \return ierr
     integer function store_vac(grid,eq_1,eq_2,vac) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_vac
         use num_vars, only: rich_restart_lvl, eq_job_nr, eq_jobs_lims, &
@@ -46,10 +72,10 @@ contains
         character(*), parameter :: rout_name = 'store_vac'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
         integer :: id                                                           ! counter
@@ -236,17 +262,20 @@ contains
         end function store_vac_HEL
     end function store_vac
     
-    ! Calculate the matrices G  and H. This can be for  the entire matrices, or,
-    ! optionally, for the even rows and columns  only. In the latter case, it is
-    ! assumed that the odd rows and columns  can be reused, i.e. from a previous
-    ! Richardson level.
+    !> Calculate the matrices \c G and \c H.
+    !!
+    !! This can  be for the entire  matrices, or, optionally, for  the even rows
+    !! and columns only. In the latter case, it is assumed that the odd rows and
+    !! columns can be reused, i.e. from a previous Richardson level.
+    !!
+    !! \return ierr
     integer function calc_GH(vac,only_even) result(ierr)
         use num_vars, only: rank
         character(*), parameter :: rout_name = 'calc_GH'
         
         ! input / output
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
-        logical, intent(in), optional :: only_even                              ! whether to do only the even rows and columns
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
+        logical, intent(in), optional :: only_even                              !< whether to do only the even rows and columns
         
         ! local variables
         integer :: jd                                                           ! counter
@@ -334,14 +363,25 @@ contains
         end function calc_GH_2
     end function calc_GH
     
-    ! Calculates the vacuum response according to [ADD REF].
-    ! First G and H are completed if this is not the first Richardson level.
-    ! The diagonal elements need special treatment if the vacuum style is 1.
-    ! Then the vacuum contribution is  calculated using the two-fold strategy of
-    ! first solving HC = GIEP, followed by left-multiplication of C by PE^†I.
-    ! The non-square matrix E contains  the exponents for different mode numbers
-    ! and different poloidal grid points, whereas  I and P are diagonal matrices
-    ! that contain the integration rule, respectively the factors (nq-m).
+    !> Calculates the vacuum response.
+    !!
+    !! First \c G and \c H are completed if this is not the first Richardson level.
+    !! 
+    !! The  diagonal elements need special  treatment if the vacuum  style is 1.
+    !! Then the vacuum contribution is calculated using the two-fold strategy of
+    !! first solving \f$\overline{\text{H}}\overline{\text{C}} =
+    !! \overline{\text{G}}\overline{\text{I}}\overline{\text{E}}
+    !! \overline{\text{P}}\f$, followed by left-multiplication of
+    !! \f$\overline{\text{C}}\f$ by
+    !! \f$\overline{\text{P}}\overline{\text{E}}^\dagger \overline{\text{I}}\f$.
+    !!
+    !! The  non-square matrix  \f$\overline{\text{E}}\f$ contains  the exponents
+    !! for different  mode numbers and  different poloidal grid  points, whereas
+    !! \f$\overline{\text{I}}\f$  and   \f$\overline{\text{P}}\f$  are  diagonal
+    !! matrices  that contain  the  integration rule,  respectively the  factors
+    !! \f$(nq-m)\f$.
+    !!
+    !! \return ierr
     integer function calc_vac(vac) result(ierr)
         use MPI
         use rich_vars, only: rich_lvl
@@ -349,7 +389,7 @@ contains
         character(*), parameter :: rout_name = 'calc_vac'
         
         ! input / output
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
         type(StrumpackDensePackage_F90_dcomplex) :: SDP_F90                     ! Strumpack object
@@ -387,19 +427,29 @@ contains
         !call writo('Done calculating vacuum quantities')
     end function calc_vac
     
-    ! Print either vacuum quantities of a certain order to an output file:
-    !   - vectorial:    norm, x_vec
-    !   - tensorial:    res
-    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0.
-    ! Note: This routine should be called by a single process.
-    ! Note: This  routine does not  save the H and  G matrices because  they are
-    ! large and  foreseen to be  saved as  Hierarchical matrices in  the future.
-    ! They therefore  need to be regenerated  if Richardson restart is  done, or
-    ! when after a  jump to solution, another Richardson level  is attempted. In
-    ! calc_vac, it is checked when copying the vacuum variables from previous to
-    ! current Richardson level,  whether the G and H matrices  are allocated and
-    ! if not, they are calculated.
+    !> Print vacuum quantities of a certain order to an output file
+    !!
+    !!  - vac:
+    !!      - \c misc_vac
+    !!      - \c norm
+    !!      - \c x_vec
+    !!      - \c vac_res
+    !!
+    !! If \c  rich_lvl is provided, \c  "_R_[rich_lvl]" is appended to  the data
+    !! name if it is \c >0.
+    !!
+    !! \note
+    !!  -# This routine should be called by a single process, in contrast to the
+    !!  other output routines such as print_output_eq(), print_output_sol(), ...
+    !!  -# This routine  does not save the  \c H and \c G  matrices because they
+    !!  are large and foreseen to be  saved directly as Hierarchical matrices in
+    !!  the future. They therefore need  to be regenerated if Richardson restart
+    !!  is done, or  when after a jump to solution,  another Richardson level is
+    !!  attempted. In calc_vac, it is  checked when copying the vacuum variables
+    !!  from previous  to current Richardson  level, whether the  \c G and  \c H
+    !!  matrices are allocated and if not, they are calculated.
+    !!
+    !! \return ierr
     integer function print_output_vac(vac,data_name,rich_lvl) result(ierr)
         use X_vars, only: n_mod_X
         use num_vars, only: PB3D_name
@@ -410,9 +460,9 @@ contains
         character(*), parameter :: rout_name = 'print_output_vac'
         
         ! input / output
-        type(vac_type), intent(in) :: vac                                       ! vacuum variables 
-        character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables 
+        character(len=*), intent(in) :: data_name                               !< name under which to store
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to print
         
         ! local variables
         type(var_1D_type), allocatable, target :: vac_1D(:)                     ! 1D equivalent of vac variables
@@ -468,9 +518,9 @@ contains
         allocate(vac_1D_loc%p(size(vac%x_vec)))
         vac_1D_loc%p = reshape(vac%x_vec,[size(vac%x_vec)])
         
-        ! RE_vac_res
+        ! RE_res
         vac_1D_loc => vac_1D(id); id = id+1
-        vac_1D_loc%var_name = 'RE_vac_res'
+        vac_1D_loc%var_name = 'RE_res'
         allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
         allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
         vac_1D_loc%tot_i_min = [1,1]
@@ -480,9 +530,9 @@ contains
         allocate(vac_1D_loc%p(size(vac%res)))
         vac_1D_loc%p = reshape(rp(vac%res),[size(vac%res)])
         
-        ! IM_vac_res
+        ! IM_res
         vac_1D_loc => vac_1D(id); id = id+1
-        vac_1D_loc%var_name = 'IM_vac_res'
+        vac_1D_loc%var_name = 'IM_res'
         allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
         allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
         vac_1D_loc%tot_i_min = [1,1]

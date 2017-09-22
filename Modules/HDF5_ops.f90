@@ -1,29 +1,27 @@
 !------------------------------------------------------------------------------!
-!   Operations on HDF5 and XDMF variables                                      !
-!   Notes about XDMF:                                                          !
-!       - Collections can be spatial or temporal. If a variable is to be       !
-!         evolved in time or if its domain is decomposed (e.g. the same        !
-!         physical variable is defined in multiple HDF5 variables), then the   !
-!         attribute name of this variable has to be the same for all the grids !
-!         in the collection.                                                   !
-!       - If no collection is used, but just multiple grids, the attribute     !
-!         can be different but does not have to be, as the different grid are  !
-!         distinguished by their different grid names, not by the attribute    !
-!         of the variables they contain.                                       !
-!       - The selection of hyperslabs is used, as described here:              !
-!         http://davis.lbl.gov/Manuals/HDF5-1.8.7/UG/12_Dataspaces.html        !
-!       - Chunking is used for partial I/O, as described here:                 !
-!         https://www.hdfgroup.org/HDF5/doc/Advanced/Chunking/                 !
-!         As  no  chunk  cache  is  reused,   the  w0  setting  should  be  1. !
-!         Furthermore, the number of slots is chosen to be equal to the number !
-!         of chunks. And Finally,  the chunk size is chosen to  be the size of !
-!         the previous dimensions, if it does not exceed 4GB                   !
-!       - Individual  writes or  plots are  done  now using  the standard  I/O !
-!         driver,  as using  MPI does  not allow  for more  than 2GB.  This is !
-!         important for  the HELENA  version of PB3D  where X_2  variables get !
-!         larger than that.                                                    !
-!         (See https://www.hdfgroup.org/HDF5/doc/UG/OldHtmlSource/             !
-!         UG_frame08TheFile.html) !
+!> Operations on HDF5 and XDMF variables
+!!
+!! \note
+!! Notes about XDMF:
+!!  - Collections can be spatial or temporal.  If a variable is to be evolved in
+!!  time or  if its  domain is  decomposed (e.g. the  same physical  variable is
+!!  defined  in  multiple HDF5  variables),  then  the  attribute name  of  this
+!!  variable has to be the same for all the grids in the collection.
+!!  - If no  collection is used, but  just multiple grids, the  attribute can be
+!!  different but does  not have to be, as the  different grid are distinguished
+!!  by their  different grid names, not  by the attribute of  the variables they
+!!  contain.
+!!  -   The   selection   of   hyperslabs   is   used,   as   described   here: 
+!!  <http://davis.lbl.gov/Manuals/HDF5-1.8.7/UG/12_Dataspaces.html>
+!!  -   Chunking    is   used    for   partial    I/O,   as    described   here:
+!!  <https://www.hdfgroup.org/HDF5/doc/Advanced/Chunking/> As no  chunk cache is
+!!  reused, the  w0 setting  should be  1. Furthermore, the  number of  slots is
+!!  chosen to be equal  to the number of chunks. And Finally,  the chunk size is
+!!  chosen to be the size of the previous dimensions, if it does not exceed 4GB
+!!  - Individual writes or plots are done  now using the standard I/O driver, as
+!!  using  MPI does  not allow  for more  than 2GB.  This is  important for  the
+!!  HELENA  version  of PB3D  where  \c  X_2  variables  get larger  than  that.
+!!  <https://www.hdfgroup.org/HDF5/doc/UG/OldHtmlSource/UG_frame08TheFile.html>
 !------------------------------------------------------------------------------!
 module HDF5_ops
 #include <PB3D_macros.h>
@@ -45,23 +43,36 @@ module HDF5_ops
     
 #if ldebug
     ! global variables
-    logical :: debug_HDF5_ops = .false.                                         ! set to true to debug general information
-    logical :: debug_print_HDF5_arrs = .false.                                  ! set to true to debug print_HDF5_arrs
+    logical :: debug_HDF5_ops = .false.                                         !< set to true to debug general information \ldebug
+    logical :: debug_print_HDF5_arrs = .false.                                  !< set to true to debug print_HDF5_arrs \ldebug
 #endif
     
     ! interfaces
+    
+    !> \public Resets an HDF5 XDMF item.
+    !!
+    !! \note individual  version cannot make  use of array version  because then
+    !! the deallocation does not work properly.
     interface reset_HDF5_item
-        module procedure reset_HDF5_item_ind, reset_HDF5_item_arr
+        !> \public
+        module procedure reset_HDF5_item_ind
+        !> \public
+        module procedure reset_HDF5_item_arr
     end interface
     
 contains
-    ! Opens an HDF5 file and accompanying xmf file and returns the handles.
-    ! Optionally, a description of the file  can be provided. Also, the plot can
-    ! be done for only one process, setting the variable "ind_plot" to .true.
-    ! Furthermore,  if  the  plot  is a  continuation,  using  "cont_plot",  the
-    ! previous plot is opened and sym_type is returned.
-    ! [MPI] Parts by all processes, parts only by group master
-    integer function open_HDF5_file(file_info,file_name,sym_type,description,&
+    !> Opens an HDF5 file and accompanying xmf file and returns the handles.
+    !!
+    !! Optionally, a description of the file  can be provided.
+    !!
+    !! Also, the plot can be done for only one process, setting the variable
+    !! \c ind_plot.
+    !!
+    !! Furthermore,  if the  plot is  a  continuation, using  \c cont_plot,  the
+    !! previous plot is opened and \c sym_type is returned.
+    !!
+    !! \return ierr
+    integer function open_HDF5_file(file_info,file_name,sym_type,descr,&
         &ind_plot,cont_plot) result(ierr)
         use num_vars, only: rank
         use MPI
@@ -71,12 +82,12 @@ contains
         character(*), parameter :: rout_name = 'open_HDF5_file'
         
         ! input / output
-        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
-        character(len=*), intent(in) :: file_name                               ! name of HDF5 file
-        integer, intent(inout), optional :: sym_type                            ! symmetry type
-        character(len=*), intent(in), optional  :: description                  ! description of file
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        logical, intent(in), optional :: cont_plot                              ! continued plot
+        type(HDF5_file_type), intent(inout) :: file_info                        !< info about HDF5 file
+        character(len=*), intent(in) :: file_name                               !< name of HDF5 file
+        integer, intent(inout), optional :: sym_type                            !< symmetry type
+        character(len=*), intent(in), optional  :: descr                        !< description of file
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
+        logical, intent(in), optional :: cont_plot                              !< continued plot
         
         ! local variables
         character(len=max_str_ln) :: full_file_name                             ! full file name
@@ -224,12 +235,12 @@ contains
                 write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
                     &'<Domain>'
                 CHCKERR('Failed to write')
-                if (present(description)) then
+                if (present(descr)) then
                     write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
                         &'<Information Name="Description">'
                     CHCKERR('Failed to write')
                     write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
-                        &trim(description)
+                        &trim(descr)
                     CHCKERR('Failed to write')
                     write(UNIT=file_info%XDMF_i,FMT=xmf_fmt,IOSTAT=ierr) &
                         &'</Information>'
@@ -245,17 +256,18 @@ contains
         end if
     end function open_HDF5_file
     
-    ! Closes an HDF5 file and writes the accompanying xmf file
-    ! [MPI] Parts by all processes, parts only by group master
+    !> Closes an HDF5 file and writes the accompanying xmf file.
+    !!
+    !! \return ierr
     integer function close_HDF5_file(file_info,ind_plot,cont_plot) result(ierr)
         use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'close_HDF5_file'
         
         ! input / output
-        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        logical, intent(in), optional :: cont_plot                              ! continued plot
+        type(HDF5_file_type), intent(inout) :: file_info                        !< info about HDF5 file
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
+        logical, intent(in), optional :: cont_plot                              !< continued plot
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -316,10 +328,12 @@ contains
         end if
     end function close_HDF5_file
     
-    ! Add an XDMF item to a HDF5 file
-    ! Note:  This  should  only  be  used  with  grids  (or for  topologies  and
-    ! geometries that are used throughout)
-    ! [MPI] Only group master
+    !> Add an XDMF item to a HDF5 file.
+    !!
+    !! \note  This  should only  be  used  with  grids  (or for  topologies  and
+    !! geometries that are used throughout)
+    !!
+    !! \return ierr
     integer function add_HDF5_item(file_info,XDMF_item,reset,ind_plot) &
         &result(ierr)
         use num_vars, only: rank
@@ -327,10 +341,10 @@ contains
         character(*), parameter :: rout_name = 'add_HDF5_item'
         
         ! input / output
-        type(HDF5_file_type), intent(inout) :: file_info                        ! info about HDF5 file
-        type(XML_str_type), intent(inout) :: XDMF_item                          ! XDMF item to add
-        logical, intent(in), optional :: reset                                  ! if .true., XDMF_item is reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(HDF5_file_type), intent(inout) :: file_info                        !< info about HDF5 file
+        type(XML_str_type), intent(inout) :: XDMF_item                          !< XDMF item to add
+        logical, intent(in), optional :: reset                                  !< if .true., XDMF_item is reset
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -369,10 +383,12 @@ contains
         end if
     end function add_HDF5_item
     
-    ! prints an HDF5 data item
-    ! If this is a parallel data item, the group dimension and offset have to be
-    ! specified as well.
-    ! [MPI] Parts by all processes, parts only by group master
+    !> Prints an HDF5 data item.
+    !!
+    !! If this is a  parallel data item, the group dimension  and offset have to
+    !! be specified as well.
+    !!
+    !! \return ierr
     integer function print_HDF5_3D_data_item(dataitem_id,file_info,var_name,&
         &var,dim_tot,loc_dim,loc_offset,init_val,ind_plot,cont_plot) &
         &result(ierr)
@@ -382,16 +398,16 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_3D_data_item'
         
         ! input / output
-        type(XML_str_type), intent(inout) :: dataitem_id                        ! ID of data item
-        type(HDF5_file_type), intent(in) :: file_info                           ! info about HDF5 file
-        character(len=*), intent(in) :: var_name                                ! name of variable
-        real(dp), intent(in) :: var(:,:,:)                                      ! variable to write
-        integer, intent(in) :: dim_tot(3)                                       ! total dimensions of variable
-        integer, intent(in), optional :: loc_dim(3)                             ! dimensions in this group
-        integer, intent(in), optional :: loc_offset(3)                          ! offset in this group
-        real(dp), intent(in), optional :: init_val                              ! initial fill value
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        logical, intent(in), optional :: cont_plot                              ! continued plot
+        type(XML_str_type), intent(inout) :: dataitem_id                        !< ID of data item
+        type(HDF5_file_type), intent(in) :: file_info                           !< info about HDF5 file
+        character(len=*), intent(in) :: var_name                                !< name of variable
+        real(dp), intent(in) :: var(:,:,:)                                      !< variable to write
+        integer, intent(in) :: dim_tot(3)                                       !< total dimensions of variable
+        integer, intent(in), optional :: loc_dim(3)                             !< dimensions in this group
+        integer, intent(in), optional :: loc_offset(3)                          !< offset in this group
+        real(dp), intent(in), optional :: init_val                              !< initial fill value
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
+        logical, intent(in), optional :: cont_plot                              !< continued plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -579,19 +595,19 @@ contains
         end function check_for_parallel_3D
     end function print_HDF5_3D_data_item
     
-    ! Joins dataitems in a vector.
+    !> Joins dataitems in a vector.
     subroutine merge_HDF5_3D_data_items(merged_id,dataitem_ids,var_name,&
         &dim_tot,reset,ind_plot,cont_plot)
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) :: merged_id                          ! ID of merged data item
-        type(XML_str_type), intent(inout) :: dataitem_ids(:)                       ! ID of data items
-        character(len=*), intent(in) :: var_name                                ! name of variable
-        integer, intent(in) :: dim_tot(3)                                       ! total dimensions of variable
-        logical, intent(in), optional :: reset                                  ! if .true., data items are reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
-        logical, intent(in), optional :: cont_plot                              ! continued plot
+        type(XML_str_type), intent(inout) :: merged_id                          !< ID of merged data item
+        type(XML_str_type), intent(inout) :: dataitem_ids(:)                    !< ID of data items
+        character(len=*), intent(in) :: var_name                                !< name of variable
+        integer, intent(in) :: dim_tot(3)                                       !< total dimensions of variable
+        logical, intent(in), optional :: reset                                  !< whether to reset dataitems
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
+        logical, intent(in), optional :: cont_plot                              !< continued plot
         
         ! local variables
         integer :: dataitem_len                                                 ! length of data item
@@ -672,21 +688,20 @@ contains
         end if
     end subroutine merge_HDF5_3D_data_items
     
-    ! prints an HDF5 attribute
-    ! [MPI] Only group master
+    !> Prints an HDF5 attribute.
     subroutine print_HDF5_att(att_id,att_dataitem,att_name,att_center,att_type,&
         &reset,ind_plot)
         
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) :: att_id                             ! ID of attribute
-        type(XML_str_type), intent(inout) :: att_dataitem                       ! dataitem of attribute
-        character(len=*), intent(in) :: att_name                                ! name of attribute
-        integer, intent(in) :: att_center                                       ! center of attribute
-        integer, intent(in) :: att_type                                         ! type of attribute
-        logical, intent(in), optional :: reset                                  ! if .true., data items are reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) :: att_id                             !< ID of attribute
+        type(XML_str_type), intent(inout) :: att_dataitem                       !< dataitem of attribute
+        character(len=*), intent(in) :: att_name                                !< name of attribute
+        integer, intent(in) :: att_center                                       !< center of attribute
+        integer, intent(in) :: att_type                                         !< type of attribute
+        logical, intent(in), optional :: reset                                  !< whether to reset dataitems
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: dataitem_len                                                 ! length of data item
@@ -731,17 +746,17 @@ contains
         end if
     end subroutine print_HDF5_att
     
-    ! prints an HDF5 topology
-    ! Note: currently only structured grids supported
-    ! [MPI] Only group master
+    !> Prints an HDF5 topology.
+    !!
+    !> \note Currently only structured grids supported.
     subroutine print_HDF5_top(top_id,top_type,top_n_elem,ind_plot)
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) ::  top_id                            ! ID of topology
-        integer, intent(in) :: top_type                                         ! type
-        integer, intent(in) :: top_n_elem(:)                                    ! nr. of elements
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) ::  top_id                            !< ID of topology
+        integer, intent(in) :: top_type                                         !< type
+        integer, intent(in) :: top_n_elem(:)                                    !< nr. of elements
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -783,17 +798,16 @@ contains
         end if
     end subroutine print_HDF5_top
     
-    ! prints an HDF5 geometry
-    ! [MPI] Only group master
+    !> Prints an HDF5 geometry.
     subroutine print_HDF5_geom(geom_id,geom_type,geom_dataitems,reset,ind_plot)
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) ::  geom_id                           ! ID of geometry
-        integer, intent(in) :: geom_type                                        ! type of geometry
-        type(XML_str_type), intent(inout) :: geom_dataitems(:)                  ! data items of geometry
-        logical, intent(in), optional :: reset                                  ! if .true., data items are reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) ::  geom_id                           !< ID of geometry
+        integer, intent(in) :: geom_type                                        !< type of geometry
+        type(XML_str_type), intent(inout) :: geom_dataitems(:)                  !< data items of geometry
+        logical, intent(in), optional :: reset                                  !< whether to reset dataitems
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -852,13 +866,19 @@ contains
         end if
     end subroutine print_HDF5_geom
     
-    ! prints an HDF5 grid
-    ! If  this is  is  a uniform  grid,  the  geometry and  topology  has to  be
-    ! specified, or else  it will be assumed  that it is already  present in the
-    ! XDMF domain, and  reused. If the grid  is a collection grid,  the grids in
-    ! the  collection have  to  be specified.  Optionally, also  a  time can  be
-    ! specified (for the grids in a collection grid).
-    ! [MPI] Only group master
+    !> Prints an HDF5 grid.
+    !!
+    !! If  this is  is a  uniform grid,  the geometry  and topology  have to  be
+    !! specified, or else it  will be assumed that it is  already present in the
+    !! XDMF domain, and reused.
+    !!
+    !! If the grid is a collection grid,  the grids in the collection have to be
+    !! specified.
+    !!
+    !! Optionally, also a  time can be specified (for the  grids in a collection
+    !! grid).
+    !!
+    !! \return ierr
     integer function print_HDF5_grid(grid_id,grid_name,grid_type,grid_time,&
         &grid_top,grid_geom,grid_atts,grid_grids,reset,ind_plot) result(ierr)
         use num_vars, only: rank
@@ -866,16 +886,16 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_grid'
         
         ! input / output
-        type(XML_str_type), intent(inout) :: grid_id                            ! ID of grid
-        character(len=*), intent(in) :: grid_name                               ! name
-        integer, intent(in) :: grid_type                                        ! type
-        real(dp), intent(in), optional :: grid_time                             ! time of grid
-        type(XML_str_type), optional :: grid_top                                ! topology
-        type(XML_str_type), optional :: grid_geom                               ! geometry
-        type(XML_str_type), optional :: grid_atts(:)                            ! attributes
-        type(XML_str_type), optional :: grid_grids(:)                           ! grids
-        logical, intent(in), optional :: reset                                  ! if .true., top, geom and atts or grids are reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) :: grid_id                            !< ID of grid
+        character(len=*), intent(in) :: grid_name                               !< name
+        integer, intent(in) :: grid_type                                        !< type
+        real(dp), intent(in), optional :: grid_time                             !< time of grid
+        type(XML_str_type), optional :: grid_top                                !< topology
+        type(XML_str_type), optional :: grid_geom                               !< geometry
+        type(XML_str_type), optional :: grid_atts(:)                            !< attributes
+        type(XML_str_type), optional :: grid_grids(:)                           !< grids
+        logical, intent(in), optional :: reset                                  !< whether top, geom and atts and grids are reset
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -1048,12 +1068,12 @@ contains
         end if
     end function print_HDF5_grid
     
-    ! creates an HDF5 output file
+    !> Creates an HDF5 output file.
     integer function create_output_HDF5(HDF5_name) result(ierr)
         character(*), parameter :: rout_name = 'create_output_HDF5'
         
         ! input / output
-        character(len=*), intent(in) :: HDF5_name                               ! name of HDF5 file
+        character(len=*), intent(in) :: HDF5_name                               !< name of HDF5 file
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1088,13 +1108,17 @@ contains
         call writo('HDF5 output file '//trim(HDF5_name)//' created')
     end function create_output_HDF5
     
-    ! Prints a series of arrays, in the form of an array of pointers, to an HDF5
-    ! file.
-    ! Optionally, output can be given about the variable being written.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if it is > 0.
-    ! Note: See https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html, 7.4.2.3
-    ! for an explanation of the selection of the dataspaces.
+    !> Prints a  series of arrays, in  the form of  an array of pointers,  to an
+    !! HDF5 file.
+    !!
+    !! Optionally, output can  be given about the variable  being written. Also,
+    !! if \c  rich_lvl is  provided, <tt>_R_[rich_lvl]</tt>  is appended  to the
+    !! head name if it is > 0.
+    !!
+    !! \note    See    <https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html>,
+    !! 7.4.2.3 for an explanation of the selection of the dataspaces.
+    !!
+    !! \return ierr
     integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,&
         &disp_info,ind_print) result(ierr)
         use num_vars, only: n_procs, rank
@@ -1106,12 +1130,12 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_arrs'
         
         ! input / output
-        type(var_1D_type), intent(in) :: vars(:)                                ! variables to write
-        character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
-        character(len=*), intent(in) :: head_name                               ! head name of variables
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to append to file name
-        logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
-        logical, intent(in), optional :: ind_print                              ! individual write (possibly partial I/O)
+        type(var_1D_type), intent(in) :: vars(:)                                !< variables to write
+        character(len=*), intent(in) :: PB3D_name                               !< name of PB3D file
+        character(len=*), intent(in) :: head_name                               !< head name of variables
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to append to file name
+        logical, intent(in), optional :: disp_info                              !< display additional information about variable being read
+        logical, intent(in), optional :: ind_print                              !< individual write (possibly partial I/O)
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -1451,18 +1475,23 @@ contains
         end subroutine
     end function print_HDF5_arrs
     
-    ! Reads a  PB3D output file in  HDF5 format. This happens  in a non-parallel
-    ! way. By  default, all  variables are  read, but an  array of  strings with
-    ! acceptable variable names can be passed.
-    ! Optionally, output can be given about the variable being read.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the head
-    ! name if it is > 0.
-    ! Furthermore, using lim_loc, a hyperslab of the variable can be read.
-    ! Finally,  note  that if  a  limit  of lim_loc  is  a  negative value,  the
-    ! procedure just takes the entire range.  This is necessary as sometimes the
-    ! calling procuderes  don't have, and don't  need to have, knowledge  of the
-    ! underlying  sizes, for  example in  the case  of having  multiple parallel
-    ! jobs.
+    !> Reads a PB3D output file in HDF5 format.
+    !!
+    !! This happens in  a non-parallel way. By default, all  variables are read,
+    !! but an array of strings with acceptable variable names can be passed.
+    !!
+    !! Optionally, output can  be given about the variable being  read. Also, if
+    !! \c rich_lvl  is provided,  <tt>_R_rich_lvl</tt> is  appended to  the head
+    !! name if it is > 0.
+    !!
+    !! Furthermore, using \c lim_loc, a hyperslab of the variable can be read.
+    !!
+    !! \note If a limit of lim_loc is a negative value, the procedure just takes
+    !! the entire range.  This is necessary as sometimes  the calling procuderes
+    !! don't have,  and don't need to  have, knowledge of the  underlying sizes,
+    !! for example in the case of having multiple parallel jobs.
+    !!
+    !! \return ierr
     integer function read_HDF5_arr(var,PB3D_name,head_name,var_name,rich_lvl,&
         &disp_info,lim_loc) result(ierr)
         use HDF5_utilities, only: set_1D_vars
@@ -1475,13 +1504,13 @@ contains
         character(*), parameter :: rout_name = 'read_HDF5_arr_ind'
         
         ! input / output
-        type(var_1D_type), intent(inout) :: var                                 ! variable to read
-        character(len=*), intent(in) :: PB3D_name                               ! name of PB3D file
-        character(len=*), intent(in) :: head_name                               ! head name of variables
-        character(len=*), intent(in) :: var_name                                ! name of variable
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: disp_info                              ! display additional information about variable being read
-        integer, intent(in), optional :: lim_loc(:,:)                           ! local limits
+        type(var_1D_type), intent(inout) :: var                                 !< variable to read
+        character(len=*), intent(in) :: PB3D_name                               !< name of PB3D file
+        character(len=*), intent(in) :: head_name                               !< head name of variables
+        character(len=*), intent(in) :: var_name                                !< name of variable
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: disp_info                              !< display additional information about variable being read
+        integer, intent(in), optional :: lim_loc(:,:)                           !< local limits
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1727,16 +1756,13 @@ contains
         CHCKERR(err_msg)
     end function read_HDF5_arr
     
-    ! resets an HDF5 XDMF item
-    ! Note: individual version cannot make use of array version because then the
-    ! deallocation does not work properly.
-    ! [MPI] Only group master
-    subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)                         ! array version
+    !> \private array version
+    subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) :: XDMF_items(:)                      ! XDMF items to reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) :: XDMF_items(:)                      !< XDMF items to reset
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         integer :: id                                                           ! counter
@@ -1770,12 +1796,13 @@ contains
             end do
         end if
     end subroutine reset_HDF5_item_arr
-    subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)                          ! individual version
+    !> \private individual version
+    subroutine reset_HDF5_item_ind(XDMF_item,ind_plot)
         use num_vars, only: rank
         
         ! input / output
-        type(XML_str_type), intent(inout) :: XDMF_item                          ! XDMF item to reset
-        logical, intent(in), optional :: ind_plot                               ! .true. if not a collective plot
+        type(XML_str_type), intent(inout) :: XDMF_item                          !< XDMF item to reset
+        logical, intent(in), optional :: ind_plot                               !< whether individual plot
         
         ! local variables
         logical :: ind_plot_loc                                                 ! local version of ind_plot

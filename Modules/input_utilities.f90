@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to input                                       !
+!> Numerical utilities related to input.
 !------------------------------------------------------------------------------!
 module input_utilities
 #include <PB3D_macros.h>
@@ -13,17 +13,19 @@ module input_utilities
     public pause_prog, get_real, get_int, get_log, dealloc_in
     
 contains
-    ! Queries for a logical value yes or no, where the default answer is also to
-    ! be provided.
-    ! [MPI] All ranks, but only master can give input
+    !> Queries for a logical  value yes or no, where the  default answer is also
+    !! to be provided.
+    !! 
+    !! If not called by all processes at the  same time, \c ind should be set to
+    !! indicate an individual operation.
     function get_log(yes,ind) result(val)
         use num_vars, only: rank
         use MPI_utilities, only: broadcast_var
         
         ! input / output
-        logical :: val                                                          ! output value
-        logical :: yes
-        logical, intent(in), optional :: ind                                    ! individual pause or not
+        logical :: val                                                          !< output value
+        logical :: yes                                                          !< default answer
+        logical, intent(in), optional :: ind                                    !< individual pause or not
         
         ! local variables
         character(len=11) :: empty_str = ''                                     ! empty string
@@ -66,18 +68,20 @@ contains
         end if
     end function get_log
     
-    ! Queries  for user  input for a  real value, where  allowable range  can be
-    ! provided as well.
-    ! [MPI] All ranks, but only global rank can give input
+    !> Queries for  user input for  a real value,  where allowable range  can be
+    !! provided as well.
+    !! 
+    !! If not called by all processes at the  same time, \c ind should be set to
+    !! indicate an individual operation.
     function get_real(lim_lo,lim_hi,ind) result(val)
         use num_vars, only: rank
         use MPI_utilities, only: broadcast_var
         
         ! input / output
-        real(dp) :: val                                                         ! output value
-        real(dp), intent(in), optional :: lim_lo                                ! upper and lower limit
-        real(dp), intent(in), optional :: lim_hi                                ! upper and lower limit
-        logical, intent(in), optional :: ind                                    ! individual pause or not
+        real(dp) :: val                                                         !< output value
+        real(dp), intent(in), optional :: lim_lo                                !< upper and lower limit
+        real(dp), intent(in), optional :: lim_hi                                !< upper and lower limit
+        logical, intent(in), optional :: ind                                    !< individual pause or not
         
         ! local variables
         character(len=11) :: empty_str = ''                                     ! empty string
@@ -139,18 +143,20 @@ contains
         end if
     end function get_real
     
-    ! Queries for user input for an  integer value, where allowable range can be
-    ! provided as well.
-    ! [MPI] All ranks, but only global rank can give input
+    !> Queries for user input for an integer value, where allowable range can be
+    !! provided as well.
+    !! 
+    !! If not called by all processes at the  same time, \c ind should be set to
+    !! indicate an individual operation.
     function get_int(lim_lo,lim_hi,ind) result(val)
         use num_vars, only: rank
         use MPI_utilities, only: broadcast_var
         
         ! input / output
-        integer :: val                                                          ! output value
-        integer, intent(in), optional :: lim_lo                                 ! upper and lower limit
-        integer, intent(in), optional :: lim_hi                                 ! upper and lower limit
-        logical, intent(in), optional :: ind                                    ! individual pause or not
+        integer :: val                                                          !< output value
+        integer, intent(in), optional :: lim_lo                                 !< upper and lower limit
+        integer, intent(in), optional :: lim_hi                                 !< upper and lower limit
+        logical, intent(in), optional :: ind                                    !< individual pause or not
         
         ! local variables
         character(len=11) :: empty_str = ''                                     ! empty string
@@ -212,8 +218,10 @@ contains
         end if
     end function get_int
     
-    ! pauses the running of the program
-    ! [MPI] All ranks or, optinally, only current rank
+    !> Pauses the running of the program.
+    !!
+    !! If not called by all processes at the  same time, \c ind should be set to
+    !! indicate an individual operation.
     subroutine pause_prog(ind)
         use MPI_utilities, only: wait_MPI
         use num_vars, only: rank, rank
@@ -255,7 +263,7 @@ contains
         if (trim(hidden_msg).eq.'stop') stop 0
     end subroutine pause_prog
     
-    ! Cleans up input from equilibrium codes.
+    !> Cleans up input from equilibrium codes.
     subroutine dealloc_in()
         use num_vars, only: eq_style
         use VMEC_vars, only: dealloc_VMEC

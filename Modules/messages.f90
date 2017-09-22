@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to giving output                               !
+!> Numerical utilities related to giving output.
 !------------------------------------------------------------------------------!
 module messages
     use str_utilities
@@ -17,19 +17,18 @@ module messages
 #endif
 
     ! global variables
-    integer :: lvl                                                              ! lvl determines the indenting. higher lvl = more indenting
-    character(len=2) :: lvl_sep = ''                                            ! characters that separate different levels of output
-    character(len=10) :: time_sep = ''                                          ! defines the length of time part of output
-    real(dp) :: deltat                                                          ! length of time interval
-    real(dp) :: t1, t2                                                          ! end points of time interval
-    logical :: running                                                          ! whether the timer is running
-    logical :: temp_output_active                                               ! true if temporary output is to be written in temp_output
-    character(len=max_str_ln), allocatable :: temp_output(:)                    ! temporary output, before output file is opened
+    integer :: lvl                                                              !< determines the indenting. higher \c lvl = more indenting
+    character(len=2) :: lvl_sep = ''                                            !< characters that separate different levels of output
+    character(len=10) :: time_sep = ''                                          !< defines the length of time part of output
+    real(dp) :: deltat                                                          !< length of time interval
+    real(dp) :: t1, t2                                                          !< end points of time interval
+    logical :: running                                                          !< whether the timer is running
+    logical :: temp_output_active                                               !< true if temporary output is to be written in \c temp_output
+    character(len=max_str_ln), allocatable :: temp_output(:)                    !< temporary output, before output file is opened
     
 contains
-    ! initialize the variables for the module
-    ! [MPI] All ranks
-    subroutine init_output
+    !> Initialize the variables for the module.
+    subroutine init_output()
         use num_vars, only: rank
 #if ldebug
         use num_vars, only: mem_usage_count
@@ -57,8 +56,8 @@ contains
 #endif
     end subroutine init_output
     
-    ! prints first message
-    subroutine print_hello
+    !> Prints first message.
+    subroutine print_hello()
         use num_vars, only: rank, prog_name, prog_version, n_procs
         
         ! local variables
@@ -79,8 +78,8 @@ contains
         end if
     end subroutine print_hello
 
-    ! prints last message
-    subroutine print_goodbye
+    !> Prints last messag.
+    subroutine print_goodbye()
         use num_vars, only: rank
         
         ! local variables
@@ -93,18 +92,16 @@ contains
         end if
     end subroutine print_goodbye
     
-    ! intialize the time passed to 0
-    ! [MPI] All ranks
-    subroutine init_time
+    !> Intialize the time passed to 0.
+    subroutine init_time()
         deltat = 0
         t1 = 0
         t2 = 0
         running = .false. 
     end subroutine init_time
 
-    ! start a timer
-    ! [MPI] All ranks
-    subroutine start_time
+    !> Start a timer.
+    subroutine start_time()
         if (running) then
             call writo('Tried to start timer, but was already running',&
                 &warning=.true.)
@@ -114,8 +111,8 @@ contains
         end if
     end subroutine start_time
 
-    ! stop a timer
-    subroutine stop_time
+    !> Stop a timer.
+    subroutine stop_time()
         if (running) then
             call cpu_time(t2)
             
@@ -132,9 +129,10 @@ contains
         end if
     end subroutine stop_time
 
-    ! display the time that has passed between t1 and t2
-    ! automatically stops time and resets everything to zero
-    subroutine passed_time
+    !> Display the time that has passed between \c t1 and \c t2.
+    !!
+    !! Automatically stops time and resets everything to zero.
+    subroutine passed_time()
         ! local variables
         character(len=max_str_ln) :: begin_str, end_str
         integer :: time_in_units(4)                                             ! time in days, hours, minutes, seconds
@@ -179,14 +177,15 @@ contains
         call init_time
     end subroutine passed_time
     
-    ! returns the date
-    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    !> Returns the date.
+    !!
+    !! from <http://infohost.nmt.edu/tcc/help/lang/fortran/date.html>
     function get_date() result(now)
 #if (lwith_intel && !lwith_gnu)
         use IFPORT
 #endif
         ! input / output
-        character(len=10) :: now                                                ! date
+        character(len=10) :: now                                                !< date
         
         ! local variables
         integer :: today(3)
@@ -196,11 +195,12 @@ contains
         write (now,'(i2.2,"/",i2.2,"/",i4.4)')  today(2), today(1), today(3)
     end function get_date
     
-    ! returns the time
-    ! (from http://infohost.nmt.edu/tcc/help/lang/fortran/date.html)
+    !> Returns the time.
+    !! 
+    !! from <http://infohost.nmt.edu/tcc/help/lang/fortran/date.html>
     function get_clock() result(time)
         ! input / output
-        character(len=8) :: time                                                ! time
+        character(len=8) :: time                                                !< time
         
         ! local variables
         integer :: now(3)
@@ -210,13 +210,16 @@ contains
         write (time,'(i2.2,":",i2.2,":",i2.2)')  now
     end function get_clock
     
-    ! prints an error  message that is either user-provided, or  the name of the
-    ! calling routine
+    !> Prints an error message that is  either user-provided, or the name of the
+    !! calling routine.
+    !!
+    !! \note This should be used with the macro CHCKERR.
     subroutine print_err_msg(err_msg,routine_name)
         use num_vars, only: rank
         
         ! input / output
-        character(len=*), intent(in) :: err_msg, routine_name
+        character(len=*), intent(in) :: err_msg                                 !< error message to be printed
+        character(len=*), intent(in) :: routine_name                            !< name of the routine
         
         if (trim(err_msg).eq.'') then
             lvl = 2
@@ -228,9 +231,13 @@ contains
         end if
     end subroutine print_err_msg
     
-    ! increases/decreases lvl of output
-    subroutine lvl_ud(inc)                                                      ! ud from up / down
-        integer :: inc
+    !> Increases/decreases \c lvl of output.
+    !!
+    !! Name stands for level up or down.
+    subroutine lvl_ud(inc)
+        ! input / output
+        integer :: inc                                                          !< increment of level
+        
         if (lvl+inc.lt.1) then
             lvl = 1
             call writo('cannot go below lowest level',warning=.true.)
@@ -239,15 +246,15 @@ contains
         end if
     end subroutine lvl_ud
     
-    ! write output to file identified by output_i, using the correct indentation
-    ! for the level ('lvl_loc') of the output. If first alpha group, also output
-    ! to screen
-    ! Optionally, special formatting for error, warning or alert can be chosen.
-    ! [MPI] Only masters of groups of alpha and the global master call these
-    !       The  global master  outputs to  the  master output  file, while  the
-    !       masters  of the  groups of  alpha  write their  output to  different
-    !       files, which  are then read  by the  global master when  the group's
-    !       work is done
+    !> Write output to file identified by \c output_i.
+    !!
+    !! This is done using the correct  indentation for the level (\c lvl_loc) of
+    !! the output.
+    !!
+    !! By  default, only the  master outputs, but this  can be changed  using \c
+    !! persistent.
+    !!
+    !! Optionally, special formatting for error, warning or alert can be chosen.
     subroutine writo(input_str,persistent,error,warning,alert)
         use num_vars, only: rank, output_i, no_output, max_tot_mem, max_X_mem
 #if ldebug
@@ -257,11 +264,11 @@ contains
 #endif
         
         ! input / output
-        character(len=*), intent(in) :: input_str                               ! the name that is searched for
-        logical, intent(in), optional :: persistent                             ! output even if not group master
-        logical, intent(in), optional :: error                                  ! error message
-        logical, intent(in), optional :: warning                                ! warning message
-        logical, intent(in), optional :: alert                                  ! alert message
+        character(len=*), intent(in) :: input_str                               !< the name that is searched for
+        logical, intent(in), optional :: persistent                             !< output even if not group master
+        logical, intent(in), optional :: error                                  !< error message
+        logical, intent(in), optional :: warning                                !< warning message
+        logical, intent(in), optional :: alert                                  !< alert message
         
         ! local variables
         !character(len=7), parameter :: bright_str = "bright "                   ! dark terminal theme
@@ -445,9 +452,10 @@ contains
         end subroutine get_time_str
     end subroutine writo
 
-    ! print an array of dimension 2 on the screen
+    !> Print an array of dimension 2 on the screen.
     subroutine print_ar_2(arr)
-        real(dp) :: arr(:,:)
+        ! input / output
+        real(dp), intent(in) :: arr(:,:)                                        !< array to be printed
         
         integer :: id
         
@@ -456,14 +464,15 @@ contains
         end do
     end subroutine print_ar_2
 
-    ! print an array of dimension 1 on the screen
+    !> Print an array of dimension 1 on the screen.
     subroutine print_ar_1(arr)
-        real(dp) :: arr(:)
+        ! input / output
+        real(dp), intent(in) :: arr(:)                                          !< array to be printed
         
         ! local variables
         integer :: id
         character(len=2*max_str_ln) :: output_str                               ! holds string for a range of values
-        character(len=14) :: var_str                                             ! holds string for one value, for last value
+        character(len=14) :: var_str                                            ! holds string for one value, for last value
         integer :: vlen                                                         ! space for one variable + leading space
         integer :: n_free                                                       ! how much space free
         logical :: str_full                                                     ! whether the output_str is full
@@ -515,10 +524,14 @@ contains
     end subroutine print_ar_1
     
 #if ldebug
-    ! Returns the memory usage in kilobytes.
-    ! (based on http://stackoverflow.com/questions/22028571/
-    !  track-memory-usage-in-fortran-90)
-    ! Note: only works under linux
+    !> Returns the memory usage in kilobytes.
+    !! 
+    !! Based on
+    !! <http://stackoverflow.com/questions/22028571/track-memory-usage-in-fortran-90>
+    !!
+    !! \note Only works under linux.
+    !!
+    !! \ldebug
     integer function get_mem_usage() result(mem)
         use num_vars, only: mem_usage_i
 #if ( lwith_intel && !lwith_gnu)
@@ -526,12 +539,12 @@ contains
 #endif
         
         ! local variables
-        character(len=200):: filename=' '                                       ! name of file where memory stored
-        character(len=80) :: line                                               ! line of memory file
-        character(len=8)  :: pid_char=' '                                       ! process ID in string
-        logical :: exists                                                       ! whether memory file exists
-        integer :: pid                                                          ! process ID
-        integer :: istat                                                        ! status
+        character(len=200):: filename=' '                                       !< name of file where memory stored
+        character(len=80) :: line                                               !< line of memory file
+        character(len=8)  :: pid_char=' '                                       !< process ID in string
+        logical :: exists                                                       !< whether memory file exists
+        integer :: pid                                                          !< process ID
+        integer :: istat                                                        !< status
         
         ! initiazlie mem to negative number
         mem = -1

@@ -1,10 +1,11 @@
 !------------------------------------------------------------------------------!
-!   Operations that use SLEPC (and PETSC) routines                             !
-!   Note that the routines here require a TRIMMED solution grid!               !
+!> Operations that use SLEPC (and PETSC) routines.
+!!
+!! \note The routines here require a \b TRIMMED solution grid!
 !------------------------------------------------------------------------------!
-! References:                                                                  !
-! [1]   http://slepc.upv.es/documentation/current/docs/manualpages/EPS/        !
-!       EPSComputeRelativeError.html                                           !
+!> \see
+!! References:
+!! \cite Hernandez2005slepc
 !------------------------------------------------------------------------------!
 module SLEPC_ops
 #include <PB3D_macros.h>
@@ -25,9 +26,11 @@ module SLEPC_ops
 
     implicit none
     private
-    public solve_EV_system_SLEPC
+    public solve_EV_system_SLEPC, start_SLEPC, setup_mats, set_BC, &
+        &setup_solver, setup_guess, get_solution, summarize_solution, &
+        &store_results, stop_SLEPC
 #if ldebug
-    public debug_setup_mats, debug_set_BC
+    public debug_setup_mats, debug_set_BC, test_diff
 #endif
     
     ! global variables
@@ -37,24 +40,31 @@ module SLEPC_ops
     integer, allocatable :: c_tot(:,:,:)                                        ! total c corresponding to symmetric and asymmetric tensorial variables
     logical :: use_hermitian = .false.                                          ! use hermitian matrices (does not work well currently, see http://lists.mcs.anl.gov/pipermail/petsc-users/2016-October/030781.html)
 #if ldebug
-    logical :: debug_setup_mats = .false.                                       ! plot debug information for setup_mats
-    logical :: debug_set_BC = .false.                                           ! plot debug information for set_BC
-    logical :: test_diff = .false.                                              ! test introduction of numerical diff
-    real(dp) :: diff_coeff                                                      ! diff coefficient
+    logical :: debug_setup_mats = .false.                                       !< plot debug information for setup_mats \ldebug
+    logical :: debug_set_BC = .false.                                           !< plot debug information for set_BC \ldebug
+    logical :: test_diff = .false.                                              !< test introduction of numerical diff \ldebug
+    real(dp) :: diff_coeff                                                      !< diff coefficient \ldebug
 #endif
     
 contains
-    ! This subroutine sets up  the matrices A ad B of  the generalized EV system
-    ! described in  [ADD REF] and  solves them using  the SLEPC suite.  The most
-    ! unstable solutions  are obtained.
-    ! Optionally the  geodesic index of  the perturbation variables at  which to
-    ! perform the calculations can be changed  from its default value of 1 using
-    ! the variable i_geo.
-    ! Note: the  perturbation grid needs  to be the  same as the  solution grid,
-    ! if not,  this module has to  be adapted to interpolate  them. A deprecated
-    ! technique,  using "get_norm_interp_data"  and  "interp_V" can  be seen  in
-    ! builds previous to 1.06. These have been superseded by "setup_interp_data"
-    ! followed by "apply_disc".
+    !> Solve the eigenvalue system using SLEPC.
+    !!
+    !! This subroutine sets up the matrices A  ad B of the generalized EV system
+    !! described in \cite Weyens2017PB3D and  solves them using the SLEPC suite.
+    !! The solutions closest to a target indicated by \c EV_guess are obtained.
+    !! \see read_input_opts()
+    !!
+    !! Optionally the geodesic  index of the perturbation variables  at which to
+    !! perform the calculations can be changed from its default value of 1 using
+    !! the variable \c i_geo.
+    !!
+    !! \note  The  perturbation grid  needs  to  be  the  same as  the  solution
+    !! grid,  if not,  this module  has  to be  adapted to  interpolate them.  A
+    !! deprecated technique, using get_norm_interp_data()  and interp_V() can be
+    !! seen  in  versions  previous  to  1.06. These  have  been  superseded  by
+    !! setup_interp_data() followed by \c apply_disc().
+    !!
+    !! \return ierr
     integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol,i_geo) &
         &result(ierr)
         
@@ -68,12 +78,12 @@ contains
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
-        type(vac_type), intent(in) :: vac                                       ! vacuum variables
-        type(sol_type), intent(inout) :: sol                                    ! solution variables
-        integer, intent(in), optional :: i_geo                                  ! at which geodesic index to perform the calculations
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        type(sol_type), intent(inout) :: sol                                    !< solution variables
+        integer, intent(in), optional :: i_geo                                  !< geodesic index at which to perform the calculations
         
         ! local variables
         Mat, target :: A                                                        ! matrix A in EV problem A X = lambda B X
@@ -220,7 +230,6 @@ contains
         ! stop SLEPC
         ierr = stop_SLEPC(A,B,solver)
         CHCKERR('')
-        
 #if ldebug
     contains
         integer function test_mat_hermiticity(mat,mat_name) result(ierr)
@@ -321,8 +330,10 @@ contains
 #endif
     end function solve_EV_system_SLEPC
     
-    !  This  subroutine starts  PETSC  and  SLEPC  with  the correct  number  of
-    ! processors
+    !> This  subroutine  starts PETSC  and  SLEPC  with  the correct  number  of
+    !! processors
+    !!
+    !! \return ierr
     integer function start_SLEPC(n_r_sol) result(ierr)
         use num_vars, only: n_procs, sol_n_procs
         use files_ops, only: opt_args
@@ -330,7 +341,7 @@ contains
         character(*), parameter :: rout_name = 'start_SLEPC'
         
         ! input / output
-        integer, intent(in) :: n_r_sol                                          ! nr. of normal points in solution grid
+        integer, intent(in) :: n_r_sol                                          !< nr. of normal points in solution grid
         
         ! local variables
         PetscBool :: flg                                                        ! flag to catch options
@@ -389,14 +400,21 @@ contains
         end do
     end function start_SLEPC
     
-    ! Sets  up the  matrices  A and  B in  the  EV problem  A  X =  lambda B  X.
-    ! The  geodesical index  at  which to  perform the  calculations  has to  be
-    ! provided as well.
-    ! The matrices are set up in the  solution grid, so some processes might not
-    ! have any part in the storage  thereof (if sol_n_procs < n_procs), but each
-    ! process sets up the part of the  grid that corresponds to their own normal
-    ! range in the perturbation grid.
-    ! Note: For normal usage, i_geo should be 1, or not present.
+    !> Sets up the matrices \f$A\f$ and \f$B\f$ in the EV problem
+    !! \f[
+    !!      \overline{\text{A}} \ \vec{X} = \lambda \overline{\text{B}} \vec{X}.
+    !! \f]
+    !! The  geodesical index  at which  to perform  the calculations  has to  be
+    !! provided as well in \c i_geo.
+    !!
+    !! The matrices are set up in the solution grid, so some processes might not
+    !! have any  part in the storage  thereof (if \c sol_n_procs  < \c n_procs),
+    !! but each process sets  up the part of the grid  that corresponds to their
+    !! own normal range in the perturbation grid.
+    !!
+    !! \note For normal usage, \c i_geo should be 1, or not present.
+    !!
+    !! \return ierr
     integer function setup_mats(grid_X,grid_sol,X,A,B,i_geo) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
             &rank, sol_n_procs, BC_style, norm_disc_style_sol
@@ -413,11 +431,12 @@ contains
         character(*), parameter :: rout_name = 'setup_mats'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(X_2_type), intent(in), target :: X                                 ! field-averaged perturbation variables (so only first index)
-        Mat, intent(inout) :: A, B                                              ! matrix A and B
-        integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(X_2_type), intent(in), target :: X                                 !< field-averaged perturbation variables (so only first index)
+        Mat, intent(inout) :: A                                                 !< matrix A
+        Mat, intent(inout) :: B                                                 !< matrix B
+        integer, intent(in) :: i_geo                                            !< at which geodesic index to perform the calculations
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
@@ -883,26 +902,37 @@ contains
         end subroutine set_nonzeros
     end function setup_mats
     
-    ! Sets the  boundary conditions deep in the plasma (1) and at the edge (2):
-    !   1 - Set to zero:
-    !       An artificial Eigenvalue EV_BC is introduced by setting the diagonal
-    !       components  of A  to  EV_BC and  of  B to  1,  and the  off-diagonal
-    !       elements to zero.
-    !   2 - Minimization of surface energy through extension of grid:
-    !       For  symmetric  finite  differences,  ndps  extra  grid  points  are
-    !       introduced after the  edge and the vacuum term is  added to the edge
-    !       element. For left finite differences,  the vacuum term is just added
-    !       to the edge element, so this method is idential to 3.
-    !   3 - Minimization of surface energy through asymmetric fin. differences:
-    !       For  symmetric finite  differences, the  last ndps  grid points  are
-    !       treated asymmetrically in order not go  over the edge and the vacuum
-    !       term is  added to the  edge element.  For left differences,  this is
-    !       already standard, so the method becomes identical to 2.
-    !   4 - Explicit introduction of the surface energy minimization:
-    !       The  equation  due  to  the  minimization  of  the  vacuum  term  is
-    !       introduced explicitely  as an asymmetric finite  difference equation
-    !       in the last row. This is done using left finite differences.
-    ! At the plasma surface, the surface energy is minimized as in [ADD REF].
+    !> Sets the boundary conditions deep in the plasma (1) and at the edge (2).
+    !!
+    !! Through  \c  norm_disc_style_sol it  can  be  chosen whether  the  finite
+    !! differences are:
+    !!  1. central finite differences
+    !!  2. left finite differences
+    !!
+    !! Possibilities for \c BC_style:
+    !!  -# Set to zero:
+    !!      - An  artificial Eigenvalue  \c EV_BC is  introduced by  setting the
+    !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
+    !!      off-diagonal elements to zero.
+    !!  -# Minimization of surface energy through extension of grid:
+    !!      - For  symmetric finite differences,  \c ndps extra grid  points are
+    !!      introduced after the  edge and the vacuum term is  added to the edge
+    !!      element.
+    !!      - For left finite differences, the  vacuum term is just added to the
+    !!      edge element, so this method becomes idential to 3.
+    !!  -# Minimization of surface energy through asymmetric fin. differences:
+    !!      - For symmetric finite differences, the last \c ndps grid points are
+    !!      treated asymmetrically in order not go  over the edge and the vacuum
+    !!      term is added to the edge element.
+    !!      -  For left  differences, this  is already  standard, so  the method
+    !!      becomes identical to 2.
+    !!  -# Explicit introduction of the surface energy minimization:
+    !!      -  The equation  due  to  the minimization  of  the  vacuum term  is
+    !!      introduced explicitely  as an asymmetric finite  difference equation
+    !!      in the last row.
+    !! -This is done using left finite differences.
+    !!
+    !! \return ierr
     integer function set_BC(grid_X,X,vac,A,B,i_geo,n_r) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
             &norm_disc_style_sol
@@ -914,12 +944,13 @@ contains
         character(*), parameter :: rout_name = 'set_BC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
-        type(vac_type), intent(in) :: vac                                       ! vacuum variables
-        Mat, intent(inout) :: A, B                                              ! Matrices A and B from A X = lambda B X
-        integer, intent(in) :: i_geo                                            ! at which geodesic index to perform the calculations
-        integer, intent(in) :: n_r                                              ! number of grid points of solution grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        Mat, intent(inout) :: A                                                 !< Matrix A from A X = lambda B X
+        Mat, intent(inout) :: B                                                 !< Matrix B from A X = lambda B X
+        integer, intent(in) :: i_geo                                            !< at which geodesic index to perform the calculations
+        integer, intent(in) :: n_r                                              !< number of grid points of solution grid
         
         ! local variables
         PetscInt :: kd                                                          ! counter
@@ -1286,7 +1317,9 @@ contains
         end function set_BC_4
     end function set_BC
     
-    ! sets up EV solver
+    !> Sets up EV solver.
+    !!
+    !! \return ierr
     integer function setup_solver(X,A,B,solver) result(ierr)
         use num_vars, only: n_sol_requested, tol_SLEPC, max_it_slepc, &
             &EV_guess, solver_SLEPC_style
@@ -1297,9 +1330,9 @@ contains
         character(*), parameter :: rout_name = 'setup_solver'
         
         ! input / output
-        type(X_2_type), intent(in) :: X                                         ! field-averaged perturbation variables (so only first index)
-        Mat, intent(inout) :: A, B                                              ! matrix A and B
-        EPS, intent(inout) :: solver                                            ! EV solver
+        type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
+        Mat, intent(inout) :: A, B                                              !< matrix A and B
+        EPS, intent(inout) :: solver                                            !< EV solver
         
         ! local variables
         PetscScalar :: one = 1.0                                                ! one
@@ -1412,14 +1445,16 @@ contains
             &trim(i2str(max_it_slepc)))
     end function setup_solver
     
-    ! sets up guess in solver
+    !> Sets up guess in solver.
+    !!
+    !! \return ierr
     integer function setup_guess(sol,A,solver) result(ierr)
         character(*), parameter :: rout_name = 'setup_guess'
         
         ! input / output
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        Mat, intent(in) :: A                                                    ! matrix A (or B)
-        EPS, intent(inout) :: solver                                            ! EV solver
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        Mat, intent(in) :: A                                                    !< matrix A (or B)
+        EPS, intent(inout) :: solver                                            !< EV solver
         
         ! local variables
         Vec, allocatable :: guess_vec(:)                                        ! guess to solution EV parallel vector
@@ -1484,12 +1519,14 @@ contains
         call lvl_ud(-1)
     end function setup_guess
     
-    ! get the solution vectors
+    !> Get the solution vectors.
+    !!
+    !! \return ierr
     integer function get_solution(solver) result(ierr)
         character(*), parameter :: rout_name = 'get_solution'
         
         ! input / output
-        EPS, intent(inout) :: solver                                            ! EV solver
+        EPS, intent(inout) :: solver                                            !< EV solver
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1512,15 +1549,17 @@ contains
         call lvl_ud(-1)
     end function get_solution
     
-    ! summarizes solution
+    !> Summarizes solution.
+    !!
+    !! \return ierr
     integer function summarize_solution(solver,max_n_EV) result (ierr)
         use num_vars, only: n_sol_requested
         
         character(*), parameter :: rout_name = 'summarize_solution'
         
         ! input / output
-        EPS, intent(inout) :: solver                                            ! EV solver
-        PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
+        EPS, intent(inout) :: solver                                            !< EV solver
+        PetscInt, intent(inout) :: max_n_EV                                     !< nr. of EV's saved, up to \c n_conv
         
         ! local variables
         PetscInt :: n_it                                                        ! nr. of iterations
@@ -1579,7 +1618,9 @@ contains
         call lvl_ud(-1)
     end function summarize_solution
     
-    ! stores the results
+    !> Stores the results.
+    !!
+    !! \return ierr
     integer function store_results(grid_sol,sol,solver,max_n_EV,A,B) &
         &result(ierr)
         
@@ -1594,11 +1635,12 @@ contains
         character(*), parameter :: rout_name = 'store_results'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(sol_type), intent(inout) :: sol                                    ! solution variables
-        EPS, intent(inout) :: solver                                            ! EV solver
-        PetscInt, intent(inout) :: max_n_EV                                     ! nr. of EV's saved, up to n_conv
-        Mat, intent(inout) :: A, B                                              ! matrix A and B
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(sol_type), intent(inout) :: sol                                    !< solution variables
+        EPS, intent(inout) :: solver                                            !< EV solver
+        PetscInt, intent(inout) :: max_n_EV                                     !< nr. of EV's saved, up to \c n_conv
+        Mat, intent(inout) :: A                                                 !< Matrix A from A X = lambda B X
+        Mat, intent(inout) :: B                                                 !< Matrix B from A X = lambda B X
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
@@ -1992,14 +2034,15 @@ contains
         end subroutine remove_EV
     end function store_results
     
-    ! stop PETSC and SLEPC
-    ! [MPI] Collective call
+    !> Stop PETSC and SLEPC.
+    !!
+    !! \return ierr
     integer function stop_SLEPC(A,B,solver) result(ierr)
         character(*), parameter :: rout_name = 'stop_SLEPC'
         
         ! input / output
-        Mat, intent(in) :: A, B                                                 ! matrices A and B in EV problem A X = lambda B X
-        EPS, intent(in) :: solver                                               ! EV solver
+        Mat, intent(in) :: A, B                                                 !< matrices A and B in EV problem
+        EPS, intent(in) :: solver                                               !< EV solver
         
         ! initialize ierr
         ierr = 0

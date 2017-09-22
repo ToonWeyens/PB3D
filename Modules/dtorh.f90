@@ -1,10 +1,9 @@
 !------------------------------------------------------------------------------!
-!   Calculation of toroidal functions P_{m-1/2,x}^n and Q_{m-1/2,x}^n          !
+!> Calculation of toroidal functions \f$P_{n-1/2}^m \left(z\right)\f$ and 
+!! \f$Q_{n-1/2}^m \left(z\right)\f$.
 !------------------------------------------------------------------------------!
-!   Copied and adapted from the DTORH1 routine by Segura and Gil [1]           !
-!   [1] Segura, Gil - Evaluation of toroidal harmonics,                        !
-!       Computer Physics Communications 124 (2000) 104–122                     !
-!       DOI 10.1016/S0010-4655(99)00428-2                                      !
+!> \note Copied and adapted from the DTORH1 routine by Segura and Gil 
+!! \cite Segura2000 .
 !------------------------------------------------------------------------------!
 module dtorh
 #include <PB3D_macros.h>
@@ -15,7 +14,7 @@ module dtorh
     private
     public dtorh1
     
-   character(len=max_str_ln) :: err_msg                                         ! error message
+   character(len=max_str_ln) :: err_msg                                         !< error message
 
 contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -35,55 +34,66 @@ contains
     !    NEWN     MAXIMUM ORDER OF FUNCTIONS CALCULATED WHEN           !
     !             PL (NMAX+1) IS LARGER THAN 1/TINY                    !
     !             (OVERFLOW LIMIT = 1/TINY, TINY IS DEFINED BELOW)     !
-    !    NOTE1: FOR A PRECISION OF 10**(-12), IF Z>5 AND (Z/M)>0.22    !
-    !           THE CODE USES A SERIES EXPANSION FOR PL(0).            !
-    !           WHEN Z<20 AND (Z/M)<0.22 A CONTINUED FRACTION IS       !
-    !           APPLIED.                                               !
-    !    NOTE2: FOR A PRECISION OF 10**(-8), IF Z>5 AND (Z/M)>0.12 THE !
-    !           CODE USES A SERIES EXPANSION FOR PL(0).                !
-    !           WHEN Z<20 AND (Z/M)<0.12 A CONTINUED FRACTION IS       !
-    !           APPLIED.                                               !
-    !   *IF MODE IS EQUAL TO 1:                                        !
-    !      THE SET OF FUNCTIONS EVALUATED IS:                          !
-    !           PL(N)/GAMMA(M+1/2),QL(N)/GAMMA(M+1/2),                 !
-    !      WHICH ARE RESPECTIVELY STORED IN THE ARRAYS PL(N),QL(N)     !
-    !      NEWN REFERS TO THIS NEW SET OF FUNCTIONS                    !
-    !      NOTE1 AND NOTE2 ALSO APPLY IN THIS CASE                     !
-    !   *IF MODE IS EQUAL TO 2:                                        !
-    !       THE CODE PERFORMS AS FOR MODE 1, BUT THE RESTRICTION       !
-    !       Z<20 FOR THE EVALUATION OF THE CONTINUED FRACTION IS NOT   !
-    !       CONSIDERED                                                 !
-    !       WARNING: USE ONLY IF HIGH M'S FOR Z>20 ARE REQUIRED. THE   !
-    !       EVALUATION OF THE CF MAY FAIL TO CONVERGE FOR TOO HIGH Z'S !
-    !  PARAMETERS:                                                     !
-    !   MODE: ENABLES THE ENLARGEMENT OF THE RANGE OF ORDERS AND       !
-    !         DEGREES THAT CAN BE EVALUATED.                           !
-    !   EPS:  CONTROLS THE ACCURACY OF THE CONTINUED FRACTIONS         !
-    !         AND SERIES.                                              !
-    !   IPRE: REQUIRED PRECISION IN THE EVALUATION OF TOROIDAL         !
-    !         HARMONICS.                                               !
-    !           *IF IPRE=1, PRECISION=10**(-12) (TAKING EPS<10**(-12)) !
-    !           *IF IPRE=2, PRECISION=10**(-8)  (TAKING EPS<10**(-8))  !
-    !   TINY: SMALL PARAMETER NEAR THE UNDERFLOW LIMIT.                !
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    integer function DTORH1(Z,M,NMAX,PL,QL,NEWN,MODE,IPRE) result(ierr)
+    !> Calculates toroidal harmonics of a fixed order \c m and degrees
+    !! up to \c nmax.
+    !!
+    !! Optionally, the \c mode can be specified to be different from 0 [default]
+    !!  - if \c mode=1:
+    !!      - The set of functions evaluated is:
+    !!        \f[\frac{P_{n-1/2}^m \left(z\right)}{\Gamma(m+1/2)} \ ,\quad 
+    !!          \frac{Q_{n-1/2}^m \left(z\right)}{\Gamma(m+1/2)},\f]
+    !!        which are respectively stored in the arrays \c pl(n), \c ql(n).
+    !!      - newn refers to this new set of functions.
+    !!      - Note 1. and note 2. also apply in this case.
+    !!  - if \c mode=2:
+    !!      - The code performs as for mode 1, but the restriction \f$ z<20 \f$.
+    !!      - For the evaluation of the continued fraction is not considered.
+    !!
+    !! Also, the parameter \c ipre can be used to select a different precision:
+    !!  - For \c ipre=1, the precision is \f$10^{-12}\f$, taking
+    !!    \f$\epsilon<10^{-12}\f$
+    !!  - For \c ipre=2, the precision is \f$10^{-8}\f$, taking
+    !!    \f$\epsilon<10^{-8}\f$
+    !!
+    !! where \f$\epsilon\f$ controls the accuracy.
+    !!
+    !! \warning Use \c mode 2 only if high \c m 's for \f$z>20\f$ are required.
+    !! The evaluation of the cf may fail to converge for too high \c z 's.
+    !!
+    !! \note
+    !!    -# For a precision of \f$10^{-12}\f$, if \f$z>5\f$ and \f$z/m>0.22\f$,
+    !!    the code uses a series expansion for \c pl(0).\n
+    !!    When \f$z<20\f$ and \f$z/m<0.22\f$ a continued fraction is applied.
+    !!    -# For a precision of \f$10^{-8}\f$, if \f$z>5\f$ and \f$z/m>0.12\f$,
+    !!    the code uses a series expansion for \c pl(0).\n
+    !!    When \f$z<20\f$ and \f$z/m<0.12\f$ a continued fraction is applied.
+    !! 
+    !! \return ierr
+    integer function dtorh1(z,m,nmax,pl,ql,newn,mode,ipre) result(ierr)
         character(*), parameter :: rout_name = 'DTORH1'
         
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        !   DECLARATION OF VARIABLES   !
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        INTEGER M,NMAX,NMAXP,MP,NP,N,ICAL,NEWN,I
-        INTEGER, optional :: MODE
-        INTEGER, optional :: IPRE
+        ! input / output
+        real(dp), intent(in) :: z                                               !< (real) point at which toroidal harmonics are evaluated
+        integer, intent(in) :: m                                                !< order of toroidal harmonics (\c m>0)
+        integer, intent(in) :: nmax                                             !< maximum degree of toroidal harmonics (\c nmax>0)
+        real(dp), intent(inout) :: pl(0:nmax)                                   !< toroidal harmonics of first kind \f$P_{n-1/2}^m\left(z\right)\f$
+        real(dp), intent(inout) :: ql(0:nmax)                                   !< toroidal harmonics of second kind \f$Q_{n-1/2}^m\left(z\right)\f$
+        integer, intent(inout) :: newn                                          !< maximum order of functions calculated when <tt> pl(nmax+1)>1/tiny </tt> with <tt>tiny=</tt>\f$10^{-290}\f$
+        integer, intent(in), optional :: mode                                   !< mode that controls output
+        integer, intent(in), optional :: ipre                                   !< precision
+        
+        ! local variables
+        INTEGER NMAXP,MP,NP,N,ICAL,I
         INTEGER :: mode_loc, ipre_loc
-        REAL(dp) Z,OVER,TINYSQ,QZ,PISQ,FL,CC,AR,GAMMA,FC,QDC1,QARGU,&
+        REAL(dp) OVER,TINYSQ,QZ,PISQ,FL,CC,AR,GAMMA,FC,QDC1,QARGU,&
             &ARGU1,DFACQS,FCP,DD,D1,QM0,DFAC3,DFAC4,PL0
         real(dp), allocatable :: PL_loc(:), QL_loc(:)                           ! local copy of pl and ql, possibly larger
         !REAL(dp) DPPI                                                           ! Is never used?
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! THE DIMENSION OF QLMM (INTERNAL ARRAY) MUST BE GREATER THAN M    !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        REAL(dp)  QLMM(0:1001),PL(0:NMAX),QL(0:NMAX),PR(2)
+        REAL(dp)  QLMM(0:1001),PR(2)
         real(dp), PARAMETER :: EPS=1.E-14_dp, TINY=1.E-290_dp
         
         ! initialize ierr

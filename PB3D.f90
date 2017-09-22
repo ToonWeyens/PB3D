@@ -8,17 +8,21 @@
 !   ╚═╝     ╚═════╝ ╚═════╝ ╚═════╝ 
 
 !------------------------------------------------------------------------------!
-!   program Peeling Ballooning in 3D                                           !
+!>  Peeling Ballooning in 3D
 !------------------------------------------------------------------------------!
-!   Author: Toon Weyens                                                        !
-!   Institution: ITER Organization                                             !
-!   Contact: weyenst@gmail.com                                                 !
+!>  \author
+!!  Toon Weyens,
+!!  Institution: ITER Organization,
+!!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!   Version: 1.91                                                              !
+!>  \version    1.92
+!!  \date       2012-2017
+!!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
-!   References:                                                                !
-!       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
-!           devices, eq. (6.12) and (6.16)                                     !
+!>  \see
+!!  References:
+!!  \cite weyens2014theory
+!!  \cite Weyens2017PB3D
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program PB3D

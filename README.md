@@ -1028,3 +1028,7 @@ Technische Universiteit Eindhoven
 * Fixed bug in 'store_vac' where 'calc_vec_comp' was used incorrectly and very redundantly.
 * 'calc_zero_HH' now shows output.
 * eq_ops does not deallocate T_VF and jac_E anymore, as they are needed for vacuum.
+
+## 1.92: 
+* Changed to Doxygen formatting for comments.
+* An accompanying document is still missing.

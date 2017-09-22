@@ -1,5 +1,21 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to MPI                                         !
+!> Numerical utilities related to MPI.
+!!
+!! This  includes  a  lock  system,  which  can be  both  BL  (blocking)  or  NB
+!! (non-blocking). It  is based on the  implementation of an MPI-IO  atomic mode
+!! without file support, described in \cite RossAtomicIO.
+!!
+!! \see See mpi_vars.
+!!
+!! The reason  for this was the fact  that using a simple lock file  can lead to
+!! crashes.
+!!
+!! \note A  downside of this method  is that in  some rare cases a  deadlock may
+!! occur as the master process, which contains the shared variable with a window
+!! that other  processes may use,  is idle and  waiting, whereas the  others are
+!! still performing  lock options. As  the master is  idle and waiting,  its MPI
+!! asynchronous  communication  is not  performed.  To  remedy this,  just  call
+!! wait_MPI() after procedures where lock operations are performed.
 !------------------------------------------------------------------------------!
 module MPI_utilities
 #include <PB3D_macros.h>
@@ -21,39 +37,79 @@ module MPI_utilities
 #if ldebug
     ! global variables
     ! Note: use "sort -nk1 [output file]" to get output sorted by time.
-    logical :: debug_lock = .false.                                             ! print debug information about lock operations
-    integer :: n_waits = 0
+    logical :: debug_lock = .false.                                             !< print debug information about lock operations \ldebug
+    integer :: n_waits = 0                                                      !< number of waits \ldebug
 #endif
     
     ! interfaces
+    
+    !> \public Gather parallel variable in serial version on group master.
+    !!
+    !! Optionally,  all the  processes receive  the parallel  variable using  \c
+    !! scatter.
+    !!
+    !! \note The  serial variable has to  be allocatable and if  unallocated, it
+    !! will be allocated.
+    !!
+    !! \return ierr
     interface get_ser_var
-        module procedure get_ser_var_complex, get_ser_var_real, get_ser_var_int
+        !> \public
+        module procedure get_ser_var_complex
+        !> \public
+        module procedure get_ser_var_real
+        !> \public
+        module procedure get_ser_var_int
     end interface
+    
+    !> \public Fill the ghost regions in an array.
+    !!
+    !! This is done by  sending the first normal point of a  process to the left
+    !! process.
+    !!
+    !! Every MPI message is identified by  its sending process. The array should
+    !! have the extended size, including ghost regions.
+    !!
+    !! \return ierr
     interface get_ghost_arr
-        module procedure get_ghost_arr_3D_complex, get_ghost_arr_3D_real, &
-            &get_ghost_arr_2D_complex, get_ghost_arr_1D_real
+        !> \public
+        module procedure get_ghost_arr_3D_complex
+        !> \public
+        module procedure get_ghost_arr_3D_real
+        !> \public
+        module procedure get_ghost_arr_2D_complex
+        !> \public
+        module procedure get_ghost_arr_1D_real
     end interface
+    
+    !> \public Wrapper function to broadcast a single variable using MPI.
+    !!
+    !! \return ierr
     interface broadcast_var
-        module procedure broadcast_var_real, broadcast_var_int, &
-            &broadcast_var_log, broadcast_var_real_arr, broadcast_var_int_arr, &
-            &broadcast_var_log_arr
+        !> \public
+        module procedure broadcast_var_real
+        !> \public
+        module procedure broadcast_var_int
+        !> \public
+        module procedure broadcast_var_log
+        !> \public
+        module procedure broadcast_var_real_arr
+        !> \public
+        module procedure broadcast_var_int_arr
+        !> \public
+        module procedure broadcast_var_log_arr
     end interface
     
 contains
-    ! Gather parallel variable in serial version on group master or, optionally,
-    ! to all the processes, using the variable "scatter"
-    ! Note:  the serial variable  has to be  allocatable and if  unallocated, it
-    ! will be allocated.
-    ! [MPI] Collective call
-    integer function get_ser_var_complex(var,ser_var,scatter) result(ierr)      ! complex version
+    !> \private complex version
+    integer function get_ser_var_complex(var,ser_var,scatter) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ser_var'
         
         ! input / output
-        complex(dp), intent(in) :: var(:)                                       ! parallel vector
-        complex(dp), allocatable, intent(inout) :: ser_var(:)                   ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
+        complex(dp), intent(in) :: var(:)                                       !< parallel vector
+        complex(dp), allocatable, intent(inout) :: ser_var(:)                   !< serial vector
+        logical, intent(in), optional :: scatter                                !< optionally scatter the result to all the processes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -118,15 +174,16 @@ contains
         err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
     end function get_ser_var_complex
-    integer function get_ser_var_real(var,ser_var,scatter) result(ierr)         ! real version
+    !> \private real version
+    integer function get_ser_var_real(var,ser_var,scatter) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ser_var_real'
         
         ! input / output
-        real(dp), intent(in) :: var(:)                                          ! parallel vector
-        real(dp), allocatable, intent(inout) :: ser_var(:)                      ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
+        real(dp), intent(in) :: var(:)                                          !< parallel vector
+        real(dp), allocatable, intent(inout) :: ser_var(:)                      !< serial vector
+        logical, intent(in), optional :: scatter                                !< optionally scatter the result to all the processes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -191,15 +248,16 @@ contains
         err_msg = 'Failed to gather parallel variable'
         CHCKERR(err_msg)
     end function get_ser_var_real
-    integer function get_ser_var_int(var,ser_var,scatter) result(ierr)          ! integer version
+    !> \private integer version
+    integer function get_ser_var_int(var,ser_var,scatter) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ser_var_int'
         
         ! input / output
-        integer, intent(in) :: var(:)                                           ! parallel vector
-        integer, allocatable, intent(inout) :: ser_var(:)                       ! serial vector
-        logical, intent(in), optional :: scatter                                ! optionally scatter the result to all the processes
+        integer, intent(in) :: var(:)                                           !< parallel vector
+        integer, allocatable, intent(inout) :: ser_var(:)                       !< serial vector
+        logical, intent(in), optional :: scatter                                !< optionally scatter the result to all the processes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -357,18 +415,15 @@ contains
         !end do
     end function redistribute_var
     
-    ! Fill the ghost regions in an array  by sending the first normal point of a
-    ! process to  the left process. Every  message is identified by  its sending
-    ! process. The array should have the extended size, including ghost regions.
-    ! [MPI] Collective call
-    integer function get_ghost_arr_3D_complex(arr,size_ghost) result(ierr)      ! 3D complex version
+    !> \private 3-D complex version
+    integer function get_ghost_arr_3D_complex(arr,size_ghost) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ghost_arr_3D_complex'
         
         ! input / output
-        complex(dp), intent(inout) :: arr(:,:,:)                                ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        complex(dp), intent(inout) :: arr(:,:,:)                                !< divided array
+        integer, intent(in) :: size_ghost                                       !< width of ghost region
         
         ! local variables
         integer :: n_modes(2)                                                   ! number of modes
@@ -404,14 +459,15 @@ contains
             end if
         end if
     end function get_ghost_arr_3D_complex
-    integer function get_ghost_arr_3D_real(arr,size_ghost) result(ierr)         ! 3D real version
+    !> \private 3-D real version
+    integer function get_ghost_arr_3D_real(arr,size_ghost) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ghost_arr_3D_real'
         
         ! input / output
-        real(dp), intent(inout) :: arr(:,:,:)                                   ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        real(dp), intent(inout) :: arr(:,:,:)                                   !< divided array
+        integer, intent(in) :: size_ghost                                       !< width of ghost region
         
         ! local variables
         integer :: n_modes(2)                                                   ! number of modes
@@ -448,14 +504,15 @@ contains
             end if
         end if
     end function get_ghost_arr_3D_real
-    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)      ! 2D complex version
+    !> \private 2-D complex version
+    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ghost_arr_2D_complex'
         
         ! input / output
-        complex(dp), intent(inout) :: arr(:,:)                                  ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        complex(dp), intent(inout) :: arr(:,:)                                  !< divided array
+        integer, intent(in) :: size_ghost                                       !< width of ghost region
         
         ! local variables
         integer :: n_modes                                                      ! number of modes
@@ -491,14 +548,15 @@ contains
             end if
         end if
     end function get_ghost_arr_2D_complex
-    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)         ! 1D real version
+    !> \private 1-D real version
+    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)
         use num_vars, only: rank, n_procs
         
         character(*), parameter :: rout_name = 'get_ghost_arr_1D_real'
         
         ! input / output
-        real(dp), intent(in) :: arr(:)                                          ! divided array
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        real(dp), intent(in) :: arr(:)                                          !< divided array
+        integer, intent(in) :: size_ghost                                       !< width of ghost region
         
         ! local variables
         integer :: tot_size                                                     ! total size (including ghost region)
@@ -533,13 +591,13 @@ contains
         end if
     end function get_ghost_arr_1D_real
     
-    ! wrapper function to broadcast a single variable
-    integer function broadcast_var_real(var,source) result(ierr)                ! version for reals
+    !> \private real version
+    integer function broadcast_var_real(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_real'
         
         ! input / output
-        real(dp), intent(in) :: var                                             ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        real(dp), intent(in) :: var                                             !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -554,12 +612,13 @@ contains
             &ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_real
-    integer function broadcast_var_int(var,source) result(ierr)                 ! version for integers
+    !> \private integer version
+    integer function broadcast_var_int(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_int'
         
         ! input / output
-        integer, intent(in) :: var                                              ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        integer, intent(in) :: var                                              !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -573,12 +632,13 @@ contains
         call MPI_Bcast(var,1,MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_int
-    integer function broadcast_var_log(var,source) result(ierr)                 ! version for logicals
+    !> \private logical version
+    integer function broadcast_var_log(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_log'
         
         ! input / output
-        logical, intent(in) :: var                                              ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        logical, intent(in) :: var                                              !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -592,12 +652,13 @@ contains
         call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_log
-    integer function broadcast_var_real_arr(var,source) result(ierr)            ! array version for reals
+    !> \private real array version
+    integer function broadcast_var_real_arr(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_real_arr'
         
         ! input / output
-        real(dp), intent(in) :: var(:)                                          ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        real(dp), intent(in) :: var(:)                                          !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -612,12 +673,13 @@ contains
             &MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_real_arr
-    integer function broadcast_var_int_arr(var,source) result(ierr)             ! array version for integers
+    !> \private integer array version
+    integer function broadcast_var_int_arr(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_int_arr'
         
         ! input / output
-        integer, intent(in) :: var(:)                                           ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        integer, intent(in) :: var(:)                                           !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -631,12 +693,13 @@ contains
         call MPI_Bcast(var,size(var),MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_int_arr
-    integer function broadcast_var_log_arr(var,source) result(ierr)             ! array version for logicals
+    !> \private logical array version
+    integer function broadcast_var_log_arr(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_log_arr'
         
         ! input / output
-        logical, intent(in) :: var(:)                                           ! variable to be broadcast
-        integer, intent(in), optional :: source                                 ! process that sends
+        logical, intent(in) :: var(:)                                           !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
         integer :: source_loc = 0                                               ! local value for source
@@ -651,7 +714,9 @@ contains
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_log_arr
     
-    ! MPI wait
+    !> Wait for all processes, wrapper to MPI barrier.
+    !!
+    !! \return ierr
     integer function wait_MPI() result(ierr)
         character(*), parameter :: rout_name = 'wait_MPI'
         
@@ -667,7 +732,12 @@ contains
 #endif
     end function wait_MPI
     
-    ! Request access to lock of a BL or optionally a NB type.
+    !>  Request  access  to  lock  of   a  BL  (blocking)  or  optionally  a  NB
+    !! (non-blocking) type.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \return ierr
     integer function lock_req_acc(lock,blocking) result(ierr)
         use num_vars, only: rank
         use num_utilities, only: bubble_sort
@@ -675,7 +745,7 @@ contains
         character(*), parameter :: rout_name = 'lock_req_acc'
         
         ! input / output
-        type(lock_type), intent(inout) :: lock                                  ! lock
+        type(lock_type), intent(inout) :: lock                                  !< lock
         
         ! local variables
         integer :: id                                                           ! counter
@@ -768,15 +838,20 @@ contains
         end if
     end function lock_req_acc
     
-    ! Returns  access  to a  lock.  The  blocking  property  has been  set  when
-    ! requesting the lock.
+    !> Returns  access  to a  lock. 
+    !!
+    !! The blocking property has been set when requesting the lock.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \return ierr
     integer function lock_return_acc(lock) result(ierr)
         use num_utilities, only: bubble_sort
         
         character(*), parameter :: rout_name = 'lock_return_acc'
         
         ! input / output
-        type(lock_type), intent(inout) :: lock                                  ! lock
+        type(lock_type), intent(inout) :: lock                                  !< lock
         
         ! local variables
         integer :: id                                                           ! counter
@@ -868,20 +943,28 @@ contains
         end if
     end function lock_return_acc
     
-    ! Decides whether a waiting list is empty.
-    ! The type of process  to find is indicated by an  array of possible values.
-    ! See lock_wl_change for an explanation of the process type.
-    ! Additionally, for NB  processes, the negative inverse of  these values are
-    ! used.
-    ! If the waiting  list is not empty, the next  process(es) can optionally be
-    ! returned.
+    !> Decides whether a waiting list is empty.
+    !!
+    !! The type of process to find is  indicated by an array of possible values.
+    !!
+    !! \see See lock_wl_change() for an explanation of the process type.
+    !!
+    !! Additionally, for NB processes, the  negative inverse of these values are
+    !! used.
+    !!
+    !! If the waiting list is not  empty, the next process(es) can optionally be
+    !! returned.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \return ierr
     logical function wl_empty(wl,proc_type,next_procs)
         use num_vars, only: n_procs, rank
         
         ! input / output
-        integer, intent(in) :: wl(:)                                            ! waiting list
-        integer, intent(in) :: proc_type(:)                                     ! types of processes accepted
-        integer, intent(inout), optional, allocatable :: next_procs(:)          ! next process(es) if not empty
+        integer, intent(in) :: wl(:)                                            !< waiting list
+        integer, intent(in) :: proc_type(:)                                     !< types of processes accepted
+        integer, intent(inout), optional, allocatable :: next_procs(:)          !< next process(es) if not empty
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -914,16 +997,21 @@ contains
         end if
     end function wl_empty
     
-    ! Notifies a rank that they can get the lock.
-    ! The signal sent is the rank + 1.
-    integer function lock_notify(lock,rec_rank) result(ierr)
+    !> Notifies a rank that they can get the lock.
+    !!
+    !! The signal sent is the rank + 1.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \return ierr
+    integer function lock_notify(lock_loc,rec_rank) result(ierr)
         use num_vars, only: rank
         
         character(*), parameter :: rout_name = 'lock_notify'
         
         ! input / output
-        type(lock_type), intent(in) :: lock                                     ! lock
-        integer, intent(in) :: rec_rank                                         ! receiving rank
+        type(lock_type), intent(in) :: lock_loc                                 !< lock
+        integer, intent(in) :: rec_rank                                         !< receiving rank
         
         ! local variables
 #if ldebug
@@ -933,22 +1021,26 @@ contains
         ! initialize ierr
         ierr = 0
         
-        call MPI_Send(rank+1,1,MPI_INTEGER,rec_rank,lock%wu_tag,&
+        call MPI_Send(rank+1,1,MPI_INTEGER,rec_rank,lock_loc%wu_tag,&
             &MPI_Comm_world,ierr)
         CHCKERR('Failed to send notification')
         
 #if ldebug
-        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock_loc)), &
             &'    notified', rec_rank
 #endif
     end function lock_notify
     
-    ! Get notified that the rank can  get the lock.
-    integer function lock_get_notified(lock) result(ierr)
+    !> Get notified that the rank can  get the lock.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \return ierr
+    integer function lock_get_notified(lock_loc) result(ierr)
         character(*), parameter :: rout_name = 'lock_get_notified'
         
         ! input / output
-        type(lock_type), intent(in) :: lock                                     ! lock
+        type(lock_type), intent(in) :: lock_loc                                 !< lock
         
         ! local variables
         integer :: dum_buf                                                      ! dummy buffer
@@ -960,40 +1052,49 @@ contains
         ierr = 0
         
 #if ldebug
-        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock_loc)), &
             &'    but needs to wait for lock'
 #endif
         call MPI_Recv(dum_buf,1,MPI_INTEGER,MPI_ANY_SOURCE,&
-            &lock%wu_tag,MPI_Comm_world,MPI_STATUS_IGNORE,ierr)
+            &lock_loc%wu_tag,MPI_Comm_world,MPI_STATUS_IGNORE,ierr)
         CHCKERR('Failed to receive notification')
 #if ldebug
-        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)), &
+        if (debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock_loc)), &
             &'    got notified by ',dum_buf-1
 #endif
     end function lock_get_notified
     
-    ! Adds, removes or  sets to active a  rank from the waiting list  for a lock
-    ! and returns the lock waiting list:
-    !   wl_action = 0: remove
-    !   wl_action = 1: add
-    !   wl_action = 2: active
-    ! Or negative equivalents for NB procs.
-    ! Optionally, the  rank(s) of the process  for which to perform  this action
-    ! can  be passed.  This is  useful  for doing  the same  action on  multiple
-    ! processes, as is described in the note of lock_req_acc.
-    ! (based on http://www.mcs.anl.gov/~thakur/papers/atomic-mode.pdf)
-    integer function lock_wl_change(wl_action,blocking,lock,wl,ranks) &
+    !> Adds, removes or sets  to active a rank from the waiting  list for a lock
+    !! and returns the lock waiting list:
+    !!
+    !! Actions:
+    !!  - \c wl_action = 0: remove
+    !!  - \c wl_action = 1: add
+    !!  - \c wl_action = 2: active
+    !!
+    !! Or negative equivalents for non-blocking (NB) procs.
+    !!
+    !! Optionally, the rank(s)  of the process for which to  perform this action
+    !! can  be passed.  This is  useful for  doing the  same action  on multiple
+    !! processes.
+    !!
+    !! \note Based on \cite RossAtomicIO.
+    !!
+    !! \ldebug
+    !!
+    !! \return ierr
+    integer function lock_wl_change(wl_action,blocking,lock_loc,wl,ranks) &
         &result(ierr)
         use num_vars, only: n_procs, rank
         
         character(*), parameter :: rout_name = 'lock_wl_change'
         
         ! input / output
-        integer, intent(in) :: wl_action                                        ! action to perform
-        logical, intent(in) :: blocking                                         ! the ranks to be changed are blocking
-        type(lock_type), intent(inout) :: lock                                  ! lock
-        integer, intent(inout), allocatable :: wl(:)                            ! waiting list
-        integer, intent(in), optional :: ranks(:)                               ! rank(s) for which to perform option
+        integer, intent(in) :: wl_action                                        !< action to perform
+        logical, intent(in) :: blocking                                         !< the ranks to be changed are blocking
+        type(lock_type), intent(inout) :: lock_loc                              !< lock
+        integer, intent(inout), allocatable :: wl(:)                            !< waiting list
+        integer, intent(in), optional :: ranks(:)                               !< rank(s) for which to perform option
         
         ! local variables
         integer :: id                                                           ! counter
@@ -1032,7 +1133,7 @@ contains
 #if ldebug
         if (debug_lock) call system_clock(window_time(1))
 #endif
-        call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,lock%wl_win,ierr)
+        call MPI_Win_lock(MPI_LOCK_EXCLUSIVE,0,0,lock_loc%wl_win,ierr)
         CHCKERR('Failed to lock window')
         
         ! get previous list and put value for current ranks
@@ -1057,28 +1158,28 @@ contains
             ! perform the gets between this rank and previous rank
             if (ln.gt.0) then                                                   ! if there is something to get between last put and this one
                 call MPI_Get(wl(int(disp)+1:int(disp)+ln),ln,MPI_INTEGER,0,&
-                    &disp,ln,MPI_INTEGER,lock%wl_win,ierr)
+                    &disp,ln,MPI_INTEGER,lock_loc%wl_win,ierr)
                 CHCKERR('Failed to get waiting list')
             end if
             
             ! perform the single put up to the current rank if not last piece
             if (id.lt.n_ranks+1) then
                 call MPI_Put(put_val,1,MPI_INTEGER,0,ranks_loc(id)*one,1,&
-                    &MPI_INTEGER,lock%wl_win,ierr)
+                    &MPI_INTEGER,lock_loc%wl_win,ierr)
                 CHCKERR('Failed to add to waiting list')
                 wl(ranks_loc(id)+1) = put_val
             end if
         end do
         
         ! unlock window
-        call MPI_Win_unlock(0,lock%wl_win,ierr)
+        call MPI_Win_unlock(0,lock_loc%wl_win,ierr)
         CHCKERR('Failed to lock window')
 #if ldebug
         if (debug_lock) call system_clock(window_time(2))
 #endif
 
 #if ldebug
-        if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock)),&
+        if(debug_lock) write(*,*,IOSTAT=istat) trim(lock_header(lock_loc)),&
             &'    time: '//&
             &trim(r2strt(1.E-9_dp*(window_time(2)-window_time(1)))),&
             &' waiting list:', wl
@@ -1086,12 +1187,14 @@ contains
     end function lock_wl_change
 
 #if ldebug
-    ! the header for lock debug messages
-    character(len=max_str_ln) function lock_header(lock) result(header)
+    !! Returns the header for lock debug messages.
+    !!
+    !! \ldebug
+    character(len=max_str_ln) function lock_header(lock_loc) result(header)
         use num_vars, only: rank
         
         ! input / output
-        type(lock_type), intent(in) :: lock                                     ! lock
+        type(lock_type), intent(in) :: lock_loc                                 !< lock
         
         ! local variables
         integer(kind=8) :: clock                                                ! current clock
@@ -1101,13 +1204,13 @@ contains
         call system_clock(clock)
         
         ! set block_char
-        if (lock%blocking) then
+        if (lock_loc%blocking) then
             block_char = 'BL'
         else
             block_char = 'NB'
         end if
         
-        header = trim(ii2str(clock))//' '//trim(i2str(lock%wu_tag))//' '//&
+        header = trim(ii2str(clock))//' '//trim(i2str(lock_loc%wu_tag))//' '//&
             &block_char//' '//trim(i2str(rank))//'-'
     end function lock_header
 #endif

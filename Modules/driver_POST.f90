@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Main driver of PostProcessing of program Peeling Ballooning in 3D          !
+!> Main driver of PostProcessing of program Peeling Ballooning in 3D.
 !------------------------------------------------------------------------------!
 module driver_POST
 #include <PB3D_macros.h>
@@ -19,47 +19,52 @@ module driver_POST
     public run_driver_POST, init_POST, stop_POST
     
     ! local variables
-    integer :: lims_norm(2,3)                                                   ! normal i_limit of eq, X and sol variables
-    integer :: rich_lvl_name                                                    ! either the Richardson level or zero, to append to names
-    integer :: min_id(3), max_id(3)                                             ! min. and max. index of range 1, 2 and 3
-    integer :: last_unstable_id                                                 ! index of last unstable EV
-    integer :: n_par_tot                                                        ! total n(1) for all equilibrium jobs together
-    character(len=4) :: grid_name(3)                                            ! names of grids
-    type(sol_type) :: sol                                                       ! solution variables
-    type(grid_type) :: grid_eq_XYZ                                              ! eq grid for XYZ calculations
-    type(grid_type) :: grid_eq_HEL                                              ! HELENA eq grid
-    type(grid_type) :: grid_X_HEL                                               ! HELENA X grid
-    type(eq_2_type) :: eq_2_HEL                                                 ! metric equilibrium for HELENA tables
-    type(X_1_type) :: X_HEL                                                     ! vectorial perturbation variables for HELENA tables
-    complex(dp), allocatable :: E_pot_int(:,:)                                  ! E_pot integrated for requested solutions
-    complex(dp), allocatable :: E_kin_int(:,:)                                  ! E_kin integrated for requested solutions
+    integer :: lims_norm(2,3)                                                   !< normal \c i_limit of eq, X and sol variables
+    integer :: rich_lvl_name                                                    !< either the Richardson level or zero, to append to names
+    integer :: min_id(3), max_id(3)                                             !< min. and max. index of range 1, 2 and 3
+    integer :: last_unstable_id                                                 !< index of last unstable EV
+    integer :: n_par_tot                                                        !< total \c n(1) for all equilibrium jobs together
+    character(len=4) :: grid_name(3)                                            !< names of grids
+    type(sol_type) :: sol                                                       !< solution variables
+    type(grid_type) :: grid_eq_XYZ                                              !< eq grid for XYZ calculations
+    type(grid_type) :: grid_eq_HEL                                              !< HELENA eq grid
+    type(grid_type) :: grid_X_HEL                                               !< HELENA X grid
+    type(eq_2_type) :: eq_2_HEL                                                 !< metric equilibrium for HELENA tables
+    type(X_1_type) :: X_HEL                                                     !< vectorial perturbation variables for HELENA tables
+    complex(dp), allocatable :: E_pot_int(:,:)                                  !< \f$\int E_{pot} \text{d}V\f$ for requested solutions
+    complex(dp), allocatable :: E_kin_int(:,:)                                  !< \f$\int E_{kin} \text{d}V\f$ for requested solutions
 
 contains
-    ! Initializes the POST driver:
-    !   - set up preliminary variables
-    !       * global variables
-    !       * read grids (full)
-    !       * eq_1 (full) and n and m (full)
-    !   - set up output grids:
-    !       * POST_style = 1: extended grid
-    !       * POST_style = 2: field-aligned grid
-    !   - clean up
-    !   - set up final variables
-    !       * normal limits
-    !       * read grids (divided), eq_1 (divided) and sol (divided) variables
-    !   - 1-D output plots
-    !       * resonance plot
-    !       * flux quantities plot
-    !       * magnetic grid plot
-    !   - prepare Eigenvalue plots
-    !       * calculates resonant surfaces
-    !       * plots Eigenvalues
-    !       * finds stability ranges for all Eigenvalues to be plot
-    !       * plots harmonics for every Eigenvalue
-    !       * calculates the parallel ranges of the equilibrium jobs
-    !   - clean up
-    ! In the  actual driver, more detailed  plots are possibly made  for all the
-    ! requested Eigenvalues if full_output.
+    !> Initializes the POST driver.
+    !!
+    !!  - set up preliminary variables
+    !!      * global variables
+    !!      * read grids (full)
+    !!      * \c eq_1 (full) and \c n \& \c m (full)
+    !!  - set up output grids:
+    !!      * <tt> POST_style = 1</tt>: extended grid
+    !!      * <tt> POST_style = 2</tt>: field-aligned grid
+    !!  - clean up
+    !!  - set up final variables
+    !!      * normal limits
+    !!      *  read grids  (divided), \c  eq_1  (divided) and  \c sol  (divided)
+    !!      variables
+    !!  - 1-D output plots
+    !!      * resonance plot
+    !!      * flux quantities plot
+    !!      * magnetic grid plot
+    !!  - prepare Eigenvalue plots
+    !!      * calculates resonant surfaces
+    !!      * plots Eigenvalues
+    !!      * finds stability ranges for all Eigenvalues to be plot
+    !!      * plots harmonics for every Eigenvalue
+    !!      * calculates the parallel ranges of the equilibrium jobs
+    !!  - clean up
+    !!
+    !! In  the actual  driver, more  detailed plots  are possibly  made for  all
+    !! requested Eigenvalues if \c full_output.
+    !!
+    !! \return ierr
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type
         use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
@@ -422,32 +427,36 @@ contains
         call eq_1%dealloc()
     end function init_POST
     
-    ! The main driver routine for postprocessing
-    ! Note  that  the PB3D  output  is given  on different  grids for  different
-    ! styles of the equilibrium model:
-    !   - VMEC: field-aligned grid on which EV problem has been solved.
-    !   - HELENA: output  grid  on  which equilibrium  and metric  variables are
-    !   tabulated.
-    ! Furthermore,  if Richardson  extrapolation  is used,  the  VMEC grids  and
-    ! variables are contained in multiple HDF5 variables.
-    ! These variables are needed here both in a field-aligned and a plot grid. A
-    ! consequence of  the above  is that  for VMEC  the field-aligned  output is
-    ! already given, but the  output on the plot grid has  to be calculated from
-    ! scratch, while  for HELENA both outputs  have to be interpolated  from the
-    ! output tables.
-    ! The general workflow is as follows:
-    !   - take a subset of the output grids for the current equilibrium job.
-    !   - for POST_style = 1 (extended grid):
-    !       * VMEC: recalculate variables
-    !       * HEL:  interpolate variables
-    !     for POST_style = 2 (B-aligned grid):
-    !       * VMEC: read subset of variables
-    !       * HEL:  inerpolate variables
-    !   - create helper variables
-    !   - create plots and outputs
-    integer function run_driver_POST() &
-        &result(ierr)
-        
+    !> The main driver routine for postprocessing.
+    !!
+    !! \note The PB3D output is given on different grids for different styles of
+    !! the equilibrium model:
+    !!  - VMEC: field-aligned grid on which EV problem has been solved.
+    !!  - HELENA: output  grid  on  which equilibrium  and metric  variables are
+    !!  tabulated.
+    !!
+    !! Furthermore,  if Richardson  extrapolation is  used, the  VMEC grids  and
+    !! variables are contained in multiple HDF5 variables.
+    !! These variables are needed here both  in a field-aligned and a plot grid.
+    !! 
+    !! A consequence of  the above is that for VMEC  the field-aligned output is
+    !! already given, but the output on the  plot grid has to be calculated from
+    !! scratch, while for  HELENA both outputs have to be  interpolated from the
+    !! output tables.
+    !!
+    !! The general workflow is as follows:
+    !!  - take a subset of the output grids for the current equilibrium job.
+    !!  - for <tt>POST_style = 1</tt> (extended grid):
+    !!      * VMEC: recalculate variables
+    !!      * HEL:  interpolate variables
+    !!    for <tt>POST_style = 2</tt> (B-aligned grid):
+    !!      * VMEC: read subset of variables
+    !!      * HEL:  inerpolate variables
+    !!  - create helper variables
+    !!  - create plots and outputs
+    !!
+    !! \return ierr
+    integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, eq_jobs_lims, &
             &eq_job_nr, plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa, &
             &POST_output_sol, POST_style, compare_tor_pos
@@ -721,7 +730,7 @@ contains
         call lvl_ud(-1)
     end function run_driver_POST
     
-    ! Cleans up main driver for postprocessing.
+    !> Cleans up main driver for postprocessing.
     subroutine stop_POST()
         use num_vars, only: plot_grid_style, eq_style, POST_output_full, &
             &POST_output_sol
@@ -740,7 +749,9 @@ contains
         end if
     end subroutine stop_POST
     
-    ! opens the decomposition log file
+    !> Opens the decomposition log file.
+    !!
+    !! \return ierr
     integer function open_decomp_log() result(ierr)
         use num_vars, only: prog_name, output_name, rank, POST_style, &
             &decomp_i
@@ -818,16 +829,18 @@ contains
         call lvl_ud(-1)
     end function open_decomp_log
     
-    ! write to decomposition log file
+    !> Write to decomposition log file.
+    !!
+    !! \return ierr
     integer function write_decomp_log(X_id,E_pot_int,E_kin_int) result(ierr)
         use num_vars, only: decomp_i, rank
         
         character(*), parameter :: rout_name = 'write_decomp_log'
         
         ! input / output
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        complex(dp), intent(in) :: E_pot_int(6)                                 ! E_pot integrated for requested solutions
-        complex(dp), intent(in) :: E_kin_int(2)                                 ! E_kin integrated for requested solutions
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
+        complex(dp), intent(in) :: E_pot_int(6)                                 !< E_pot integrated for requested solutions
+        complex(dp), intent(in) :: E_kin_int(2)                                 !< E_kin integrated for requested solutions
         
         ! local variables
         character(len=max_str_ln) :: format_val                                 ! format
@@ -913,28 +926,33 @@ contains
         call lvl_ud(-1)
     end function write_decomp_log
     
-    ! finds the plot ranges min_id and max_id
-    ! There are three ranges, calculated using n_sol_plotted, which indicates:
-    !   1. how many of the first EV's in the unstable range
-    !   2. how many of the last EV's in the unstable range
-    !   3. how many of the first EV's in the stable range
-    !   4. how many of the last EV's in the stable range
-    ! have  to be  plotted. This  yields maximally  three different  ranges: One
-    ! starting at  the first unstable  EV, one centered  around the zero  of the
-    ! EV's and one  ending at the last  EV. These ranges can be  disjoint but do
-    ! not have  to be. Also,  it is  possible that a  range does not  exist, for
-    ! example if there are no unstable EV's.
-    ! Note: A negative value for the elements in n_sol_plotted means "all values
-    ! in range":
-    !   1. or 2. full unstable range
-    !   3. or 4. full stable range
+    !> finds the plot ranges \c min_id and \c max_id.
+    !!
+    !! There are three ranges, calculated using n_sol_plotted, which indicates:
+    !!  1. how many of the first EV's in the unstable range
+    !!  2. how many of the last EV's in the unstable range
+    !!  3. how many of the first EV's in the stable range
+    !!  4. how many of the last EV's in the stable range
+    !! 
+    !! have to  be plotted.
+    !! 
+    !! This yields maximally  three different ranges: One starting  at the first
+    !! unstable EV, one centered  around the zero of the EV's  and one ending at
+    !! the last EV. These ranges can be disjoint but do not have to be.\n
+    !! Also, it is  possible that a range  does not exist, for  example if there
+    !! are no unstable EV's.
+    !! \note  A negative  value for  the  elements in  n_sol_plotted means  "all
+    !! values in range":
+    !!  1. or 2. full unstable range
+    !!  3. or 4. full stable range
     subroutine find_stab_ranges(sol,min_id,max_id,last_unstable_id)
         use num_vars, only: n_sol_plotted
         
         ! input / output
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(inout) :: min_id(3), max_id(3)                          ! min. and max. index of range 1, 2 and 3
-        integer, intent(inout) :: last_unstable_id                              ! index of last unstable EV
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(inout) :: min_id(3)                                     !< min. index of range 1, 2 and 3
+        integer, intent(inout) :: max_id(3)                                     !< max. index of range 1, 2 and 3
+        integer, intent(inout) :: last_unstable_id                              !< index of last unstable EV
         
         ! local variables
         integer :: id                                                           ! counter
@@ -1002,12 +1020,12 @@ contains
         end if
     end subroutine find_stab_ranges
     
-    ! plots difference between Eigenvalues and energy fraction
+    !> Plots difference between Eigenvalues and energy fraction.
     subroutine plot_sol_val_comp(sol_val_comp)
         use num_vars, only: rank
         
         ! input /output
-        complex(dp) :: sol_val_comp(:,:,:)                                      ! fraction between total E_pot and E_kin, compared with EV
+        complex(dp), intent(inout) :: sol_val_comp(:,:,:)                       !< fraction between total \f$E_{pot}\f$ and \f$E_{kin}\f$, compared with EV
         
         ! local variables
         character(len=max_str_ln) :: plot_title(2)                              ! title for plots
@@ -1059,7 +1077,9 @@ contains
         end if
     end subroutine plot_sol_val_comp
     
-    ! Sets up the output grid for a particular parallel job
+    !> Sets up the output grid for a particular parallel job.
+    !!
+    !! \return ierr
     integer function setup_out_grids(grids_out,XYZ_eq,XYZ_X) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims
@@ -1069,9 +1089,9 @@ contains
         character(*), parameter :: rout_name = 'setup_out_grids'
         
         ! input / output
-        type(grid_type), intent(inout) :: grids_out(3)                          ! eq, X and sol output grids (full parallel and normal range)
-        real(dp), intent(inout), allocatable :: XYZ_eq(:,:,:,:)                 ! X, Y and Z on output equilibrium grid
-        real(dp), intent(inout), allocatable :: XYZ_X(:,:,:,:)                  ! X, Y and Z on output perturbation grid
+        type(grid_type), intent(inout) :: grids_out(3)                          !< eq, X and sol output grids (full parallel and normal range)
+        real(dp), intent(inout), allocatable :: XYZ_eq(:,:,:,:)                 !< \c X, \c Y and \c Z on output equilibrium grid
+        real(dp), intent(inout), allocatable :: XYZ_X(:,:,:,:)                  !< \c X, \c Y and \c Z on output perturbation grid
         
         ! local variables
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)

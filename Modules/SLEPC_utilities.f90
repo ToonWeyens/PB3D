@@ -1,9 +1,9 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to SLEPC (and PETSC) operations                !
+!> Numerical utilities related to SLEPC (and PETSC) operations.
 !------------------------------------------------------------------------------!
-! References:                                                                  !
-! [1]   http://slepc.upv.es/documentation/current/docs/manualpages/EPS/        !
-!       EPSComputeRelativeError.html                                           !
+!> \see
+!! References:
+!! \cite Hernandez2005slepc
 !------------------------------------------------------------------------------!
 module SLEPC_utilities
 #include <PB3D_macros.h>
@@ -27,37 +27,49 @@ module SLEPC_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_insert_block_mat = .false.                                 ! plot debug information for insert_block_mat
+    logical :: debug_insert_block_mat = .false.                                 !< plot debug information for insert_block_mat() \ldebug
 #endif
     
 contains
-    ! Insert  a block pertaining  to 1 normal  point into a  matrix. Optionally,
-    ! also set the Hermitian transpose and / or overwrite instead of add value.
-    ! This  routine takes  into account  that if  the mode  numbers change  as a
-    ! function of  the normal coordinate,  the local  blocks, which were  set up
-    ! without  taking this  into  account,  have to  be  shifted. The  therefore
-    ! missing information is omitted, and  the corresponding matrix elements are
-    ! set to zero.
-    ! This is  justifiable if there  are many more  mode couplings that  are not
-    ! omitted  (i.e. when  n_mod_X is  large),  so that  it is  a small  effect,
-    ! and/or  when  the coupling  between  these  modes is  already  negligible.
-    ! Unfortunately, it  can be argued that  this is not generally  the case for
-    ! the fast version (X_type = 2) since PV^1 and PV^2 are both ~ (nq-m), which
-    ! indicates  that the  smallest elements  in the  corresponding off-diagonal
-    ! blocks lie in the central columns for  PV^1 and in the central columns and
-    ! rows for PV^2,  while the problematic elements lie farthest  away from the
-    ! central columns  for PV^1 and  the central columns  and rows for  PV^2, so
-    ! these are generally not small.
-    ! The  coefficients  due to  normal  discretization  get increasingly  small
-    ! for  higher orders,  though, which  compensates this  somewhat for  higher
-    ! orders. Finally, an  alternative would be to set  the problematic elements
-    ! not  to zero  but  equal  to the  closest  element,  but then  consistency
-    ! would  be sacrified,  for  example  in the  energy  reconstruction of  the
-    ! POST-processing: In  the energy  reconstruction the  exact same  terms are
-    ! neglected as well.
-    ! To conclude, for  fast X type 2,  the number of modes (n_mod_X)  has to be
-    ! chosen high enough  compared with the variation of the  mode numbers; i.e.
-    ! the variation of the safety factor or rotational transform.
+    !> Insert a block pertaining to 1 normal point into a matrix.
+    !!
+    !! Optionally, also set  the Hermitian transpose and /  or overwrite instead
+    !! of add value.
+    !!
+    !! This routine  takes into  account that  if the mode  numbers change  as a
+    !! function of  the normal coordinate, the  local blocks, which were  set up
+    !! without  taking this  into account,  have  to be  shifted. The  therefore
+    !! missing information is omitted, and the corresponding matrix elements are
+    !! set to zero.
+    !!
+    !! This is  justifiable if there are  many more mode couplings  that are not
+    !! omitted (i.e. when  \c n_mod_X is large),  so that it is  a small effect,
+    !! and/or when the coupling between these modes is already negligible.
+    !!
+    !! Unfortunately, it can  be argued that this is not  generally the case for
+    !! the  fast  version (\c  X_style  =  2) since  \f$\widetilde{PV}^1\f$  and
+    !! \f$\widetilde{PV}^2\f$ are  both \f$\sim (nq-m)\f$, which  indicates that
+    !! the smallest elements in the corresponding off-diagonal blocks lie in the
+    !! central columns for \f$\widetilde{PV}^1\f$ and in the central columns and
+    !! rows  for  \f$\widetilde{PV}^2\f$,  while the  problematic  elements  lie
+    !! farthest away from the central columns for \f$\widetilde{PV}^1\f$ and the
+    !! central  columns  and  rows  for  \f$\widetilde{PV}^2\f$,  so  these  are
+    !! generally not small.
+    !!
+    !! The coefficients due to normal  discretization get increasingly small for
+    !! higher orders, though, which compensates this for higher orders.
+    !!
+    !! Finally,  an  alternative  would  be  to  set  the  problematic  elements
+    !! not  to zero  but  equal to  the closest  element,  but then  consistency
+    !! would  be sacrified,  for example  in  the energy  reconstruction of  the
+    !! POST-processing: In  the energy reconstruction  the exact same  terms are
+    !! neglected as well.
+    !!
+    !! To conclude, for fast \c X_style 2,  the number of modes (\c n_mod_X) has
+    !! to be chosen high enough compared with the variation of the mode numbers;
+    !! i.e. the variation of the safety factor or rotational transform.
+    !!
+    !! \return ierr
     integer function insert_block_mat(block,mat,r_id,ind,n_r,transp,&
         &overwrite,ind_insert) result(ierr)
         use X_vars, only: n_X, m_X, n_mod_X
@@ -70,14 +82,14 @@ contains
         character(*), parameter :: rout_name = 'insert_block_mat'
         
         ! input / output
-        PetscScalar :: block(:,:)                                               ! (n_mod x n_mod) block matrix for 1 normal point
-        Mat, intent(inout) :: mat                                               ! matrix in which to insert block
-        PetscInt, intent(in) :: r_id                                            ! normal position of corresponding V^0 (starting at 0)
-        PetscInt, intent(in) :: ind(2)                                          ! 2D index in matrix, relative to r_id
-        PetscInt, intent(in) :: n_r                                             ! number of grid points of solution grid
-        PetscBool, intent(in), optional :: transp                               ! also set Hermitian transpose
-        PetscBool, intent(in), optional :: overwrite                            ! overwrite
-        PetscBool, intent(in), optional :: ind_insert                           ! individual insert, only important for debugging
+        PetscScalar :: block(:,:)                                               !< (\cn_mod x \cn_mod) block matrix for 1 normal point
+        Mat, intent(inout) :: mat                                               !< matrix in which to insert block
+        PetscInt, intent(in) :: r_id                                            !< normal position of corresponding \f$\widetilde{V}^0\f$ (starting at 0)
+        PetscInt, intent(in) :: ind(2)                                          !< 2D index in matrix, relative to \cr_id
+        PetscInt, intent(in) :: n_r                                             !< number of grid points of solution grid
+        PetscBool, intent(in), optional :: transp                               !< also set Hermitian transpose
+        PetscBool, intent(in), optional :: overwrite                            !< overwrite
+        PetscBool, intent(in), optional :: ind_insert                           !< individual insert, only important for debugging
         
         ! local variables
         PetscInt :: k, m                                                        ! counters

@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations that concern the output of VMEC                                 !
+!> Operations that concern the output of VMEC.
 !------------------------------------------------------------------------------!
 module VMEC_ops
 #include <PB3D_macros.h>
@@ -26,8 +26,9 @@ module VMEC_ops
     public read_VMEC, normalize_VMEC
 
 contains
-    ! Reads the VMEC equilibrium data
-    ! [MPI] only master
+    !> Reads the VMEC equilibrium data.
+    !!
+    !! \return ierr
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
         use num_utilities, only: calc_int, spline3
         use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
@@ -37,8 +38,8 @@ contains
         character(*), parameter :: rout_name = 'read_VMEC'
         
         ! input / output
-        integer, intent(inout) :: n_r_in                                        ! nr. of normal points in input grid
-        logical, intent(inout) :: use_pol_flux_V                                ! .true. if VMEC equilibrium is based on poloidal flux
+        integer, intent(inout) :: n_r_in                                        !< nr. of normal points in input grid
+        logical, intent(inout) :: use_pol_flux_V                                !< .true. if VMEC equilibrium is based on poloidal flux
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -270,9 +271,10 @@ contains
         call writo('Conversion complete')
     end function read_VMEC
     
-    ! Normalizes VMEC input
-    ! Note  that  the normal  VMEC coordinate  runs from  0 to  1, whatever  the
-    ! normalization.
+    !> Normalizes VMEC input.
+    !!
+    !! \note  The  normal  VMEC  coordinate  runs from  0  to  1,  whatever  the
+    !! normalization.
     subroutine normalize_VMEC
         use eq_vars, only: pres_0, psi_0, R_0
 #if ldebug

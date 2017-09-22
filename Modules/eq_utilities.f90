@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to equilibrium variables                       !
+!> Numerical utilities related to equilibrium variables.
 !------------------------------------------------------------------------------!
 module eq_utilities
 #include <PB3D_macros.h>
@@ -21,28 +21,112 @@ module eq_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_inv_met_ind = .false.                                 ! plot debug information for calc_inv_met_ind
+    !> \ldebug
+    logical :: debug_calc_inv_met_ind = .false.                                 !< plot debug information for calc_inv_met_ind()
 #endif
     
     ! interfaces
+    
+    !> \public  Transforms  derivatives  of  the  equilibrium  quantities  in  E
+    !! coordinates to derivatives in the F coordinates.
+    !!
+    !! \return ierr
     interface calc_F_derivs
-        module procedure calc_F_derivs_1, calc_F_derivs_2
+        !> \public
+        module procedure calc_F_derivs_1
+        !> \public
+        module procedure calc_F_derivs_2
     end interface
+    
+    !> \public Calculate
+    !!      \f$D_1^{m_1} D_2^{m_2} D_3^{m_3} X\f$
+    !! from
+    !!      \f$D_1^{i_1} D_2^{i_2} D_3^{i_3} X\f$
+    !! and
+    !!      \f$D_1^{j_1} D_2^{j_2} D_3^{j_3} Y\f$
+    !! where \f$XY=1\f$ and \f$i,j = 0\ldots m\f$, according to \cite Weyens3D.
+    !!
+    !! 
+    !! \f$D_1^{m_1} D_2^{m_2} D_3^{m_3} \f$ is defined as
+    !!      \f$\left(\frac{\partial}{\partial u^1}\right)^{m_1}
+    !!      \left(\frac{\partial}{\partial u^2}\right)^{m_2}
+    !!      \left(\frac{\partial}{\partial u^3}\right)^{m_3} \f$
+    !!
+    !! \note It is assumed that the lower order derivatives have been calculated
+    !! already. If not, the results will be incorrect.
+    !!
+    !! \return ierr
     interface calc_inv_met
-        module procedure calc_inv_met_ind, calc_inv_met_arr, &
-            &calc_inv_met_ind_0D, calc_inv_met_arr_0D
+        !> \public
+        module procedure calc_inv_met_ind
+        !> \public
+        module procedure calc_inv_met_arr
+        !> \public
+        module procedure calc_inv_met_ind_0D
+        !> \public
+        module procedure calc_inv_met_arr_0D
     end interface
+    
+    !> \public Calculates derivatives in a  coordinate system B from derivatives
+    !! in  a coordinates  system  A,  making use  of  the transformation  matrix
+    !! \f$\overline{\text{T}}_\text{B}^\text{A}\f$.
+    !!
+    !! The routine works by exchanging the  derivatives in the coordinates B for
+    !! derivatives in coordinates A using the formula
+    !!  \f[\mathbf{D}_\text{B}^m X = \overline{\text{T}}_\text{B}^\text{A}
+    !!      \mathbf{D}^1_\text{A} \left(\mathbf{D}^{m-1}_\text{B} X\right) , \f]
+    !! where \f$\mathbf{D}^m\f$  is a tensor  of rank \f$m\f$ that  contains all
+    !! the derivatives of total rank \f$m\f$. For example,
+    !!  \f[\mathbf{D}^1 = \vec{D} =
+    !!      \left(\begin{array}{c}\frac{\partial}{\partial u^1} \\
+    !!      \frac{\partial}{\partial u^2} \\ \frac{\partial}{\partial u^3}
+    !!      \end{array}\right)  \f]
+    !! 
+    !! This  is done  for the  derivatives in  each of  the coordinates  B until
+    !! degree 0 is reached.
+    !!
+    !! Furthermore, each of these degrees of derivatives in coordinates B can be
+    !! be derived optionally  in the original coordinate system  A, which yields
+    !! the formula:
+    !!  \f[ \mathbf{D}^p_\text{A} \left(\mathbf{D}^m_\text{B} X \right) =
+    !!      \sum_q \left(\begin{array}{c}p\\q\end{array}\right)
+    !!      \mathbf{D}^q_\text{A}
+    !!      \left(\overline{\text{T}}_\text{B}^\text{A}\right)
+    !!      \left(\mathbf{D}^{p-q}_\text{A} \mathbf{D}^1_\text{A}\right)
+    !!      \left( \mathbf{D}^{m-1}_\text{B} X \right)\f]
+    !!
+    !! This way, ultimately the desired derivatives  in the coordinates B can be
+    !! obtained  recursively from  the lower  orders  in the  coordinates B  and
+    !! higher orders in the coordinates A.
+    !!
+    !! For example:
+    !!  - For order \f$M\f$, the formula can be used with \f$p=0\f$.
+    !!  -   For   this,   it    is   necessary   that   \f$\mathbf{D}^1_\text{A}
+    !!  \mathbf{D}^{m-1}_\text{B} X\f$ be precalculated, which can be done using
+    !!  the formula with \f$p=1\f$ and \f$m=M-1\f$.
+    !!  -   For   this,   it    is   necessary   that   \f$\mathbf{D}^1_\text{A}
+    !!  \mathbf{D}^{M-1}_\text{B}     X\f$      and     \f$\mathbf{D}^2_\text{A}
+    !!  \mathbf{D}^{M-1}_\text{B} X\f$ are precalculated, which can be done with
+    !!  \f$p=1\f$ and \f$m=M-1\f$ as well as \f$p=2\f$ and \f$m=M-1\f$.
+    !!  - etc.
+    !!
+    !! \see \cite Weyens3D for more detailed information.
+    !!
+    !! \return ierr
     interface transf_deriv
-        module procedure transf_deriv_3_ind, transf_deriv_3_arr, &
-            &transf_deriv_3_arr_2D, transf_deriv_1_ind
+        !> \public
+        module procedure transf_deriv_3_ind
+        !> \public
+        module procedure transf_deriv_3_arr
+        !> \public
+        module procedure transf_deriv_3_arr_2D
+        !> \public
+        module procedure transf_deriv_1_ind
     end interface
     
 contains
-    ! calculate D_1^m1 D_2^m2 D_3^m3 X from D_1^i1 D_2^i2 D_3^3 X and 
-    ! D_1^j1 D_2^j2 D_3^j3 Y where XY = 1, i,j = 0..m, according to [ADD REF]
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
-    integer function calc_inv_met_ind(X,Y,deriv) result(ierr)                   ! matrix version
+    !> \private individual matrix version
+    integer function calc_inv_met_ind(X,Y,deriv) result(ierr)
         use num_utilities, only: calc_inv, calc_mult, c, conv_mat
 #if ldebug
         use num_vars, only: n_procs
@@ -51,9 +135,9 @@ contains
         character(*), parameter :: rout_name = 'calc_inv_met_ind'
         
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)                      ! X
-        real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)                         ! Y
-        integer, intent(in) :: deriv(:)
+        real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)                      !< X
+        real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)                         !< Y
+        integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
         integer :: r, t, z                                                      ! counters for derivatives
@@ -170,13 +254,14 @@ contains
             deallocate(dum1,dum2)
         end if
     end function calc_inv_met_ind
-    integer function calc_inv_met_ind_0D(X,Y,deriv) result(ierr)                ! scalar version
+    !> \private individual scalar version
+    integer function calc_inv_met_ind_0D(X,Y,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_inv_met_ind_0D'
         
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,1:,0:,0:,0:)
-        real(dp), intent(in) :: Y(1:,1:,1:,0:,0:,0:)
-        integer, intent(in) :: deriv(:)
+        real(dp), intent(inout) :: X(1:,1:,1:,0:,0:,0:)                         !< X
+        real(dp), intent(in) :: Y(1:,1:,1:,0:,0:,0:)                            !< Y
+        integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
         integer :: r, t, z                                                      ! counters for derivatives
@@ -230,13 +315,14 @@ contains
             X(:,:,:,m1,m2,m3) = X(:,:,:,m1,m2,m3)*X(:,:,:,0,0,0)
         end if
     end function calc_inv_met_ind_0D
+    !< \private array matrix version
     integer function calc_inv_met_arr(X,Y,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_inv_met_arr'
         
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)                      ! X
-        real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)                         ! Y
-        integer, intent(in) :: deriv(:,:)
+        real(dp), intent(inout) :: X(1:,1:,1:,1:,0:,0:,0:)                      !< X
+        real(dp), intent(in) :: Y(1:,1:,1:,1:,0:,0:,0:)                         !< Y
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
         
         ! local variables
         integer :: id
@@ -249,13 +335,14 @@ contains
             CHCKERR('')
         end do
     end function calc_inv_met_arr
+    !< \private array scalar version
     integer function calc_inv_met_arr_0D(X,Y,deriv) result(ierr)
         character(*), parameter :: rout_name = 'calc_inv_met_arr_0D'
         
         ! input / output
-        real(dp), intent(inout) :: X(1:,1:,1:,0:,0:,0:)
-        real(dp), intent(in) :: Y(1:,1:,1:,0:,0:,0:)
-        integer, intent(in) :: deriv(:,:)
+        real(dp), intent(inout) :: X(1:,1:,1:,0:,0:,0:)                         !< X
+        real(dp), intent(in) :: Y(1:,1:,1:,0:,0:,0:)                            !< Y
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
         
         ! local variables
         integer :: id
@@ -397,33 +484,20 @@ contains
         end subroutine
     end function calc_g
     
-    ! Calculates  derivatives in  a coordinate  system B  from derivatives  in a
-    ! coordinates system A, making use of the transformation matrix T_BA.
-    ! The routine works  by exchanging the derivatives in the  coordinates B for
-    ! derivatives in coordinates A using the formula
-    !   D^m_B X = T_BA D_A (D^m-1_B X)
-    ! This is done for the derivatives in each of the coordinates B until degree
-    ! 0  is  reached. Furthermore,  each  of  these  degrees of  derivatives  in
-    ! coordinates  B has to be derived optionally, also in the original A, which
-    ! coordinates yields the formula:
-    !   D^p_A (D^m_B X) = sum_q binom(p,q) D^q_A (T_BA) D^p-q_A D_A (D^m-1_B X)
-    ! This way, ultimately  the desired derivatives in the coordinates  B can be
-    ! obtained recursively from the lower orders in the coordinates B and higher
-    ! orders in the coordinates A
-    ! see [ADD REF] for more detailed information
+    !> \private 3-D scalar version with one derivative
     integer recursive function transf_deriv_3_ind(X_A,T_BA,X_B,max_deriv,&
-        &deriv_B,deriv_A_input) result(ierr)                                    ! normal variable version
+        &deriv_B,deriv_A_input) result(ierr)
         use num_utilities, only: add_arr_mult, c
         
         character(*), parameter :: rout_name = 'transf_deriv_3_ind'
         
         ! input / output
-        real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                          ! variable and derivs. in coord. system A
-        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
-        real(dp), intent(inout) :: X_B(1:,1:,1:)                                ! requested derivs. of variable in coord. system B
-        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
-        integer, intent(in) :: deriv_B(:)                                       ! derivs. in coord. system B
-        integer, intent(in), optional :: deriv_A_input(:)                       ! derivs. in coord. system A (optional)
+        real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                          !< variable and derivs. in coord. system A
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      !< transf. mat. and derivs. between coord. systems A and B
+        real(dp), intent(inout) :: X_B(1:,1:,1:)                                !< requested derivs. of variable in coord. system B
+        integer, intent(in) :: max_deriv                                        !< maximum degrees of derivs.
+        integer, intent(in) :: deriv_B(:)                                       !< derivs. in coord. system B
+        integer, intent(in), optional :: deriv_A_input(:)                       !< derivs. in coord. system A (optional)
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
@@ -515,16 +589,17 @@ contains
             end do
         end if
     end function transf_deriv_3_ind
+    !> \private 3-D scalar version with multiple derivatives
     integer function transf_deriv_3_arr(X_A,T_BA,X_B,max_deriv,derivs) &
-        &result(ierr)                                                           ! matrix version
+        &result(ierr)
         character(*), parameter :: rout_name = 'transf_deriv_3_arr'
         
         ! input / output
-        real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                             ! variable and derivs. in coord. system A
-        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
-        real(dp), intent(inout) :: X_B(1:,1:,1:,0:,0:,0:)                          ! requested derivs. of variable in coord. system B
-        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
-        integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
+        real(dp), intent(in) :: X_A(1:,1:,1:,0:,0:,0:)                          !< variable and derivs. in coord. system A
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      !< transf. mat. and derivs. between coord. systems A and B
+        real(dp), intent(inout) :: X_B(1:,1:,1:,0:,0:,0:)                       !< requested derivs. of variable in coord. system B
+        integer, intent(in) :: max_deriv                                        !< maximum degrees of derivs.
+        integer, intent(in) :: derivs(:,:)                                      !< series of derivs. (in coordinate system B)
         
         ! local variables
         integer :: id                                                           ! counter
@@ -539,18 +614,19 @@ contains
             CHCKERR('')
         end do
     end function transf_deriv_3_arr
+    !> \private 3-D matrix version  with multiple derivatives
     integer function transf_deriv_3_arr_2D(X_A,T_BA,X_B,max_deriv,derivs) &
-        &result(ierr)                                                           ! matrix version
+        &result(ierr)
         use num_utilities, only: is_sym, c
         
         character(*), parameter :: rout_name = 'transf_deriv_3_arr_2D'
         
         ! input / output
-        real(dp), intent(in) :: X_A(1:,1:,1:,1:,0:,0:,0:)                       ! variable and derivs. in coord. system A
-        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      ! transf. mat. and derivs. between coord. systems A and B
-        real(dp), intent(inout) :: X_B(1:,1:,1:,1:,0:,0:,0:)                    ! requested derivs. of variable in coord. system B
-        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
-        integer, intent(in) :: derivs(:,:)                                      ! series of derivs. (in coordinate system B)
+        real(dp), intent(in) :: X_A(1:,1:,1:,1:,0:,0:,0:)                       !< variable and derivs. in coord. system A
+        real(dp), intent(in) :: T_BA(1:,1:,1:,1:,0:,0:,0:)                      !< transf. mat. and derivs. between coord. systems A and B
+        real(dp), intent(inout) :: X_B(1:,1:,1:,1:,0:,0:,0:)                    !< requested derivs. of variable in coord. system B
+        integer, intent(in) :: max_deriv                                        !< maximum degrees of derivs.
+        integer, intent(in) :: derivs(:,:)                                      !< series of derivs. (in coordinate system B)
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -579,19 +655,20 @@ contains
             end do
         end do
     end function transf_deriv_3_arr_2D
+    !> \private 1-D scalar version with one derivative
     integer recursive function transf_deriv_1_ind(X_A,T_BA,X_B,max_deriv,&
-        &deriv_B,deriv_A_input) result(ierr)                                    ! flux variable version
+        &deriv_B,deriv_A_input) result(ierr)
         use num_utilities, only: add_arr_mult
         
         character(*), parameter :: rout_name = 'transf_deriv_1_ind'
         
         ! input / output
-        real(dp), intent(in) :: X_A(1:,0:)                                      ! variable and derivs. in coord. system A
-        real(dp), intent(inout) :: X_B(1:)                                      ! requested derivs. of variable in coord. system B
-        real(dp), intent(in) :: T_BA(1:,0:)                                     ! transf. mat. and derivs. between coord. systems A and B
-        integer, intent(in), optional :: deriv_A_input                          ! derivs. in coord. system A (optional)
-        integer, intent(in) :: deriv_B                                          ! derivs. in coord. system B
-        integer, intent(in) :: max_deriv                                        ! maximum degrees of derivs.
+        real(dp), intent(in) :: X_A(1:,0:)                                      !< variable and derivs. in coord. system A
+        real(dp), intent(inout) :: X_B(1:)                                      !< requested derivs. of variable in coord. system B
+        real(dp), intent(in) :: T_BA(1:,0:)                                     !< transf. mat. and derivs. between coord. systems A and B
+        integer, intent(in), optional :: deriv_A_input                          !< derivs. in coord. system A (optional)
+        integer, intent(in) :: deriv_B                                          !< derivs. in coord. system B
+        integer, intent(in) :: max_deriv                                        !< maximum degrees of derivs.
         
         ! local variables
         integer :: jd                                                           ! counters
@@ -651,9 +728,8 @@ contains
         end if
     end function transf_deriv_1_ind
     
-    ! Transforms  derivatives of  the  equilibrium quantities in  E
-    ! coordinates to derivatives in the F coordinates.
-    integer function calc_F_derivs_1(grid_eq,eq) result(ierr)                   ! flux version
+    !> \private flux version
+    integer function calc_F_derivs_1(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style, max_deriv, use_pol_flux_F
         use num_utilities, only: derivs, c, fac
         use eq_vars, only: max_flux_E
@@ -661,8 +737,8 @@ contains
         character(*), parameter :: rout_name = 'calc_F_derivs_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(inout) :: eq                                    ! flux equilibrium variables
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(inout) :: eq                                    !< flux equilibrium variables
         
         ! local variables
         integer :: id
@@ -735,14 +811,15 @@ contains
                 eq%rot_t_FD = eq%rot_t_E
         end select
     end function calc_F_derivs_1
-    integer function calc_F_derivs_2(eq) result(ierr)                           ! metric version
+    !> \private metric version
+    integer function calc_F_derivs_2(eq) result(ierr)
         use num_vars, only: eq_style
         use num_utilities, only: derivs, c
         
         character(*), parameter :: rout_name = 'calc_F_derivs_2'
         
         ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium variables
         
         ! local variables
         integer :: id
@@ -787,27 +864,32 @@ contains
         call lvl_ud(-1)
     end function calc_F_derivs_2
     
-    ! Calculate memory  in MB  necessary for variables  in equilibrium  job. The
-    ! size  of these  variables  is equal  to the  product  of the  non-parallel
-    ! dimensions (e.g. n_geo x loc_n_r), times the number of variables.
-    ! The latter should be:
-    !   - PB3D: only take into account  (2*6+1 = 13) equilibrium variables g_FD,
-    !   h_FD  and jac_FD,  as the  perturbation  variables are  divided in  jobs
-    !   occupying the remaning space.  These equilibrium variables are tabulated
-    !   on the  equilibrium grid.  Note that they  contain derivatives  in extra
-    !   dimensions, so that their size should be multiplied by (max_deriv+1)^3.
-    !   - POST: take  into account these 13 equilibrium variables,  as well as 4
-    !   variables  U and  DU, with  double size  due to  being complex,  and the
-    !   additional dimension equal to n_mod_X, but without derivatives.
+    !> Calculate memory in MB necessary for variables in equilibrium job.
+    !!
+    !! The size of  these variables is equal to the  product of the non-parallel
+    !! dimensions (e.g. \c n_geo x \c loc_n_r), times the number of variables.
+    !! 
+    !! The latter should be:
+    !!  -  PB3D:  only take  into  account  (\f$2\cdot6+1 =  13\f$)  equilibrium
+    !!  variables \c g_FD, \c h_FD and  \c jac_FD, as the perturbation variables
+    !!  are  divided in  jobs occupying  the remaning  space. These  equilibrium
+    !!  variables are tabulated on the  equilibrium grid. Note that they contain
+    !!  derivatives in extra dimensions, so that their size should be multiplied
+    !!  by (\c max_deriv+1)^3.
+    !!  - POST: take  into account these 13 equilibrium variables,  as well as 4
+    !!  variables \c U and \c DU, with double size due to being complex, and the
+    !!  additional dimension equal to \c n_mod_X, but without derivatives.
+    !!
+    !! \return ierr
     integer function calc_memory_eq(arr_size,n_par,mem_size) result(ierr)
         use ISO_C_BINDING
         
         character(*), parameter :: rout_name = 'calc_memory_eq'
         
         ! input / output
-        integer, intent(in) :: arr_size                                         ! size of part of X array
-        integer, intent(in) :: n_par                                            ! number of parallel points
-        real(dp), intent(inout) :: mem_size                                     ! total size
+        integer, intent(in) :: arr_size                                         !< size of part of X array
+        integer, intent(in) :: n_par                                            !< number of parallel points
+        real(dp), intent(inout) :: mem_size                                     !< total size
         
         ! local variables
         integer(C_SIZE_T) :: dp_size                                            ! size of dp
@@ -840,7 +922,7 @@ contains
         call lvl_ud(-1)
     end function calc_memory_eq
     
-    ! if this equilibrium job should be done, also increment eq_job_nr
+    !> If this equilibrium job should be done, also increment \c eq_job_nr.
     logical function do_eq()
         use num_vars, only: eq_jobs_lims, eq_job_nr
         
@@ -854,8 +936,8 @@ contains
         end if
     end function do_eq
     
-    ! Possible  extension with  equilibrium job  as well  as  parallel job  or
-    ! nothing if only one level and one parallel job.
+    !> Returns string  with possible extension  with equilibrium job as  well as
+    !! parallel job, or nothing if only one level and one parallel job.
     elemental character(len=max_str_ln) function eq_info()
         use num_vars, only: eq_jobs_lims, eq_job_nr
         
@@ -867,12 +949,12 @@ contains
         end if
     end function eq_info
     
-    ! prints information for equilibrium parallel job
+    !> Prints information for equilibrium parallel job.
     subroutine print_info_eq(n_par_X_rich)
         use num_vars, only: eq_job_nr, eq_jobs_lims
         
         ! input / output
-        integer, intent(in) :: n_par_X_rich                                     ! number of parallel points in this Richardson level
+        integer, intent(in) :: n_par_X_rich                                     !< number of parallel points in this Richardson level
         
         ! user output
         if (size(eq_jobs_lims,2).gt.1) then

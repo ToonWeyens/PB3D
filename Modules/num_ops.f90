@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical operations                                                       !
+!> Numerical operations.
 !------------------------------------------------------------------------------!
 module num_ops
 #include <PB3D_macros.h>
@@ -18,38 +18,50 @@ module num_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_zero = .false.                                        ! plot debug information for calc_zero
+    !> \ldebug
+    logical :: debug_calc_zero = .false.                                        !< plot debug information for calc_zero
 #endif
 
     ! interfaces
+    
+    !> \public Finds the zero of a function using Householder iteration.
+    !!
+    !! If something goes  wrong, by default multiple tries can  be attempted, by
+    !! halving  the  relaxation  factor  a  number  of  times  indicated  by  \c
+    !! max_nr_tries. If still nothing is achieved, an error message is returned,
+    !! that is empty otherwise.
     interface calc_zero_HH
-        module procedure calc_zero_HH_0D, calc_zero_HH_3D
+        !> \public
+        module procedure calc_zero_HH_0D
+        !> \public
+        module procedure calc_zero_HH_3D
     end interface
     
 contains
-    ! Finds the  zero of  a function using  Householder iteration.  If something
-    ! goes wrong,  by default multiple tries  can be attempted, by  lowering the
-    ! relaxation  factor. If  still nothing  is  achieved, an  error message  is
-    ! returned, that is empty otherwise.
+    !> \private 0-D version
+    !! \param[inout] fun <tt>fun(x,ord)</tt> with
+    !!  - <tt>x</tt> abscissa
+    !!  - <tt>ord</tt> order of derivative
+    !!  - <tt>fun</tt> ordinate
     function calc_zero_HH_0D(zero,fun,ord,guess,relax_fac,max_nr_tries) &
         &result(err_msg)
         use num_vars, only: max_it_zero, tol_zero, relax_fac_HH, max_nr_tries_HH
         
         ! input / output
-        real(dp), intent(inout) :: zero                                         ! output
+        real(dp), intent(inout) :: zero                                         !< output
         interface
             function fun(x,ord)                                                 ! the function
                 use num_vars, only: dp
-                real(dp), intent(in) :: x 
+                real(dp), intent(in) :: x
                 integer, intent(in) :: ord
-                real(dp) :: fun 
+                real(dp) :: fun
             end function fun
         end interface
-        integer, intent(in) :: ord                                              ! order of solution
-        real(dp), intent(in) :: guess                                           ! first guess
-        real(dp), intent(in), optional :: relax_fac                             ! relaxation factor
-        integer, intent(in), optional :: max_nr_tries                           ! max nr. of tries with different relaxation factors
-        character(len=max_str_ln) :: err_msg                                    ! possible error message
+        integer, intent(in) :: ord                                              !< order of solution
+        real(dp), intent(in) :: guess                                           !< first guess
+        real(dp), intent(in), optional :: relax_fac                             !< relaxation factor
+        integer, intent(in), optional :: max_nr_tries                           !< max nr. of tries with different relaxation factors
+        character(len=max_str_ln) :: err_msg                                    !< possible error message
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -198,28 +210,34 @@ contains
         end subroutine plot_evolution
 #endif
     end function calc_zero_HH_0D
+    !> \private 3-D version
+    !! \param[inout] fun <tt>fun(dims,x,ord)</tt> with
+    !!  - <tt>dims(3)</tt> dimension of abscissa and ordinate
+    !!  - <tt>x(dims(1),dims(2),dims(3))</tt> abscissa
+    !!  - <tt>ord</tt> order of derivative
+    !!  - <tt>fun(dims(1),dims(2),dims(3))</tt> ordinate
     function calc_zero_HH_3D(dims,zero,fun,ord,guess,relax_fac,&
         &max_nr_tries,output) result(err_msg)
         use num_vars, only: max_it_zero, tol_zero, relax_fac_HH, max_nr_tries_HH
         
         ! input / output
-        integer, intent(in) :: dims(3)                                          ! dimensions of the problem
-        real(dp), intent(inout) :: zero(dims(1),dims(2),dims(3))                ! output
+        integer, intent(in) :: dims(3)                                          !< dimensions of the problem
+        real(dp), intent(inout) :: zero(dims(1),dims(2),dims(3))                !< output
         interface
             function fun(dims,x,ord)                                            ! the function
                 use num_vars, only: dp
                 integer, intent(in) :: dims(3)
-                real(dp), intent(in) :: x(dims(1),dims(2),dims(3)) 
+                real(dp), intent(in) :: x(dims(1),dims(2),dims(3))
                 integer, intent(in) :: ord
-                real(dp) :: fun(dims(1),dims(2),dims(3)) 
+                real(dp) :: fun(dims(1),dims(2),dims(3))
             end function fun
         end interface
-        integer, intent(in) :: ord                                              ! order of solution
-        real(dp), intent(in) :: guess(dims(1),dims(2),dims(3))                  ! first guess
-        real(dp), intent(in), optional :: relax_fac                             ! relaxation factor
-        integer, intent(in), optional :: max_nr_tries                           ! max nr. of tries with different relaxation factors
-        logical, intent(in), optional :: output                                 ! give output on convergence
-        character(len=max_str_ln) :: err_msg                                    ! possible error message
+        integer, intent(in) :: ord                                              !< order of solution
+        real(dp), intent(in) :: guess(dims(1),dims(2),dims(3))                  !< first guess
+        real(dp), intent(in), optional :: relax_fac                             !< relaxation factor
+        integer, intent(in), optional :: max_nr_tries                           !< max nr. of tries with different relaxation factors
+        logical, intent(in), optional :: output                                 !< give output on convergence
+        character(len=max_str_ln) :: err_msg                                    !< possible error message
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -376,39 +394,50 @@ contains
             var_name = 'var'
             
             call plot_HDF5(var_name,file_name,corrs,col=2,&
-                &description='corrections')
+                &descr='corrections')
             
             ! plot values
             file_name = 'values'
             var_name = 'var'
             
             call plot_HDF5(var_name,file_name,values,col=2,&
-                &description='values')
+                &descr='values')
         end subroutine plot_evolution
 #endif
     end function calc_zero_HH_3D
     
-    ! Finds the zero of a function  using Zhang's method, which is simpler than 
-    ! Brent's  method. Taken  from from  Steven Stage's  correction of  Zhang's 
-    ! paper [http://www.cscjournals.org/manuscript/Journals/IJEA/Volume4/Issue1
-    ! /IJEA-33.pdf].
-    ! Unlike Householder,  Zhang's method needs  an interval "x_int_in"  to work
-    ! in, not a guess. Note that this  interval needs to be so that the function
-    ! values at either end are of different value.
+    !> Finds the zero of a function  using Zhang's method, which is simpler than
+    !! Brent's method.
+    !!
+    !! Taken  from  from  Steven  Stage's  correction  of  Zhang's  paper 
+    !! \cite zhang2011improvement.
+    !!
+    !! Unlike Householder, Zhang's method needs  an interval \c x_int_in to work
+    !! in,  not  a guess.  Also,  it  does not  require  the  derivative of  the
+    !! function.
+    !!
+    !! The routine returns  an error message if  no zero is found,  and which is
+    !! empty otherwise.
+    !!
+    !! \note The interval \c x_int_in needs to be so that the function values at
+    !! either end are of different value.
+    !! \param[inout] fun <tt>fun(x)</tt> with
+    !!  - <tt>x</tt> abscissa
+    !!  - <tt>fun</tt> ordinate
     function calc_zero_Zhang(zero,fun,x_int_in) result(err_msg)
         use num_vars, only: max_it_zero, tol_zero
         
         ! input / output
-        real(dp), intent(inout) :: zero                                         ! output
+        real(dp), intent(inout) :: zero                                         !< output
         interface
-            function fun(x)
+            function fun(x)                                                     ! the function
                 use num_vars, only: dp
                 real(dp), intent(in) :: x 
                 real(dp) :: fun 
             end function fun
         end interface
-        real(dp), intent(in) :: x_int_in(2)                                     ! interval
-        character(len=max_str_ln) :: err_msg                                    ! possible error message
+        real(dp), intent(in) :: x_int_in(2)                                     !< interval
+        character(len=max_str_ln) :: err_msg                                    !< possible error message
         
         ! local variables
         logical :: converged                                                    ! whether converged

@@ -1,23 +1,7 @@
 !------------------------------------------------------------------------------!
-!   Utilities pertaining to HDF5 and XDMF                                      !
-!   Notes about XDMF:                                                          !
-!       - Collections can be spatial or temporal. If a variable is to be       !
-!         evolved in time or if its domain is decomposed (e.g. the same        !
-!         physical variable is defined in multiple HDF5 variables), then the   !
-!         attribute name of this variable has to be the same for all the grids !
-!         in the collection.                                                   !
-!       - If no collection is used, but just multiple grids, the attribute     !
-!         can be different but does not have to be, as the different grid are  !
-!         distinguished by their different grid names, not by the attribute    !
-!         of the variables they contain.                                       !
-!       - The selection of hyperslabs is used, as described here:              !
-!         http://davis.lbl.gov/Manuals/HDF5-1.8.7/UG/12_Dataspaces.html        !
-!       - Chunking is used for partial I/O, as described here:                 !
-!         https://www.hdfgroup.org/HDF5/doc/Advanced/Chunking/                 !
-!         As  no  chunk  cache  is  reused,   the  w0  setting  should  be  1. !
-!         Furthermore, the number of slots is chosen to be equal to the number !
-!         of chunks. And Finally,  the chunk size is chosen to  be the size of !
-!         the previous dimensions, if it does not exceed 4GB                   !
+!> Utilities pertaining to HDF5 and XDMF
+!! 
+!! \see See hdf5_ops for notes on HDF5 and XDMF.
 !------------------------------------------------------------------------------!
 module HDF5_utilities
 #include <PB3D_macros.h>
@@ -37,41 +21,61 @@ module HDF5_utilities
     
 #if ldebug
     ! global variables
-    logical :: debug_set_1D_vars = .false.                                      ! set to true to debug set_1D_vars
+    logical :: debug_set_1D_vars = .false.                                      !< set to true to debug set_1D_vars \ldebug
 #endif
     
 contains
-    ! Sets up the  chunk property list and/or the 1D  hyperslabs that correspond
-    ! to a local subset  of lim_tot given by the limits  lim_loc. An example for
-    ! the hyperslab is given in 3 dimensions with size n = 5,3,3:
-    !   for dim = 1, limits: 2..4
-    !   for dim = 2, limits: 3..3
-    !   for dim = 3, limits: 2..3.
-    ! The 1D equivalent can be represented as:
-    ! [.....][.....][.....] | [.....][.....][.....] | [.....][.....][.....]
-    ! dimension 1 will only allow for the following elements (given by "-"):
-    ! [.---.][.---.][.---.] | [.---.][.---.][.---.] | [.---.][.---.][.---.]
-    ! dimension 2 will only allow for the following elements:
-    ! [.....][.....][-----] | [.....][.....][-----] | [.....][.....][-----]
-    ! dimension 3 will only allow for the following elements:
-    ! [.....][.....][.....] | [-----][-----][-----] | [-----][-----][-----]
-    ! so that the total is given by:
-    ! [.....][.....][.....] | [.....][.....][.....] | [.....][.....][.---.]
-    ! In practice, it is easiest to work  with a full selection, where for every
-    ! dimension the ranges that do not correspond to the range of that dimension
-    ! are taken away.  Clearly, if a dimension has the  full range, nothing will
-    ! be taken out:
-    !   block_i     = n_1*n_2*..*n_(i-1) * (b_i-a_i+1) ,
-    !   stride_i    = n_1*n_2*..*n_(i-1) * (B_i-A_i+1) ,
-    !   offset_i    = n_1*n_2*..*n_(i-1) * (a_i-A_i) ,
-    !   count_i     = n_(i+1)*n_(i+2)*..*n_N ,
-    ! where a_i and b_i  represent the local limits of dimension  i, A_i and B_i
-    ! the total ones and the number of dimensions is N, as can be verified.
-    ! The chunk  property list for creation  can be set  up so that its  size is
-    ! equal to the largest dimensions of full  range, or an integer part of that
-    ! if it  exceeds 4GB. Since  the variables don't need  to be used  more than
-    ! once, either  nbytes or  nslots could be  set to 0  in an  access property
-    ! list, but this is currently not done.
+    !> Sets up the chunk property list  and/or the 1D hyperslabs that correspond
+    !! to a local subset of \c lim_tot given by the limits \c lim_loc.
+    !!
+    !! An example  for the  hyperslab is  given in  3 dimensions  with size  n =
+    !! 5,3,3:
+    !!  - for dim = 1, limits: 2..4
+    !!  - for dim = 2, limits: 3..3
+    !!  - for dim = 3, limits: 2..3.
+    !!
+    !! The 1D equivalent can be represented as
+    !! ```
+    !! [.....][.....][.....] | [.....][.....][.....] | [.....][.....][.....]
+    !! ```
+    !! Now, dimension 1 will only allow for the following elements
+    !! (given by <tt>-</tt>):
+    !! ```
+    !! [.---.][.---.][.---.] | [.---.][.---.][.---.] | [.---.][.---.][.---.]
+    !! ```
+    !! dimension 2 will only allow for the following elements:
+    !! ```
+    !! [.....][.....][-----] | [.....][.....][-----] | [.....][.....][-----]
+    !! ```
+    !! dimension 3 will only allow for the following elements:
+    !! ```
+    !! [.....][.....][.....] | [-----][-----][-----] | [-----][-----][-----]
+    !! ```
+    !! so that the total is given by:
+    !! ```
+    !! [.....][.....][.....] | [.....][.....][.....] | [.....][.....][.---.]
+    !! ```
+    !!
+    !! In practice, it is easiest to work with a full selection, where for every
+    !! dimension  the  ranges that  do  not  correspond  to  the range  of  that
+    !! dimension are  taken away. Clearly,  if a  dimension has the  full range,
+    !! nothing will be taken out:
+    !!  - \c block_i     = \f$n_1 n_2 \cdots n_{i-1} (b_i-a_{i+1}) \f$ ,
+    !!  - \c stride_i    = \f$n_1 n_2 \cdots n_{i-1} (B_i-A_{i+1}) \f$ ,
+    !!  - \c offset_i    = \f$n_1 n_2 \cdots n_{i-1} (a_i-A_i) \f$ ,
+    !!  - \c count_i     = \f$n_{i+1} n_{i+2} \cdots n_N \f$ ,
+    !!
+    !! where \f$a_i\f$  and \f$b_i\f$  represent the  local limits  of dimension
+    !! \f$i\f$,  \f$A_i\f$  and \f$B_i\f$  the  total  ones  and the  number  of
+    !! dimensions is \f$N\f$, as can be verified.
+    !!
+    !! The chunk property  list for creation can  be set up so that  its size is
+    !! equal to the largest dimensions of full range, or an integer part of that
+    !! if it exceeds  4GB. Since the variables  don't need to be  used more than
+    !! once,  either \c  nbytes or  \c nslots  could be  set to  0 in  an access
+    !! property list, but this is currently not done.
+    !!
+    !! \return ierr
     integer function set_1D_vars(lim_tot,lim_loc,space_id,c_plist_id) &
         &result(ierr)
 #if ldebug
@@ -81,10 +85,10 @@ contains
         character(*), parameter :: rout_name = 'set_1D_vars'
         
         ! input / output
-        integer, intent(in) :: lim_tot(:,:)                                     ! total limits
-        integer, intent(in) :: lim_loc(:,:)                                     ! local limits
-        integer(HID_T), intent(in), optional :: space_id                        ! dataspace identifier
-        integer(HID_T), intent(inout), optional :: c_plist_id                   ! chunk creation property list identifier 
+        integer, intent(in) :: lim_tot(:,:)                                     !< total limits
+        integer, intent(in) :: lim_loc(:,:)                                     !< local limits
+        integer(HID_T), intent(in), optional :: space_id                        !< dataspace identifier
+        integer(HID_T), intent(inout), optional :: c_plist_id                   !< chunk creation property list identifier 
         
         ! local variables
         integer :: id, kd                                                       ! counters
@@ -239,7 +243,9 @@ contains
         end if
     end function set_1D_vars
     
-    ! Probe HDF5 file for group existence.
+    !> Probe HDF5 file for group existence.
+    !!
+    !! \return ierr
     integer function probe_HDF5_group(HDF5_name,group_name,group_exists) &
         &result(ierr)
         use MPI_vars, only: HDF5_lock
@@ -248,9 +254,9 @@ contains
         character(*), parameter :: rout_name = 'probe_HDF5_group'
         
         ! input / output
-        character(len=*), intent(in) :: HDF5_name                               ! name of HDF5 file
-        character(len=*), intent(in) :: group_name                              ! name of group to probe for
-        logical, intent(inout) :: group_exists                                  ! whether group exists
+        character(len=*), intent(in) :: HDF5_name                               !< name of HDF5 file
+        character(len=*), intent(in) :: group_name                              !< name of group to probe for
+        logical, intent(inout) :: group_exists                                  !< whether group exists
         
         ! local variables
         integer :: istat                                                        ! status
@@ -304,11 +310,16 @@ contains
     end function probe_HDF5_group
 
 #if ldebug
+    !> Lists all variables in a HDF5 group.
+    !!
+    !! \ldebug
+    !!
+    !! \return ierr
     integer function list_all_vars_in_group(group_id) result(ierr)
         character(*), parameter :: rout_name = 'list_all_vars_in_group'
         
         ! input / output
-        integer(HID_T), intent(in) :: group_id                                  ! group identifier
+        integer(HID_T), intent(in) :: group_id                                  !< group identifier
         
         ! local variables
         integer :: storage_type                                                 ! type of storage used in HDF5 file

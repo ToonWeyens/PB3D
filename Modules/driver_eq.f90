@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Driver of the equilibrium part of PB3D.                                    !
+!> Driver of the equilibrium part of PB3D.
 !------------------------------------------------------------------------------!
 module driver_eq
 #include <PB3D_macros.h>
@@ -17,25 +17,30 @@ module driver_eq
     
     ! global variables
 #if ldebug
-    logical :: plot_info = .false.                                              ! plot information for comparison with HELENA
+    logical :: plot_info = .false.                                              !< plot information for comparison with HELENA \ldebug
 #endif
     
 contains
-    ! Main driver of PB3D equilibrium part.
-    ! sets up ([out] means redistributed for output):
-    !   - grid_eq [out] (for HELENA, only first Richardson level)
-    !   - grid_eq_B [out] (for VMEC, equal to grid_eq_out)
-    !   - eq_1 [out] (only first Richardson level)
-    !   - eq_2 [out] (for HELENA, only first Richardson level)
-    ! writes to HDF5:
-    !   - grid_eq (for HELENA, only first Richardson level)
-    !   - grid_eq_B (for VMEC, equal to grid_eq)
-    !   - eq_1 (only first Richardson level)
-    !   - eq_2 (only for HELENA)
-    ! deallocates:
-    !   - grid_eq [out] before setting up
-    !   - grid_B_eq [out] before setting up
-    !   - eq_2 [out] before setting up
+    !> Main driver of PB3D equilibrium part.
+    !!
+    !! sets up ([out] means redistributed for output):
+    !!  - \c grid_eq [out] (for HELENA, only first Richardson level)
+    !!  - \c grid_eq_B [out] (for VMEC, equal to grid_eq_out)
+    !!  - \c eq_1 [out] (only first Richardson level)
+    !!  - \c eq_2 [out] (for HELENA, only first Richardson level)
+    !!
+    !! writes to HDF5:
+    !!  - \c grid_eq (for HELENA, only first Richardson level)
+    !!  - \c grid_eq_B (for VMEC, equal to grid_eq)
+    !!  - \c eq_1 (only first Richardson level)
+    !!  - \c eq_2 (only for HELENA)
+    !!
+    !! deallocates:
+    !!  - \c grid_eq [out] before setting up
+    !!  - \c grid_B_eq [out] before setting up
+    !!  - \c eq_2 [out] before setting up
+    !!
+    !! \return ierr
     integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
         &eq_2_out,vac) result(ierr)
         
@@ -60,11 +65,11 @@ contains
         character(*), parameter :: rout_name = 'run_driver_eq'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq_out                   ! redistributed equilibrium grid
-        type(grid_type), intent(inout), pointer :: grid_eq_B_out                ! redistributed field-aligned equilibrium grid
-        type(eq_1_type), intent(inout) :: eq_1_out                              ! flux equilibrium variables in redistributed grid
-        type(eq_2_type), intent(inout) :: eq_2_out                              ! metric equilibrium variables in redistributed grid
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
+        type(grid_type), intent(inout), target :: grid_eq_out                   !< redistributed equilibrium grid
+        type(grid_type), intent(inout), pointer :: grid_eq_B_out                !< redistributed field-aligned equilibrium grid
+        type(eq_1_type), intent(inout) :: eq_1_out                              !< flux equilibrium variables in redistributed grid
+        type(eq_2_type), intent(inout) :: eq_2_out                              !< metric equilibrium variables in redistributed grid
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
@@ -391,6 +396,7 @@ contains
         end if
 #if ldebug
     contains
+        ! Plots information for comparison between HELENA and VMEC.
         subroutine plot_info_for_VMEC_HEL_comparision()
             use HELENA_vars, only: R_H, Z_H
             use input_utilities, only: pause_prog, get_int, get_log

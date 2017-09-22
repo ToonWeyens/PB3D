@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations related to MPI                                                  !
+!> Operations related to MPI.
 !------------------------------------------------------------------------------!
 module MPI_ops
 #include <PB3D_macros.h>
@@ -15,8 +15,9 @@ module MPI_ops
         &sudden_stop
     
 contains
-    ! start MPI and gather information
-    ! [MPI] Collective call
+    !> Start MPI and gather information.
+    !!
+    !! \return ierr
     integer function start_MPI() result(ierr)
         use num_vars, only: rank, n_procs, time_start
         use MPI_vars, only: HDF5_lock
@@ -60,19 +61,21 @@ contains
 #endif
     end function start_MPI
     
-    ! stop MPI
-    ! [MPI] Collective call
-    ! deallocates:
-    !   - grid_eq
-    !   - grid_eq_B
-    !   - grid_X
-    !   - grid_X_B
-    !   - grid_sol
-    !   - eq_1
-    !   - eq_2
-    !   - X_1
-    !   - X_2
-    !   - sol
+    !> Stop MPI.
+    !!
+    !! Also deallocates:
+    !!  - \c grid_eq
+    !!  - \c grid_eq_B
+    !!  - \c grid_X
+    !!  - \c grid_X_B
+    !!  - \c grid_sol
+    !!  - \c eq_1
+    !!  - \c eq_2
+    !!  - \c X_1
+    !!  - \c X_2
+    !!  - \c sol
+    !!
+    !! \return ierr
     integer function stop_MPI(grid_eq,grid_eq_B,grid_X,grid_X_B,grid_sol,eq_1,&
         &eq_2,X_1,X_2,sol) result(ierr)
         
@@ -96,16 +99,16 @@ contains
         character(*), parameter :: rout_name = 'stop_MPI'
         
         ! input / output
-        type(grid_type), intent(inout), optional :: grid_eq                     ! equilibrium grid
-        type(grid_type), intent(inout), pointer, optional :: grid_eq_B          ! field-aligned equilibrium grid
-        type(grid_type), intent(inout), optional :: grid_X                      ! perturbation grid
-        type(grid_type), intent(inout), pointer, optional :: grid_X_B           ! field-aligned perturbation grid
-        type(grid_type), intent(inout), optional :: grid_sol                    ! solution grid
-        type(eq_1_type), intent(inout), optional :: eq_1                        ! Flux equilibrium variables
-        type(eq_2_type), intent(inout), optional :: eq_2                        ! metric equilibrium variables
-        type(X_1_type), intent(inout), optional :: X_1                          ! vectorial perturbation variables
-        type(X_2_type), intent(inout), optional :: X_2                          ! integrated tensorial perturbation variables
-        type(sol_type), intent(inout), optional :: sol                          ! solution variables
+        type(grid_type), intent(inout), optional :: grid_eq                     !< equilibrium grid
+        type(grid_type), intent(inout), pointer, optional :: grid_eq_B          !< field-aligned equilibrium grid
+        type(grid_type), intent(inout), optional :: grid_X                      !< perturbation grid
+        type(grid_type), intent(inout), pointer, optional :: grid_X_B           !< field-aligned perturbation grid
+        type(grid_type), intent(inout), optional :: grid_sol                    !< solution grid
+        type(eq_1_type), intent(inout), optional :: eq_1                        !< Flux equilibrium variables
+        type(eq_2_type), intent(inout), optional :: eq_2                        !< metric equilibrium variables
+        type(X_1_type), intent(inout), optional :: X_1                          !< vectorial perturbation variables
+        type(X_2_type), intent(inout), optional :: X_2                          !< integrated tensorial perturbation variables
+        type(sol_type), intent(inout), optional :: sol                          !< solution variables
         
         ! local variables
 #if ldebug
@@ -204,8 +207,9 @@ contains
         CHCKERR('MPI stop failed')
     end function stop_MPI
     
-    ! abort MPI
-    ! [MPI] Collective call
+    !> Abort MPI suddenly.
+    !!
+    !! \return ierr
     integer function abort_MPI() result(ierr)
         character(*), parameter :: rout_name = 'abort_MPI'
         
@@ -216,11 +220,16 @@ contains
         CHCKERR('MPI abort failed')
     end function abort_MPI
     
-    ! Broadcasts options (e.g. user-prescribed) that  are not passed through the
-    ! HDF5 output file (i.e. ltest, no_plots, ...).
-    ! Note that  some variables (e.g.  eq_style, ...)  are not passed  over MPI.
-    ! Every process should call its own "reconstruct_PB3D_in" in order to obtain
-    ! them.
+    !> Broadcasts options (e.g. user-prescribed) that  are not passed through the
+    !! HDF5 output file (i.e. \c ltest, \c no_plots, ...).
+    !!
+    !! \see read_input_opts()
+    !!
+    !! \note Some  variables (e.g. \c  eq_style, ...)  are not passed  over MPI.
+    !! Every  process should  call  its own  reconstruct_pb3d_in()  in order  to
+    !! obtain them.
+    !!
+    !! \return ierr
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
             &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
@@ -433,8 +442,11 @@ contains
         end if
     end function broadcast_input_opts
     
-    ! Suddenly stops the computations, aborting MPI, etc.
-    ! as a special case, if ierr = 66, no error message is printed
+    !> Suddenly stops the computations, aborting MPI, etc.
+    !!
+    !! As a special case, if \c ierr = 66, no error message is printed.
+    !!
+    !! \return ierr
     subroutine sudden_stop(ierr)
         use num_vars, only: rank
         

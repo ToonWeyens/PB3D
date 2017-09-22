@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables that concern the output of VMEC                                  !
+!> Variables that concern the output of VMEC.
 !------------------------------------------------------------------------------!
 module VMEC_vars
 #include <PB3D_macros.h>
@@ -28,25 +28,30 @@ module VMEC_vars
     public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
 #endif
     
-    ! local variables
-    integer, allocatable :: mn_V(:,:)                                           ! m and n of modes
-    real(dp) :: B_0_V                                                           ! the magnitude of B at the magnetic axis, theta = zeta = 0
-    real(dp), allocatable :: flux_t_V(:,:)                                      ! toroidal flux
-    real(dp), allocatable :: flux_p_V(:,:)                                      ! poloidal flux
-    real(dp), allocatable :: pres_V(:,:)                                        ! pressure
-    real(dp), allocatable :: rot_t_V(:,:)                                       ! rotational transform
-    real(dp), allocatable :: q_saf_V(:,:)                                       ! safety factor
-    real(dp), allocatable :: R_V_c(:,:,:), R_V_s(:,:,:)                         ! Coeff. of R in (co)sine series (FM) and norm. deriv.
-    real(dp), allocatable :: Z_V_c(:,:,:), Z_V_s(:,:,:)                         ! Coeff. of Z in (co)sine series (FM) and norm. deriv.
-    real(dp), allocatable :: L_V_c(:,:,:), L_V_s(:,:,:)                         ! Coeff. of lambda in (co)sine series (HM) and norm. deriv.
-    real(dp), allocatable :: jac_V_c(:,:,:), jac_V_s(:,:,:)                     ! Jacobian in VMEC coordinates (HM and FM) and norm. deriv.
+    ! global variables
+    integer, allocatable :: mn_V(:,:)                                           !< m and n of modes
+    real(dp) :: B_0_V                                                           !< the magnitude of B at the magnetic axis, \f$\theta = \zeta = 0\f$
+    real(dp), allocatable :: flux_t_V(:,:)                                      !< toroidal flux
+    real(dp), allocatable :: flux_p_V(:,:)                                      !< poloidal flux
+    real(dp), allocatable :: pres_V(:,:)                                        !< pressure
+    real(dp), allocatable :: rot_t_V(:,:)                                       !< rotational transform
+    real(dp), allocatable :: q_saf_V(:,:)                                       !< safety factor
+    real(dp), allocatable :: R_V_c(:,:,:)                                       !< Coeff. of \f$R\f$ in sine series (FM) and norm. deriv.
+    real(dp), allocatable :: R_V_s(:,:,:)                                       !< Coeff. of \f$R\f$ in cosine series (FM) and norm. deriv.
+    real(dp), allocatable :: Z_V_c(:,:,:)                                       !< Coeff. of \f$Z\f$ in sine series (FM) and norm. deriv.
+    real(dp), allocatable :: Z_V_s(:,:,:)                                       !< Coeff. of \f$Z\f$ in cosine series (FM) and norm. deriv.
+    real(dp), allocatable :: L_V_c(:,:,:)                                       !< Coeff. of \f$\lambda\f$ in sine series (HM) and norm. deriv.
+    real(dp), allocatable :: L_V_s(:,:,:)                                       !< Coeff. of \f$\lambda\f$ in cosine series (HM) and norm. deriv.
+    real(dp), allocatable :: jac_V_c(:,:,:)                                     !< Coeff. of \f$\mathcal{J}\f$ in sine series (HM and FM) and norm. deriv.
+    real(dp), allocatable :: jac_V_s(:,:,:)                                     !< Coeff. of \f$\mathcal{J}\f$ in cosine series (HM and FM) and norm. deriv.
 #if ldebug
-    real(dp), allocatable :: B_V_sub_c(:,:,:), B_V_sub_s(:,:,:)                 ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM)
-    real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             ! Coeff. of magnitude of B (HM and FM)
+    real(dp), allocatable :: B_V_sub_c(:,:,:)                                   !< Coeff. of B_i in sine series (r,theta,phi) (FM) \ldebug
+    real(dp), allocatable :: B_V_sub_s(:,:,:)                                   !< Coeff. of B_i in cosine series (r,theta,phi) (FM) \ldebug
+    real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             !< Coeff. of magnitude of B (HM and FM) \ldebug
 #endif
 contains
-    ! deallocates VMEC quantities that are not used anymore
-    subroutine dealloc_VMEC
+    !> Deallocates VMEC quantities that are not used anymore.
+    subroutine dealloc_VMEC()
 #if ldebug
         use num_vars, only: rank, print_mem_usage
         

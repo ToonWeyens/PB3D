@@ -1,6 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations  on the  solution  vectors such  as  decompososing the  energy, !
-!   etc...                                                                     !
+!> Operations on the solution vectors such as decompososing the energy, etc...
 !------------------------------------------------------------------------------!
 module sol_ops
 #include <PB3D_macros.h>
@@ -19,25 +18,25 @@ module sol_ops
     public plot_harmonics, plot_sol_vec, decompose_energy, print_output_sol, &
         &plot_sol_vals
 #if ldebug
-    public debug_plot_sol_vec, debug_calc_E, debug_DU
+    public debug_plot_sol_vec, debug_calc_E, debug_DU, debug_X_norm
 #endif
     
     ! global variables
 #if ldebug
-    logical :: debug_plot_sol_vec = .false.                                     ! plot debug information for plot_sol_vec
-    logical :: debug_calc_E = .false.                                           ! plot debug information for calc_E
-    logical :: debug_X_norm = .false.                                           ! plot debug information X_norm
-    logical :: debug_DU = .false.                                               ! plot debug information for calculation of DU
+    logical :: debug_plot_sol_vec = .false.                                     !< plot debug information for plot_sol_vec() \ldebug
+    logical :: debug_calc_E = .false.                                           !< plot debug information for calc_E() \ldebug
+    logical :: debug_X_norm = .false.                                           !< plot debug information \c X_norm \ldebug
+    logical :: debug_DU = .false.                                               !< plot debug information for calculation of \c DU \ldebug
 #endif
 
 contains
-    ! plots Eigenvalues
+    !> Plots Eigenvalues.
     subroutine plot_sol_vals(sol,last_unstable_id)
         use num_vars, only: rank
         
         ! input / output
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: last_unstable_id                                 ! index of last unstable EV
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(in) :: last_unstable_id                                 !< index of last unstable EV
         
         ! local variables
         character(len=max_str_ln) :: plot_title                                 ! title for plots
@@ -80,18 +79,28 @@ contains
         end if
     end subroutine plot_sol_vals
     
-    ! Plots Eigenvectors using the angular  part of the the provided equilibrium
-    ! grid and the normal part of the provided perturbation grid.
-    ! Note: The normalization  factors are taken into account and  the output is
-    ! transformed back to unnormalized values:
-    !   - xi ~ X_0/(R_0*B_0),
-    !   - Q  ~ X_0/(R_0^2),
-    ! which translates to
-    !   - X  ~ X_0,
-    !   - U  ~ X_0/(R_0^2*B_0),
-    !   - Qn ~ X_0*B_0/R_0,
-    !   - Qg ~ X_0/(R_0^3),
-    ! where X_0 is not determined.
+    !> Plots Eigenvectors.
+    !!
+    !! This is done using the angular  part of the the provided equilibrium grid
+    !! and the normal part of the provided perturbation grid.
+    !!
+    !! \note The normalization factors are taken  into account and the output is
+    !! transformed back to unnormalized values:
+    !!  \f[\begin{aligned}
+    !!      \vec{\xi} &\sim \frac{X_0}{R_0 B_0} \ , \\
+    !!      \vec{Q}   &\sim \frac{X_0}{R_0^2} \ , \\
+    !!  \end{aligned}\f]
+    !!
+    !! which translates to
+    !!  \f[\begin{aligned}
+    !!      X  &\sim X_0 \ , \\
+    !!      U  &\sim \frac{X_0}{R_0^2 B_0} \ , \\
+    !!      Qn &\sim \frac{X_0 B_0}{R_0} \ , \\
+    !!      Qg &\sim \frac{X_0}{R_0^3} \ ,
+    !!  \end{aligned}\f]
+    !! where \f$X_0\f$ is not determined but is common to all factors.
+    !!
+    !! \return ierr
     integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &XYZ,X_id,plot_var) result(ierr)
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
@@ -112,16 +121,16 @@ contains
         character(*), parameter :: rout_name = 'plot_sol_vec'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
-        type(X_1_type), intent(in) :: X                                         ! perturbation variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of extended eq_grid
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
-        logical, intent(in) :: plot_var(2)                                      ! whether variables are plotted (1: plasma perturbation, 2: magnetic perturbation)
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
+        type(X_1_type), intent(in) :: X                                         !< perturbation variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        real(dp), intent(in) :: XYZ(:,:,:,:)                                    !< X, Y and Z of extended eq_grid
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue (for output name)
+        logical, intent(in) :: plot_var(2)                                      !< whether variables are plotted (1: plasma perturbation, 2: magnetic perturbation)
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
@@ -397,7 +406,7 @@ contains
                     &loc_offset=[plot_offset(1:3),0],&
                     &X=XYZ_vec(:,:,:,:,1),Y=XYZ_vec(:,:,:,:,2),&
                     &Z=XYZ_vec(:,:,:,:,3),col=4,cont_plot=cont_plot,&
-                    &description='perturbation for time t = '//&
+                    &descr='perturbation for time t = '//&
                     &trim(r2strt(time(kd))))
                 
                 ! perturb position vector if xi;  it does not matter whether
@@ -435,13 +444,13 @@ contains
                     &tot_dim=plot_dim,loc_offset=plot_offset,&
                     &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
                     &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
-                    &description=description(kd))
+                    &descr=description(kd))
                 call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_IM',&
                     &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                     &tot_dim=plot_dim,loc_offset=plot_offset,&
                     &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
                     &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
-                    &description=description(kd))
+                    &descr=description(kd))
                 f_plot_phase = atan2(&
                     &ip(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
                     &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)))
@@ -450,7 +459,7 @@ contains
                     &f_plot_phase,tot_dim=plot_dim,loc_offset=plot_offset,&
                     &X=XYZ_plot(:,:,:,:,1),Y=XYZ_plot(:,:,:,:,2),&
                     &Z=XYZ_plot(:,:,:,:,3),col=col,cont_plot=cont_plot,&
-                    &description=description(kd))
+                    &descr=description(kd))
             end do
         
 #if ldebug
@@ -520,7 +529,7 @@ contains
                 call plot_diff_HDF5(rp(f_plot(:,:,:,1,2)),&
                     &rp(U_inf(:,:,:,1)),'TEST_RE_U_inf_'//trim(i2str(X_id)),&
                     &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
-                    &description='To test whether U approximates the ideal &
+                    &descr='To test whether U approximates the ideal &
                     &ballooning result',output_message=.true.)
                 
                 ! plotting imaginary part
@@ -530,7 +539,7 @@ contains
                 call plot_diff_HDF5(ip(f_plot(:,:,:,1,2)),&
                     &ip(U_inf(:,:,:,1)),'TEST_IM_U_inf_'//trim(i2str(X_id)),&
                     &[grid_eq%n(1:2),grid_sol%n(3)],[0,0,grid_sol%i_min-1],&
-                    &description='To test whether U approximates the ideal &
+                    &descr='To test whether U approximates the ideal &
                     &ballooning result',output_message=.true.)
                 
                 call writo('Checking done')
@@ -548,7 +557,9 @@ contains
         call lvl_ud(-1)
     end function plot_sol_vec
     
-    ! plots the harmonics and their maximum in 2D
+    !> Plots the harmonics and their maximum in 2-D.
+    !!
+    !! \return ierr
     integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
         use MPI_utilities, only: get_ser_var
         use num_vars, only: ex_max_size, rank, no_plots
@@ -560,10 +571,10 @@ contains
         character(*), parameter :: rout_name = 'plot_harmonics'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue (for output name)
-        real(dp), intent(in) :: res_surf(:,:)                                   ! resonant surfaces
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue (for output name)
+        real(dp), intent(in) :: res_surf(:,:)                                   !< resonant surfaces
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
@@ -782,26 +793,40 @@ contains
         call grid_sol_trim%dealloc()
     end function plot_harmonics
     
-    ! Decomposes  the  plasma potential  and  kinetic energy  in its  individual
-    ! terms for an individual Eigenvalue.
-    ! Use  is made of  variables representing  the potential and  kinetic energy
-    ! [ADD REF]:
-    !   - E_pot:
-    !       + normal line bending term: 1/mu_0 Q_n^2/h22,
-    !       + geodesic line bending term: 1/mu_0 J^2 h22/g33 Q_g^2,
-    !       + normal ballooning term: -2 p' X^2 kappa_n,
-    !       + geodesic ballooning term: -2 p' X U* kappa_g,
-    !       + normal kink term: -sigma X*Q_g,
-    !       + geodesic kink term: sigma U*Q_n,
-    !   - E_kin:
-    !       + normal kinetic term: rho X^2/h22,
-    !       + geodesic kinetic term: rho J^2 h22/g33 U^2.
-    ! The energy  terms are calculated  normally on the sol  grid, interpolating
-    ! the quantities defined on the eq grid, and angularly in the eq grid.
-    ! Optionally,  the  results can  be  plotted by  providing  X, Y  and Z.  By
-    ! default, they are instead written to an output file.
-    ! Also, the  fraction between potential and kinetic energy  can be returned,
-    ! compared with the Eigenvalue.
+    !> Decomposes  the plasma  potential and  kinetic energy  in its  individual
+    !! terms for an individual Eigenvalue.
+    !!
+    !! Use  is made of  variables representing  the potential and  kinetic energy
+    !! \cite Weyens3D.
+    !!  - \f$E_\text{pot}\f$:
+    !!      - normal line bending term:
+    !!          \f$\frac{1}{\mu_0} \frac{Q_n^2}{h^{22}}\f$,
+    !!      - geodesic line bending term:
+    !!          \f$\frac{1}{\mu_0} \mathcal{J}^2 \frac{h^{22}}{g_{33}} Q_g^2\f$,
+    !!      - normal ballooning term:
+    !!          \f$-2 p' X^2 \kappa_n\f$,
+    !!      - geodesic ballooning term:
+    !!          \f$-2 p' X U* \kappa_g\f$,
+    !!      - normal kink term:
+    !!          \f$-\sigma X*Q_g\f$,
+    !!      - geodesic kink term:
+    !!          \f$\sigma U*Q_n\f$,
+    !!  - \f$E_\text{kin}\f$:
+    !!      - normal kinetic term:
+    !!          \f$\rho \frac{X^2}{h^{22}}\f$,
+    !!      - geodesic kinetic term:
+    !!          \f$\rho \mathcal{J}^2 \frac{h^{22}}{g_{33}} U^2\f$.
+    !!
+    !! The energy terms  are calculated normally on the  sol grid, interpolating
+    !! the quantities defined on the eq grid, and angularly in the eq grid.
+    !!
+    !! Optionally,  the results  can be  plotted  by providing  X, Y  and Z.  By
+    !! default, they are instead written to an output file.
+    !!
+    !! Also, the fraction between potential  and kinetic energy can be returned,
+    !! compared with the eigenvalue.
+    !!
+    !! \return ierr
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
         &sol,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
         use grid_utilities, only: trim_grid
@@ -810,18 +835,18 @@ contains
         character(*), parameter :: rout_name = 'decompose_energy'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
-        type(X_1_type), intent(in) :: X                                         ! perturbation variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
-        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z for plotting
-        complex(dp), intent(inout), optional :: E_pot_int(6)                    ! integrated potential energy
-        complex(dp), intent(inout), optional :: E_kin_int(2)                    ! integrated kinetic energy
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
+        type(X_1_type), intent(in) :: X                                         !< perturbation variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
+        logical, intent(in) :: B_aligned                                        !< whether grid is field-aligned
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< X, Y and Z for plotting
+        complex(dp), intent(inout), optional :: E_pot_int(6)                    !< integrated potential energy
+        complex(dp), intent(inout), optional :: E_kin_int(2)                    !< integrated kinetic energy
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
@@ -936,11 +961,11 @@ contains
             call plot_HDF5(var_names_kin,trim(file_name)//'_RE',rp(E_kin_trim),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             call plot_HDF5(var_names_kin,trim(file_name)//'_IM',ip(E_kin_trim),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             ! E_pot
@@ -952,11 +977,11 @@ contains
             call plot_HDF5(var_names_pot,trim(file_name)//'_RE',rp(E_pot_trim),&
                 &tot_dim=[plot_dim,6],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             call plot_HDF5(var_names_pot,trim(file_name)//'_IM',ip(E_pot_trim),&
                 &tot_dim=[plot_dim,6],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             nullify(X_tot_trim,Y_tot_trim,Z_tot_trim)
             
             ! E_stab
@@ -972,13 +997,13 @@ contains
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,&
-                &cont_plot=cont_plot,description=description)
+                &cont_plot=cont_plot,descr=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim(:,:,:,1:2),4),sum(E_pot_trim(:,:,:,3:6),4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,&
-                &cont_plot=cont_plot,description=description)
+                &cont_plot=cont_plot,descr=description)
             
             ! E
             var_names(1) = '1. potential energy'
@@ -990,13 +1015,13 @@ contains
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             call plot_HDF5(var_names,trim(file_name)//'_IM',ip(reshape(&
                 &[sum(E_pot_trim,4),sum(E_kin_trim,4)],&
                 &[loc_dim(1),loc_dim(2),loc_dim(3),2])),&
                 &tot_dim=[plot_dim,2],loc_offset=[plot_offset,0],&
                 &X=X_tot_trim,Y=Y_tot_trim,Z=Z_tot_trim,cont_plot=cont_plot,&
-                &description=description)
+                &descr=description)
             
             call lvl_ud(-1)
             
@@ -1007,10 +1032,14 @@ contains
         end if
     end function decompose_energy
     
-    ! Calculate the energy terms in the energy decomposition.
-    ! Note: see explanation of routine in "decompose_energy"
+    !> Calculate the energy terms in the energy decomposition.
+    !!
+    !! \note see explanation of routine in decompose_energy().
+    !!
+    !! \return ierr
     integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
         &B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
+        
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
             &norm_disc_prec_sol, rank
         use eq_vars, only: vac_perm
@@ -1026,19 +1055,19 @@ contains
         character(*), parameter :: rout_name = 'calc_E'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(in) :: grid_sol                                 ! and solution grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
-        type(X_1_type), intent(in) :: X                                         ! perturbation variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        logical, intent(in) :: B_aligned                                        ! whether grid is field-aligned
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        complex(dp), intent(inout), allocatable :: E_pot(:,:,:,:)               ! potential energy
-        complex(dp), intent(inout), allocatable :: E_kin(:,:,:,:)               ! kinetic energy
-        complex(dp), intent(inout) :: E_pot_int(6)                              ! integrated potential energy
-        complex(dp), intent(inout) :: E_kin_int(2)                              ! integrated kinetic energy
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< and solution grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
+        type(X_1_type), intent(in) :: X                                         !< perturbation variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        logical, intent(in) :: B_aligned                                        !< whether grid is field-aligned
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
+        complex(dp), intent(inout), allocatable :: E_pot(:,:,:,:)               !< potential energy
+        complex(dp), intent(inout), allocatable :: E_kin(:,:,:,:)               !< kinetic energy
+        complex(dp), intent(inout) :: E_pot_int(6)                              !< integrated potential energy
+        complex(dp), intent(inout) :: E_kin_int(2)                              !< integrated kinetic energy
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -1243,7 +1272,7 @@ contains
                 &[0,0,grid_sol%i_min-1])
             call plot_diff_HDF5(rp(DU),rp(DU_ALT),&
                 &'TEST_RE_DU_'//trim(i2str(X_id)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1],description='To test whether DU is &
+                &[0,0,grid_sol%i_min-1],descr='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
             ! plot imaginary part
@@ -1252,7 +1281,7 @@ contains
                 &[0,0,grid_sol%i_min-1])
             call plot_diff_HDF5(ip(DU),ip(DU_ALT),&
                 &'TEST_IM_DU_'//trim(i2str(X_id)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1],description='To test whether DU is &
+                &[0,0,grid_sol%i_min-1],descr='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
             deallocate(DU_ALT)
@@ -1304,10 +1333,16 @@ contains
         call grid_sol_trim%dealloc()
     end function calc_E
     
-    ! Print solution quantities to an output file:
-    !   - sol:    val, vec
-    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0.
+    !> Print solution quantities to an output file:
+    !!
+    !!  - sol:
+    !!      - \c val
+    !!      - \c vec
+    !!
+    !! If \c  rich_lvl is provided, \c  "_[R_rich_lvl]" is appended to  the data
+    !! name if it is \c >0.
+    !!
+    !! \return ierr
     integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
         use num_vars, only: PB3D_name, sol_n_procs, rank
         use HDF5_ops, only: print_HDF5_arrs
@@ -1318,10 +1353,10 @@ contains
         character(*), parameter :: rout_name = 'print_output_sol'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! solution grid variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
+        type(grid_type), intent(in) :: grid                                     !< solution grid variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        character(len=*), intent(in) :: data_name                               !< name under which to store
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to print
         
         ! local variables
         type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables

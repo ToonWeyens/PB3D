@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations that have to do with the grids and different coordinate systems !
+!> Operations that have to do with the grids and different coordinate systems.
 !------------------------------------------------------------------------------!
 module grid_ops
 #include <PB3D_macros.h>
@@ -21,32 +21,40 @@ module grid_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_ang_grid_eq_B = .false.                               ! plot debug information for calc_ang_grid_eq_B
+    !> \ldebug
+    logical :: debug_calc_ang_grid_eq_B = .false.                               !< plot debug information for calc_ang_grid_eq_b()
 #endif
 
 contains
-    ! Calculates  normal range for the  input grid, the equilibrium  grid and/or
-    ! the solution grid.
-    ! For PB3D:
-    !   - if  'in_limits' is provided, the  limits are found by  calculating the
-    !   tightest equilibrium grid points that  encompass the solution range. The
-    !   global max_flux variables are also set.
-    !   - if  'eq_limits'  is provided,  the limits  are found  by dividing  the
-    !   equilibrium range over the available processes. 'r_F_eq' is ignored.
-    !   - if 'X_limits'  is provided, the limits  are set equal to  the case for
-    !   'sol_limits'.
-    !   - if 'sol_limits'  is provided, the solution range is  divided under the
-    !   processes and 'r_F_eq' is filled. Note that  it has to be of the correct
-    !   size for this.
-    ! For POST:
-    !   -  The  solution  range  is calculated  and  the  tightest  encompassing
-    !   equilibrium range is found. Also 'r_F_eq' and 'r_F_sol' are provided and
-    !   necessary.
-    ! Note: The input  limits strip the input variables from  the ranges that do
-    ! not  matter to  the  solution  range requested  but  does  not divide  the
-    ! resulting range  under processes.  This is  the information  of eq_limits,
-    ! which implies  that in_limits have  to be  correctly applied to  the input
-    ! variables for eq_limits to behave correctly.
+    !> Calculates normal range  for the input grid, the  equilibrium grid and/or
+    !! the solution grid.
+    !!
+    !!  - For PB3D:
+    !!      - if \c  in_limits is provided, the limits are  found by calculating
+    !!      the  tightest equilibrium  grid points  that encompass  the solution
+    !!      range. The global \c max_flux variables are also set.
+    !!      - if \c eq_limits is provided,  the limits are found by dividing the
+    !!      equilibrium  range  over  the  available  processes.  \c  r_F_eq  is
+    !!      ignored.
+    !!      - if \c X_limits  is provided, the limits are set  equal to the case
+    !!      for \c sol_limits.
+    !!      - if \c sol_limits is provided,  the solution range is divided under
+    !!      the processes and \c r_F_eq is filled.
+    !!  - For POST:
+    !!      - The  solution range  is calculated  and the  tightest encompassing
+    !!      equilibrium  range is  found.  Also  \c r_F_eq  and  \c r_F_sol  are
+    !!      provided and necessary.
+    !!
+    !! \note
+    !!  -# when setting  \c r_F_eq with \c  sol_limits, it has to  be of correct
+    !!  size.
+    !!  -# The  input limits strip the  input variables from the  ranges that do
+    !!  not  matter  to  the  solution  range  requested  but  does  not  divide
+    !!  the  resulting range  under processes.  This  is the  information of  \c
+    !!  eq_limits, which implies that \c  in_limits have to be correctly applied
+    !!  to the input variables for \c eq_limits to behave correctly.
+    !!
+    !! \return ierr
     integer function calc_norm_range(in_limits,eq_limits,X_limits,sol_limits,&
         &r_F_eq,r_F_X,r_F_sol) result(ierr)
         use num_vars, only: prog_style
@@ -54,13 +62,13 @@ contains
         character(*), parameter :: rout_name = 'calc_norm_range'
         
         ! input / output
-        integer, intent(inout), optional :: in_limits(2)                        ! min. and max. index of in grid
-        integer, intent(inout), optional :: eq_limits(2)                        ! min. and max. index of eq grid for this process
-        integer, intent(inout), optional :: X_limits(2)                         ! min. and max. index of X grid for this process
-        integer, intent(inout), optional :: sol_limits(2)                       ! min. and max. index of sol grid for this process
-        real(dp), intent(inout), optional :: r_F_eq(:)                          ! equilibrium r_F
-        real(dp), intent(inout), optional :: r_F_X(:)                           ! perturbation r_F
-        real(dp), intent(inout), optional :: r_F_sol(:)                         ! solution r_F
+        integer, intent(inout), optional :: in_limits(2)                        !< min. and max. index of in grid
+        integer, intent(inout), optional :: eq_limits(2)                        !< min. and max. index of eq grid for this process
+        integer, intent(inout), optional :: X_limits(2)                         !< min. and max. index of X grid for this process
+        integer, intent(inout), optional :: sol_limits(2)                       !< min. and max. index of sol grid for this process
+        real(dp), intent(inout), optional :: r_F_eq(:)                          !< equilibrium r_F
+        real(dp), intent(inout), optional :: r_F_X(:)                           !< perturbation r_F
+        real(dp), intent(inout), optional :: r_F_sol(:)                         !< solution r_F
         
         ! initialize ierr
         ierr = 0
@@ -377,18 +385,22 @@ contains
         end subroutine calc_norm_range_POST
     end function calc_norm_range
 
-    ! Sets  up  the equilibrium  grid,  in  which  the following  variables  are
-    ! calculated:
-    !   - equilibrium variables (eq)
-    !   - perturbation variables (X)
-    ! For the implementation of the equilibrium grid the normal part of the grid
-    ! is always  given by the  output of the  equilibrium code, but  the angular
-    ! part depends on the style:
-    !   -  VMEC:  The  output  is   analytic  in  the  angular  coordinates,  so
-    !   field-aligned coordinates  are used.  Later, in  calc_ang_grid_eq_B, the
-    !   angular variables are calculated.
-    !   - HELENA: The output is given on a poloidal grid (no toroidal dependency
-    !   due to axisymmetry), which is used.
+    !> Sets up the equilibrium grid.
+    !!
+    !! The following  variables  are calculated:
+    !!  - equilibrium variables (eq)
+    !!  - perturbation variables (X)
+    !!
+    !! For the  implementation of the  equilibrium grid  the normal part  of the
+    !! grid  is always  given by  the output  of the  equilibrium code,  but the
+    !! angular part depends on the style:
+    !!  -  VMEC:  The  output  is   analytic  in  the  angular  coordinates,  so
+    !!  field-aligned coordinates are used.  Later, in calc_ang_grid_eq_b(), the
+    !!  angular variables are calculated.
+    !!  - HELENA: The output is given on a poloidal grid (no toroidal dependency
+    !!  due to axisymmetry), which is used.
+    !!
+    !! \return ierr
     integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
         use grid_vars, only: n_r_eq
@@ -398,8 +410,8 @@ contains
         character(*), parameter :: rout_name = 'setup_grid_eq'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        integer, intent(in) :: eq_limits(2)                                     ! min. and max. index of eq grid of this process
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        integer, intent(in) :: eq_limits(2)                                     !< min. and max. index of eq grid of this process
         
         ! local variables
         integer :: id                                                           ! counter
@@ -447,12 +459,19 @@ contains
         end select
     end function setup_grid_eq
     
-    ! Sets up  the field-aligned equilibrium grid,  which serves as a  bridge to
-    ! the  solution grid,  as  it contains  the same  normal  coordinate as  the
-    ! general  grid, but  the angular  coordinates are  defined by  the solution
-    ! grid.
-    ! In contrast to setup_grid_eq,  the angular coordinates are also calculated
-    ! here.
+    !> Sets up the field-aligned equilibrium grid.
+    !!
+    !! This serves  as a bridge  to the solution grid,  as it contains  the same
+    !! normal coordinate  as the general  grid, but the angular  coordinates are
+    !! defined by the solution grid.
+    !!
+    !! Optionally, only  half the  grid can  be calculated  (i.e. only  the even
+    !! points), which is used for Richardson levels greater than 1.
+    !!
+    !! \note In contrast  to \c setup_grid_eq, the angular  coordinates are also
+    !! calculated here.
+    !!
+    !! \return ierr
     integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
         &result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
@@ -460,10 +479,10 @@ contains
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! general equilibrium grid
-        type(grid_type), intent(inout) :: grid_eq_B                             ! field-aligned equilibrium grid
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
-        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
+        type(grid_type), intent(inout) :: grid_eq                               !< general equilibrium grid
+        type(grid_type), intent(inout) :: grid_eq_B                             !< field-aligned equilibrium grid
+        type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium variables
+        logical, intent(in), optional :: only_half_grid                         !< calculate only half grid with even points
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -499,11 +518,20 @@ contains
         end select
     end function setup_grid_eq_B
     
-    ! Redistribute  the equilibrium variables,  but only the Flux  variables are
-    ! saved. See "redistribute_output_grid" for more information.
-    ! Note: the redistributed grid has trimmed outer limits, i.e. it starts at 1
-    ! and ends at  the upper limit of  the last process. This can  be turned off
-    ! optionally.
+    !> Redistribute the equilibrium variables.
+    !!
+    !! The routine first  calculates the smallest eq range that  comprises the X
+    !! range.  Then, it  gets the  lowest equilibrium  limits able  to setup  an
+    !! output grid that starts at index 1. After determining the output grid, it
+    !! then sends the variables to their new processes using MPI.
+    !!
+    !! \note
+    !!  -# Only the  Flux variables are saved.
+    !!  -# the redistributed grid has trimmed  outer limits, i.e. it starts at 1
+    !!  and ends at the upper limit of  the last process. This can be turned off
+    !!  optionally using \c no_outer_trim.
+    !!
+    !! \return ierr
     integer function redistribute_output_grid(grid,grid_out,no_outer_trim) &
         &result(ierr)
         use grid_utilities, only: find_compr_range
@@ -514,9 +542,9 @@ contains
         character(*), parameter :: rout_name = 'redistribute_output_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
-        type(grid_type), intent(inout) :: grid_out                              ! redistributed equilibrium grid variables
-        logical, intent(in), optional :: no_outer_trim                          ! do not trim the outer limits
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
+        type(grid_type), intent(inout) :: grid_out                              !< redistributed equilibrium grid variables
+        logical, intent(in), optional :: no_outer_trim                          !< do not trim the outer limits
         
         ! local variables
         integer :: id                                                           ! counter
@@ -609,9 +637,13 @@ contains
         end if
     end function redistribute_output_grid
     
-    ! Sets up the general perturbation grid, in which the perturbation variables
-    ! are calculated. This  grid has the same angular extent  as the equilibrium
-    ! grid but with different normal points, indicated by the variable 'r_F_X'.
+    !> Sets  up  the  general  perturbation  grid,  in  which  the  perturbation
+    !! variables are calculated.
+    !!
+    !! This grid  has the same angular  extent as the equilibrium  grid but with
+    !! different normal points, indicated by the variable \c r_F_X.
+    !!
+    !! \return ierr
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X
         use grid_vars, only: disc_type
@@ -620,10 +652,10 @@ contains
         character(*), parameter :: rout_name = 'setup_grid_X'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(inout) :: grid_X                                ! perturbation grid
-        real(dp), intent(in) :: r_F_X(:)                                        ! points of perturbation grid
-        integer, intent(in) :: X_limits(2)                                      ! min. and max. index of perturbation grid of this process
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(inout) :: grid_X                                !< perturbation grid
+        real(dp), intent(in) :: r_F_X(:)                                        !< points of perturbation grid
+        integer, intent(in) :: X_limits(2)                                      !< min. and max. index of perturbation grid of this process
         
         ! local variables
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
@@ -666,8 +698,15 @@ contains
         call norm_interp_data%dealloc()
     end function setup_grid_X
     
-    ! Sets  up the general  solution grid, in  which the solution  variables are
-    ! calculated.
+    !> Sets up  the general solution grid,  in which the solution  variables are
+    !! calculated.
+    !!
+    !! This grid is currently identical to  the perturbation grid, but with only
+    !! the normal variables.
+    !!
+    !! \see setup_grid_x()
+    !!
+    !! \return ierr
     integer function setup_grid_sol(grid_X,grid_sol,sol_limits) &
         &result(ierr)
         
@@ -677,9 +716,9 @@ contains
         character(*), parameter :: rout_name = 'setup_grid_sol'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(grid_type), intent(inout) :: grid_sol                              ! solution grid
-        integer, intent(in) :: sol_limits(2)                                    ! min. and max. index of sol grid of this process
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(inout) :: grid_sol                              !< solution grid
+        integer, intent(in) :: sol_limits(2)                                    !< min. and max. index of sol grid of this process
         
         ! initialize ierr
         ierr = 0
@@ -695,14 +734,25 @@ contains
         grid_sol%loc_r_E = grid_sol%r_E(sol_limits(1):sol_limits(2))
     end function setup_grid_sol
     
-    ! Calculate grid that follows magnetic field lines.
-    ! Note: The end-points are included for the grids in the parallel direction.
-    ! This is to  facilitate working with the trapezoidal rule  or Simpson's 3/8
-    ! rule for integration. This is NOT valid in general!
-    ! Note: by  setting the flag "only_half_grid",  only the even points  of the
-    ! parallel grid are calculated, which is useful for higher Richardson levels
-    ! with VMEC so that only new angular  points are calculated and the old ones
-    ! reused.
+    !> Calculate equilibrium grid that follows magnetic field lines.
+    !!
+    !! This grid is  different from the equilibrium grid  from setup_grid_eq for
+    !! HELENA, as the  latter is the output grid from  HELENA, which is situated
+    !! in a single  poloidal cross-section, as opposed to  a really field-aligne
+    !! grid.
+    !!
+    !! For VMEC, this is not used as the grid is field-aligned from the start.
+    !! 
+    !! \note
+    !!  -# The end-points are included for  the grids in the parallel direction.
+    !!  This is to facilitate working with the trapezoidal rule or Simpson's 3/8
+    !!  rule for integration. This is \b NOT valid in general!
+    !!  -# by  setting the flag \c  only_half_grid, only the even  points of the
+    !!  parallel  grid are  calculated, which  is useful  for higher  Richardson
+    !!  levels with VMEC so that only  new angular points are calculated and the
+    !!  old ones reused.
+    !!
+    !! \return ierr
     integer function calc_ang_grid_eq_B(grid_eq,eq,only_half_grid) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_zero, eq_job_nr, eq_jobs_lims
@@ -720,9 +770,9 @@ contains
         character(*), parameter :: rout_name = 'calc_ang_grid_eq_B'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid of which to calculate angular part
-        type(eq_1_type), intent(in), target :: eq                               ! flux equilibrium variables
-        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid of which to calculate angular part
+        type(eq_1_type), intent(in), target :: eq                               !< flux equilibrium variables
+        logical, intent(in), optional :: only_half_grid                         !< calculate only half grid with even points
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -882,13 +932,22 @@ contains
         call lvl_ud(-1)
     end function calc_ang_grid_eq_B
     
-    ! plots the grid in real space
-    ! The  equilibrium grid  should contain  the fieldline-oriented  angles with
-    ! ang_1 the parallel angle and ang_2 the field line label.
-    ! Note:  This  routine  does  not  use  n_theta_plot  and  n_zeta_plot  from
-    ! num_vars, but instead  temporarily overwrites them with its  own, since it
-    ! has to be 3D also in the axisymmetric case.
-    ! [MPI] Collective call
+    !> Plots the grid in real 3-D space.
+    !!
+    !! This creates an animation that can be used by ParaView or VisIt.
+    !!
+    !! The equilibrium grid should contain the fieldline-oriented angles with \c
+    !! ang_1 the parallel angle and \c ang_2 the field line label.
+    !!
+    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !!
+    !! \note
+    !!  -# This procedure  does not use \c n_theta_plot and  \c n_zeta_plot from
+    !!  num_vars, but instead temporarily overwrites them with its own, since it
+    !!  is suposed to be 3-D also in the axisymmetric case.
+    !!  -# The implementation is currently very slow.
+    !!
+    !! \return ierr
     integer function magn_grid_plot(grid) result(ierr)
         use num_vars, only: rank, no_plots, n_theta_plot, n_zeta_plot, &
             &eq_style, min_theta_plot, max_theta_plot, min_zeta_plot, &
@@ -899,7 +958,7 @@ contains
         character(*), parameter :: rout_name = 'magn_grid_plot'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! fieldline-oriented equilibrium grid
+        type(grid_type), intent(in) :: grid                                     !< fieldline-oriented equilibrium grid
         
         ! local variables
         real(dp), allocatable :: X_1(:,:,:), Y_1(:,:,:), Z_1(:,:,:)             ! X, Y and Z of surface in Axisymmetric coordinates
@@ -1137,7 +1196,7 @@ contains
                 
                 ! open HDF5 file
                 ierr = open_HDF5_file(file_info,trim(file_name),&
-                    &description=anim_name,ind_plot=.true.)
+                    &descr=anim_name,ind_plot=.true.)
                 CHCKERR('')
                 
                 ! create grid for time collection
@@ -1239,14 +1298,19 @@ contains
         end function magn_grid_plot_HDF5
     end function magn_grid_plot
     
-    ! Print grid variables to an output file.
-    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0.
-    ! Optionally, it  can be  specified that  this is  a divided  parallel grid,
-    ! corresponding to  the variable  "eq_jobs_lims" with index  "eq_job_nr". In
-    ! this  case, the  total  grid size  is  adjusted to  the  one specified  by
-    ! "eq_jobs_lims" and the grid is written as a subset.
-    ! Note: "grid_" is added in front the data_name.
+    !> Print grid variables to an output file.
+    !!
+    !! If \c  rich_lvl is  provided, <tt>_R_[rich_lvl]</tt>  is appended  to the
+    !! data name if it is > 0.
+    !!
+    !! Optionally, it  can be specified  that this  is a divided  parallel grid,
+    !! corresponding to the variable \c eq_jobs_lims with index \c eq_job_nr. In
+    !! this case,  the total grid  size is adjusted to  the one specified  by \c
+    !! eq_jobs_lims and the grid is written as a subset.
+    !!
+    !! \note <tt>grid_</tt> is added in front the data_name.
+    !!
+    !! \return ierr
     integer function print_output_grid(grid,grid_name,data_name,rich_lvl,&
         &par_div) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
@@ -1258,11 +1322,11 @@ contains
         character(*), parameter :: rout_name = 'print_output_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid variables
-        character(len=*), intent(in) :: grid_name                               ! name to display
-        character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
+        type(grid_type), intent(in) :: grid                                     !< grid variables
+        character(len=*), intent(in) :: grid_name                               !< name to display
+        character(len=*), intent(in) :: data_name                               !< name under which to store
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: par_div                                !< is a parallely divided grid
         
         ! local variables
         integer :: n_tot(3)                                                     ! total n

@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations related to files                                                !
+!> Operations related to files                                                !
 !------------------------------------------------------------------------------!
 module files_ops
 #include <PB3D_macros.h>
@@ -8,20 +8,19 @@ module files_ops
     use num_vars, only: dp, max_str_ln
     implicit none
     private
-    public open_input, open_output, parse_args, init_files, &
-        &opt_args, close_output
+    public open_input, open_output, parse_args, init_files, close_output, &
+        &opt_args
 
     ! user-specified arguments
     integer :: numargs                                                          ! control the user-specified arguments
     character(len=max_str_ln), allocatable :: command_arg(:)                    ! passeed command-line arguments
 
     ! options provided with command line
-    character(len=max_str_ln), allocatable :: opt_args(:)
-    integer, allocatable :: inc_args(:)
+    character(len=max_str_ln), allocatable :: opt_args(:)                       !< optional arguments that can be passed using <tt>--[name]</tt>
+    integer, allocatable :: inc_args(:)                                         !< number of arguments for each optional argument
 
 contains
-    ! initialize the variables for the module
-    ! [MPI] All ranks
+    !> Initialize the variables for the module.
     subroutine init_files()
         use num_vars, only: ltest, prog_style
         
@@ -70,9 +69,11 @@ contains
         inc_args(1:6) = [0,0,0,0,0,0]
     end subroutine init_files
 
-    ! parses the command line arguments
-    ! The input arguments are saved in command_arg
-    ! [MPI] all processes
+    !> Parses the command line arguments.
+    !!
+    !! \note The input arguments are saved in \c command_arg
+    !!
+    !! \return ierr
     integer function parse_args() result(ierr)
         use num_vars, only: prog_style, prog_name
         
@@ -164,8 +165,14 @@ contains
         call writo("Command line arguments parsed")
     end function parse_args
 
-    ! open the input files
-    ! [MPI] only master
+    !> Open the input files.
+    !!
+    !!  - input file with user options
+    !!  - equilibrium file in
+    !!      - NetCDF for VMEC
+    !!      - plain for HELENA
+    !!
+    !! \return ierr
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
@@ -480,10 +487,24 @@ contains
         end subroutine apply_opt_POST
     end function open_input
 
-    ! Open an output file and write (PB3D) or read (POST) the common variables.
-    ! Also sets some output variables.
-    ! Note: If  there is Richardson restart,  no HDF5 files are  opened for PB3D
-    ! and the output log file name is different.
+    !> Open the output files
+    !! 
+    !!  - output file <tt>.txt</tt>
+    !!  - shell commands file <tt>.sh</tt>
+    !!  - HDF5 file: only for PB3D, not for POST.
+    !!  - memory usage file <tt>.dat</tt>
+    !!
+    !! Also sets some output variables.
+    !!
+    !! \note
+    !!  -# memory usage file is only for debug version.
+    !!  -# There can be resart of a Richardson level for PB3D
+    !!  -# There  can also be  a direct  jump to the  solution for PB3D,  if the
+    !!  equilibrium  and perturbation  phases are  already done  and saved  (see
+    !!  init_files()).
+    !!  -# In the case of a Richardson restart, PB3D reopens the HDF5 file.
+    !!
+    !! \return ierr
     integer function open_output() result(ierr)
         use num_vars, only: prog_style, output_i, output_name, prog_name, &
             &rich_restart_lvl, shell_commands_name, shell_commands_i, &
@@ -657,9 +678,8 @@ contains
         call writo('Output files opened')
     end function open_output
     
-    ! closes the output file
-    ! [MPI] only master
-    subroutine close_output
+    !> Closes the output file.
+    subroutine close_output()
         use num_vars, only: rank, output_i, prog_name, shell_commands_name, &
             &do_execute_command_line
         

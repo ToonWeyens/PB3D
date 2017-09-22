@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables pertaining to the different grids used                           !
+!> Variables pertaining to the different grids used.
 !------------------------------------------------------------------------------!
 module grid_vars
 #include <PB3D_macros.h>
@@ -9,87 +9,102 @@ module grid_vars
 
     implicit none
     private
-    public grid_type, disc_type, &
-        &n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X
+    public n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X
 #if ldebug
     public n_alloc_grids, n_alloc_discs
 #endif
     
     ! global variables
-    integer :: n_r_in                                                           ! nr. of normal points in input grid
-    integer :: n_r_eq                                                           ! nr. of normal points in equilibrium (and perturbation) grid
-    integer :: n_r_sol                                                          ! nr. of normal points in solution grid
-    real(dp) :: min_par_X, max_par_X                                            ! min. and max. of parallel coordinate [pi] in field-aligned grid
+    integer :: n_r_in                                                           !< nr. of normal points in input grid
+    integer :: n_r_eq                                                           !< nr. of normal points in equilibrium (and perturbation) grid
+    integer :: n_r_sol                                                          !< nr. of normal points in solution grid
+    real(dp) :: min_par_X                                                       !< min. of parallel coordinate [\f$\pi\f$] in field-aligned grid
+    real(dp) :: max_par_X                                                       !< max. of parallel coordinate [\f$\pi\f$] in field-aligned grid
 #if ldebug
-    integer :: n_alloc_grids                                                    ! nr. of allocated grids
-    integer :: n_alloc_discs                                                    ! nr. of allocated discretizations
+    integer :: n_alloc_grids                                                    !< nr. of allocated grids \ldebug
+    integer :: n_alloc_discs                                                    !< nr. of allocated discretizations \ldebug
 #endif
 
-    ! type for grids
-    ! The grids  are saved in  the following format:  (angle_1,angle_2,r), where
-    ! angle_1  and angle_2  can be  any angle  that completely  describe a  flux
-    ! surface. For example, they  can refer to a grid of  theta and zeta values,
-    ! but they  can also refer  to (Modified)  flux coordinates with  a parallel
-    ! angle and a field line coordinate (alpha).
-    ! Normally, for field-aligned grids, angle_1 is chosen equal to the parallel
-    ! coordinate in the  Flux coordinate system, and angle_2 equal  to the field
-    ! line label (so the  second dimension of the matrices is  then chosen to be
-    ! of size 1 for the calculations on  a single field line). At the same time,
-    ! the  parallel coordinate,  in which  integrations  will have  to be  done,
-    ! ocupies the first index. This is good for numerical efficiency.
-    ! For specific  equilibrium grids, such  as the case for  HELENA equilibria,
-    ! angle_1 corresponds  normally to theta  and angle_2 to the  symmetry angle
-    ! zeta. 
-    ! It is important that this order  of the coordinates in space is consistent
-    ! among all the variables.
-    type :: grid_type
-        integer :: n(3)                                                         ! tot nr. of points
-        integer :: loc_n_r                                                      ! local nr. of normal points
-        integer :: i_min, i_max                                                 ! min. and max. normal index of this process in full arrays
-        logical :: divided                                                      ! whether the grid is split up among the processes
-        real(dp), pointer :: r_E(:) => null()                                   ! E(quilibrium) coord. values at n points 
-        real(dp), pointer :: r_F(:) => null()                                   ! F(lux) coord. values at n points 
-        real(dp), pointer :: loc_r_E(:) => null()                               ! E(quilibrium) coord. values at n points 
-        real(dp), pointer :: loc_r_F(:) => null()                               ! F(lux) coord. values at n points 
-        real(dp), pointer :: theta_E(:,:,:) => null()                           ! E(quilibrium) coord. values of first angle at n points in 3D
-        real(dp), pointer :: theta_F(:,:,:) => null()                           ! F(lux) coord. values of first angle at n points in 3D
-        real(dp), pointer :: zeta_E(:,:,:) => null()                            ! E(quilibrium) coord. values of second angle at n points in 3D
-        real(dp), pointer :: zeta_F(:,:,:) => null()                            ! F(lux) coord. values of second angle at n points in 3D
-        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric factor cosine for the inverse fourier transf.
+    !> Type for grids
+    !!
+    !! The     grids     are     saved      in     the     following     format:
+    !! <tt>(angle_1,angle_2,r)</tt>, where \c angle_1 and  \c angle_2 can be any
+    !! angle that completely describe a flux surface.
+    !! 
+    !! For example,  they can refer  to a  grid of \f$\theta\f$  and \f$\zeta\f$
+    !! values, but  they can also  refer to  (Modified) flux coordinates  with a
+    !! parallel angle and a field line coordinate (\f$\alpha\f$).
+    !!
+    !! For  field-aligned grids,  \c angle_1  is generally  chosen equal  to the
+    !! parallel coordinate in  the Flux coordinate system, and  \c angle_2 equal
+    !! to the field line label (so the  second dimension of the matrices is then
+    !! chosen to be of size 1 for the calculations on a single field line).
+    !!
+    !! At the  same time,  the parallel coordinate,  in which  integrations will
+    !! have to  be done,  ocupies the  first index. This  is good  for numerical
+    !! efficiency.
+    !!
+    !! For specific equilibrium  grids, such as the case  for HELENA equilibria,
+    !! \c angle_1  corresponds to  \f$\theta\f$ and \c  angle_2 to  the symmetry
+    !! angle \f$\zeta\f$.
+    !!
+    !! It is important that this order of the coordinates in space is consistent
+    !! among all the variables.
+    type, public :: grid_type
+        integer :: n(3)                                                         !< tot nr. of points
+        integer :: loc_n_r                                                      !< local nr. of normal points
+        integer :: i_min, i_max                                                 !< min. and max. normal index of this process in full arrays
+        logical :: divided                                                      !< whether the grid is split up among the processes
+        real(dp), pointer :: r_E(:) => null()                                   !< E(quilibrium) coord. values at n points 
+        real(dp), pointer :: r_F(:) => null()                                   !< F(lux) coord. values at n points 
+        real(dp), pointer :: loc_r_E(:) => null()                               !< E(quilibrium) coord. values at n points 
+        real(dp), pointer :: loc_r_F(:) => null()                               !< F(lux) coord. values at n points 
+        real(dp), pointer :: theta_E(:,:,:) => null()                           !< E(quilibrium) coord. values of first angle at n points in 3-D
+        real(dp), pointer :: theta_F(:,:,:) => null()                           !< F(lux) coord. values of first angle at n points in 3-D
+        real(dp), pointer :: zeta_E(:,:,:) => null()                            !< E(quilibrium) coord. values of second angle at n points in 3-D
+        real(dp), pointer :: zeta_F(:,:,:) => null()                            !< F(lux) coord. values of second angle at n points in 3-D
+        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      !< trigonometric factor cosine for the inverse fourier transf.
 #if ldebug
-        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
         procedure :: init => init_grid
         procedure :: dealloc => dealloc_grid
     end type
     
-    ! type for data of discretization operations:
-    !   - derivatives
-    !   - interpolation
-    ! See routines setup_deriv_data and setup_interp_data in grid_utilities where
-    ! discretization data is setup and apply_disc where it is used.
-    type :: disc_type
-        integer :: n, n_loc                                                     ! total and local size of discretization variables
-        real(dp), allocatable :: dat(:,:)                                       ! nonzero elements of matrix corresponding to discretization
-        integer, allocatable :: id_start(:)                                     ! start index of data in dat
+    !> type for data of discretization operations.
+    !!
+    !! Operations currently supported:
+    !!  - derivatives
+    !!  - interpolation
+    !!
+    !! \see   See  routines   setup_deriv_data()   and  setup_interp_data()   in
+    !! grid_utilities where discretization data  is setup and apply_disc() where
+    !! it is used.
+    type, public :: disc_type
+        integer :: n, n_loc                                                     !< total and local size of discretization variables
+        real(dp), allocatable :: dat(:,:)                                       !< nonzero elements of matrix corresponding to discretization
+        integer, allocatable :: id_start(:)                                     !< start index of data in \c dat
     contains
         procedure :: init => init_disc
         procedure :: dealloc => dealloc_disc
     end type
     
 contains
-    ! Initializes a new grid.
-    ! Optionally, the local limits can be provided for a divided grid.
-    ! Optionally, it can be set whether the  grid is divided or not. A situation
-    ! where this  is useful is when  only a subset  of MPI processes is  used to
-    ! calculate the  solution in SLEPC. In  this case, the extra  ranks all only
-    ! contain the last grid point, and the  last used process has as upper limit
-    ! this same  grid point. This way,  all the procedures are  reusable, but in
-    ! this case if only one process is used, this procedure becomes confused and
-    ! sets this process to undivided. In most cases, this functionality probably
-    ! does not need to be used.
-    ! Note: intent(out) automatically deallocates the variable
+    !> \public Initializes a new grid.
+    !!
+    !! Optionally, the local limits can be provided for a divided grid.
+    !! 
+    !! Optionally, it can be set whether the grid is divided or not. A situation
+    !! where this is  useful is when only  a subset of MPI processes  is used to
+    !! calculate the solution  in SLEPC. In this case, the  extra ranks all only
+    !! contain the last grid point, and the last used process has as upper limit
+    !! this same grid  point. This way, all the procedures  are reusable, but in
+    !! this case  if only one process  is used, this procedure  becomes confused
+    !! and sets  this process  to undivided. In  most cases,  this functionality
+    !! probably does not need to be used.
+    !!
+    !! \return ierr
     integer function init_grid(grid,n,i_lim,divided) result(ierr)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
@@ -97,10 +112,10 @@ contains
         character(*), parameter :: rout_name = 'init_grid'
         
         ! input / output
-        class(grid_type), intent(out) :: grid                                   ! grid to be initialized
-        integer, intent(in) :: n(3)                                             ! tot. nr. of points (par,r,alpha)
-        integer, intent(in), optional :: i_lim(2)                               ! min. and max. local normal index
-        logical, intent(in), optional :: divided                                ! divided grid or not
+        class(grid_type), intent(inout) :: grid                                 !< grid to be initialized
+        integer, intent(in) :: n(3)                                             !< tot. nr. of points (par,r,alpha)
+        integer, intent(in), optional :: i_lim(2)                               !< min. and max. local normal index
+        logical, intent(in), optional :: divided                                !< divided grid or not
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -190,13 +205,13 @@ contains
 #endif
     end function init_grid
     
-    ! deallocates a grid
+    !> \public Deallocates a grid.
     subroutine dealloc_grid(grid)
 #if ldebug
         use num_vars, only: rank, print_mem_usage
 #endif
         ! input / output
-        class(grid_type), intent(inout) :: grid                                 ! grid to be deallocated
+        class(grid_type), intent(inout) :: grid                                 !< grid to be deallocated
         
         ! local variables
 #if ldebug
@@ -249,13 +264,16 @@ contains
         end subroutine dealloc_grid_final
     end subroutine dealloc_grid
     
-    ! Initialize discretization variable, possibly overwriting.
+    !> \public Initialize discretization variable, possibly overwriting.
+    !!
+    !! \return ierr
     integer function init_disc(disc,n,n_loc) result(ierr)
         character(*), parameter :: rout_name = 'init_disc'
         
         ! input / output
-        class(disc_type), intent(inout) :: disc                                  ! discretization variable
-        integer, intent(in) :: n, n_loc                                         ! total and local size of discretization
+        class(disc_type), intent(inout) :: disc                                 !< discretization variable
+        integer, intent(in) :: n                                                !< total size of discretization
+        integer, intent(in) :: n_loc                                            !< local size of discretization
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -302,10 +320,10 @@ contains
 #endif
     end function init_disc
     
-    ! Deallocate discretization variable type
+    !> \public Deallocate discretization variable type
     subroutine dealloc_disc(disc)
         ! input / output
-        class(disc_type), intent(inout) :: disc                                 ! discretization variable to be deallocated
+        class(disc_type), intent(inout) :: disc                                 !< discretization variable to be deallocated
         
         ! deallocate allocatable variables
         call dealloc_disc_final(disc)

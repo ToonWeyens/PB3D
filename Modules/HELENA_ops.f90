@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations on HELENA variables                                             !
+!> Operations on HELENA variables.
 !------------------------------------------------------------------------------!
 module HELENA_ops
 #include <PB3D_macros.h>
@@ -21,51 +21,63 @@ module HELENA_ops
 #endif
 
 contains
-    ! Reads the HELENA equilibrium data
-    ! (from HELENA routine IODSK)
-    ! Note: The variales in the HELENA mapping file are globalized in two ways:
-    !   -  X and  Y  are  normalized w.r.t.  vacuum  geometric  axis R_vac  and
-    !   toroidal field at the geometric axis B_vac.
-    !       * R[m] = R_vac[m] (1 + eps X[]),
-    !       * Z[m] = R_vac[m] eps Y[].
-    !   - covariant toroidal field F_H,  pres_H and poloidal flux are normalized
-    !   w.r.t magnetic axis R_m and total toroidal field at magnetic axis B_m.
-    !       * RBphi[Tm]     = F_H[] R_m[m] B_m[T],
-    !       * pres[N/m^2]   = pres_H[] (B_m[T])^2/mu_0[N/A^2],
-    !       * flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[] B_m[T] (R_m[m])^2.
-    ! The  first normalization  type is  the HELENA  normalization, whereas  the
-    ! second is  the MISHKA  normalization. Everything  is translated  to MISHKA
-    ! normalization to  make comparison with  MISHKA simple. This is  done using
-    ! the factors
-    !   - radius[] = a[m] / R_m[m],
-    !   - eps[] = a[m] / R_vac[m],
-    ! so that the expressions become:
-    !   - R[m]          = radius[] (1/eps[] + X[])            R_m[m],
-    !   - Z[m]          = radius[] Y[]                        R_m[m],
-    !   - RBphi[Tm]     = F_H[]                     B_m[T]    R_m[m],
-    !   - pres[N/m^2]   = pres_H[]                  B_m[T]^2  mu_0[N/A^2]^-1
-    !   - flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]    R_m[T]^2.
-    ! Finally, in HELENA, the total current I, the poloidal beta and the density
-    ! at the geometric axis can be prescribed through
-    !   - XIAB = mu_0 I / (a_vac B_vac),
-    !   - BETAP = 8 pi S <p> / (I^2 mu_0),
-    !   - ZN0
-    ! where a_vac  = eps  R_vac and B_vac  are vacuum quantities,  S is  the 2-D
-    ! cross-sectional area  and <p> is  the 2-D averaged pressure. 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! To translate this to the MISHKA normalization factors as                 !
-    !   - R_m = (eps/radius) R_vac                                             !
-    !   - B_m = B_vac / B0                                                     !
-    ! where                                                                    !
-    !   - radius is in the mapping file  (12), as well as in the HELENA output !
-    !   (20)                                                                   !
-    !   - eps is in the mapping file (12), as well as in the HELENA input (10) !
-    !   and output (20)                                                        !
-    !   - B0 is in the HELENA output (20)                                      !
-    ! Furthermore, the  density on axis  can be  specified as ZN0  from HELENA !
-    ! input  (10). The  other variables  should  probably not  be touched  for !
-    ! consistency.                                                             !
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !> Reads the HELENA equilibrium data
+    !!
+    !! Adapted from HELENA routine \c IODSK.
+    !! 
+    !! The variales in the HELENA mapping file are globalized in two ways:
+    !!  - X and  Y are normalized w.r.t. vacuum geometric  axis \c R_vac and
+    !!  toroidal field at the geometric axis \c B_vac.
+    !!  - <tt> R[m] = R_vac[m] (1 + eps X[]) </tt>,
+    !!  - <tt> Z[m] = R_vac[m] eps Y[] </tt>.
+    !! 
+    !! The covariant  toroidal field  \c F_H,  \c pres_H  and poloidal  flux are
+    !! normalized  w.r.t  magnetic axis  \c  R_m  and  total toroidal  field  at
+    !! magnetic axis \c B_m:
+    !!  - <tt> RBphi[Tm]     = F_H[] R_m[m] B_m[T] </tt>,
+    !!  - <tt> pres[N/m^2]   = pres_H[] (B_m[T])^2/mu_0[N/A^2] </tt>,
+    !!  - <tt> flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[] B_m[T] (R_m[m])^2 </tt>. 
+    !!
+    !! The first  normalization type  is the  HELENA normalization,  whereas the
+    !! second is the MISHKA normalization.
+    !! 
+    !! Everything is translated to MISHKA  normalization to make comparison with
+    !! MISHKA simple. This is done using the factors:
+    !!  - <tt> radius[] = a[m] / R_m[m] </tt>,
+    !!  - <tt> eps[] = a[m] / R_vac[m] </tt>,
+    !!
+    !! so that the expressions become:
+    !!  - <tt> R[m]          = radius[] (1/eps[] + X[])           R_m[m]</tt>,
+    !!  - <tt> Z[m]          = radius[] Y[]                       R_m[m]</tt>,
+    !!  - <tt> RBphi[Tm]     = F_H[]                     B_m[T]   R_m[m]</tt>,
+    !!  - <tt> pres[N/m^2]   = pres_H[]                  B_m[T]^2 mu_0[N/A^2]^-1
+    !!  </tt>,
+    !!  - <tt> flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]   R_m[T]^2</tt>.
+    !!
+    !! Finally, in  HELENA, the total  current \c I,  the poloidal beta  and the
+    !! density at the geometric axis can be prescribed through:
+    !!  - <tt> XIAB = mu_0 I / (a_vac B_vac) </tt>,
+    !!  - <tt> BETAP = 8 pi S \<p\> / (I^2 mu_0) </tt>,
+    !!  - <tt> ZN </tt>,
+    !!
+    !! where <tt> a_vac = eps R_vac </tt> and \c B_vac are vacuum quantities,
+    !! \c  S  is the  2-D  cross-sectional  area and  \<p\>  is  the 2-D  averaged
+    !! pressure.
+    !!
+    !! \note To translate this to the MISHKA normalization factors as                 !
+    !!  - <tt> R_m = (eps/radius) R_vac </tt>,
+    !!  - <tt> B_m = B_vac / B0 </tt>,
+    !! \n where                                                                    !
+    !!  - \c radius is in the mapping file (12), as well as in the HELENA output
+    !!  (20).
+    !!  - \c  eps is in the  mapping file (12), as  well as in the  HELENA input
+    !!  (10) and output (20).
+    !!  - \c B0 is in the HELENA output (20).
+    !! \note Furthermore,  the density on axis  can be specified as  \c ZN0 from
+    !! HELENA input (10). \n The other  variables should probably not be touched
+    !! for consistency.
+    !!
+    !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
         use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv
         use grid_utilities, only: setup_deriv_data, apply_disc
@@ -76,8 +88,8 @@ contains
         character(*), parameter :: rout_name = 'read_HEL'
         
         ! input / output
-        integer, intent(inout) :: n_r_in                                        ! nr. of normal points in input grid
-        logical, intent(inout) :: use_pol_flux_H                                ! .true. if HELENA equilibrium is based on pol. flux
+        integer, intent(inout) :: n_r_in                                        !< nr. of normal points in input grid
+        logical, intent(inout) :: use_pol_flux_H                                !< .true. if HELENA equilibrium is based on pol. flux
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -294,36 +306,46 @@ contains
         call writo('Data from HELENA output succesfully read')
     end function read_HEL
     
-    ! calculate interpolation  factors for angular interpolation  in grid_out of
-    ! quantities defined on grid_in. This version  is specific for an input grid
-    ! corresponding to  axisymmetric variables with optional  top-down symmetry,
-    ! as is the case for variables resulting from HELENA equilibria.
-    ! The output of a 3D array of real values for the poloidal angle theta where
-    ! the  floored  integer of  each  value  indicates  the  base index  of  the
-    ! interpolated value in the output grid  and the modulus is the the fraction
-    ! towards the next integer.
-    ! The flag tb_sym indicates optionally  that there is top-bottom symmetry as
-    ! well as axisymmetry. When there is top-down symmetry, the variables in the
-    ! lower half  (i.e. -pi<theta<0)  are calculated from  the variables  in the
-    ! upper half  using the  symmetry properties of  the variables.  To indicate
-    ! this,  the sign  of the  interpolation factor  is inverted  to a  negative
-    ! value.
-    ! The  displacement of  the  theta interval  towards  the fundamental  theta
-    ! interval is also outputted. For asymmetric variables this is for example:
-    !    1  for -2pi ..  0
-    !    0  for  0   ..  2pi
-    !   -1  for  2pi ..  4pi
-    ! etc.
-    ! For symmetric variables, this is for example:
-    !    1  for -3pi .. -2pi,   with symmetry property
-    !    1  for -2pi .. -pi
-    !    0  for -pi  ..  0,     with symmetry property
-    !    0  for  0   ..  pi
-    !   -1  for  pi  ..  2pi,   with symmetry property
-    !   -1  for  3pi ..  3pi
-    ! etc.
-    ! By default, the variables in the Flux coord. system are used, but this can
-    ! be changed optionally with the flag "use_E".
+    !> Calculate interpolation factors for  angular interpolation in \c grid_out
+    !! of quantities defined on \c grid_in.
+    !! 
+    !! This version is specific for  an input grid corresponding to axisymmetric
+    !! variables with optional  top-down symmetry, as is the  case for variables
+    !! resulting from HELENA equilibria.
+    !!
+    !! The  output  of  a 3-D  array  of  real  values  for the  poloidal  angle
+    !! \f$\theta\f$ where the  floored integer of each value  indicates the base
+    !! index of the interpolated value in the output grid and the modulus is the
+    !! the fraction towards the next integer.
+    !!
+    !! The flag \c tb_sym indicates optionally that there is top-bottom symmetry
+    !! as well as axisymmetry. When there is top-down symmetry, the variables in
+    !! the lower  half (i.e. \f$-\pi  < \theta <  0\f$) are calculated  from the
+    !! variables  in  the  upper  half  using the  symmetry  properties  of  the
+    !! variables.  To indicate  this, the  sign of  the interpolation  factor is
+    !! inverted to a negative value.
+    !!
+    !! The  displacement of  the theta  interval towards  the fundamental  theta
+    !! interval is also outputted. For asymmetric variables this is for example:
+    !!  -  1  for \f$-2\pi \ldots  0\f$
+    !!  -  0  for \f$ 0    \ldots  2\pi\f$
+    !!  - -1  for \f$ 2\pi \ldots  4\pi\f$
+    !!
+    !! etc.
+    !!
+    !! For symmetric variables, this is for example:
+    !!  -  1  for \f$-3\pi \ldots -2\pi\f$,   with symmetry property
+    !!  -  1  for \f$-2\pi \ldots -\pi\f$
+    !!  -  0  for \f$-\pi  \ldots  0\f$,      with symmetry property
+    !!  -  0  for \f$ 0    \ldots  \pi\f$
+    !!  - -1  for \f$ \pi  \ldots  2\pi\f$,   with symmetry property
+    !!  - -1  for \f$ 3\pi \ldots  3\pi\f$
+    !! etc.
+    !!
+    !! By default,  the variables in the  Flux coord. system are  used, but this
+    !! can be changed optionally with the flag \c "use_E.
+    !!
+    !! \return ierr
     integer function get_ang_interp_data_HEL(grid_in,grid_out,theta_i,&
         &fund_theta_int_displ,tb_sym,use_E) result(ierr)
         use num_utilities, only: con2dis
@@ -331,11 +353,12 @@ contains
         character(*), parameter :: rout_name = 'get_ang_interp_data_HEL'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
-        real(dp), allocatable, intent(inout) :: theta_i(:,:,:)                  ! interpolation index
-        integer, allocatable, intent(inout) :: fund_theta_int_displ(:,:,:)      ! displacement of fundamental theta interval
-        logical, intent(in), optional :: tb_sym                                 ! top-bottom symmetry
-        logical, intent(in), optional :: use_E                                  ! whether E is used instead of F
+        type(grid_type), intent(in) :: grid_in                                  !< input grid
+        type(grid_type), intent(in) :: grid_out                                 !< output grid
+        real(dp), allocatable, intent(inout) :: theta_i(:,:,:)                  !< interpolation index
+        integer, allocatable, intent(inout) :: fund_theta_int_displ(:,:,:)      !< displacement of fundamental theta interval
+        logical, intent(in), optional :: tb_sym                                 !< top-bottom symmetry
+        logical, intent(in), optional :: use_E                                  !< whether E is used instead of F
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -437,22 +460,29 @@ contains
         nullify(theta_in)
     end function get_ang_interp_data_HEL
     
-    ! Interpolate  variables resulting  from HELENA  equilibria to  another grid
-    ! (angularly).  The input  and  output grid  to be  provided  depend on  the
-    ! quantities to be interpolated:
-    !   - equilibrium variables: flux variables (no need to convert) and derived
-    !     quantities (need equilibrium grid)
-    !   - metric variables: jac_FD (need equilibrium grid)
-    !   - vectorial perturbation variables: U_i, DU_i (need perturbation grid)
-    !   - tensorial perturbation variables: PV_i, KV_i (need perturbation grid)
-    ! Also, a message can be printed if a grid name is passed.
-    ! Note: the  metric coefficients are  interpolated and then  compensated for
-    ! the straight-field-line coordinates as in [ADD REFERENCE].
-    ! Note: By default the interpolated  quantities overwrite the original ones,
-    ! but alternative output variables can be provided.
-    ! Note:  as  the  equilibrium  and   perturbation  grid  are  not  generally
-    ! identical,  this routine  has to  be called  separately for  the variables
-    ! tabulated in either grid.
+    !> Interpolate  variables resulting from  HELENA equilibria to  another grid
+    !! (angularly).
+    !!
+    !! The input  and  output grid  to be  provided  depend on  the
+    !! quantities to be interpolated:
+    !!   -  equilibrium  variables: flux  variables  (no  need to  convert)  and
+    !!   derived quantities (need equilibrium grid)
+    !!   - metric variables: jac_FD (need equilibrium grid)
+    !!   - vectorial perturbation variables: U_i, DU_i (need perturbation grid)
+    !!   - tensorial perturbation variables: PV_i, KV_i (need perturbation grid)
+    !! 
+    !! Also, a message can be printed if a grid name is passed.
+    !! 
+    !! \note
+    !!   -# The  metric coefficients are  interpolated and then  compensated for
+    !!   the straight-field-line coordinates as in \cite Weyens3D .
+    !!   -# By default the interpolated  quantities overwrite the original ones,
+    !!   but alternative output variables can be provided.
+    !!   -#  as  the  equilibrium  and   perturbation  grid  are  not  generally
+    !!   identical, this routine  has to be called separately  for the variables
+    !!   tabulated in either grid.
+    !!
+    !! \return ierr
     integer function interp_HEL_on_grid(grid_in,grid_out,eq_2,X_1,X_2,&
         &eq_2_out,X_1_out,X_2_out,eq_1,grid_name) result(ierr)
         
@@ -461,15 +491,16 @@ contains
         character(*), parameter :: rout_name = 'interp_HEL_on_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_in, grid_out                        ! input and output grid
-        type(eq_2_type), intent(inout), optional :: eq_2                        ! general metric equilibrium variables
-        type(X_1_type), intent(inout), optional  :: X_1                         ! general vectorial perturbation variables
-        type(X_2_type), intent(inout), optional  :: X_2                         ! general tensorial perturbation variables
-        type(eq_2_type), intent(inout), optional :: eq_2_out                    ! field-aligned metric equilibrium variables
-        type(X_1_type), intent(inout), optional  :: X_1_out                     ! field-aligned vectorial perturbation variables
-        type(X_2_type), intent(inout), optional  :: X_2_out                     ! field-aligned tensorial perturbation variables
-        type(eq_1_type), intent(in), optional :: eq_1                           ! general flux equilibrium variables for metric interpolation
-        character(len=*), intent(in), optional :: grid_name                     ! name of grid to which to adapt quantities
+        type(grid_type), intent(in) :: grid_in                                  !< input grid
+        type(grid_type), intent(in) :: grid_out                                 !< output grid
+        type(eq_2_type), intent(inout), optional :: eq_2                        !< general metric equilibrium variables
+        type(X_1_type), intent(inout), optional  :: X_1                         !< general vectorial perturbation variables
+        type(X_2_type), intent(inout), optional  :: X_2                         !< general tensorial perturbation variables
+        type(eq_2_type), intent(inout), optional :: eq_2_out                    !< field-aligned metric equilibrium variables
+        type(X_1_type), intent(inout), optional  :: X_1_out                     !< field-aligned vectorial perturbation variables
+        type(X_2_type), intent(inout), optional  :: X_2_out                     !< field-aligned tensorial perturbation variables
+        type(eq_1_type), intent(in), optional :: eq_1                           !< general flux equilibrium variables for metric interpolation
+        character(len=*), intent(in), optional :: grid_name                     !< name of grid to which to adapt quantities
         
         ! local variables
         real(dp), allocatable :: theta_i(:,:,:)                                 ! interpolation index
@@ -1155,14 +1186,35 @@ contains
     end function interp_HEL_on_grid
     
 #if ldebug
-    ! Checks whether the metric elements  provided by HELENA are consistent with
-    ! a direct calculation using the coordinate transformations:
-    !   |nabla psi|^2           = 1/jac^2 ((dZ/dchi)^2 + (dR/dchi)^2)
-    !   |nabla psi nabla chi|   = 1/jac^2 (dZ/dchi dZ/dpsi + dR/dchi dR/dpsi)
-    !   |nabla chi|^2           = 1/jac^2 ((dZ/dpsi)^2 + (dR/dpsi)^2)
-    !   |nabla phi|^2           = 1/R^2
-    ! with jac = dZ/dpsi dR/dchi - dR/dpsi dZ/dchi
-    ! Also, test whether the pressure balance is satisfied.
+    !> Checks whether the metric elements provided by HELENA are consistent with
+    !! a direct calculation using the coordinate transformations \cite Weyens3D.
+    !!
+    !! Direct calculations used:
+    !! \f[\begin{aligned}
+    !!   \left|\nabla \psi\right|^2             &= \frac{1}{\mathcal{J}^2}
+    !!      \left(\left(\frac{\partial Z}{\partial \chi}\right)^2 +
+    !!      \left(\frac{\partial R}{\partial \chi}\right)^2\right) \\
+    !!   \left|\nabla \psi \cdot \nabla \chi\right|   &= \frac{1}{\mathcal{J}^2}
+    !!      \left(
+    !!      \frac{\partial Z}{\partial \chi} \frac{\partial Z}{\partial \psi} - 
+    !!      \frac{\partial R}{\partial \chi} \frac{\partial R}{\partial \psi}
+    !!      \right) \\
+    !!   \left|\nabla \chi\right|^2             &= \frac{1}{\mathcal{J}^2}
+    !!      \left(\left(\frac{\partial Z}{\partial \psi}\right)^2 +
+    !!      \left(\frac{\partial R}{\partial \psi}\right)^2\right) \\
+    !!   \left|\nabla \phi\right|^2             &= \frac{1}{R^2}
+    !! \end{aligned}\f]
+    !! with
+    !! \f[\mathcal{J} = 
+    !!      \frac{\partial Z}{\partial \psi} \frac{\partial R}{\partial \chi} - 
+    !!      \frac{\partial R}{\partial \psi} \frac{\partial Z}{\partial \chi}\f]
+    !! 
+    !! Also, test whether the pressure balance
+    !! \f$\nabla p = \vec{J}\times\vec{B} \f$ is satisfied.
+    !!
+    !! \ldebug
+    !!
+    !! \return ierr
     integer function test_metrics_H() result(ierr)
         use num_vars, only: rank, norm_disc_prec_eq
         use grid_utilities, only: setup_deriv_data, apply_disc
@@ -1235,7 +1287,7 @@ contains
             call plot_diff_HDF5(&
                 &reshape(R_H(:,r_min:n_r_eq)*jac(:,r_min:n_r_eq),&
                 &[nchi,1,n_r_eq-r_min+1]),reshape(jac_alt(:,r_min:n_r_eq),&
-                &[nchi,1,n_r_eq-r_min+1]),file_name,description=description,&
+                &[nchi,1,n_r_eq-r_min+1]),file_name,descr=description,&
                 &output_message=.true.)
             
             ! calculate the metric factors directly
@@ -1256,7 +1308,7 @@ contains
             ! plot difference
             call plot_diff_HDF5(h_H_11_alt(:,:,r_min:n_r_eq),&
                 &reshape(h_H_11(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
-                &file_name,description=description,output_message=.true.)
+                &file_name,descr=description,output_message=.true.)
             
             ! output h_H_12
             ! set some variables
@@ -1267,7 +1319,7 @@ contains
             ! plot difference
             call plot_diff_HDF5(h_H_12_alt(:,:,r_min:n_r_eq),&
                 &reshape(h_H_12(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
-                &file_name,description=description,output_message=.true.)
+                &file_name,descr=description,output_message=.true.)
             
             ! output h_H_33
             ! set some variables
@@ -1278,7 +1330,7 @@ contains
             ! plot difference
             call plot_diff_HDF5(h_H_33_alt(:,:,r_min:n_r_eq),&
                 &reshape(h_H_33(:,r_min:n_r_eq),[nchi,1,n_r_eq-r_min+1]),&
-                &file_name,description=description,output_message=.true.)
+                &file_name,descr=description,output_message=.true.)
             
             ! user output
             call lvl_ud(-1)
@@ -1326,7 +1378,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(tempvar(:,:,:,1),tempvar(:,:,:,2),&
-                &file_name,description=description,output_message=.true.)
+                &file_name,descr=description,output_message=.true.)
             
             ! clean up
             call norm_deriv_data%dealloc()

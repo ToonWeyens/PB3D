@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables that have to do with HELENA quantities                           !
+!> Variables that have to do with HELENA quantities.
 !------------------------------------------------------------------------------!
 module HELENA_vars
 #include <PB3D_macros.h>
@@ -18,23 +18,23 @@ module HELENA_vars
         &RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33
     
     ! global variables
-    real(dp), allocatable :: chi_H(:)                                           ! poloidal angle
-    real(dp), allocatable :: flux_p_H(:,:)                                      ! poloidal flux
-    real(dp), allocatable :: flux_t_H(:,:)                                      ! toroidal flux
-    real(dp), allocatable :: pres_H(:,:)                                        ! pressure profile
-    real(dp), allocatable :: q_saf_H(:,:)                                       ! safety factor
-    real(dp), allocatable :: rot_t_H(:,:)                                       ! rotational transform
-    real(dp), allocatable :: RBphi_H(:)                                         ! R B_phi (= F)
-    real(dp), allocatable :: h_H_11(:,:)                                        ! adapted upper metric factor 11 (gem11)
-    real(dp), allocatable :: h_H_12(:,:)                                        ! adapted upper metric factor 12 (gem12)
-    real(dp), allocatable :: h_H_33(:,:)                                        ! adapted upper metric factor 33 (1/gem33)
-    real(dp), allocatable :: R_H(:,:)                                           ! major radius R (xout)
-    real(dp), allocatable :: Z_H(:,:)                                           ! height Z (yout)
-    integer :: nchi                                                             ! nr. of poloidal points (nchi)
-    integer :: ias                                                              ! 0 if top-bottom symmetric, 1 if not
+    real(dp), allocatable :: chi_H(:)                                           !< poloidal angle
+    real(dp), allocatable :: flux_p_H(:,:)                                      !< poloidal flux
+    real(dp), allocatable :: flux_t_H(:,:)                                      !< toroidal flux
+    real(dp), allocatable :: pres_H(:,:)                                        !< pressure profile
+    real(dp), allocatable :: q_saf_H(:,:)                                       !< safety factor
+    real(dp), allocatable :: rot_t_H(:,:)                                       !< rotational transform
+    real(dp), allocatable :: RBphi_H(:)                                         !< \f$R B_\phi (= F) \f$
+    real(dp), allocatable :: h_H_11(:,:)                                        !< adapted upper metric factor \f$h^{11}\f$ (\c gem11)
+    real(dp), allocatable :: h_H_12(:,:)                                        !< adapted upper metric factor \f$h^{12}\f$ (\c gem12)
+    real(dp), allocatable :: h_H_33(:,:)                                        !< adapted upper metric factor \f$h^{33}\f$ (1 / \c gem33)
+    real(dp), allocatable :: R_H(:,:)                                           !< major radius \f$R\f$ (xout)
+    real(dp), allocatable :: Z_H(:,:)                                           !< height \f$Z\f$ (yout)
+    integer :: nchi                                                             !< nr. of poloidal points
+    integer :: ias                                                              !< 0 if top-bottom symmetric, 1 if not
 
 contains
-    ! deallocates HELENA quantities that are not used any more
+    !> Deallocates HELENA quantities that are not used any more.
     subroutine dealloc_HEL
 #if ldebug
         use num_vars, only: rank, print_mem_usage

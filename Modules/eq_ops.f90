@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations on the equilibrium variables                                    !
+!> Operations on the equilibrium variables.
 !------------------------------------------------------------------------------!
 module eq_ops
 #include <PB3D_macros.h>
@@ -21,63 +21,265 @@ module eq_ops
 #endif
     
     ! global variables
-    integer :: fund_n_par                                                       ! fundamental interval width
+    integer :: fund_n_par                                                       !< fundamental interval width
 #if ldebug
-    logical :: debug_calc_derived_q = .false.                                   ! plot debug information for calc_derived_q
-    logical :: debug_J_plot = .false.                                           ! plot debug information for J_plot
-    logical :: debug_create_VMEC_input = .false.                                ! plot debug information for create_VMEC_input
+    !> \ldebug
+    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q
+    !> \ldebug
+    logical :: debug_J_plot = .false.                                           !< plot debug information for J_plot
+    !> \ldebug
+    logical :: debug_create_VMEC_input = .false.                                !< plot debug information for create_VMEC_input
 #endif
     
     ! interfaces
+    
+    !> \public  Calculate the  equilibrium quantities  on a  grid determined  by
+    !! straight field lines.
+    !!
+    !! This grid has the dimensions \c (n_par,loc_n_r).
+    !!
+    !! Optionally, for  \c eq_2, the  used variables  can be deallocated  on the
+    !! fly, to limit memory usage.
+    !!
+    !! \return ierr
     interface calc_eq
-        module procedure calc_eq_1, calc_eq_2
+        !> \public
+        module procedure calc_eq_1
+        !> \public
+        module procedure calc_eq_2
     end interface
+    
+    !> \public Print equilibrium quantities to an output file:
+    !!
+    !!  - flux:
+    !!      - \c pres_FD,
+    !!      - \c q_saf_FD,
+    !!      - \c rot_t_FD,
+    !!      - \c flux_p_FD,
+    !!      - \c flux_t_FD,
+    !!      - \c rho,
+    !!      - \c S,
+    !!      - \c kappa_n,
+    !!      - \c kappa_g,
+    !!      - \c sigma
+    !!  - metric:
+    !!      - \c g_FD,
+    !!      - \c h_FD,
+    !!      - \c jac_FD
+    !!
+    !! If \c  rich_lvl is provided, \c  "_R_[rich_lvl]" is appended to  the data
+    !! name if it is \c >0 (only for \c eq_2).
+    !! 
+    !! Optionally,  for \c  eq_2, it  can be  specified that  this is  a divided
+    !! parallel grid, corresponding  to the variable \c  eq_jobs_lims with index
+    !! \c eq_job_nr. In  this case, the total  grid size is adjusted  to the one
+    !! specified by \c eq_jobs_lims and the grid is written as a subset.
+    !! \note 
+    !!  -# The equilibrium quantities are outputted in Flux coordinates.
+    !!  -#  The metric  equilibrium quantities  can be  deallocated on  the fly,
+    !!  which is useful  if this routine is followed by  a deallocation any way,
+    !!  so that memory usage does not almost double.
+    !!  -# \c print_output_eq_2  is only used by  HELENA now, as for  VMEC it is
+    !!  too slow since there are often multiple VMEC equilibrium jobs, while for
+    !!  HELENA this is explicitely forbidden.
+    !!
+    !! \return ierr
     interface print_output_eq
-        module procedure print_output_eq_1, print_output_eq_2
+        !> \public
+        module procedure print_output_eq_1
+        !> \public
+        module procedure print_output_eq_2
     end interface
+    
+    !> \public  Redistribute  the  equilibrium  variables,  but  only  the  Flux
+    !! variables are saved.
+    !!
+    !! \see redistribute_output_grid()
+    !!
+    !! \return ierr
     interface redistribute_output_eq
-        module procedure redistribute_output_eq_1, redistribute_output_eq_2
-    end interface
-    interface calc_RZL
-        module procedure calc_RZL_ind, calc_RZL_arr
-    end interface
-    interface calc_g_C
-        module procedure calc_g_C_ind, calc_g_C_arr
-    end interface
-    interface calc_g_V
-        module procedure calc_g_V_ind, calc_g_V_arr
-    end interface
-    interface calc_h_H
-        module procedure calc_h_H_ind, calc_h_H_arr
-    end interface
-    interface calc_g_F
-        module procedure calc_g_F_ind, calc_g_F_arr
-    end interface
-    interface calc_jac_V
-        module procedure calc_jac_V_ind, calc_jac_V_arr
-    end interface
-    interface calc_jac_H
-        module procedure calc_jac_H_ind, calc_jac_H_arr
-    end interface
-    interface calc_jac_F
-        module procedure calc_jac_F_ind, calc_jac_F_arr
-    end interface
-    interface calc_T_VC
-        module procedure calc_T_VC_ind, calc_T_VC_arr
-    end interface
-    interface calc_T_VF
-        module procedure calc_T_VF_ind, calc_T_VF_arr
-    end interface
-    interface calc_T_HF
-        module procedure calc_T_HF_ind, calc_T_HF_arr
+        !> \public
+        module procedure redistribute_output_eq_1
+        !> \public
+        module procedure redistribute_output_eq_2
     end interface
 
+    !> \public Calculate  \f$R\f$, \f$Z\f$  \& \f$\lambda\f$ and  derivatives in
+    !! VMEC coordinates.
+    !!
+    !! This is done at the grid points  given by the variables \c theta_E and \c
+    !! zeta_E (contained in \c trigon_factors) and at every normal point.
+    !!
+    !! The  derivatives are  indicated  by the  variable \c  deriv  which has  3
+    !! indices
+    !!
+    !! \note  There is  no  HELENA equivalent  because  for HELENA  simulations,
+    !! \f$R\f$  and \f$Z\f$  are not  necessary  for calculation  of the  metric
+    !! coefficients, and \f$\lambda\f$ does not exist.
+    !!
+    !! \see calc_trigon_factors()
+    !!
+    !! \return ierr
+    interface calc_RZL
+        !> \public
+        module procedure calc_RZL_ind
+        !> \public
+        module procedure calc_RZL_arr
+    end interface
+    
+    !> \public  Calculate  the  lower   metric  elements  in  the  C(ylindrical)
+    !! coordinate system.
+    !!
+    !! This is done directly using the formula's in \cite Weyens3D
+    !!
+    !! \return ierr
+    interface calc_g_C
+        !> \public
+        module procedure calc_g_C_ind
+        !> \public
+        module procedure calc_g_C_arr
+    end interface
+    
+    !> \public Calculate the lower metric coefficients in the equilibrium V(MEC)
+    !! coordinate system.
+    !! 
+    !! This  is  done  using  the   metric  coefficients  in  the  C(ylindrical)
+    !! coordinate system and the transformation matrices
+    !!
+    !! \note It is assumed that the lower order derivatives have been calculated
+    !! already. If not, the results will be incorrect.
+    !!
+    !! \return ierr
+    interface calc_g_V
+        !> \public
+        module procedure calc_g_V_ind
+        !> \public
+        module procedure calc_g_V_arr
+    end interface
+    
+    !> \public  Calculate  the  upper  metric coefficients  in  the  equilibrium
+    !! H(ELENA) coordinate system.
+    !!
+    !! This is done using the HELENA output
+    !!
+    !! \todo The derivatives are done using finite differences, which means that
+    !! the first and  last points of the  normal grid have a  higher error. This
+    !! could be remedied by choosing the interval larger. Currently, this is not
+    !! done automatically.
+    !!
+    !! \return ierr
+    interface calc_h_H
+        !> \public
+        module procedure calc_h_H_ind
+        !> \public
+        module procedure calc_h_H_arr
+    end interface
+    
+    !> \public  Calculate  the  metric  coefficients in  the  F(lux)  coordinate
+    !! system.
+    !!
+    !! This is done using the  metric coefficients in the equilibrium coordinate
+    !! system and the transformation matrices.
+    !!
+    !! \return ierr
+    interface calc_g_F
+        !> \public
+        module procedure calc_g_F_ind
+        !> \public
+        module procedure calc_g_F_arr
+    end interface
+    
+    !> \public  Calculate  \f$\mathcal{J}_\text{V}\f$,  the jacobian  in  V(MEC)
+    !! coordinates.
+    !!
+    !! This is done using VMEC output.
+    !!
+    !! \return ierr
+    interface calc_jac_V
+        !> \public
+        module procedure calc_jac_V_ind
+        !> \public
+        module procedure calc_jac_V_arr
+    end interface
+    
+    !> \public  Calculate  \f$\mathcal{J}_\text{H}\f$,  the jacobian  in  HELENA
+    !! coordinates.
+    !!
+    !! This is done directly from
+    !!  \f[\mathcal{J}_\text{H} = q \frac{R^2}{F} \f]
+    !!
+    !! \note It is assumed that the lower order derivatives have been calculated
+    !! already. If not, the results will be incorrect.
+    !!
+    !! \return ierr
+    interface calc_jac_H
+        !> \public
+        module procedure calc_jac_H_ind
+        !> \public
+        module procedure calc_jac_H_arr
+    end interface
+    
+    !> \public  Calculate  \f$\mathcal{J}_\text{F}\f$,   the  jacobian  in  Flux
+    !! coordinates.
+    !! 
+    !! This is done directly from 
+    !!  \f[ \mathcal{J}_\text{F} =
+    !!      \text{det}\left(\overline{\text{T}}_\text{F}^\text{E}\right)
+    !!      \mathcal{J}_\text{E} \f]
+    !!
+    !! \note It is assumed that the lower order derivatives have been calculated
+    !! already. If not, the results will be incorrect.
+    !!
+    !! \return ierr
+    interface calc_jac_F
+        !> \public
+        module procedure calc_jac_F_ind
+        !> \public
+        module procedure calc_jac_F_arr
+    end interface
+    
+    !> \public   Calculate    \f$\overline{\text{T}}_\text{C}^\text{V}\f$,   the
+    !! transformation matrix between C(ylindrical) and V(mec) coordinate system.
+    !!
+    !! This is done directly using the formula's in \cite Weyens3D
+    !!
+    !! \return ierr
+    interface calc_T_VC
+        !> \public
+        module procedure calc_T_VC_ind
+        !> \public
+        module procedure calc_T_VC_arr
+    end interface
+    
+    !> \public   Calculate    \f$\overline{\text{T}}_\text{V}^\text{F}\f$,   the
+    !! transformation matrix between V(MEC) and F(lux) coordinate systems.
+    !!
+    !! This is done directly using the formula's in \cite Weyens3D
+    !!
+    !! \return ierr
+    interface calc_T_VF
+        !> \public
+        module procedure calc_T_VF_ind
+        !> \public
+        module procedure calc_T_VF_arr
+    end interface
+    
+    !> \public   Calculate    \f$\overline{\text{T}}_\text{H}^\text{F}\f$,   the
+    !! transformation matrix between H(ELENA) and F(lux) coordinate systems.
+    !!
+    !! This is done directly using the formula's in \cite Weyens3D
+    !!
+    !! \return ierr
+    interface calc_T_HF
+        !> \public
+        module procedure calc_T_HF_ind
+        !> \public
+        module procedure calc_T_HF_arr
+    end interface
+    
 contains
-    ! calculate  the equilibrium  quantities on  a grid  determined by  straight
-    ! field lines. This grid has the dimensions (n_par,loc_n_r).
-    ! Optionally, for eq_2, the used variables can be deallocated on the fly, to
-    ! limit memory usage.
-    integer function calc_eq_1(grid_eq,eq) result(ierr)                         ! flux version
+    !> \private flux version
+    integer function calc_eq_1(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style, rho_style, use_normalization, &
             &use_pol_flux_E, use_pol_flux_F
         use grid_utilities, only: apply_disc
@@ -88,8 +290,8 @@ contains
         character(*), parameter :: rout_name = 'calc_eq_1'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(inout) :: eq                                    ! flux equilibrium variables
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(inout) :: eq                                    !< flux equilibrium variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -198,7 +400,8 @@ contains
             end if
         end subroutine calc_flux_q_HEL
     end function calc_eq_1
-    integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)     ! metric version
+    !> \private metric version
+    integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)
         use num_vars, only: eq_style, export_HEL, use_normalization
         use num_utilities, only: derivs, c
         use eq_utilities, only: calc_inv_met, calc_F_derivs
@@ -212,10 +415,10 @@ contains
         character(*), parameter :: rout_name = 'calc_eq_2'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium variables
-        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium variables
+        logical, intent(in), optional :: dealloc_vars                           !< deallocate variables on the fly after writing
         
         ! local variables
         integer :: id
@@ -707,7 +910,7 @@ contains
                 &tot_dim=[grid_eq%n(1),1,grid_eq%n(3),3],&
                 &loc_offset=[0,0,grid_eq%i_min-1,0],&
                 &x=XYZ_plot(:,:,:,1),y=XYZ_plot(:,:,:,2),z=XYZ_plot(:,:,:,3),&
-                &description='geometric poloidal angle used to create the VMEC &
+                &descr='geometric poloidal angle used to create the VMEC &
                 &input file')
             deallocate(XYZ_plot)
             
@@ -981,7 +1184,7 @@ contains
                             end do
                             call plot_HDF5('pert_map','pert_map',&
                                 &reshape(pert_map,[n_pert_map,1]),&
-                                &x=R_plot,y=Z_plot,description=&
+                                &x=R_plot,y=Z_plot,descr=&
                                 &'perturbation map for '//&
                                 &trim(HEL_pert_file_name))
                             deallocate(R_plot,Z_plot)
@@ -1676,2437 +1879,9 @@ contains
             end do
         end function print_mode_numbers
     end function calc_eq_2
-
-    ! plots the flux quantities in the solution grid
-    !   safety factor q_saf
-    !   rotational transform rot
-    !   pressure pres
-    !   poloidal flux flux_p
-    !   toroidal flux flux_t
-    integer function flux_q_plot(grid_eq,eq) result(ierr)
-        use num_vars, only: rank, no_plots, use_normalization
-        use grid_utilities, only: trim_grid
-        use MPI_utilities, only: get_ser_var
-        use eq_vars, only: pres_0, psi_0
-        
-        character(*), parameter :: rout_name = 'flux_q_plot'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! normal grid
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
-        
-        ! local variables
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id                                                           ! counter
-        integer :: n_vars = 5                                                   ! nr. of variables to plot
-        character(len=max_str_ln), allocatable :: plot_titles(:)                ! plot titles
-        type(grid_type) :: grid_trim                                            ! trimmed grid
-        real(dp), allocatable :: X_plot_2D(:,:)                                 ! x values of 2D plot
-        real(dp), allocatable :: Y_plot_2D(:,:)                                 ! y values of 2D plot
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! bypass plots if no_plots
-        if (no_plots) return
-        
-        ! user output
-        call writo('Plotting flux quantities')
-        
-        call lvl_ud(1)
-        
-        ! trim grid
-        ierr = trim_grid(grid_eq,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! initialize plot titles and file names
-        allocate(plot_titles(n_vars))
-        plot_titles(1) = 'safety factor []'
-        plot_titles(2) = 'rotational transform []'
-        plot_titles(3) = 'pressure [pa]'
-        plot_titles(4) = 'poloidal flux [Tm^2]'
-        plot_titles(5) = 'toroidal flux [Tm^2]'
-        
-        ! plot using HDF5
-        ierr = flux_q_plot_HDF5()
-        CHCKERR('')
-        
-        ! plot using external program
-        ierr = flux_q_plot_ex()
-        CHCKERR('')
-        
-        ! clean up
-        call grid_trim%dealloc()
-        
-        call lvl_ud(-1)
-    contains
-        ! plots the flux quantities in HDF5
-        integer function flux_q_plot_HDF5() result(ierr)
-            use num_vars, only: eq_style
-            use output_ops, only: plot_HDF5
-            use grid_utilities, only: extend_grid_F, trim_grid, calc_XYZ_grid
-            use VMEC_utilities, only: calc_trigon_factors
-            
-            character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
-            
-            ! local variables
-            integer :: kd                                                       ! counter
-            real(dp), allocatable :: X_plot(:,:,:,:)                            ! x values of total plot
-            real(dp), allocatable :: Y_plot(:,:,:,:)                            ! y values of total plot
-            real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
-            real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
-            integer :: plot_dim(4)                                              ! total plot dimensions
-            integer :: plot_offset(4)                                           ! plot offset
-            type(grid_type) :: grid_plot                                        ! grid for plotting
-            character(len=max_str_ln) :: file_name                              ! file name
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! set up file name
-            file_name = 'flux_quantities'
-            
-            ! fill the 2D version of the plot
-            allocate(Y_plot_2D(grid_trim%loc_n_r,n_vars))
-            
-            Y_plot_2D(:,1) = eq%q_saf_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,2) = eq%rot_t_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,3) = eq%pres_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,4) = eq%flux_p_FD(norm_id(1):norm_id(2),0)
-            Y_plot_2D(:,5) = eq%flux_t_FD(norm_id(1):norm_id(2),0)
-            
-            ! extend trimmed equilibrium grid
-            ierr = extend_grid_F(grid_trim,grid_plot,grid_eq=grid_eq)
-            CHCKERR('')
-            
-            ! if VMEC, calculate trigonometric factors of plot grid
-            if (eq_style.eq.1) then
-                ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
-                    &grid_plot%trigon_factors)
-                CHCKERR('')
-            end if
-            
-            ! set up plot_dim and plot_offset
-            plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
-            plot_offset = [0,0,grid_plot%i_min-1,n_vars]
-            
-            ! set up total plot variables
-            allocate(X_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(Y_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(Z_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
-                &n_vars))
-            
-            ! calculate 3D X,Y and Z
-            ierr = calc_XYZ_grid(grid_eq,grid_plot,X_plot(:,:,:,1),&
-                &Y_plot(:,:,:,1),Z_plot(:,:,:,1))
-            CHCKERR('')
-            do id = 2,n_vars
-                X_plot(:,:,:,id) = X_plot(:,:,:,1)
-                Y_plot(:,:,:,id) = Y_plot(:,:,:,1)
-                Z_plot(:,:,:,id) = Z_plot(:,:,:,1)
-            end do
-            
-            do kd = 1,grid_plot%loc_n_r
-                f_plot(:,:,kd,1) = Y_plot_2D(kd,1)                              ! safey factor
-                f_plot(:,:,kd,2) = Y_plot_2D(kd,2)                              ! rotational transform
-                f_plot(:,:,kd,3) = Y_plot_2D(kd,3)                              ! pressure
-                f_plot(:,:,kd,4) = Y_plot_2D(kd,4)                              ! poloidal flux
-                f_plot(:,:,kd,5) = Y_plot_2D(kd,5)                              ! toroidal flux
-            end do
-            
-            ! rescale if normalized
-            if (use_normalization) then
-                f_plot(:,:,:,3) = f_plot(:,:,:,3)*pres_0                        ! pressure
-                f_plot(:,:,:,4) = f_plot(:,:,:,4)*psi_0                         ! flux_p
-                f_plot(:,:,:,5) = f_plot(:,:,:,5)*psi_0                         ! flux_t
-            end if
-            
-            ! print the output using HDF5
-            call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
-                &X_plot,Y_plot,Z_plot,col=1,description='Flux quantities')
-            
-            ! deallocate and destroy grid
-            deallocate(Y_plot_2D)
-            deallocate(X_plot,Y_plot,Z_plot,f_plot)
-            call grid_plot%dealloc()
-        end function flux_q_plot_HDF5
-        
-        ! plots the pressure and fluxes in external program
-        integer function flux_q_plot_ex() result(ierr)
-            use eq_vars, only: max_flux_F
-            
-            character(*), parameter :: rout_name = 'flux_q_plot_ex'
-            
-            ! local variables
-            character(len=max_str_ln), allocatable :: file_name(:)              ! file_name
-            real(dp), allocatable :: ser_var_loc(:)                             ! local serial var
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! allocate variabels if master
-            if (rank.eq.0) then
-                allocate(X_plot_2D(grid_trim%n(3),n_vars))
-                allocate(Y_plot_2D(grid_trim%n(3),n_vars))
-            end if
-            
-            ! fill the 2D version of the plot
-            ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),0),ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,1) = ser_var_loc
-            ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),0),ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,2) = ser_var_loc
-            ierr = get_ser_var(eq%pres_FD(norm_id(1):norm_id(2),0),ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,3) = ser_var_loc
-            ierr = get_ser_var(eq%flux_p_FD(norm_id(1):norm_id(2),0),&
-                &ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,4) = ser_var_loc
-            ierr = get_ser_var(eq%flux_t_FD(norm_id(1):norm_id(2),0),&
-                &ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,5) = ser_var_loc
-            
-            ! rescale if normalized
-            if (use_normalization .and. rank.eq.0) then
-                Y_plot_2D(:,3) = Y_plot_2D(:,3)*pres_0                          ! pressure
-                Y_plot_2D(:,4) = Y_plot_2D(:,4)*psi_0                           ! flux_p
-                Y_plot_2D(:,5) = Y_plot_2D(:,5)*psi_0                           ! flux_t
-            end if
-            
-            ! continue the plot if master
-            if (rank.eq.0) then
-                ! deallocate local serial variables
-                deallocate(ser_var_loc)
-                
-                ! set up file names
-                allocate(file_name(2))
-                file_name(1) = 'pres'
-                file_name(2) = 'flux'
-                
-                ! 2D normal variable (normalized F coordinate)
-                X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_F
-                do id = 2,n_vars
-                    X_plot_2D(:,id) = X_plot_2D(:,1)
-                end do
-                
-                ! plot the  individual 2D output  of this process  (except q_saf
-                ! and rot_t, as they are already in plot_resonance)
-                call print_ex_2D(plot_titles(3),file_name(1),&
-                    &Y_plot_2D(:,3),X_plot_2D(:,3),draw=.false.)
-                ! fluxes
-                call print_ex_2D(plot_titles(4:5),file_name(2),&
-                    &Y_plot_2D(:,4:5),X_plot_2D(:,4:5),draw=.false.)
-                
-                ! draw plot
-                call draw_ex(plot_titles(3:3),file_name(1),1,1,.false.)         ! pressure
-                call draw_ex(plot_titles(4:5),file_name(2),2,1,.false.)         ! fluxes
-                
-                ! user output
-                call writo('Safety factor and rotational transform are plotted &
-                    &using "plot_resonance"')
-                
-                ! clean up
-                deallocate(X_plot_2D,Y_plot_2D)
-            end if
-        end function flux_q_plot_ex
-    end function flux_q_plot
     
-    ! calculate  R, Z  and Lambda  and derivatives  in VMEC  coordinates at  the
-    ! grid  points given  by  the  variables theta_E  and  zeta_E (contained  in
-    ! trigon_factors) and at  every normal point. The  derivatives are indicated
-    ! by the variable "deriv" which has 3 indices
-    ! Note: There is no HELENA equivalent  because for HELENA simulations, R and
-    ! Z are not necessary for calculation of the metric coefficients, and L does
-    ! not exist.
-    integer function calc_RZL_ind(grid,eq,deriv) result(ierr)
-        use VMEC_utilities, only: fourier2real
-        use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, is_asym_V
-        
-        character(*), parameter :: rout_name = 'calc_RZL_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate R, Z and L
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(3)                                         ! derivatives
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv+1,'calc_RZL')
-        CHCKERR('')
-        
-        ! calculate the variables R,Z and their derivatives
-        ierr = fourier2real(R_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
-            &R_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
-            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
-        CHCKERR('')
-        ierr = fourier2real(Z_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
-            &Z_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
-            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
-        CHCKERR('')
-        ierr = fourier2real(L_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
-            &L_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
-            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
-        CHCKERR('')
-    end function calc_RZL_ind
-    integer function calc_RZL_arr(grid,eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_RZL_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate R, Z and L
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_RZL_ind(grid,eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_RZL_arr
-    
-    ! calculate the lower metric elements in the C(ylindrical) coordinate system
-    integer function calc_g_C_ind(eq,deriv) result(ierr)
-        use num_utilities, only: add_arr_mult, c
-        
-        character(*), parameter :: rout_name = 'calc_g_C_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_g_C')
-        CHCKERR('')
-        
-        ! initialize
-        eq%g_C(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
-        
-        ! calculate
-        if (sum(deriv).eq.0) then
-            eq%g_C(:,:,:,c([1,1],.true.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
-            eq%g_C(:,:,:,c([3,3],.true.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
-        end if
-        ierr = add_arr_mult(eq%R_E,eq%R_E,&
-            &eq%g_C(:,:,:,c([2,2],.true.),deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-    end function calc_g_C_ind
-    integer function calc_g_C_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_g_C_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_g_C_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_g_C_arr
-    
-    ! calculate  the metric  coefficients in  the equilibrium  V(MEC) coordinate
-    ! system  using  the metric  coefficients  in  the C(ylindrical)  coordinate
-    ! system and the transformation matrices
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
-    integer function calc_g_V_ind(eq,deriv) result(ierr)
-        use eq_utilities, only: calc_g
-        
-        character(*), parameter :: rout_name = 'calc_g_V_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_g_V')
-        CHCKERR('')
-        
-        ierr = calc_g(eq%g_C,eq%T_VC,eq%g_E,deriv,max_deriv)
-        CHCKERR('')
-    end function calc_g_V_ind
-    integer function calc_g_V_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_g_V_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_g_V_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_g_V_arr
-    
-    ! calculate the  metric coefficients in the  equilibrium H(ELENA) coordinate
-    ! system using the HELENA output
-    ! Note: the derivatives are done  using finite differences, which means that
-    ! the first  and last points  of the normal grid  have a higher  error. This
-    ! could be remedied by choosing the  interval larger. Currently, this is not
-    ! done automatically.
-    integer function calc_h_H_ind(grid,eq,deriv) result(ierr)
-        use num_vars, only: norm_disc_prec_eq
-        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
-        use num_utilities, only: c
-        use grid_utilities, only: setup_deriv_data, apply_disc
-        
-        character(*), parameter :: rout_name = 'calc_h_H_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: jd, kd                                                       ! counters
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_h_H')
-        CHCKERR('')
-        
-        ! initialize
-        eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
-        
-        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
-            !eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        else if (sum(deriv).eq.0) then                                          ! no derivatives
-            do jd = 1,grid%n(2)
-                eq%h_E(:,jd,:,c([1,1],.true.),0,0,0) = &
-                    &h_H_11(:,grid%i_min:grid%i_max)
-                eq%h_E(:,jd,:,c([1,2],.true.),0,0,0) = &
-                    &h_H_12(:,grid%i_min:grid%i_max)
-                eq%h_E(:,jd,:,c([3,3],.true.),0,0,0) = &
-                    &h_H_33(:,grid%i_min:grid%i_max)
-                eq%h_E(:,jd,:,c([2,2],.true.),0,0,0) = &
-                    &1._dp/h_H_11(:,grid%i_min:grid%i_max) * &
-                    &(1._dp/(eq%jac_E(:,jd,:,0,0,0)**2*&
-                    &h_H_33(:,grid%i_min:grid%i_max)) + &
-                    &h_H_12(:,grid%i_min:grid%i_max)**2)
-            end do
-        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
-            CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,1,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,2,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
-                    CHCKERR('')
-                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,1,0),1)
-                    CHCKERR('')
-                end do
-            end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,2,0),1)
-                    CHCKERR('')
-                end do
-            end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
-            CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,1,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,1,1,0),3) 
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else
-            ierr = 1
-            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
-                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
-                &) not supported'
-            CHCKERR(err_msg)
-        end if
-    end function calc_h_H_ind
-    integer function calc_h_H_arr(grid,eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_h_H_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_h_H_ind(grid,eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_h_H_arr
-
-    ! calculate the  metric coefficients in  the F(lux) coordinate  system using
-    ! the  metric coefficients  in  the equilibrium  coordinate  system and  the
-    ! trans- formation matrices
-    integer function calc_g_F_ind(eq,deriv) result(ierr)
-        use eq_utilities, only: calc_g
-        
-        character(*), parameter :: rout_name = 'calc_g_F_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_g_F')
-        CHCKERR('')
-        
-        ! calculate g_F
-        ierr = calc_g(eq%g_E,eq%T_FE,eq%g_F,deriv,max_deriv)
-        CHCKERR('')
-    end function calc_g_F_ind
-    integer function calc_g_F_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_g_F_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_g_F_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_g_F_arr
-    
-    ! calculate the jacobian in equilibrium V(MEC) coordinates from VMEC output.
-    integer function calc_jac_V_ind(grid,eq,deriv) result(ierr)
-        use VMEC_utilities, only: fourier2real
-        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
-        
-        character(*), parameter :: rout_name = 'calc_jac_V_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate Jacobian
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_J_V')
-        CHCKERR('')
-        
-        ! initialize
-        eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        
-        ! calculate the Jacobian and its derivatives
-        ierr = fourier2real(jac_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
-            &jac_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
-            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
-            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
-        CHCKERR('')
-    end function calc_jac_V_ind
-    integer function calc_jac_V_arr(grid,eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_jac_V_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid for which to calculate Jacobian
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_jac_V_ind(grid,eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_jac_V_arr
-    
-    ! calculate the jacobian in HELENA coordinates directly from J = q R^2/F
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
-    integer function calc_jac_H_ind(grid,eq_1,eq_2,deriv) result(ierr)
-        use num_vars, only: norm_disc_prec_eq
-        use HELENA_vars, only:  h_H_33, RBphi_H
-        use grid_utilities, only: setup_deriv_data, apply_disc
-        
-        character(*), parameter :: rout_name = 'calc_jac_H_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! local variables
-        integer :: jd, kd                                                       ! counters
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_J_H')
-        CHCKERR('')
-        
-        ! calculate determinant
-        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
-            eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        else if (sum(deriv).eq.0) then                                          ! no derivatives
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    eq_2%jac_E(:,jd,kd,0,0,0) = eq_1%q_saf_E(kd,0)/&
-                        &(h_H_33(:,grid%i_min-1+kd)*RBphi_H(grid%i_min-1+kd))
-                end do
-            end do
-        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
-            CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,1,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,2,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,2,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
-                    CHCKERR('')
-                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
-                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,1,0))
-                    CHCKERR('')
-                end do
-            end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do kd = 1,grid%loc_n_r
-                do jd = 1,grid%n(2)
-                    ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq)
-                    CHCKERR('')
-                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
-                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,2,0))
-                    CHCKERR('')
-                end do
-            end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
-            CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,1,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,1,1,0),3) 
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else
-            ierr = 1
-            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
-                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
-                &) not supported'
-            CHCKERR(err_msg)
-        end if
-    end function calc_jac_H_ind
-    integer function calc_jac_H_arr(grid,eq_1,eq_2,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_jac_H_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_jac_H_ind(grid,eq_1,eq_2,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_jac_H_arr
-    
-    ! calculate the jacobian in Flux coordinates from 
-    !   jac_F = det(T_FE) jac_E
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect!
-    integer function calc_jac_F_ind(eq,deriv) result(ierr)
-        use num_utilities, only: add_arr_mult
-        
-        character(*), parameter :: rout_name = 'calc_jac_F_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_J_F')
-        CHCKERR('')
-        
-        ! initialize
-        eq%jac_F(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        
-        ! calculate determinant
-        ierr = add_arr_mult(eq%jac_E,eq%det_T_FE,&
-            &eq%jac_F(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
-        CHCKERR('')
-    end function calc_jac_F_ind
-    integer function calc_jac_F_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_jac_F_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_jac_F_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_jac_F_arr
-
-    ! calculate  the transformation  matrix  between  C(ylindrical) and  V(mec)
-    ! coordinate system
-    integer function calc_T_VC_ind(eq,deriv) result(ierr)
-        use num_utilities, only: add_arr_mult, c
-        
-        character(*), parameter :: rout_name = 'calc_T_VC_ind'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_T_VC')
-        CHCKERR('')
-        
-        ! initialize
-        eq%T_VC(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
-        
-        ! calculate transformation matrix T_V^C
-        eq%T_VC(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%R_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
-        !eq%T_VC(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
-        eq%T_VC(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%Z_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
-        eq%T_VC(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%R_E(:,:,:,deriv(1),deriv(2)+1,deriv(3))
-        !eq%T_VC(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
-        eq%T_VC(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%Z_E(:,:,:,deriv(1),deriv(2)+1,deriv(3))
-        eq%T_VC(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
-        if (sum(deriv).eq.0) then
-            eq%T_VC(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
-        else
-            !eq%T_VC(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
-        end if
-        eq%T_VC(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
-    end function calc_T_VC_ind
-    integer function calc_T_VC_arr(eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_T_VC_arr'
-        
-        ! input / output
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_T_VC_ind(eq,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_T_VC_arr
-
-    ! calculate the transformation matrix  between equilibrium V(mec) and F(lux)
-    ! oordinate system
-    integer function calc_T_VF_ind(grid,eq_1,eq_2,deriv) result(ierr)
-        use num_vars, only: use_pol_flux_F
-        use num_utilities, only: add_arr_mult, c
-        
-        character(*), parameter :: rout_name = 'calc_T_VF_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-        
-        ! local variables
-        integer :: kd                                                           ! counter
-        real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
-        real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
-        integer :: dims(3)                                                      ! dimensions
-        integer :: c1                                                           ! 2D coordinate in met_type storage convention
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_T_VF')
-        CHCKERR('')
-        
-        ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
-        
-        ! initialize
-        eq_2%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
-        
-        ! set up theta_s
-        allocate(theta_s(dims(1),dims(2),dims(3),&
-            &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
-        theta_s = 0.0_dp
-        ! start from theta_E
-        theta_s(:,:,:,0,0,0) = grid%theta_E
-        theta_s(:,:,:,0,1,0) = 1.0_dp
-        ! add the deformation described by lambda
-        theta_s = theta_s + &
-            &eq_2%L_E(:,:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
-            
-        if (use_pol_flux_F) then
-            ! calculate transformation matrix T_V^F
-            ! (1,1)
-            ierr = add_arr_mult(theta_s,eq_1%q_saf_E(:,1:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ierr = add_arr_mult(eq_2%L_E(:,:,:,1:,0:,0:),eq_1%q_saf_E(:,0:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (1,2)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
-                        &eq_1%flux_p_E(kd,deriv(1)+1)/(2*pi)
-                end do
-            !else
-                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (1,3)
-            eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &eq_2%L_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
-            ! (2,1)
-            ierr = add_arr_mult(theta_s(:,:,:,0:,1:,0:),eq_1%q_saf_E,&
-                &eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (2,2)
-            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,3)
-            eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &theta_s(:,:,:,deriv(1),deriv(2)+1,deriv(3))
-            ! (3,1)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([3,1],.false.),0,0,0) = -1.0_dp
-            end if
-            ierr = add_arr_mult(eq_2%L_E(:,:,:,0:,0:,1:),eq_1%q_saf_E,&
-                &eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (3,2)
-            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,3)
-            eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &eq_2%L_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
-            
-            ! determinant
-            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            ierr = add_arr_mult(-theta_s(:,:,:,0:,1:,0:),&
-                &eq_1%flux_p_E(:,1:)/(2*pi),&
-                &eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
-            CHCKERR('')
-        else
-            ! set up zeta_s
-            allocate(zeta_s(dims(1),dims(2),dims(3),0:deriv(1)+1,&
-                &0:deriv(2)+1,0:deriv(3)+1))
-            zeta_s = 0.0_dp
-            ! start from zeta_E
-            zeta_s(:,:,:,0,0,0) = grid%zeta_E
-            zeta_s(:,:,:,0,0,1) = 1.0_dp
-            
-            ! calculate transformation matrix T_V^F
-            ! (1,1)
-            eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &-theta_s(:,:,:,deriv(1)+1,deriv(2),deriv(3))
-            ierr = add_arr_mult(zeta_s,eq_1%rot_t_E(:,1:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (1,2)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
-                        &-eq_1%flux_t_E(kd,deriv(1)+1)/(2*pi)
-                end do
-            !else
-                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) 7
-                    !&= 0.0_dp
-            end if
-            ! (1,3)
-            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,1)
-            eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &-theta_s(:,:,:,deriv(1),deriv(2)+1,deriv(3))
-            ! (2,2)
-            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,3)
-            !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,1)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([3,1],.false.),deriv(1),0,0) = &
-                        &eq_1%rot_t_E(kd,deriv(1))
-                end do
-            end if
-            c1 = c([3,1],.false.)                                               ! to avoid compiler crash (as of 26-02-2015)
-            eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
-                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) &
-                &-theta_s(:,:,:,deriv(1),deriv(2),deriv(3)+1)
-            ! (3,2)
-            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,3)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([3,3],.false.),0,0,0) = -1.0_dp
-            !else
-                !eq_2%T_EF(:,:,:,c([3,3],.false.)deriv(1),deriv(2),deriv(3)) = &
-                    !&0.0_dp
-            end if
-            
-            ! determinant
-            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            ierr = add_arr_mult(theta_s(:,:,:,0:,1:,0:),&
-                &eq_1%flux_t_E(:,1:)/(2*pi),&
-                &eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
-            CHCKERR('')
-        end if
-    end function calc_T_VF_ind
-    integer function calc_T_VF_arr(grid,eq_1,eq_2,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_T_VF_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_T_VF_ind(grid,eq_1,eq_2,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_T_VF_arr
-    
-    ! calculate the transformation matrix  between H(ELENA) and F(lux) oordinate
-    ! system
-    integer function calc_T_HF_ind(grid,eq_1,eq_2,deriv) result(ierr)
-        use num_vars, only: use_pol_flux_F
-        use num_utilities, only: add_arr_mult, c
-        
-        character(*), parameter :: rout_name = 'calc_T_HF_ind'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:)
-            
-        ! local variables
-        integer :: kd                                                           ! counter
-        real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
-        real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
-        integer :: dims(3)                                                      ! dimensions
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_T_HF')
-        CHCKERR('')
-        
-        ! set up dims
-        dims = [grid%n(1),grid%n(2),grid%loc_n_r]
-        
-        ! initialize
-        eq_2%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
-        
-        ! set up theta_s
-        allocate(theta_s(dims(1),dims(2),dims(3),&
-            &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
-        theta_s = 0.0_dp
-        theta_s(:,:,:,0,0,0) = grid%theta_E
-        theta_s(:,:,:,0,1,0) = 1.0_dp
-            
-        if (use_pol_flux_F) then
-            ! calculate transformation matrix T_H^F
-            ! (1,1)
-            ierr = add_arr_mult(theta_s,-eq_1%q_saf_E(:,1:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (1,2)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([1,2],.false.),0,0,0) = 1._dp
-            !else
-                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (1,3)
-            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,1)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([2,1],.false.),deriv(1),0,0) = &
-                        &-eq_1%q_saf_E(kd,deriv(1))
-                end do
-            !else
-                !eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (2,2)
-            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,3)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([2,3],.false.),0,0,0) = 1.0_dp
-            !else
-                !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (3,1)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([3,1],.false.),0,0,0) = 1.0_dp
-            !else
-                !eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (3,2)
-            !eq_2%T_EF(:,:,:,c([3,2],.false),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,3)
-            !eq_2%T_EF(:,:,:,c([3,3],.false),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            
-            ! determinant
-            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            if (sum(deriv).eq.0) then
-                eq_2%det_T_EF(:,:,:,deriv(1),0,0) = 1._dp
-            !else
-                !eq_2%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            end if
-        else
-            ! set up zeta_s
-            allocate(zeta_s(dims(1),dims(2),dims(3),&
-                &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
-            zeta_s = 0.0_dp
-            ! start from zeta_E
-            zeta_s(:,:,:,0,0,0) = grid%zeta_E
-            zeta_s(:,:,:,0,0,1) = 1.0_dp
-            
-            ! calculate transformation matrix T_H^F
-            ! (1,1)
-            ierr = add_arr_mult(zeta_s,eq_1%rot_t_E(:,1:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
-                &deriv)
-            CHCKERR('')
-            ! (1,2)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
-                        &eq_1%q_saf_E(kd,deriv(1))
-                end do
-            !else
-                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (1,3)
-            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,1)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([2,1],.false.),0,0,0) = -1.0_dp
-            !else
-                !eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (2,2)
-            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (2,3)
-            !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,1)
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([3,1],.false.),deriv(1),0,0) = &
-                        &eq_1%rot_t_E(kd,deriv(1))
-                end do
-            !else
-                !eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            ! (3,2)
-            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
-                !&0.0_dp
-            ! (3,3)
-            if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),0,0) = 1.0_dp
-            !else
-                !eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) &
-                    !&= 0.0_dp
-            end if
-            
-            ! determinant
-            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
-                do kd = 1,dims(3)
-                    eq_2%det_T_EF(:,:,kd,deriv(1),0,0) = &
-                        &eq_1%q_saf_E(kd,deriv(1))
-                end do
-            !else
-                !eq_2%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-            end if
-        end if
-    end function calc_T_HF_ind
-    integer function calc_T_HF_arr(grid,eq_1,eq_2,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_T_HF_arr'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(inout) :: eq_2                                  ! metric equilibrium
-        integer, intent(in) :: deriv(:,:)
-        
-        ! local variables
-        integer :: id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        do id = 1, size(deriv,2)
-            ierr = calc_T_HF_ind(grid,eq_1,eq_2,deriv(:,id))
-            CHCKERR('')
-        end do
-    end function calc_T_HF_arr
-    
-    ! Calculates derived equilibrium quantities
-    ! system [ADD REF]:
-    !   - magnetic shear S
-    !   - normal curvature kappa_n
-    !   - geodesic curvature kappa_g
-    !   - parallel current sigma
-    subroutine calc_derived_q(grid_eq,eq_1,eq_2)
-        use num_utilities, only: c, spline3
-        use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq
-#if ldebug
-        use num_vars, only: use_pol_flux_F
-        use num_utilities, only: calc_int
-#endif
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
-        
-        ! local variables
-        integer :: kd                                                           ! counter
-        ! submatrices
-        ! jacobian
-        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
-        real(dp), pointer :: D1J(:,:,:) => null()                               ! D_alpha jac
-        real(dp), pointer :: D2J(:,:,:) => null()                               ! D_psi jac
-        real(dp), pointer :: D3J(:,:,:) => null()                               ! D_theta jac
-        ! lower metric factors
-        real(dp), pointer :: g13(:,:,:) => null()                               ! g_alpha,theta
-        real(dp), pointer :: D2g13(:,:,:) => null()                             ! D_psi g_alpha,theta
-        real(dp), pointer :: D3g13(:,:,:) => null()                             ! D_theta g_alpha,theta
-        real(dp), pointer :: g23(:,:,:) => null()                               ! g_psi,theta
-        real(dp), pointer :: D1g23(:,:,:) => null()                             ! D_alpha g_psi,theta
-        real(dp), pointer :: D3g23(:,:,:) => null()                             ! D_theta g_psi,theta
-        real(dp), pointer :: g33(:,:,:) => null()                               ! g_theta,theta
-        real(dp), pointer :: D1g33(:,:,:) => null()                             ! D_alpha g_theta,theta
-        real(dp), pointer :: D2g33(:,:,:) => null()                             ! D_psi g_theta,theta
-        real(dp), pointer :: D3g33(:,:,:) => null()                             ! D_theta g_theta,theta
-        ! upper metric factors
-        real(dp), pointer :: h12(:,:,:) => null()                               ! h^alpha,psi
-        real(dp), pointer :: D3h12(:,:,:) => null()                             ! D_theta h^alpha,psi
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
-        real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
-        real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
-#if ldebug
-        real(dp), pointer :: D13J(:,:,:) => null()                              ! D_alpha,theta jac
-        real(dp), pointer :: D23J(:,:,:) => null()                              ! D_psi,theta jac
-        real(dp), pointer :: D23g13(:,:,:) => null()                            ! D_psi,theta g_alpha,theta
-        real(dp), pointer :: D13g23(:,:,:) => null()                            ! D_alpha,theta g_psi,theta
-        real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
-        real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
-        real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
-        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
-        integer :: istat                                                        ! status
-        integer :: jd                                                           ! counter
-#endif
-        
-        ! user output
-        call writo('Set up derived quantities in flux coordinates')
-        
-        call lvl_ud(1)
-        
-        ! set up submatrices
-        ! jacobian
-        J => eq_2%jac_FD(:,:,:,0,0,0)
-        D1J => eq_2%jac_FD(:,:,:,1,0,0)
-        D2J => eq_2%jac_FD(:,:,:,0,1,0)
-        D3J => eq_2%jac_FD(:,:,:,0,0,1)
-        ! lower metric factors
-        g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
-        D2g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0)
-        D3g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,1)
-        g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)
-        D1g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0)
-        D3g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1)
-        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        D1g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),1,0,0)
-        D2g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0)
-        D3g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,1)
-        ! upper metric factors
-        h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
-        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
-        h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0)
-#if ldebug
-        D13J => eq_2%jac_FD(:,:,:,1,0,1)
-        D23J => eq_2%jac_FD(:,:,:,0,1,1)
-        D23g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,1)
-        D13g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,1)
-#endif
-        
-        ! Calculate the shear S
-        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
-        
-        ! Calculate the normal curvature kappa_n
-        do kd = 1,grid_eq%loc_n_r
-            eq_2%kappa_n(:,:,kd) = &
-                &vac_perm*J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
-                &1._dp/(2*h22(:,:,kd)) * ( &
-                &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D1J(:,:,kd)/J(:,:,kd) ) + &
-                &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D2J(:,:,kd)/J(:,:,kd) ) + &
-                &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D3J(:,:,kd)/J(:,:,kd) ) )
-        end do
-        
-        ! Calculate the geodesic curvature kappa_g
-        eq_2%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
-            &g13/g33*(0.5*D3g33/g33 - D3J/J)
-        
-        ! Calculate the parallel current sigma
-        eq_2%sigma = 1._dp/vac_perm*&
-            &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
-        do kd = 1,grid_eq%loc_n_r
-            eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) - &
-                &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
-        end do 
-        
-#if ldebug
-        ! test whether -2 p' J kappa_g = D3sigma and plot kappa components
-        if (debug_calc_derived_q) then
-            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
-            call lvl_ud(1)
-            
-            ! allocate variables
-            allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-            allocate(D3sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-            allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-            
-            ! point parallel angle
-            if (use_pol_flux_F) then
-                ang_par_F => grid_eq%theta_F
-            else
-                ang_par_F => grid_eq%zeta_F
-            end if
-            
-            ! get derived sigma
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    istat = spline3(norm_disc_prec_eq,ang_par_F(:,jd,kd),&
-                        &eq_2%sigma(:,jd,kd),ang_par_F(:,jd,kd),&
-                        &dynew=D3sigma(:,jd,kd))
-                    CHCKSTT
-                end do
-            end do
-            !!D3sigma_ALT = -1._dp/vac_perm*&
-                !!&(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J**2*D3J + &
-                !!&1._dp/vac_perm*&
-                !!&(D13g23 - D23g13 - (D3g23*D1J + g23*D13J - &
-                !!&D3g13*D2J - g13*D23J)/J + (g23*D1J - g13*D2J)/J**2*D3J)/J
-            !!do kd = 1,grid_eq%loc_n_r
-                !!D3sigma_ALT(:,:,kd) = D3sigma_ALT(:,:,kd) - &
-                    !!&eq_1%pres_FD(kd,1)*(D3J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd) + &
-                    !!&J(:,:,kd)*D3g13(:,:,kd)/g33(:,:,kd) - &
-                    !!&J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2*D3g33(:,:,kd))
-            !!end do 
-            
-            ! calculate alternatively derived sigma
-            do kd = 1,grid_eq%loc_n_r
-                D3sigma_ALT(:,:,kd) = &
-                    &-2*eq_1%pres_FD(kd,1)*eq_2%kappa_g(:,:,kd)*J(:,:,kd)
-            end do
-            
-            ! calculate alternative sigma by integration
-            ! Note:  there  is  an  undetermined constant  of  integration  that
-            ! depends on the normal coordinate and the geodesic coordinate.
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    istat = calc_int(D3sigma_ALT(:,jd,kd),ang_par_F(:,jd,kd),&
-                        &sigma_ALT(:,jd,kd))
-                    CHCKSTT
-                end do
-                sigma_ALT(:,:,kd) = eq_2%sigma(1,1,kd) + sigma_ALT(:,:,kd)
-            end do
-            
-            ! plot output
-            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
-                &grid_eq%n,[0,0,grid_eq%i_min-1],&
-                &description='To test whether -2 p'' J kappa_g = D3sigma',&
-                &output_message=.true.)
-            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_sigma',grid_eq%n,&
-                &[0,0,grid_eq%i_min-1],description='To test whether &
-                &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
-            
-            ! plot shear
-            call plot_HDF5('shear','TEST_shear',eq_2%S,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
-            
-            ! plot kappa_n
-            call plot_HDF5('kappa_n','TEST_kappa_n',eq_2%kappa_n,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
-            
-            ! plot kappa_g
-            call plot_HDF5('kappa_g','TEST_kappa_g',eq_2%kappa_g,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
-            
-            ! clean up
-            nullify(ang_par_F)
-            
-            call lvl_ud(-1)
-            call writo('Testing done')
-        end if
-#endif
-        
-        ! clean up
-        nullify(J,D1J,D2J,D3J)
-        nullify(g13,D2g13,D3g13)
-        nullify(g23,D1g23,D3g23)
-        nullify(g33,D1g33,D2g33,D3g33)
-        nullify(h12,D3h12)
-        nullify(h22,D3h22)
-        nullify(h23)
-        
-        call lvl_ud(-1)
-    end subroutine calc_derived_q
-    
-    ! Sets up normalization constants.
-    integer function calc_normalization_const() result(ierr)
-        use num_vars, only: rank, eq_style, mu_0_original, use_normalization, &
-            &rich_restart_lvl
-        use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
-        
-        character(*), parameter :: rout_name = 'calc_normalization_const'
-        
-        ! local variables
-        integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        if (use_normalization) then
-            ! user output
-            call writo('Calculating the normalization constants')
-            call lvl_ud(1)
-            
-            ! initialize nr_overriden_const
-            nr_overriden_const = 0
-            
-            ! calculation
-            if (rank.eq.0) then
-                ! choose which equilibrium style is being used:
-                !   1:  VMEC
-                !   2:  HELENA
-                select case (eq_style)
-                    case (1)                                                    ! VMEC
-                        call calc_normalization_const_VMEC
-                    case (2)                                                    ! HELENA
-                        call calc_normalization_const_HEL
-                end select
-            end if
-            
-            ! print warning if user-overriden
-            if (nr_overriden_const.gt.0) &
-                &call writo(trim(i2str(nr_overriden_const))//&
-                &' constants were overriden by user. Consistency is NOT &
-                &checked!',warning=.true.)
-            
-            ! print constants
-            call print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
-                &mu_0_original,T_0)
-            
-            ! check whether it is physically consistent
-            if (T_0.lt.0._dp) then
-                ierr = 1
-                err_msg = 'Alfven time is negative. Are you sure the &
-                    &equilibrium is consistent?'
-                CHCKERR(err_msg)
-            end if
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Normalization constants calculated')
-        else if (rich_restart_lvl.eq.1) then                                    ! only for first Richardson leevel
-            ! user output
-            call writo('Normalization not used')
-        end if
-    contains 
-        ! VMEC version
-        ! Normalization depends on style:
-        !   1: MISHKA
-        !       R_0:    major radius (= average magnetic axis)
-        !       B_0:    B on magnetic axis (theta = zeta = 0)
-        !       pres_0: reference pressure (= B_0^2/mu_0)
-        !       psi_0:  reference flux (= R_0^2 B_0)
-        !       rho_0:  reference mass density
-        !   2: COBRA
-        !       R_0:    major radius (= average geometric axis)
-        !       pres_0: pressure on magnetic axis
-        !       B_0:    reference magnetic field (= sqrt(2pres_0mu_0 / beta))
-        !       psi_0:  reference flux (= R_0^2 B_0 / aspr^2)
-        !       rho_0:  reference mass density
-        !   where aspr (aspect ratio) and beta are given by VMEC.
-        ! Note that  rho_0 is  not given  through by  the equilibrium  codes and
-        ! should be user-supplied
-        subroutine calc_normalization_const_VMEC
-            use num_vars, only: norm_style
-            use VMEC_vars, only: R_V_c, B_0_V, rmax_surf, rmin_surf, pres_V, &
-                &beta_V
-            !use VMEC_vars, only: aspr_V
-            
-            select case (norm_style)
-                ! Note that PB3D does not run with the exact COBRA normalization
-                ! (for style 2), as it is not a pure nondimensionalization, that
-                ! would  modify the  equations by  intrucing extra  factors. The
-                ! diffference between the COBRA  normalization used here and the
-                ! one used in COBRA is given by:
-                !   - B_0 = sqrt(pres_0 mu_0) here
-                !       versus
-                !     B_0 = sqrt(2 pres_0 mu_0 / beta) in COBRA,
-                !   - psi_0 = B_0 R_0^2 here
-                !       versus
-                !     psi_0 = B_0 (R_0/aspr)^2 in COBRA,
-                ! This results in a difference in the factor T_0:
-                !   - T_0 = sqrt(rho_0/pres_0) R_0 here
-                !       versus
-                !     T_0 = sqrt(rho_0/pres_0) R_0 sqrt(beta/2) in COBRA.
-                ! Therefore, the Eigenvalues here should be rescaled as
-                !   - EV_COBRA = EV_PB3D beta/2. This is done automatically.
-                case (1)                                                        ! MISHKA
-                    ! user output
-                    call writo('Using MISHKA normalization')
-                    
-                    ! set the  major radius as the  average value of R_V  on the
-                    ! magnetic axis
-                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        R_0 = R_V_c(1,1,0)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set B_0 from magnetic field on axis
-                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        B_0 = B_0_V
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set reference pres_0 from B_0
-                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
-                        pres_0 = B_0**2/mu_0_original
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set reference flux from R_0 and B_0
-                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
-                        psi_0 = R_0**2 * B_0
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                case (2)                                                        ! COBRA
-                    ! user output
-                    call writo('Using COBRA normalization')
-                    
-                    ! set the major radius as the average geometric axis
-                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        R_0 = 0.5_dp*(rmin_surf+rmax_surf)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set pres_0 from pressure on axis
-                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
-                        pres_0 = pres_V(1,0)
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set the reference value for B_0 from pres_0 and beta
-                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
-                        !B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)          ! exact COBRA
-                        B_0 = sqrt(pres_0*mu_0_original)                        ! pure modified COBRA
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! set reference flux from R_0, B_0 and aspr
-                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
-                        !psi_0 = B_0 * (R_0/aspr_V)**2                          ! exact COBRA
-                        psi_0 = B_0 * R_0**2                                    ! pure modified COBRA
-                    else
-                        nr_overriden_const = nr_overriden_const + 1
-                    end if
-                    
-                    ! user output concerning pure modified COBRA
-                    call writo('Exact COBRA normalization is substituted by &
-                        &"pure", modified version',warning=.true.)
-                    call writo('This leaves the equations unmodified',&
-                        &alert=.true.)
-                    call writo('To translate to exact COBRA, manually multiply &
-                        &PB3D Eigenvalues by',alert=.true.)
-                    call lvl_ud(1)
-                    call writo(trim(r2str(beta_V/2)),alert=.true.)
-                    call lvl_ud(-1)
-            end select
-            
-            ! rho_0 is set up through an input variable with the same name
-            
-            ! set Alfven time
-            if (T_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-        end subroutine calc_normalization_const_VMEC
-        
-        ! HELENA version
-        ! The MISHKA normalization is taken by default, see "read_VMEC" for more
-        ! information.
-        subroutine calc_normalization_const_HEL
-            ! user output
-            call writo('Using MISHKA normalization')
-            
-            if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                R_0 = 1._dp
-            end if
-            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
-                B_0 = 1._dp
-            end if
-            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
-                pres_0 = B_0**2/mu_0_original
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-            if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
-                psi_0 = R_0**2 * B_0
-            else
-                nr_overriden_const = nr_overriden_const + 1
-            end if
-            if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
-        end subroutine calc_normalization_const_HEL
-        
-        ! prints the Normalization factors
-        subroutine print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
-            &mu_0,T_0)
-            ! input / output
-            real(dp), intent(in), optional :: R_0
-            real(dp), intent(in), optional :: rho_0
-            real(dp), intent(in), optional :: B_0
-            real(dp), intent(in), optional :: pres_0
-            real(dp), intent(in), optional :: psi_0
-            real(dp), intent(in), optional :: mu_0
-            real(dp), intent(in), optional :: T_0
-            
-            ! user output
-            if (present(R_0)) call writo('R_0    = '//trim(r2str(R_0))//' m')
-            if (present(rho_0)) call writo('rho_0  = '//trim(r2str(rho_0))//&
-                &' kg/m^3')
-            if (present(B_0)) call writo('B_0    = '//trim(r2str(B_0))//' T')
-            if (present(pres_0)) call writo('pres_0 = '//trim(r2str(pres_0))//&
-                &' Pa')
-            if (present(psi_0)) call writo('psi_0  = '//trim(r2str(psi_0))//&
-                &' Tm^2')
-            if (present(mu_0)) call writo('mu_0   = '//&
-                &trim(r2str(mu_0))//' Tm/A')
-            if (present(T_0)) call writo('T_0    = '//trim(r2str(T_0))//' s')
-        end subroutine print_normalization_const
-    end function calc_normalization_const
-    
-    ! Normalize input quantities.
-    subroutine normalize_input()
-        use num_vars, only: use_normalization, eq_style, mu_0_original
-        use VMEC_ops, only: normalize_VMEC
-        use eq_vars, only: vac_perm
-        
-        ! only normalize if needed
-        if (use_normalization) then
-            ! user output
-            call writo('Start normalizing the input variables')
-            call lvl_ud(1)
-            
-            ! normalize common variables
-            vac_perm = vac_perm/mu_0_original
-            
-            ! choose which equilibrium style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    call normalize_VMEC
-                case (2)                                                        ! HELENA
-                    ! other HELENA input already normalized
-                    call writo('HELENA input is already normalized with MISHKA &
-                        &normalization')
-            end select
-            
-            ! user output
-            call lvl_ud(-1)
-            call writo('Normalization done')
-        end if
-    end subroutine normalize_input
-    
-    ! Plots the  magnetic fields. If  multiple equilibrium parallel  jobs, every
-    ! job does its piece, and the results are joined automatically by plot_HDF5.
-    ! The outputs are given in contra- and covariant components and magnitude in
-    ! multiple coordinate systems, as indicated in "calc_vec_comp".
-    ! The starting point is the fact that the magnetic field is given by
-    !   B = e_theta/J
-    ! in F coordinates. The F covariant components are therefore given by
-    !   B_i = g_i3/J
-    ! and the only non-vanishing contravariant component is
-    !   B^3 = 1/J.
-    ! These are then all be transformed to the other coordinate systems.
-    ! Note that vector plots for different  Richardson levels can be combined to
-    ! show the total grid by just plotting them all individually.
-    ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function B_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
-        &result(ierr)
-        
-        use grid_utilities, only: calc_vec_comp
-        use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
-        use num_utilities, only: c
-        use eq_vars, only: B_0
-        
-        character(*), parameter :: rout_name = 'B_plot'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level
-        logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
-        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
-        real(dp), allocatable :: B_mag(:,:,:)                                   ! magnitude of B (dim1,dim2,dim3)
-        real(dp), allocatable, save :: B_flux_tor(:,:), B_flux_pol(:,:)         ! fluxes
-        character(len=10) :: base_name                                          ! base name
-        logical :: plot_fluxes_loc                                              ! local plot_fluxes
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
-            ierr = 1
-            CHCKERR('trigonometric factors not allocated')
-        end if
-        
-        ! set up local plot_fluxes
-        plot_fluxes_loc = .false.
-        if (present(plot_fluxes)) plot_fluxes_loc = plot_fluxes
-        
-        ! set up components and magnitude of B
-        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        allocate(B_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        B_com = 0._dp
-        B_mag = 0._dp
-        do id = 1,3
-            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0)
-        end do
-        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
-        
-        ! transform back to unnormalized quantity
-        if (use_normalization) B_com = B_com * B_0
-        
-        ! set plot variables
-        base_name = 'B'
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! transform coordinates, including the flux
-        if (plot_fluxes_loc) then
-            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
-                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,&
-                &v_flux_tor=B_flux_tor,v_flux_pol=B_flux_pol,XYZ=XYZ)
-            CHCKERR('')
-        else
-            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
-                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,XYZ=XYZ)
-            CHCKERR('')
-        end if
-    end function B_plot
-    
-    ! Plots the current.  If multiple equilibrium parallel jobs,  every job does
-    ! its  piece, and  the results  are joined  automatically by  plot_HDF5. The
-    ! outputs are  given in  contra- and covariant  components and  magnitude in
-    ! multiple coordinate systems, as indicated in "calc_vec_comp".
-    ! The starting point is the pressure balance
-    !   nabla p = J x B,
-    ! which, using B = e_theta/J, reduces to
-    !   J^alpha = -p'.
-    ! Furthermore, the current has to lie in the magnetic flux surfaces:
-    !   J^psi = 0.
-    ! Finally,  the parallel  current sigma  gives  an expression  for the  last
-    ! contravariant component:
-    !   J^theta = sigma/J + p' B_alpha/B_theta.
-    ! From these, the contravariant components can be calculated as
-    !   J_i = J^alpha g_alpha,i + J^theta g_theta,i.
-    ! These are then all be transformed to the other coordinate systems.
-    ! Note that vector plots for different  Richardson levels can be combined to
-    ! show the total grid by just plotting them all individually.
-    ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
-        &result(ierr)
-        
-        use grid_utilities, only: calc_vec_comp
-        use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
-        use num_utilities, only: c
-        use eq_vars, only: B_0, R_0, pres_0
-        
-        character(*), parameter :: rout_name = 'J_plot'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level
-        logical, intent(in), optional :: plot_fluxes                            ! plot the fluxes
-        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
-        
-        ! local variables
-        integer :: id, kd                                                       ! counters
-        real(dp), allocatable :: J_com(:,:,:,:,:)                               ! covariant and contravariant components of J (dim1,dim2,dim3,3,2)
-        real(dp), allocatable :: J_mag(:,:,:)                                   ! magnitude of J (dim1,dim2,dim3)
-        character(len=10) :: base_name                                          ! base name
-        real(dp), allocatable, save :: J_flux_tor(:,:), J_flux_pol(:,:)         ! fluxes
-        logical :: plot_fluxes_loc                                              ! local plot_fluxes
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
-            ierr = 1
-            CHCKERR('trigonometric factors not allocated')
-        end if
-        
-        ! set up local plot_fluxes
-        plot_fluxes_loc = .false.
-        if (present(plot_fluxes)) plot_fluxes_loc = plot_fluxes
-        
-        ! set up components and magnitude of J
-        allocate(J_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        allocate(J_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        J_com = 0._dp
-        J_mag = 0._dp
-#if ldebug
-        if (debug_J_plot) then
-            J_com(:,:,:,1,2) = eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0) - &
-                &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)*&
-                &eq_2%jac_FD(:,:,:,0,1,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0) - &
-                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1) + &
-                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
-                &eq_2%jac_FD(:,:,:,0,0,1)/&
-                &eq_2%jac_FD(:,:,:,0,0,0) 
-            J_com(:,:,:,1,2) = J_com(:,:,:,1,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
-            J_com(:,:,:,3,2) = eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0) - &
-                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
-                &eq_2%jac_FD(:,:,:,1,0,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0) - &
-                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0) + &
-                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)*&
-                &eq_2%jac_FD(:,:,:,0,1,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0) 
-            J_com(:,:,:,3,2) = J_com(:,:,:,3,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
-        else
-#endif
-            do kd = 1,grid_eq%loc_n_r
-                J_com(:,:,kd,1,2) = -eq_1%pres_FD(kd,1)
-                J_com(:,:,kd,3,2) = eq_2%sigma(:,:,kd)/&
-                    &eq_2%jac_FD(:,:,kd,0,0,0) + eq_1%pres_FD(kd,1)*&
-                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) / &
-                    &eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0)
-            end do
-#if ldebug
-        end if
-#endif
-        do id = 1,3
-            J_com(:,:,:,id,1) = &
-                &J_com(:,:,:,1,2)*eq_2%g_FD(:,:,:,c([1,id],.true.),0,0,0) + &
-                &J_com(:,:,:,3,2)*eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)
-        end do
-        
-        ! transform back to unnormalized quantity
-        if (use_normalization) J_com = J_com * pres_0/(R_0*B_0)
-        
-        ! set plot variables
-        base_name = 'J'
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! transform coordinates, including the flux
-        if (plot_fluxes_loc) then
-            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
-                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,&
-                &v_flux_tor=J_flux_tor,v_flux_pol=J_flux_pol,XYZ=XYZ)
-            CHCKERR('')
-        else
-            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
-                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,XYZ=XYZ)
-            CHCKERR('')
-        end if
-    end function J_plot
-    
-    ! Plots the curvature. If multiple equilibrium parallel jobs, every job does
-    ! its  piece, and  the results  are joined  automatically by  plot_HDF5. The
-    ! outputs are  given in  contra- and covariant  components and  magnitude in
-    ! multiple coordinate systems, as indicated in "calc_vec_comp".
-    ! The starting point is the curvature, given by
-    !   kappa = kappa_n nabla psi / |nabla psi|^2 + kappa_g nabla psi x B / B^2
-    ! which can  be used to find  the covariant and contravariant  components in
-    ! Flux coordinates. These are then  transformed to Cartesian coordinates and
-    ! plotted.
-    ! Note that vector plots for different  Richardson levels can be combined to
-    ! show the total grid by just plotting them all individually.
-    ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function kappa_plot(grid_eq,eq_1,eq_2,rich_lvl,XYZ) &
-        &result(ierr)
-        
-        use grid_utilities, only: calc_vec_comp
-        use eq_vars, only: eq_1_type, eq_2_type
-        use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
-        use num_utilities, only: c
-        use eq_vars, only: R_0
-        use VMEC_utilities, only: calc_trigon_factors
-#if ldebug
-        use num_vars, only: ltest, eq_jobs_lims, eq_job_nr
-        use input_utilities, only: get_log
-        use grid_utilities, only: trim_grid, calc_XYZ_grid
-#endif
-        
-        character(*), parameter :: rout_name = 'kappa_plot'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! metric equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level
-        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
-        
-        ! local variables
-        real(dp), allocatable :: k_com(:,:,:,:,:)                               ! covariant and contravariant components of kappa (dim1,dim2,dim3,3,2)
-        real(dp), allocatable :: k_mag(:,:,:)                                   ! magnitude of kappa (dim1,dim2,dim3)
-        character(len=15) :: base_name                                          ! base name
-#if ldebug
-        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        integer :: id                                                           ! counter
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: plot_dim(4)                                                  ! dimensions of plot
-        integer :: plot_offset(4)                                               ! local offset of plot
-        real(dp), allocatable :: XYZ_loc(:,:,:,:,:)                             ! X, Y and Z of surface in cylindrical coordinates, trimmed grid
-        real(dp), allocatable :: k_com_inv(:,:,:,:)                             ! inverted cartesian components of curvature
-        logical, save :: asked_for_testing = .false.                            ! whether we have been asked to test
-        logical, save :: testing = .false.                                      ! whether we are testing
-#endif
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
-            ierr = 1
-            CHCKERR('trigonometric factors not allocated')
-        end if
-        
-        ! set up components and magnitude of kappa
-        allocate(k_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        allocate(k_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        k_com = 0._dp
-        k_mag = 0._dp
-        
-        ! covariant components:
-        !   kappa . e_alpha = kappa_g 
-        !   kappa . e_psi   = kappa_n - kappa_g h12/h22
-        !   kappa . e_theta = 0
-        ! and similar for Q
-        k_com(:,:,:,1,1) = eq_2%kappa_g
-        k_com(:,:,:,2,1) = eq_2%kappa_n - &
-            &eq_2%kappa_g * &
-            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)/&
-            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        k_com(:,:,:,3,1) = 0._dp
-        
-        ! contravariant components:
-        !   kappa . nabla alpha = kappa_n h12 + kappa_g g33/(J^2 h22)
-        !   kappa . nabla psi   = kappa_n h22
-        !   kappa . nabla theta = kappa_n h23 - kappa_g g13/(J^2 h22)
-        ! and similar for Q
-        k_com(:,:,:,1,2) = eq_2%kappa_n * &
-            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0) + &
-            &eq_2%kappa_g * &
-            &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0) / &
-            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
-            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
-        k_com(:,:,:,2,2) = eq_2%kappa_n * &
-            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        k_com(:,:,:,3,2) = eq_2%kappa_n * &
-            &eq_2%h_FD(:,:,:,c([3,2],.true.),0,0,0) - &
-            &eq_2%kappa_g * &
-            &eq_2%g_FD(:,:,:,c([3,1],.true.),0,0,0) / &
-            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
-            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
-        
-        ! transform back to unnormalized quantity
-        if (use_normalization) k_com = k_com / R_0
-        
-        ! set plot variables
-        base_name = 'kappa'
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! transform coordinates
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,k_com,&
-            &norm_disc_prec_eq,v_mag=k_mag,base_name=base_name,XYZ=XYZ)
-        CHCKERR('')
-        
-#if ldebug
-        if (ltest) then
-            if (.not.asked_for_testing) then
-                call writo('Do you want to plot the inversion in kappa?')
-                call lvl_ud(1)
-                testing = get_log(.false.)
-                asked_for_testing = .true.
-                call lvl_ud(-1)
-            end if
-            if (testing) then
-                call writo('Every point in the grid is transformed by &
-                    &displacing it in the direction of the curvature,')
-                call writo('by a distance equal to the inverse of the &
-                    &curvature. I.e. the point is displaced to the center &
-                    &of curvature.')
-                call lvl_ud(1)
-                
-                ! trim equilibrium grid
-                ierr = trim_grid(grid_eq,grid_trim,norm_id)
-                CHCKERR('')
-                
-                ! set up plot dimensions and local dimensions
-                plot_dim = [grid_trim%n,3]
-                plot_offset = [0,0,grid_trim%i_min-1,0]
-                
-                ! possibly modify if multiple equilibrium parallel jobs
-                if (size(eq_jobs_lims,2).gt.1) then
-                    plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
-                        &eq_jobs_lims(1,1) + 1
-                    plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
-                end if
-                
-                ! set up inverted cartesian components
-                allocate(k_com_inv(grid_trim%n(1),grid_trim%n(2),&
-                    &grid_trim%loc_n_r,3))
-                do id = 1,3
-                    k_com_inv(:,:,:,id) = &
-                        &k_com(:,:,norm_id(1):norm_id(2),id,1)/&
-                        &(k_mag(:,:,norm_id(1):norm_id(2))**2)
-                end do
-                
-                ! if VMEC, calculate trigonometric factors of trimmed grid
-                if (eq_style.eq.1) then
-                    ierr = calc_trigon_factors(grid_trim%theta_E,&
-                        &grid_trim%zeta_E,grid_trim%trigon_factors)
-                    CHCKERR('')
-                end if
-                
-                ! calculate X, Y and Z
-                allocate(XYZ_loc(grid_trim%n(1),grid_trim%n(2),&
-                    &grid_trim%loc_n_r,3,3))
-                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ_loc(:,:,:,1,1),&
-                    &XYZ_loc(:,:,:,1,2),XYZ_loc(:,:,:,1,3))
-                CHCKERR('')
-                
-                ! produce a plot of center of curvature for every point
-                call plot_HDF5(['cen_of_curv'],'TEST_cen_of_curv_vec',&
-                    &k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
-                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
-                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
-                    &description='center of curvature')
-                
-                ! displace the points to the center of curvature
-                do id = 1,3
-                    XYZ_loc(:,:,:,1,id) = XYZ_loc(:,:,:,1,id) + &
-                        &k_com_inv(:,:,:,id)
-                end do
-                XYZ_loc(:,:,:,2,:) = XYZ_loc(:,:,:,1,:)
-                XYZ_loc(:,:,:,3,:) = XYZ_loc(:,:,:,3,:)
-                
-                ! produce an inverted plot
-                call plot_HDF5(['cen_of_curv_inv'],'TEST_cen_of_curv_inv_vec',&
-                    &-k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
-                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
-                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
-                    &description='center of curvature')
-                
-                ! clean up
-                call grid_trim%dealloc()
-                
-                call lvl_ud(-1)
-            end if
-        end if
-#endif
-    end function kappa_plot
-    
-    ! Plots HALF of the change in  the position vectors for 2 different toroidal
-    ! positions, which can correspond to a ripple.
-    ! Also calculates  HALF of  the relative  magnetic perturbation,  which also
-    ! corresponds to a ripple.
-    ! Finally,  if the  output grid  contains  a fundamental  interval 2pi,  the
-    ! proportionality between both is written to a file.
-    ! Note: The metric factors and transformation matrices have to be allocated.
-    integer function delta_r_plot(grid_eq,eq_1,eq_2,XYZ,rich_lvl) &
-        &result(ierr)
-        
-        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid, &
-            &calc_tor_diff
-        use eq_utilities, only: calc_inv_met
-        use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, RZ_0, &
-            &use_normalization, rank, ex_plot_style, n_procs, prop_B_tor_i
-        use eq_vars, only: B_0
-        use num_utilities, only: c, calc_int, order_per_fun
-        use MPI_utilities, only: get_ser_var
-        
-        character(*), parameter :: rout_name = 'delta_r_plot'
-        
-        ! input / output
-        type(grid_type), intent(inout) :: grid_eq                               ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        real(dp), intent(in) :: XYZ(:,:,:,:)                                    ! X, Y and Z of grid
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level
-        
-        ! local variables
-        integer :: id, kd                                                       ! counters
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
-        real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface in trimmed grid
-        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
-        real(dp), allocatable :: delta_B_tor(:,:,:)                             ! delta_B/B
-        real(dp), allocatable :: prop_B_tor_tot(:,:)                            ! delta_r / delta_B/B in total grid
-        real(dp), allocatable :: prop_B_tor(:,:,:)                              ! delta_r / delta_B/B
-        real(dp), allocatable :: var_tot_loc(:)                                 ! auxilliary variable
-        real(dp), allocatable :: x_2D(:,:)                                      ! x for 2-D plotting
-        real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
-        real(dp), allocatable :: theta_geo(:,:,:)                               ! geometrical poloidal angle for proportionality factor output
-        real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius for proportionality factor output
-        real(dp), allocatable :: prop_B_tor_plot(:,:)                           ! prop_B_tor and angle at last normal position for plotting
-        logical :: new_file_found                                               ! name for new file found
-        character(len=25) :: base_name                                          ! base name
-        character(len=25) :: plot_name                                          ! plot name
-        character(len=max_str_ln) :: prop_B_tor_file_name                       ! name of B_tor proportionality file
-        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
-            ierr = 1
-            CHCKERR('trigonometric factors not allocated')
-        end if
-        
-        call writo('Calculate normal displacement')
-        call lvl_ud(1)
-        
-        ! trim grid
-        ierr = trim_grid(grid_eq,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! calculate local X, Y and Z
-        ! (Can be different from provided one for different plot grid styles)
-        allocate(XYZ_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,4))
-        ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_loc(:,:,:,1),XYZ_loc(:,:,:,2),&
-            &XYZ_loc(:,:,:,3),R=XYZ_loc(:,:,:,4))
-        CHCKERR('')
-        
-        ! calculate geometrical poloidal angle and radius
-        allocate(theta_geo(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(r_geo(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        theta_geo = atan2(XYZ_loc(:,:,:,3)-RZ_0(2),&
-            &XYZ_loc(:,:,:,4)-RZ_0(1))
-        where (theta_geo.lt.0._dp) theta_geo = theta_geo + 2*pi
-        r_geo = sqrt((XYZ_loc(:,:,:,3)-RZ_0(2))**2 + &
-            &(XYZ_loc(:,:,:,4)-RZ_0(1))**2)
-        
-        ! plot
-        call plot_HDF5('theta_geo','theta_geo',&
-            &theta_geo(:,:,norm_id(1):norm_id(2)),&
-            &tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &x=XYZ(:,:,norm_id(1):norm_id(2),1),&
-            &y=XYZ(:,:,norm_id(1):norm_id(2),2),&
-            &z=XYZ(:,:,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
-            &description='geometrical poloidal angle')
-        call plot_HDF5('r_geo','r_geo',&
-            &r_geo(:,:,norm_id(1):norm_id(2)),&
-            &tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &x=XYZ(:,:,norm_id(1):norm_id(2),1),&
-            &y=XYZ(:,:,norm_id(1):norm_id(2),2),&
-            &z=XYZ(:,:,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
-            &description='geometrical radius')
-        
-        ! calculate perturbation delta_r on radius
-        ierr = calc_tor_diff(r_geo,theta_geo,norm_disc_prec_eq,&
-            &absolute=.true.,r=grid_eq%loc_r_F)
-        CHCKERR('')
-        allocate(delta_r(grid_eq%n(1),1,grid_eq%loc_n_r))
-        delta_r(:,1,:) = r_geo(:,2,:)*0.5_dp                                    ! take factor half as this is absolute
-        deallocate(r_geo)
-        
-        ! set plot variables for delta_r
-        base_name = 'delta_r'
-        plot_name = 'delta_r'
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! plot
-        call plot_HDF5(trim(plot_name),trim(base_name),&
-            &delta_r(:,:,norm_id(1):norm_id(2)),&
-            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
-            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
-            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),&
-            &cont_plot=eq_job_nr.gt.1,&
-            &description='plasma position displacement')
-        
-        call lvl_ud(-1)
-        
-        call writo('Calculate magnetic field ripple')
-        call lvl_ud(1)
-        
-        ! Calculate cylindrical components of B
-        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
-        B_com = 0._dp
-        do id = 1,3
-            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
-                &eq_2%jac_FD(:,:,:,0,0,0)
-        end do
-        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
-        if (use_normalization) B_com = B_com * B_0
-        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
-            &max_transf=4)
-        CHCKERR('')
-        
-        ! calculate perturbation
-        ierr = calc_tor_diff(B_com,theta_geo,norm_disc_prec_eq,&
-            &r=grid_eq%loc_r_F)
-        CHCKERR('')
-        allocate(delta_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
-        delta_B_tor(:,1,:) = 0.5_dp*sum(B_com(:,2,:,2,:),3)
-        deallocate(B_com)
-        
-        ! set plot variables for delta_B_tor
-        base_name = 'delta_B_tor'
-        plot_name = 'delta_B_tor'
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! plot with HDF5
-        call plot_HDF5(trim(plot_name),trim(base_name),&
-            &delta_B_tor(:,:,norm_id(1):norm_id(2)),&
-            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
-            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
-            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
-            &description='plasma position displacement')
-        
-        call lvl_ud(-1)
-        
-        call writo('Calculate proportionality factor')
-        call lvl_ud(1)
-        
-        allocate(prop_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
-        prop_B_tor = 0.0_dp
-        where (delta_B_tor.gt.0._dp) prop_B_tor = delta_r / delta_B_tor
-        
-        ! set plot variables for prop_B_tor
-        base_name = 'prop_B_tor'
-        plot_name = trim(base_name)
-        if (present(rich_lvl)) then
-            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
-                &trim(i2str(rich_lvl))
-        end if
-        
-        ! plot with HDF5
-        call plot_HDF5(plot_name,trim(base_name),&
-            &prop_B_tor(:,:,norm_id(1):norm_id(2)),&
-            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
-            &loc_offset=[0,0,grid_trim%i_min-1],&
-            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
-            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
-            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),&
-            &cont_plot=eq_job_nr.gt.1,&
-            &description='delta_r divided by delta_B_tor')
-        
-        ! plot in 2-D
-        r_lim_2D = [1,grid_trim%n(3)]
-        if (ex_plot_style.eq.2) r_lim_2D(1) = &
-            &max(r_lim_2D(1),r_lim_2D(2)-127+1)                                 ! Bokeh can only handle 255/2 input arguments
-        if (rank.eq.0) then
-            allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
-        end if
-        allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3)))
-        do id = 1,grid_trim%n(1)
-            ! prop_B_tor (all procs)
-            ierr = get_ser_var(prop_B_tor(id,1,norm_id(1):norm_id(2)),&
-                &var_tot_loc,scatter=.true.)
-            CHCKERR('')
-            prop_B_tor_tot(id,:) = max(min(var_tot_loc,2._dp),-2._dp)           ! limit to avoid division by small delta_B_tor values
-            deallocate(var_tot_loc)
-            
-            ! theta_geo (only master)
-            ierr = get_ser_var(theta_geo(id,2,norm_id(1):norm_id(2)),&
-                &var_tot_loc)
-            CHCKERR('')
-            if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
-            deallocate(var_tot_loc)
-        end do
-        if (rank.eq.0) then
-            call print_ex_2D([trim(plot_name)],trim(base_name),&
-                &prop_B_tor_tot(:,r_lim_2D(1):r_lim_2D(2)),&
-                &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
-            call draw_ex([trim(plot_name)],trim(base_name),&
-                &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
-        end if
-        
-        call lvl_ud(-1)
-        
-        call writo('Output to file as function of poloidal flux angle')
-        call lvl_ud(1)
-        
-        ! only last rank outputs to file (it has the last normal position)
-        if (rank.eq.n_procs-1) then
-            ! find new file name
-            new_file_found = .false.
-            prop_B_tor_file_name = 'prop_B_tor'
-            kd = 1
-            do while (.not.new_file_found)
-                open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
-                    &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
-                if (ierr.eq.0) then
-                    kd = kd + 1
-                else
-                    prop_B_tor_file_name = trim(prop_B_tor_file_name)//&
-                        &'_'//trim(i2str(kd))//'.dat'
-                    new_file_found = .true.
-                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
-                        &IOSTAT=ierr,STATUS='new')
-                    CHCKERR('Failed to open file')
-                end if
-            end do
-            
-            ! user output
-            call writo('Save toroidal field proportionality factor in &
-                &file "'//trim(prop_B_tor_file_name)//'"',persistent=.true.)
-            
-            ! order  output, taking away last  point as it is  equivalent to
-            ! the first
-            ierr = order_per_fun(reshape([&
-                &theta_geo(1:grid_trim%n(1)-1,1,grid_trim%loc_n_r),&
-                &prop_B_tor_tot(1:grid_trim%n(1)-1,grid_trim%n(3))],&
-                &[grid_trim%n(1)-1,2]),prop_B_tor_plot,0)
-            CHCKERR('')
-            
-            ! write to output file
-            write(prop_B_tor_i,'("# ",2(A23," "))') &
-                &'pol. angle [ ]', 'prop. factor [ ]'
-            do id = 1,grid_trim%n(1)-1
-                write(prop_B_tor_i,'("  ",2(ES23.16," "))') &
-                    &prop_B_tor_plot(id,:)
-            end do
-            
-            ! close
-            close(prop_B_tor_i)
-        end if
-        
-        call lvl_ud(-1)
-        
-        ! clean up
-        call grid_trim%dealloc()
-    end function delta_r_plot
-    
-    ! Print equilibrium quantities to an output file:
-    !   - flux:     pres_FD, q_saf_FD, rot_t_FD, flux_p_FD, flux_t_FD, rho, S,
-    !               kappa_n, kappa_g, sigma
-    !   - metric:   g_FD, h_FD, jac_FD
-    ! If "rich_lvl" is  provided, "_R_rich_lvl" is appended to the  data name if
-    ! it is > 0 (only for eq_2).
-    ! Optionally, for eq_2, it can be  specified that this is a divided parallel
-    ! grid, corresponding to the variable "eq_jobs_lims" with index "eq_job_nr".
-    ! In this  case, the  total grid size  is adjusted to  the one  specified by
-    ! "eq_jobs_lims" and the grid is written as a subset.
-    ! Note: The equilibrium quantities are outputted in Flux coordinates.
-    ! Note: The  metric equilibrium  quantities can be  deallocated on  the fly,
-    ! which is useful if this routine is  followed by a deallocation any way, so
-    ! that memory usage does not almost double.
-    ! Note: print_output_eq_2 is only used by HELENA  now, as for VMEC it is too
-    ! slow  since there  are often  multiple  VMEC equilibrium  jobs, while  for
-    ! HELENA this is explicitely forbidden.
-    integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)       ! flux version
+    !> \private flux version
+    integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -4116,9 +1891,9 @@ contains
         character(*), parameter :: rout_name = 'print_output_eq_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
-        type(eq_1_type), intent(in) :: eq                                       ! flux equilibrium variables
-        character(len=*), intent(in) :: data_name                               ! name under which to store
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid variables
+        type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium variables
+        character(len=*), intent(in) :: data_name                               !< name under which to store
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -4237,8 +2012,9 @@ contains
         ! user output
         call lvl_ud(-1)
     end function print_output_eq_1
+    !> \private metric version
     integer function print_output_eq_2(grid_eq,eq,data_name,rich_lvl,par_div,&
-        &dealloc_vars) result(ierr)                                             ! metric version
+        &dealloc_vars) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -4248,12 +2024,12 @@ contains
         character(*), parameter :: rout_name = 'print_output_eq_2'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid variables
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
-        character(len=*), intent(in) :: data_name                               ! name under which to store
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to print
-        logical, intent(in), optional :: par_div                                ! is a parallely divided grid
-        logical, intent(in), optional :: dealloc_vars                           ! deallocate variables on the fly after writing
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid variables
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium variables
+        character(len=*), intent(in) :: data_name                               !< name under which to store
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to print
+        logical, intent(in), optional :: par_div                                !< is a parallely divided grid
+        logical, intent(in), optional :: dealloc_vars                           !< deallocate variables on the fly after writing
         
         ! local variables
         integer :: n_tot(3)                                                     ! total n
@@ -4425,19 +2201,18 @@ contains
         call lvl_ud(-1)
     end function print_output_eq_2
     
-    ! Redistribute  the equilibrium variables,  but only the Flux  variables are
-    ! saved. See "redistribute_output_grid" for more information.
+    !> \private flux version
     integer function redistribute_output_eq_1(grid,grid_out,eq,eq_out) &
-        &result(ierr)                                                           ! flux version
+        &result(ierr)
         use MPI_utilities, only: redistribute_var
         
         character(*), parameter :: rout_name = 'redistribute_output_eq_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
-        type(grid_type), intent(in) :: grid_out                                 ! redistributed equilibrium grid variables
-        type(eq_1_type), intent(inout) :: eq                                    ! flux equilibrium variables
-        type(eq_1_type), intent(inout) :: eq_out                                ! flux equilibrium variables in redistributed grid
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
+        type(grid_type), intent(in) :: grid_out                                 !< redistributed equilibrium grid variables
+        type(eq_1_type), intent(inout) :: eq                                    !< flux equilibrium variables
+        type(eq_1_type), intent(inout) :: eq_out                                !< flux equilibrium variables in redistributed grid
         
         ! local variables
         integer :: id                                                           ! counter
@@ -4488,17 +2263,18 @@ contains
         ! user output
         call lvl_ud(-1)
     end function redistribute_output_eq_1
+    !> \private metric version
     integer function redistribute_output_eq_2(grid,grid_out,eq,eq_out) &
-        &result(ierr)                                                           ! metric version
+        &result(ierr)
         use MPI_utilities, only: redistribute_var
         
         character(*), parameter :: rout_name = 'redistribute_output_eq_2'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid variables
-        type(grid_type), intent(in) :: grid_out                                 ! redistributed equilibrium grid variables
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium variables
-        type(eq_2_type), intent(inout) :: eq_out                                ! metric equilibrium variables in redistributed grid
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
+        type(grid_type), intent(in) :: grid_out                                 !< redistributed equilibrium grid variables
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium variables
+        type(eq_2_type), intent(inout) :: eq_out                                !< metric equilibrium variables in redistributed grid
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
@@ -4584,55 +2360,2521 @@ contains
         ! user output
         call lvl_ud(-1)
     end function redistribute_output_eq_2
+    
+    !> \private individual version
+    integer function calc_RZL_ind(grid_eq,eq,deriv) result(ierr)
+        use VMEC_utilities, only: fourier2real
+        use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, is_asym_V
+        
+        character(*), parameter :: rout_name = 'calc_RZL_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(3)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv+1,'calc_RZL')
+        CHCKERR('')
+        
+        ! calculate the variables R,Z and their derivatives
+        ierr = fourier2real(R_V_c(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &R_V_s(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &grid_eq%trigon_factors,eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
+        CHCKERR('')
+        ierr = fourier2real(Z_V_c(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &Z_V_s(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &grid_eq%trigon_factors,eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
+        CHCKERR('')
+        ierr = fourier2real(L_V_c(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &L_V_s(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
+            &grid_eq%trigon_factors,eq%L_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[is_asym_V,.true.],deriv=[deriv(2),deriv(3)])
+        CHCKERR('')
+    end function calc_RZL_ind
+    !> \private array version
+    integer function calc_RZL_arr(grid_eq,eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_RZL_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_RZL_ind(grid_eq,eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_RZL_arr
+    
+    !> \private individual version
+    integer function calc_g_C_ind(eq,deriv) result(ierr)
+        use num_utilities, only: add_arr_mult, c
+        
+        character(*), parameter :: rout_name = 'calc_g_C_ind'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_g_C')
+        CHCKERR('')
+        
+        ! initialize
+        eq%g_C(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        
+        ! calculate
+        if (sum(deriv).eq.0) then
+            eq%g_C(:,:,:,c([1,1],.true.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
+            eq%g_C(:,:,:,c([3,3],.true.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
+        end if
+        ierr = add_arr_mult(eq%R_E,eq%R_E,&
+            &eq%g_C(:,:,:,c([2,2],.true.),deriv(1),deriv(2),deriv(3)),deriv)
+        CHCKERR('')
+    end function calc_g_C_ind
+    !> \private array version
+    integer function calc_g_C_arr(eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_g_C_arr'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_g_C_ind(eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_g_C_arr
+    
+    !> \private individual version
+    integer function calc_g_V_ind(eq,deriv) result(ierr)
+        use eq_utilities, only: calc_g
+        
+        character(*), parameter :: rout_name = 'calc_g_V_ind'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_g_V')
+        CHCKERR('')
+        
+        ierr = calc_g(eq%g_C,eq%T_VC,eq%g_E,deriv,max_deriv)
+        CHCKERR('')
+    end function calc_g_V_ind
+    !> \private  array version
+    integer function calc_g_V_arr(eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_g_V_arr'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_g_V_ind(eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_g_V_arr
+    
+    !> \private individual version
+    integer function calc_h_H_ind(grid_eq,eq,deriv) result(ierr)
+        use num_vars, only: norm_disc_prec_eq
+        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+        use num_utilities, only: c
+        use grid_utilities, only: setup_deriv_data, apply_disc
+        
+        character(*), parameter :: rout_name = 'calc_h_H_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium 
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: jd, kd                                                       ! counters
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_h_H')
+        CHCKERR('')
+        
+        ! initialize
+        eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        
+        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
+            !eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (sum(deriv).eq.0) then                                          ! no derivatives
+            do jd = 1,grid_eq%n(2)
+                eq%h_E(:,jd,:,c([1,1],.true.),0,0,0) = &
+                    &h_H_11(:,grid_eq%i_min:grid_eq%i_max)
+                eq%h_E(:,jd,:,c([1,2],.true.),0,0,0) = &
+                    &h_H_12(:,grid_eq%i_min:grid_eq%i_max)
+                eq%h_E(:,jd,:,c([3,3],.true.),0,0,0) = &
+                    &h_H_33(:,grid_eq%i_min:grid_eq%i_max)
+                eq%h_E(:,jd,:,c([2,2],.true.),0,0,0) = &
+                    &1._dp/h_H_11(:,grid_eq%i_min:grid_eq%i_max) * &
+                    &(1._dp/(eq%jac_E(:,jd,:,0,0,0)**2*&
+                    &h_H_33(:,grid_eq%i_min:grid_eq%i_max)) + &
+                    &h_H_12(:,grid_eq%i_min:grid_eq%i_max)**2)
+            end do
+        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &eq%h_E(:,:,:,:,1,0,0),3)
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &eq%h_E(:,:,:,:,2,0,0),3)
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                    CHCKERR('')
+                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,1,0),1)
+                    CHCKERR('')
+                end do
+            end do
+            call ang_deriv_data%dealloc()
+        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,2,norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,2,0),1)
+                    CHCKERR('')
+                end do
+            end do
+            call ang_deriv_data%dealloc()
+        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(eq%h_E(:,:,:,:,0,1,0),norm_deriv_data,&
+                &eq%h_E(:,:,:,:,1,1,0),3) 
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else
+            ierr = 1
+            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
+                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
+                &) not supported'
+            CHCKERR(err_msg)
+        end if
+    end function calc_h_H_ind
+    !> \private array version
+    integer function calc_h_H_arr(grid_eq,eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_h_H_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibirum grid
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_h_H_ind(grid_eq,eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_h_H_arr
 
-    ! Divides the equilibrium jobs.
-    ! For  PB3D, the  entire parallel  range has  to be  calculated, but  due to
-    ! memory limits  this has to be  split up in  pieces. Every piece has  to be
-    ! able to contain the equilibrium variables (see note below), as well as the
-    ! vectorial perturbation variables. These  are later combined into tensorial
-    ! variables and integrated.
-    ! The equilibrium variables have to be  operated on to calculate them, which
-    ! translates to a scale factor "mem_scale_fac". However, in the perturbation
-    ! phase, when they are just used, this scale factor is not needed.
-    ! In its  most extreme form, the  division in equilibrium jobs  would be the
-    ! individual  calculation  on  a  fundamental integration  integral  of  the
-    ! parallel points:
-    !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
-    !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-    ! For  HELENA,  the  parallel  derivatives are  calculated  discretely,  the
-    ! equilibrium and  vectorial perturbation  variables are tabulated  first in
-    ! this  HELENA grid.  This happens  in the  first Richardson  level. In  all
-    ! Richardson  levels, afterwards,  these variables  are interpolated  in the
-    ! angular directions. In  this case, therefore, there can be  no division of
-    ! this HELENA output interval for the first Richardson level.
-    ! This  procedure does  the job  of dividing  the grids  setting the  global
-    ! variables 'eq_jobs_lims'.
-    ! The integration of the tensorial perturbation variables is adjusted:
-    !   - If  the first job  of the parallel jobs  and not the  first Richardson
-    !   level: add half  of the integrated tensorial  perturbation quantities of
-    !   the previous level.
-    !   -  If  not the  first  job  of the  parallel  jobs,  add the  integrated
-    !   tensorial perturbation quantities to those of the previous parallel job,
-    !   same Richardson level.
-    ! In fact,  the equilibrium  jobs have  much in  common with  the Richardson
-    ! levels,  as is  attested  by the  existence of  the  routines "do_eq"  and
-    ! "eq_info", which are equivalent to "do_rich" and "rich_info".
-    ! In POST, finally,  the situation is slightly different for  HELENA, as all
-    ! the requested variables have to fit, including the interpolated variables,
-    ! as they are stored whereas in PB3D  they are not. The parallel range to be
-    ! taken is then the  one of the output grid, including a  base range for the
-    ! variables tabulated on  the HELENA grid. Also, for  extended output grids,
-    ! the size of the grid in the  secondary angle has to be included in n_par_X
-    ! (i.e. toroidal  when poloidal flux  is used and vice  versa). Furthermore,
-    ! multiple equilibrium jobs are allowed.
-    ! To this end,  optionally, a base number can be  provided for n_par_X, that
-    ! is always added to the number of points in the divided n_par_X.
-    ! Note: For PB3D,  only the variables g_FD, h_FD and  jac_FD are counted, as
-    ! the  equilibrium variables  and  the transformation  matrices are  deleted
-    ! after use. Also, S, sigma, kappa_n and kappa_g can be neglected as they do
-    ! not  contain  derivatives   and  are  therefore  much   smaller.  in  both
-    ! "calc_memory" routines,  however, a 50%  safety factor is used  to account
-    ! for this somewhat.
+    !> \private individual version
+    integer function calc_g_F_ind(eq,deriv) result(ierr)
+        use eq_utilities, only: calc_g
+        
+        character(*), parameter :: rout_name = 'calc_g_F_ind'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_g_F')
+        CHCKERR('')
+        
+        ! calculate g_F
+        ierr = calc_g(eq%g_E,eq%T_FE,eq%g_F,deriv,max_deriv)
+        CHCKERR('')
+    end function calc_g_F_ind
+    !> \private array version
+    integer function calc_g_F_arr(eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_g_F_arr'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_g_F_ind(eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_g_F_arr
+    
+    !> \private individual version
+    integer function calc_jac_V_ind(grid,eq,deriv) result(ierr)
+        use VMEC_utilities, only: fourier2real
+        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
+        
+        character(*), parameter :: rout_name = 'calc_jac_V_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     !< grid for which to calculate Jacobian
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_J_V')
+        CHCKERR('')
+        
+        ! initialize
+        eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        
+        ! calculate the Jacobian and its derivatives
+        ierr = fourier2real(jac_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
+            &jac_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
+            &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
+            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
+        CHCKERR('')
+    end function calc_jac_V_ind
+    !> \private array version
+    integer function calc_jac_V_arr(grid,eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_jac_V_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     !< grid for which to calculate Jacobian
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_jac_V_ind(grid,eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_jac_V_arr
+    
+    !> \private individual version
+    integer function calc_jac_H_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        use num_vars, only: norm_disc_prec_eq
+        use HELENA_vars, only:  h_H_33, RBphi_H
+        use grid_utilities, only: setup_deriv_data, apply_disc
+        
+        character(*), parameter :: rout_name = 'calc_jac_H_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! local variables
+        integer :: jd, kd                                                       ! counters
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
+        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_J_H')
+        CHCKERR('')
+        
+        ! calculate determinant
+        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
+            eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (sum(deriv).eq.0) then                                          ! no derivatives
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    eq_2%jac_E(:,jd,kd,0,0,0) = eq_1%q_saf_E(kd,0)/&
+                        &(h_H_33(:,grid_eq%i_min-1+kd)*&
+                        &RBphi_H(grid_eq%i_min-1+kd))
+                end do
+            end do
+        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
+                &eq_2%jac_E(:,:,:,1,0,0),3)
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
+                &norm_disc_prec_eq)
+            CHCKERR('')
+            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
+                &eq_2%jac_E(:,:,:,2,0,0),3)
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                    CHCKERR('')
+                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
+                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,1,0))
+                    CHCKERR('')
+                end do
+            end do
+            call ang_deriv_data%dealloc()
+        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
+                        &ang_deriv_data,2,norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
+                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,2,0))
+                    CHCKERR('')
+                end do
+            end do
+            call ang_deriv_data%dealloc()
+        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+            CHCKERR('')
+            ierr = apply_disc(eq_2%jac_E(:,:,:,0,1,0),norm_deriv_data,&
+                &eq_2%jac_E(:,:,:,1,1,0),3) 
+            CHCKERR('')
+            call norm_deriv_data%dealloc()
+        else
+            ierr = 1
+            err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
+                &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
+                &) not supported'
+            CHCKERR(err_msg)
+        end if
+    end function calc_jac_H_ind
+    !> \private array version
+    integer function calc_jac_H_arr(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_jac_H_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrim grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_jac_H_ind(grid_eq,eq_1,eq_2,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_jac_H_arr
+    
+    !> \private individual version
+    integer function calc_jac_F_ind(eq,deriv) result(ierr)
+        use num_utilities, only: add_arr_mult
+        
+        character(*), parameter :: rout_name = 'calc_jac_F_ind'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_J_F')
+        CHCKERR('')
+        
+        ! initialize
+        eq%jac_F(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        
+        ! calculate determinant
+        ierr = add_arr_mult(eq%jac_E,eq%det_T_FE,&
+            &eq%jac_F(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
+        CHCKERR('')
+    end function calc_jac_F_ind
+    !> \private array version
+    integer function calc_jac_F_arr(eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_jac_F_arr'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_jac_F_ind(eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_jac_F_arr
+
+    !> \private individual version
+    integer function calc_T_VC_ind(eq,deriv) result(ierr)
+        use num_utilities, only: add_arr_mult, c
+        
+        character(*), parameter :: rout_name = 'calc_T_VC_ind'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_T_VC')
+        CHCKERR('')
+        
+        ! initialize
+        eq%T_VC(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        
+        ! calculate transformation matrix T_V^C
+        eq%T_VC(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%R_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+        !eq%T_VC(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
+        eq%T_VC(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%Z_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+        eq%T_VC(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%R_E(:,:,:,deriv(1),deriv(2)+1,deriv(3))
+        !eq%T_VC(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
+        eq%T_VC(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%Z_E(:,:,:,deriv(1),deriv(2)+1,deriv(3))
+        eq%T_VC(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%R_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
+        if (sum(deriv).eq.0) then
+            eq%T_VC(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = 1.0_dp
+        else
+            !eq%T_VC(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = 0
+        end if
+        eq%T_VC(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+            &eq%Z_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
+    end function calc_T_VC_ind
+    !> \private array version
+    integer function calc_T_VC_arr(eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_T_VC_arr'
+        
+        ! input / output
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_T_VC_ind(eq,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_T_VC_arr
+
+    !> \private individual version
+    integer function calc_T_VF_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        use num_vars, only: use_pol_flux_F
+        use num_utilities, only: add_arr_mult, c
+        
+        character(*), parameter :: rout_name = 'calc_T_VF_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
+        real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
+        integer :: dims(3)                                                      ! dimensions
+        integer :: c1                                                           ! 2D coordinate in met_type storage convention
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_T_VF')
+        CHCKERR('')
+        
+        ! set up dims
+        dims = [grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r]
+        
+        ! initialize
+        eq_2%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        
+        ! set up theta_s
+        allocate(theta_s(dims(1),dims(2),dims(3),&
+            &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
+        theta_s = 0.0_dp
+        ! start from theta_E
+        theta_s(:,:,:,0,0,0) = grid_eq%theta_E
+        theta_s(:,:,:,0,1,0) = 1.0_dp
+        ! add the deformation described by lambda
+        theta_s = theta_s + &
+            &eq_2%L_E(:,:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
+            
+        if (use_pol_flux_F) then
+            ! calculate transformation matrix T_V^F
+            ! (1,1)
+            ierr = add_arr_mult(theta_s,eq_1%q_saf_E(:,1:),&
+                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ierr = add_arr_mult(eq_2%L_E(:,:,:,1:,0:,0:),eq_1%q_saf_E(:,0:),&
+                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
+                        &eq_1%flux_p_E(kd,deriv(1)+1)/(2*pi)
+                end do
+            !else
+                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (1,3)
+            eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                &eq_2%L_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+            ! (2,1)
+            ierr = add_arr_mult(theta_s(:,:,:,0:,1:,0:),eq_1%q_saf_E,&
+                &eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (2,2)
+            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,3)
+            eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                &theta_s(:,:,:,deriv(1),deriv(2)+1,deriv(3))
+            ! (3,1)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([3,1],.false.),0,0,0) = -1.0_dp
+            end if
+            ierr = add_arr_mult(eq_2%L_E(:,:,:,0:,0:,1:),eq_1%q_saf_E,&
+                &eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (3,2)
+            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,3)
+            eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                &eq_2%L_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
+            
+            ! determinant
+            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ierr = add_arr_mult(-theta_s(:,:,:,0:,1:,0:),&
+                &eq_1%flux_p_E(:,1:)/(2*pi),&
+                &eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+        else
+            ! set up zeta_s
+            allocate(zeta_s(dims(1),dims(2),dims(3),0:deriv(1)+1,&
+                &0:deriv(2)+1,0:deriv(3)+1))
+            zeta_s = 0.0_dp
+            ! start from zeta_E
+            zeta_s(:,:,:,0,0,0) = grid_eq%zeta_E
+            zeta_s(:,:,:,0,0,1) = 1.0_dp
+            
+            ! calculate transformation matrix T_V^F
+            ! (1,1)
+            eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)) = &
+                &-theta_s(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+            ierr = add_arr_mult(zeta_s,eq_1%rot_t_E(:,1:),&
+                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
+                        &-eq_1%flux_t_E(kd,deriv(1)+1)/(2*pi)
+                end do
+            !else
+                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) 7
+                    !&= 0.0_dp
+            end if
+            ! (1,3)
+            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,1)
+            eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) = &
+                &-theta_s(:,:,:,deriv(1),deriv(2)+1,deriv(3))
+            ! (2,2)
+            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,3)
+            !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([3,1],.false.),deriv(1),0,0) = &
+                        &eq_1%rot_t_E(kd,deriv(1))
+                end do
+            end if
+            c1 = c([3,1],.false.)                                               ! to avoid compiler crash (as of 26-02-2015)
+            eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) &
+                &-theta_s(:,:,:,deriv(1),deriv(2),deriv(3)+1)
+            ! (3,2)
+            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,3)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([3,3],.false.),0,0,0) = -1.0_dp
+            !else
+                !eq_2%T_EF(:,:,:,c([3,3],.false.)deriv(1),deriv(2),deriv(3)) = &
+                    !&0.0_dp
+            end if
+            
+            ! determinant
+            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            ierr = add_arr_mult(theta_s(:,:,:,0:,1:,0:),&
+                &eq_1%flux_t_E(:,1:)/(2*pi),&
+                &eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)),deriv)
+            CHCKERR('')
+        end if
+    end function calc_T_VF_ind
+    !> \private array version
+    integer function calc_T_VF_arr(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_T_VF_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_T_VF_ind(grid_eq,eq_1,eq_2,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_T_VF_arr
+    
+    !> \private individual version
+    integer function calc_T_HF_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        use num_vars, only: use_pol_flux_F
+        use num_utilities, only: add_arr_mult, c
+        
+        character(*), parameter :: rout_name = 'calc_T_HF_ind'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:)                                         !< derivatives
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
+        real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
+        integer :: dims(3)                                                      ! dimensions
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the derivatives requested
+        ierr = check_deriv(deriv,max_deriv,'calc_T_HF')
+        CHCKERR('')
+        
+        ! set up dims
+        dims = [grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r]
+        
+        ! initialize
+        eq_2%T_EF(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        
+        ! set up theta_s
+        allocate(theta_s(dims(1),dims(2),dims(3),&
+            &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
+        theta_s = 0.0_dp
+        theta_s(:,:,:,0,0,0) = grid_eq%theta_E
+        theta_s(:,:,:,0,1,0) = 1.0_dp
+            
+        if (use_pol_flux_F) then
+            ! calculate transformation matrix T_H^F
+            ! (1,1)
+            ierr = add_arr_mult(theta_s,-eq_1%q_saf_E(:,1:),&
+                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([1,2],.false.),0,0,0) = 1._dp
+            !else
+                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (1,3)
+            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([2,1],.false.),deriv(1),0,0) = &
+                        &-eq_1%q_saf_E(kd,deriv(1))
+                end do
+            !else
+                !eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (2,2)
+            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,3)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([2,3],.false.),0,0,0) = 1.0_dp
+            !else
+                !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (3,1)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([3,1],.false.),0,0,0) = 1.0_dp
+            !else
+                !eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (3,2)
+            !eq_2%T_EF(:,:,:,c([3,2],.false),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,3)
+            !eq_2%T_EF(:,:,:,c([3,3],.false),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            
+            ! determinant
+            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            if (sum(deriv).eq.0) then
+                eq_2%det_T_EF(:,:,:,deriv(1),0,0) = 1._dp
+            !else
+                !eq_2%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+        else
+            ! set up zeta_s
+            allocate(zeta_s(dims(1),dims(2),dims(3),&
+                &0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1))
+            zeta_s = 0.0_dp
+            ! start from zeta_E
+            zeta_s(:,:,:,0,0,0) = grid_eq%zeta_E
+            zeta_s(:,:,:,0,0,1) = 1.0_dp
+            
+            ! calculate transformation matrix T_H^F
+            ! (1,1)
+            ierr = add_arr_mult(zeta_s,eq_1%rot_t_E(:,1:),&
+                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &deriv)
+            CHCKERR('')
+            ! (1,2)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
+                        &eq_1%q_saf_E(kd,deriv(1))
+                end do
+            !else
+                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (1,3)
+            !eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,1)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([2,1],.false.),0,0,0) = -1.0_dp
+            !else
+                !eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (2,2)
+            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (2,3)
+            !eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,1)
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%T_EF(:,:,kd,c([3,1],.false.),deriv(1),0,0) = &
+                        &eq_1%rot_t_E(kd,deriv(1))
+                end do
+            !else
+                !eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            ! (3,2)
+            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+                !&0.0_dp
+            ! (3,3)
+            if (sum(deriv).eq.0) then
+                eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),0,0) = 1.0_dp
+            !else
+                !eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) &
+                    !&= 0.0_dp
+            end if
+            
+            ! determinant
+            eq_2%det_T_EF(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            if (deriv(2).eq.0 .and. deriv(3).eq.0) then
+                do kd = 1,dims(3)
+                    eq_2%det_T_EF(:,:,kd,deriv(1),0,0) = &
+                        &eq_1%q_saf_E(kd,deriv(1))
+                end do
+            !else
+                !eq_2%det_T_EF(:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            end if
+        end if
+    end function calc_T_HF_ind
+    !> \private array version
+    integer function calc_T_HF_arr(grid_eq,eq_1,eq_2,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_T_HF_arr'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(inout) :: eq_2                                  !< metric equilibrium
+        integer, intent(in) :: deriv(:,:)                                       !< derivatives
+        
+        ! local variables
+        integer :: id
+        
+        ! initialize ierr
+        ierr = 0
+        
+        do id = 1, size(deriv,2)
+            ierr = calc_T_HF_ind(grid_eq,eq_1,eq_2,deriv(:,id))
+            CHCKERR('')
+        end do
+    end function calc_T_HF_arr
+
+    !> Plots the flux quantities in the solution grid.
+    !!
+    !!  - safety factor \c q_saf
+    !!  - rotational transform \c rot_t
+    !!  - pressure \c pres
+    !!  - poloidal flux \c flux_p
+    !!  - toroidal flux \c flux_t
+    !!
+    !! \return ierr
+    integer function flux_q_plot(grid_eq,eq) result(ierr)
+        use num_vars, only: rank, no_plots, use_normalization
+        use grid_utilities, only: trim_grid
+        use MPI_utilities, only: get_ser_var
+        use eq_vars, only: pres_0, psi_0
+        
+        character(*), parameter :: rout_name = 'flux_q_plot'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< normal grid
+        type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium variables
+        
+        ! local variables
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: id                                                           ! counter
+        integer :: n_vars = 5                                                   ! nr. of variables to plot
+        character(len=max_str_ln), allocatable :: plot_titles(:)                ! plot titles
+        type(grid_type) :: grid_trim                                            ! trimmed grid
+        real(dp), allocatable :: X_plot_2D(:,:)                                 ! x values of 2D plot
+        real(dp), allocatable :: Y_plot_2D(:,:)                                 ! y values of 2D plot
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! bypass plots if no_plots
+        if (no_plots) return
+        
+        ! user output
+        call writo('Plotting flux quantities')
+        
+        call lvl_ud(1)
+        
+        ! trim grid
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! initialize plot titles and file names
+        allocate(plot_titles(n_vars))
+        plot_titles(1) = 'safety factor []'
+        plot_titles(2) = 'rotational transform []'
+        plot_titles(3) = 'pressure [pa]'
+        plot_titles(4) = 'poloidal flux [Tm^2]'
+        plot_titles(5) = 'toroidal flux [Tm^2]'
+        
+        ! plot using HDF5
+        ierr = flux_q_plot_HDF5()
+        CHCKERR('')
+        
+        ! plot using external program
+        ierr = flux_q_plot_ex()
+        CHCKERR('')
+        
+        ! clean up
+        call grid_trim%dealloc()
+        
+        call lvl_ud(-1)
+    contains
+        ! plots the flux quantities in HDF5
+        integer function flux_q_plot_HDF5() result(ierr)
+            use num_vars, only: eq_style
+            use output_ops, only: plot_HDF5
+            use grid_utilities, only: extend_grid_F, trim_grid, calc_XYZ_grid
+            use VMEC_utilities, only: calc_trigon_factors
+            
+            character(*), parameter :: rout_name = 'flux_q_plot_HDF5'
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            real(dp), allocatable :: X_plot(:,:,:,:)                            ! x values of total plot
+            real(dp), allocatable :: Y_plot(:,:,:,:)                            ! y values of total plot
+            real(dp), allocatable :: Z_plot(:,:,:,:)                            ! z values of total plot
+            real(dp), allocatable :: f_plot(:,:,:,:)                            ! values of variable of total plot
+            integer :: plot_dim(4)                                              ! total plot dimensions
+            integer :: plot_offset(4)                                           ! plot offset
+            type(grid_type) :: grid_plot                                        ! grid for plotting
+            character(len=max_str_ln) :: file_name                              ! file name
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up file name
+            file_name = 'flux_quantities'
+            
+            ! fill the 2D version of the plot
+            allocate(Y_plot_2D(grid_trim%loc_n_r,n_vars))
+            
+            Y_plot_2D(:,1) = eq%q_saf_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,2) = eq%rot_t_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,3) = eq%pres_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,4) = eq%flux_p_FD(norm_id(1):norm_id(2),0)
+            Y_plot_2D(:,5) = eq%flux_t_FD(norm_id(1):norm_id(2),0)
+            
+            ! extend trimmed equilibrium grid
+            ierr = extend_grid_F(grid_trim,grid_plot,grid_eq=grid_eq)
+            CHCKERR('')
+            
+            ! if VMEC, calculate trigonometric factors of plot grid
+            if (eq_style.eq.1) then
+                ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
+                    &grid_plot%trigon_factors)
+                CHCKERR('')
+            end if
+            
+            ! set up plot_dim and plot_offset
+            plot_dim = [grid_plot%n(1),grid_plot%n(2),grid_plot%n(3),n_vars]
+            plot_offset = [0,0,grid_plot%i_min-1,n_vars]
+            
+            ! set up total plot variables
+            allocate(X_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(Y_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(Z_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            allocate(f_plot(grid_plot%n(1),grid_plot%n(2),grid_plot%loc_n_r,&
+                &n_vars))
+            
+            ! calculate 3D X,Y and Z
+            ierr = calc_XYZ_grid(grid_eq,grid_plot,X_plot(:,:,:,1),&
+                &Y_plot(:,:,:,1),Z_plot(:,:,:,1))
+            CHCKERR('')
+            do id = 2,n_vars
+                X_plot(:,:,:,id) = X_plot(:,:,:,1)
+                Y_plot(:,:,:,id) = Y_plot(:,:,:,1)
+                Z_plot(:,:,:,id) = Z_plot(:,:,:,1)
+            end do
+            
+            do kd = 1,grid_plot%loc_n_r
+                f_plot(:,:,kd,1) = Y_plot_2D(kd,1)                              ! safey factor
+                f_plot(:,:,kd,2) = Y_plot_2D(kd,2)                              ! rotational transform
+                f_plot(:,:,kd,3) = Y_plot_2D(kd,3)                              ! pressure
+                f_plot(:,:,kd,4) = Y_plot_2D(kd,4)                              ! poloidal flux
+                f_plot(:,:,kd,5) = Y_plot_2D(kd,5)                              ! toroidal flux
+            end do
+            
+            ! rescale if normalized
+            if (use_normalization) then
+                f_plot(:,:,:,3) = f_plot(:,:,:,3)*pres_0                        ! pressure
+                f_plot(:,:,:,4) = f_plot(:,:,:,4)*psi_0                         ! flux_p
+                f_plot(:,:,:,5) = f_plot(:,:,:,5)*psi_0                         ! flux_t
+            end if
+            
+            ! print the output using HDF5
+            call plot_HDF5(plot_titles,file_name,f_plot,plot_dim,plot_offset,&
+                &X_plot,Y_plot,Z_plot,col=1,descr='Flux quantities')
+            
+            ! deallocate and destroy grid
+            deallocate(Y_plot_2D)
+            deallocate(X_plot,Y_plot,Z_plot,f_plot)
+            call grid_plot%dealloc()
+        end function flux_q_plot_HDF5
+        
+        ! plots the pressure and fluxes in external program
+        integer function flux_q_plot_ex() result(ierr)
+            use eq_vars, only: max_flux_F
+            
+            character(*), parameter :: rout_name = 'flux_q_plot_ex'
+            
+            ! local variables
+            character(len=max_str_ln), allocatable :: file_name(:)              ! file_name
+            real(dp), allocatable :: ser_var_loc(:)                             ! local serial var
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! allocate variabels if master
+            if (rank.eq.0) then
+                allocate(X_plot_2D(grid_trim%n(3),n_vars))
+                allocate(Y_plot_2D(grid_trim%n(3),n_vars))
+            end if
+            
+            ! fill the 2D version of the plot
+            ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),0),ser_var_loc)
+            CHCKERR('')
+            if (rank.eq.0) Y_plot_2D(:,1) = ser_var_loc
+            ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),0),ser_var_loc)
+            CHCKERR('')
+            if (rank.eq.0) Y_plot_2D(:,2) = ser_var_loc
+            ierr = get_ser_var(eq%pres_FD(norm_id(1):norm_id(2),0),ser_var_loc)
+            CHCKERR('')
+            if (rank.eq.0) Y_plot_2D(:,3) = ser_var_loc
+            ierr = get_ser_var(eq%flux_p_FD(norm_id(1):norm_id(2),0),&
+                &ser_var_loc)
+            CHCKERR('')
+            if (rank.eq.0) Y_plot_2D(:,4) = ser_var_loc
+            ierr = get_ser_var(eq%flux_t_FD(norm_id(1):norm_id(2),0),&
+                &ser_var_loc)
+            CHCKERR('')
+            if (rank.eq.0) Y_plot_2D(:,5) = ser_var_loc
+            
+            ! rescale if normalized
+            if (use_normalization .and. rank.eq.0) then
+                Y_plot_2D(:,3) = Y_plot_2D(:,3)*pres_0                          ! pressure
+                Y_plot_2D(:,4) = Y_plot_2D(:,4)*psi_0                           ! flux_p
+                Y_plot_2D(:,5) = Y_plot_2D(:,5)*psi_0                           ! flux_t
+            end if
+            
+            ! continue the plot if master
+            if (rank.eq.0) then
+                ! deallocate local serial variables
+                deallocate(ser_var_loc)
+                
+                ! set up file names
+                allocate(file_name(2))
+                file_name(1) = 'pres'
+                file_name(2) = 'flux'
+                
+                ! 2D normal variable (normalized F coordinate)
+                X_plot_2D(:,1) = grid_trim%r_F*2*pi/max_flux_F
+                do id = 2,n_vars
+                    X_plot_2D(:,id) = X_plot_2D(:,1)
+                end do
+                
+                ! plot the  individual 2D output  of this process  (except q_saf
+                ! and rot_t, as they are already in plot_resonance)
+                call print_ex_2D(plot_titles(3),file_name(1),&
+                    &Y_plot_2D(:,3),X_plot_2D(:,3),draw=.false.)
+                ! fluxes
+                call print_ex_2D(plot_titles(4:5),file_name(2),&
+                    &Y_plot_2D(:,4:5),X_plot_2D(:,4:5),draw=.false.)
+                
+                ! draw plot
+                call draw_ex(plot_titles(3:3),file_name(1),1,1,.false.)         ! pressure
+                call draw_ex(plot_titles(4:5),file_name(2),2,1,.false.)         ! fluxes
+                
+                ! user output
+                call writo('Safety factor and rotational transform are plotted &
+                    &using "plot_resonance"')
+                
+                ! clean up
+                deallocate(X_plot_2D,Y_plot_2D)
+            end if
+        end function flux_q_plot_ex
+    end function flux_q_plot
+    
+    !> Calculates derived equilibrium quantities system.
+    !!
+    !!  - magnetic shear \c S
+    !!  - normal curvature \c kappa_n
+    !!  - geodesic curvature \c kappa_g
+    !!  - parallel current \c sigma
+    !!
+    !! This is done using the formula's from \cite Weyens3D
+    !!
+    !! \return ierr
+    subroutine calc_derived_q(grid_eq,eq_1,eq_2)
+        use num_utilities, only: c, spline3
+        use eq_vars, only: vac_perm
+        use num_vars, only: norm_disc_prec_eq
+#if ldebug
+        use num_vars, only: use_pol_flux_F
+        use num_utilities, only: calc_int
+#endif
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        ! submatrices
+        ! jacobian
+        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
+        real(dp), pointer :: D1J(:,:,:) => null()                               ! D_alpha jac
+        real(dp), pointer :: D2J(:,:,:) => null()                               ! D_psi jac
+        real(dp), pointer :: D3J(:,:,:) => null()                               ! D_theta jac
+        ! lower metric factors
+        real(dp), pointer :: g13(:,:,:) => null()                               ! g_alpha,theta
+        real(dp), pointer :: D2g13(:,:,:) => null()                             ! D_psi g_alpha,theta
+        real(dp), pointer :: D3g13(:,:,:) => null()                             ! D_theta g_alpha,theta
+        real(dp), pointer :: g23(:,:,:) => null()                               ! g_psi,theta
+        real(dp), pointer :: D1g23(:,:,:) => null()                             ! D_alpha g_psi,theta
+        real(dp), pointer :: D3g23(:,:,:) => null()                             ! D_theta g_psi,theta
+        real(dp), pointer :: g33(:,:,:) => null()                               ! g_theta,theta
+        real(dp), pointer :: D1g33(:,:,:) => null()                             ! D_alpha g_theta,theta
+        real(dp), pointer :: D2g33(:,:,:) => null()                             ! D_psi g_theta,theta
+        real(dp), pointer :: D3g33(:,:,:) => null()                             ! D_theta g_theta,theta
+        ! upper metric factors
+        real(dp), pointer :: h12(:,:,:) => null()                               ! h^alpha,psi
+        real(dp), pointer :: D3h12(:,:,:) => null()                             ! D_theta h^alpha,psi
+        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
+        real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
+        real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
+#if ldebug
+        real(dp), pointer :: D13J(:,:,:) => null()                              ! D_alpha,theta jac
+        real(dp), pointer :: D23J(:,:,:) => null()                              ! D_psi,theta jac
+        real(dp), pointer :: D23g13(:,:,:) => null()                            ! D_psi,theta g_alpha,theta
+        real(dp), pointer :: D13g23(:,:,:) => null()                            ! D_alpha,theta g_psi,theta
+        real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
+        real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
+        real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
+        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
+        integer :: istat                                                        ! status
+        integer :: jd                                                           ! counter
+#endif
+        
+        ! user output
+        call writo('Set up derived quantities in flux coordinates')
+        
+        call lvl_ud(1)
+        
+        ! set up submatrices
+        ! jacobian
+        J => eq_2%jac_FD(:,:,:,0,0,0)
+        D1J => eq_2%jac_FD(:,:,:,1,0,0)
+        D2J => eq_2%jac_FD(:,:,:,0,1,0)
+        D3J => eq_2%jac_FD(:,:,:,0,0,1)
+        ! lower metric factors
+        g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+        D2g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0)
+        D3g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,1)
+        g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)
+        D1g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0)
+        D3g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1)
+        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        D1g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),1,0,0)
+        D2g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0)
+        D3g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,1)
+        ! upper metric factors
+        h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+        D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
+        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+        h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0)
+#if ldebug
+        D13J => eq_2%jac_FD(:,:,:,1,0,1)
+        D23J => eq_2%jac_FD(:,:,:,0,1,1)
+        D23g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,1)
+        D13g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,1)
+#endif
+        
+        ! Calculate the shear S
+        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+        
+        ! Calculate the normal curvature kappa_n
+        do kd = 1,grid_eq%loc_n_r
+            eq_2%kappa_n(:,:,kd) = &
+                &vac_perm*J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
+                &1._dp/(2*h22(:,:,kd)) * ( &
+                &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D1J(:,:,kd)/J(:,:,kd) ) + &
+                &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D2J(:,:,kd)/J(:,:,kd) ) + &
+                &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
+                &2*D3J(:,:,kd)/J(:,:,kd) ) )
+        end do
+        
+        ! Calculate the geodesic curvature kappa_g
+        eq_2%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
+            &g13/g33*(0.5*D3g33/g33 - D3J/J)
+        
+        ! Calculate the parallel current sigma
+        eq_2%sigma = 1._dp/vac_perm*&
+            &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
+        do kd = 1,grid_eq%loc_n_r
+            eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) - &
+                &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
+        end do 
+        
+#if ldebug
+        ! test whether -2 p' J kappa_g = D3sigma and plot kappa components
+        if (debug_calc_derived_q) then
+            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
+            call lvl_ud(1)
+            
+            ! allocate variables
+            allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(D3sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            
+            ! point parallel angle
+            if (use_pol_flux_F) then
+                ang_par_F => grid_eq%theta_F
+            else
+                ang_par_F => grid_eq%zeta_F
+            end if
+            
+            ! get derived sigma
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    istat = spline3(norm_disc_prec_eq,ang_par_F(:,jd,kd),&
+                        &eq_2%sigma(:,jd,kd),ang_par_F(:,jd,kd),&
+                        &dynew=D3sigma(:,jd,kd))
+                    CHCKSTT
+                end do
+            end do
+            !!D3sigma_ALT = -1._dp/vac_perm*&
+                !!&(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J**2*D3J + &
+                !!&1._dp/vac_perm*&
+                !!&(D13g23 - D23g13 - (D3g23*D1J + g23*D13J - &
+                !!&D3g13*D2J - g13*D23J)/J + (g23*D1J - g13*D2J)/J**2*D3J)/J
+            !!do kd = 1,grid_eq%loc_n_r
+                !!D3sigma_ALT(:,:,kd) = D3sigma_ALT(:,:,kd) - &
+                    !!&eq_1%pres_FD(kd,1)*(D3J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd) + &
+                    !!&J(:,:,kd)*D3g13(:,:,kd)/g33(:,:,kd) - &
+                    !!&J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2*D3g33(:,:,kd))
+            !!end do 
+            
+            ! calculate alternatively derived sigma
+            do kd = 1,grid_eq%loc_n_r
+                D3sigma_ALT(:,:,kd) = &
+                    &-2*eq_1%pres_FD(kd,1)*eq_2%kappa_g(:,:,kd)*J(:,:,kd)
+            end do
+            
+            ! calculate alternative sigma by integration
+            ! Note:  there  is  an  undetermined constant  of  integration  that
+            ! depends on the normal coordinate and the geodesic coordinate.
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    istat = calc_int(D3sigma_ALT(:,jd,kd),ang_par_F(:,jd,kd),&
+                        &sigma_ALT(:,jd,kd))
+                    CHCKSTT
+                end do
+                sigma_ALT(:,:,kd) = eq_2%sigma(1,1,kd) + sigma_ALT(:,:,kd)
+            end do
+            
+            ! plot output
+            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],&
+                &descr='To test whether -2 p'' J kappa_g = D3sigma',&
+                &output_message=.true.)
+            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_sigma',grid_eq%n,&
+                &[0,0,grid_eq%i_min-1],descr='To test whether &
+                &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
+            
+            ! plot shear
+            call plot_HDF5('shear','TEST_shear',eq_2%S,&
+                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            
+            ! plot kappa_n
+            call plot_HDF5('kappa_n','TEST_kappa_n',eq_2%kappa_n,&
+                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            
+            ! plot kappa_g
+            call plot_HDF5('kappa_g','TEST_kappa_g',eq_2%kappa_g,&
+                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            
+            ! clean up
+            nullify(ang_par_F)
+            
+            call lvl_ud(-1)
+            call writo('Testing done')
+        end if
+#endif
+        
+        ! clean up
+        nullify(J,D1J,D2J,D3J)
+        nullify(g13,D2g13,D3g13)
+        nullify(g23,D1g23,D3g23)
+        nullify(g33,D1g33,D2g33,D3g33)
+        nullify(h12,D3h12)
+        nullify(h22,D3h22)
+        nullify(h23)
+        
+        call lvl_ud(-1)
+    end subroutine calc_derived_q
+    
+    !> Sets up normalization constants.
+    !!
+    !!  - VMEC version (\c eq_style=1):\n
+    !!      Normalization depends on \c norm_style:
+    !!      -# MISHKA
+    !!          - R_0:    major radius (= average magnetic axis)
+    !!          - B_0:    B on magnetic axis (theta = zeta = 0)
+    !!          - pres_0: reference pressure (= B_0^2/mu_0)
+    !!          - psi_0:  reference flux (= R_0^2 B_0)
+    !!          - rho_0:  reference mass density
+    !!      -# COBRA
+    !!          - R_0:    major radius (= average geometric axis)
+    !!          - pres_0: pressure on magnetic axis
+    !!          - B_0:    reference magnetic field (= sqrt(2pres_0mu_0 / beta))
+    !!          - psi_0:  reference flux (= R_0^2 B_0 / aspr^2)
+    !!          - rho_0:  reference mass density
+    !!      where aspr (aspect ratio) and beta are given by VMEC.
+    !!  - HELENA version (\c eq_style=2):\n
+    !!      Normalization  is  used  by  default  and  does  not  depend  on  \c
+    !!      norm_style
+    !!
+    !! \see read_hel()
+    !!
+    !! \note \c rho_0  is not given through by the  equilibrium codes and should
+    !! be user-supplied
+    !!
+    !! \return ierr
+    integer function calc_normalization_const() result(ierr)
+        use num_vars, only: rank, eq_style, mu_0_original, use_normalization, &
+            &rich_restart_lvl
+        use eq_vars, only: T_0, B_0, pres_0, psi_0, R_0, rho_0
+        
+        character(*), parameter :: rout_name = 'calc_normalization_const'
+        
+        ! local variables
+        integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (use_normalization) then
+            ! user output
+            call writo('Calculating the normalization constants')
+            call lvl_ud(1)
+            
+            ! initialize nr_overriden_const
+            nr_overriden_const = 0
+            
+            ! calculation
+            if (rank.eq.0) then
+                ! choose which equilibrium style is being used:
+                !   1:  VMEC
+                !   2:  HELENA
+                select case (eq_style)
+                    case (1)                                                    ! VMEC
+                        call calc_normalization_const_VMEC
+                    case (2)                                                    ! HELENA
+                        call calc_normalization_const_HEL
+                end select
+            end if
+            
+            ! print warning if user-overriden
+            if (nr_overriden_const.gt.0) &
+                &call writo(trim(i2str(nr_overriden_const))//&
+                &' constants were overriden by user. Consistency is NOT &
+                &checked!',warning=.true.)
+            
+            ! print constants
+            call print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
+                &mu_0_original,T_0)
+            
+            ! check whether it is physically consistent
+            if (T_0.lt.0._dp) then
+                ierr = 1
+                err_msg = 'Alfven time is negative. Are you sure the &
+                    &equilibrium is consistent?'
+                CHCKERR(err_msg)
+            end if
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Normalization constants calculated')
+        else if (rich_restart_lvl.eq.1) then                                    ! only for first Richardson leevel
+            ! user output
+            call writo('Normalization not used')
+        end if
+    contains 
+        ! VMEC version
+        subroutine calc_normalization_const_VMEC
+            use num_vars, only: norm_style
+            use VMEC_vars, only: R_V_c, B_0_V, rmax_surf, rmin_surf, pres_V, &
+                &beta_V
+            !use VMEC_vars, only: aspr_V
+            
+            select case (norm_style)
+                ! Note that PB3D does not run with the exact COBRA normalization
+                ! (for style 2), as it is not a pure nondimensionalization, that
+                ! would  modify the  equations by  intrucing extra  factors. The
+                ! diffference between the COBRA  normalization used here and the
+                ! one used in COBRA is given by:
+                !   - B_0 = sqrt(pres_0 mu_0) here
+                !       versus
+                !     B_0 = sqrt(2 pres_0 mu_0 / beta) in COBRA,
+                !   - psi_0 = B_0 R_0^2 here
+                !       versus
+                !     psi_0 = B_0 (R_0/aspr)^2 in COBRA,
+                ! This results in a difference in the factor T_0:
+                !   - T_0 = sqrt(rho_0/pres_0) R_0 here
+                !       versus
+                !     T_0 = sqrt(rho_0/pres_0) R_0 sqrt(beta/2) in COBRA.
+                ! Therefore, the Eigenvalues here should be rescaled as
+                !   - EV_COBRA = EV_PB3D beta/2. This is done automatically.
+                case (1)                                                        ! MISHKA
+                    ! user output
+                    call writo('Using MISHKA normalization')
+                    
+                    ! set the  major radius as the  average value of R_V  on the
+                    ! magnetic axis
+                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        R_0 = R_V_c(1,1,0)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set B_0 from magnetic field on axis
+                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        B_0 = B_0_V
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference pres_0 from B_0
+                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
+                        pres_0 = B_0**2/mu_0_original
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference flux from R_0 and B_0
+                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
+                        psi_0 = R_0**2 * B_0
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                case (2)                                                        ! COBRA
+                    ! user output
+                    call writo('Using COBRA normalization')
+                    
+                    ! set the major radius as the average geometric axis
+                    if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        R_0 = 0.5_dp*(rmin_surf+rmax_surf)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set pres_0 from pressure on axis
+                    if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
+                        pres_0 = pres_V(1,0)
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set the reference value for B_0 from pres_0 and beta
+                    if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
+                        !B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)          ! exact COBRA
+                        B_0 = sqrt(pres_0*mu_0_original)                        ! pure modified COBRA
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! set reference flux from R_0, B_0 and aspr
+                    if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
+                        !psi_0 = B_0 * (R_0/aspr_V)**2                          ! exact COBRA
+                        psi_0 = B_0 * R_0**2                                    ! pure modified COBRA
+                    else
+                        nr_overriden_const = nr_overriden_const + 1
+                    end if
+                    
+                    ! user output concerning pure modified COBRA
+                    call writo('Exact COBRA normalization is substituted by &
+                        &"pure", modified version',warning=.true.)
+                    call writo('This leaves the equations unmodified',&
+                        &alert=.true.)
+                    call writo('To translate to exact COBRA, manually multiply &
+                        &PB3D Eigenvalues by',alert=.true.)
+                    call lvl_ud(1)
+                    call writo(trim(r2str(beta_V/2)),alert=.true.)
+                    call lvl_ud(-1)
+            end select
+            
+            ! rho_0 is set up through an input variable with the same name
+            
+            ! set Alfven time
+            if (T_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+        end subroutine calc_normalization_const_VMEC
+        
+        ! HELENA version
+        subroutine calc_normalization_const_HEL
+            ! user output
+            call writo('Using MISHKA normalization')
+            
+            if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                R_0 = 1._dp
+            end if
+            if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
+                B_0 = 1._dp
+            end if
+            if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
+                pres_0 = B_0**2/mu_0_original
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
+                psi_0 = R_0**2 * B_0
+            else
+                nr_overriden_const = nr_overriden_const + 1
+            end if
+            if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
+        end subroutine calc_normalization_const_HEL
+        
+        ! prints the Normalization factors
+        subroutine print_normalization_const(R_0,rho_0,B_0,pres_0,psi_0,&
+            &mu_0,T_0)
+            ! input / output
+            real(dp), intent(in), optional :: R_0
+            real(dp), intent(in), optional :: rho_0
+            real(dp), intent(in), optional :: B_0
+            real(dp), intent(in), optional :: pres_0
+            real(dp), intent(in), optional :: psi_0
+            real(dp), intent(in), optional :: mu_0
+            real(dp), intent(in), optional :: T_0
+            
+            ! user output
+            if (present(R_0)) call writo('R_0    = '//trim(r2str(R_0))//' m')
+            if (present(rho_0)) call writo('rho_0  = '//trim(r2str(rho_0))//&
+                &' kg/m^3')
+            if (present(B_0)) call writo('B_0    = '//trim(r2str(B_0))//' T')
+            if (present(pres_0)) call writo('pres_0 = '//trim(r2str(pres_0))//&
+                &' Pa')
+            if (present(psi_0)) call writo('psi_0  = '//trim(r2str(psi_0))//&
+                &' Tm^2')
+            if (present(mu_0)) call writo('mu_0   = '//&
+                &trim(r2str(mu_0))//' Tm/A')
+            if (present(T_0)) call writo('T_0    = '//trim(r2str(T_0))//' s')
+        end subroutine print_normalization_const
+    end function calc_normalization_const
+    
+    !> Normalize input quantities.
+    !!
+    !! \see calc_normalization_const()
+    subroutine normalize_input()
+        use num_vars, only: use_normalization, eq_style, mu_0_original
+        use VMEC_ops, only: normalize_VMEC
+        use eq_vars, only: vac_perm
+        
+        ! only normalize if needed
+        if (use_normalization) then
+            ! user output
+            call writo('Start normalizing the input variables')
+            call lvl_ud(1)
+            
+            ! normalize common variables
+            vac_perm = vac_perm/mu_0_original
+            
+            ! choose which equilibrium style is being used:
+            !   1:  VMEC
+            !   2:  HELENA
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    call normalize_VMEC
+                case (2)                                                        ! HELENA
+                    ! other HELENA input already normalized
+                    call writo('HELENA input is already normalized with MISHKA &
+                        &normalization')
+            end select
+            
+            ! user output
+            call lvl_ud(-1)
+            call writo('Normalization done')
+        end if
+    end subroutine normalize_input
+    
+    !> Plots the  magnetic fields.
+    !!
+    !! If multiple equilibrium parallel jobs, every  job does its piece, and the
+    !! results are joined automatically by plot_HDF5.
+    !!
+    !! The outputs are  given in contra- and covariant  components and magnitude
+    !! in multiple coordinate systems, as indicated in calc_vec_comp().
+    !! 
+    !! The starting point is the fact that the magnetic field is given by
+    !!  \f[\vec{B} = \frac{\vec{e}_{\theta}}{\mathcal{J}}, \f]
+    !! in F coordinates. The F covariant components are therefore given by
+    !!  \f[B_i = \frac{g_{i3}}{\mathcal{J}} =
+    !!      \frac{\vec{e}_i \cdot \vec{e}_3}{\mathcal{J}}, \f]
+    !! and the only non-vanishing contravariant component is
+    !!  \f[B^3 = \frac{1}{\mathcal{J}}. \f]
+    !!
+    !! These are then all be transformed to the other coordinate systems.
+    !!
+    !! \note
+    !!  -# Vector plots for different Richardson  levels can be combined to show
+    !!  the total grid by just plotting them all individually.
+    !!  -# The metric factors and transformation matrices have to be allocated.
+    !!
+    !! \return ierr
+    integer function B_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
+        &result(ierr)
+        
+        use grid_utilities, only: calc_vec_comp
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
+        use num_utilities, only: c
+        use eq_vars, only: B_0
+        
+        character(*), parameter :: rout_name = 'B_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level
+        logical, intent(in), optional :: plot_fluxes                            !< plot the fluxes
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< X, Y and Z of grid
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: B_mag(:,:,:)                                   ! magnitude of B (dim1,dim2,dim3)
+        real(dp), allocatable, save :: B_flux_tor(:,:), B_flux_pol(:,:)         ! fluxes
+        character(len=10) :: base_name                                          ! base name
+        logical :: plot_fluxes_loc                                              ! local plot_fluxes
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! set up local plot_fluxes
+        plot_fluxes_loc = .false.
+        if (present(plot_fluxes)) plot_fluxes_loc = plot_fluxes
+        
+        ! set up components and magnitude of B
+        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(B_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        B_com = 0._dp
+        B_mag = 0._dp
+        do id = 1,3
+            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0)
+        end do
+        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) B_com = B_com * B_0
+        
+        ! set plot variables
+        base_name = 'B'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates, including the flux
+        if (plot_fluxes_loc) then
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
+                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,&
+                &v_flux_tor=B_flux_tor,v_flux_pol=B_flux_pol,XYZ=XYZ)
+            CHCKERR('')
+        else
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,&
+                &norm_disc_prec_eq,v_mag=B_mag,base_name=base_name,XYZ=XYZ)
+            CHCKERR('')
+        end if
+    end function B_plot
+    
+    !> Plots the current.
+    !! 
+    !! If multiple equilibrium parallel jobs, every  job does its piece, and the
+    !! results are joined automatically by plot_HDF5.
+    !!
+    !! The outputs are  given in contra- and covariant  components and magnitude
+    !! in multiple coordinate systems, as indicated in calc_vec_comp().
+    !! 
+    !! The starting point is the pressure balance
+    !!  \f[ \nabla p = \vec{J} \times \vec{B}, \f]
+    !! which, using \f$\vec{B} = \frac{\vec{e}_{\theta}}{\mathcal{J}}\f$,
+    !! reduces to
+    !!  \f[J^\alpha = -p'. \f]
+    !! Furthermore, the current has to lie in the magnetic flux surfaces:
+    !!  \f[J^\psi = 0. \f]
+    !! Finally, the  parallel current \f$\sigma\f$  gives an expression  for the
+    !! last contravariant component:
+    !!  \f[J^\theta =
+    !!      \frac{\sigma}{\mathcal{J}} + p' \frac{B_\alpha}{B_\theta}. \f]
+    !! From these, the contravariant components can be calculated as
+    !!  \f[J_i = J^\alpha g_{\alpha,i} + J^\theta g_{\theta,i}. \f]
+    !! 
+    !! These are then all be transformed to the other coordinate systems.
+    !! \note
+    !!  -# Vector plots for different Richardson  levels can be combined to show
+    !!  the total grid by just plotting them all individually.
+    !!  -# The metric factors and transformation matrices have to be allocated.
+    !!
+    !! \return ierr
+    integer function J_plot(grid_eq,eq_1,eq_2,rich_lvl,plot_fluxes,XYZ) &
+        &result(ierr)
+        
+        use grid_utilities, only: calc_vec_comp
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
+        use num_utilities, only: c
+        use eq_vars, only: B_0, R_0, pres_0
+        
+        character(*), parameter :: rout_name = 'J_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level
+        logical, intent(in), optional :: plot_fluxes                            !< plot the fluxes
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< X, Y and Z of grid
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        real(dp), allocatable :: J_com(:,:,:,:,:)                               ! covariant and contravariant components of J (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: J_mag(:,:,:)                                   ! magnitude of J (dim1,dim2,dim3)
+        character(len=10) :: base_name                                          ! base name
+        real(dp), allocatable, save :: J_flux_tor(:,:), J_flux_pol(:,:)         ! fluxes
+        logical :: plot_fluxes_loc                                              ! local plot_fluxes
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! set up local plot_fluxes
+        plot_fluxes_loc = .false.
+        if (present(plot_fluxes)) plot_fluxes_loc = plot_fluxes
+        
+        ! set up components and magnitude of J
+        allocate(J_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(J_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        J_com = 0._dp
+        J_mag = 0._dp
+#if ldebug
+        if (debug_J_plot) then
+            J_com(:,:,:,1,2) = eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0) - &
+                &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,1,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1) + &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,0,1)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) 
+            J_com(:,:,:,1,2) = J_com(:,:,:,1,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
+            J_com(:,:,:,3,2) = eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0) - &
+                &eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,1,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0) + &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)*&
+                &eq_2%jac_FD(:,:,:,0,1,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0) 
+            J_com(:,:,:,3,2) = J_com(:,:,:,3,2)/eq_2%jac_FD(:,:,:,0,0,0)**2
+        else
+#endif
+            do kd = 1,grid_eq%loc_n_r
+                J_com(:,:,kd,1,2) = -eq_1%pres_FD(kd,1)
+                J_com(:,:,kd,3,2) = eq_2%sigma(:,:,kd)/&
+                    &eq_2%jac_FD(:,:,kd,0,0,0) + eq_1%pres_FD(kd,1)*&
+                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) / &
+                    &eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0)
+            end do
+#if ldebug
+        end if
+#endif
+        do id = 1,3
+            J_com(:,:,:,id,1) = &
+                &J_com(:,:,:,1,2)*eq_2%g_FD(:,:,:,c([1,id],.true.),0,0,0) + &
+                &J_com(:,:,:,3,2)*eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)
+        end do
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) J_com = J_com * pres_0/(R_0*B_0)
+        
+        ! set plot variables
+        base_name = 'J'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates, including the flux
+        if (plot_fluxes_loc) then
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
+                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,&
+                &v_flux_tor=J_flux_tor,v_flux_pol=J_flux_pol,XYZ=XYZ)
+            CHCKERR('')
+        else
+            ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,J_com,&
+                &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,XYZ=XYZ)
+            CHCKERR('')
+        end if
+    end function J_plot
+    
+    !> Plots the curvature.
+    !! 
+    !! If multiple equilibrium parallel jobs, every  job does its piece, and the
+    !! results are joined automatically by plot_HDF5.
+    !!
+    !! The outputs are  given in  contra- and covariant  components and  magnitude in
+    !! multiple coordinate systems, as indicated in calc_vec_comp().
+    !! 
+    !! The starting point is the curvature, given by
+    !!  \f[\vec{\kappa} =
+    !!      \kappa_n \frac{\nabla \psi}{ \left|\nabla \psi\right|^2 } +
+    !!      \kappa_g \frac{\nabla \psi \times \vec{B}}{B^2} , \f]
+    !! which can be  used to find the covariant and  contravariant components in
+    !! Flux coordinates.
+    !! 
+    !! These are then  transformed to Cartesian coordinates and plotted.
+    !!
+    !! \note
+    !!  -# Vector plots for different Richardson  levels can be combined to show
+    !!  the total grid by just plotting them all individually.
+    !!  -# The metric factors and transformation matrices have to be allocated.
+    !!
+    !! \return ierr
+    integer function kappa_plot(grid_eq,eq_1,eq_2,rich_lvl,XYZ) &
+        &result(ierr)
+        
+        use grid_utilities, only: calc_vec_comp
+        use eq_vars, only: eq_1_type, eq_2_type
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
+        use num_utilities, only: c
+        use eq_vars, only: R_0
+        use VMEC_utilities, only: calc_trigon_factors
+#if ldebug
+        use num_vars, only: ltest, eq_jobs_lims, eq_job_nr
+        use input_utilities, only: get_log
+        use grid_utilities, only: trim_grid, calc_XYZ_grid
+#endif
+        
+        character(*), parameter :: rout_name = 'kappa_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< metric equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< X, Y and Z of grid
+        
+        ! local variables
+        real(dp), allocatable :: k_com(:,:,:,:,:)                               ! covariant and contravariant components of kappa (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: k_mag(:,:,:)                                   ! magnitude of kappa (dim1,dim2,dim3)
+        character(len=15) :: base_name                                          ! base name
+#if ldebug
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        integer :: id                                                           ! counter
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        real(dp), allocatable :: XYZ_loc(:,:,:,:,:)                             ! X, Y and Z of surface in cylindrical coordinates, trimmed grid
+        real(dp), allocatable :: k_com_inv(:,:,:,:)                             ! inverted cartesian components of curvature
+        logical, save :: asked_for_testing = .false.                            ! whether we have been asked to test
+        logical, save :: testing = .false.                                      ! whether we are testing
+#endif
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        ! set up components and magnitude of kappa
+        allocate(k_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        allocate(k_mag(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        k_com = 0._dp
+        k_mag = 0._dp
+        
+        ! covariant components:
+        !   kappa . e_alpha = kappa_g 
+        !   kappa . e_psi   = kappa_n - kappa_g h12/h22
+        !   kappa . e_theta = 0
+        ! and similar for Q
+        k_com(:,:,:,1,1) = eq_2%kappa_g
+        k_com(:,:,:,2,1) = eq_2%kappa_n - &
+            &eq_2%kappa_g * &
+            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)/&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,3,1) = 0._dp
+        
+        ! contravariant components:
+        !   kappa . nabla alpha = kappa_n h12 + kappa_g g33/(J^2 h22)
+        !   kappa . nabla psi   = kappa_n h22
+        !   kappa . nabla theta = kappa_n h23 - kappa_g g13/(J^2 h22)
+        ! and similar for Q
+        k_com(:,:,:,1,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0) + &
+            &eq_2%kappa_g * &
+            &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0) / &
+            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        k_com(:,:,:,2,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+        k_com(:,:,:,3,2) = eq_2%kappa_n * &
+            &eq_2%h_FD(:,:,:,c([3,2],.true.),0,0,0) - &
+            &eq_2%kappa_g * &
+            &eq_2%g_FD(:,:,:,c([3,1],.true.),0,0,0) / &
+            &(eq_2%jac_FD(:,:,:,0,0,0)**2*&
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0))
+        
+        ! transform back to unnormalized quantity
+        if (use_normalization) k_com = k_com / R_0
+        
+        ! set plot variables
+        base_name = 'kappa'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! transform coordinates
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,k_com,&
+            &norm_disc_prec_eq,v_mag=k_mag,base_name=base_name,XYZ=XYZ)
+        CHCKERR('')
+        
+#if ldebug
+        if (ltest) then
+            if (.not.asked_for_testing) then
+                call writo('Do you want to plot the inversion in kappa?')
+                call lvl_ud(1)
+                testing = get_log(.false.)
+                asked_for_testing = .true.
+                call lvl_ud(-1)
+            end if
+            if (testing) then
+                call writo('Every point in the grid is transformed by &
+                    &displacing it in the direction of the curvature,')
+                call writo('by a distance equal to the inverse of the &
+                    &curvature. I.e. the point is displaced to the center &
+                    &of curvature.')
+                call lvl_ud(1)
+                
+                ! trim equilibrium grid
+                ierr = trim_grid(grid_eq,grid_trim,norm_id)
+                CHCKERR('')
+                
+                ! set up plot dimensions and local dimensions
+                plot_dim = [grid_trim%n,3]
+                plot_offset = [0,0,grid_trim%i_min-1,0]
+                
+                ! possibly modify if multiple equilibrium parallel jobs
+                if (size(eq_jobs_lims,2).gt.1) then
+                    plot_dim(1) = eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                        &eq_jobs_lims(1,1) + 1
+                    plot_offset(1) = eq_jobs_lims(1,eq_job_nr) - 1
+                end if
+                
+                ! set up inverted cartesian components
+                allocate(k_com_inv(grid_trim%n(1),grid_trim%n(2),&
+                    &grid_trim%loc_n_r,3))
+                do id = 1,3
+                    k_com_inv(:,:,:,id) = &
+                        &k_com(:,:,norm_id(1):norm_id(2),id,1)/&
+                        &(k_mag(:,:,norm_id(1):norm_id(2))**2)
+                end do
+                
+                ! if VMEC, calculate trigonometric factors of trimmed grid
+                if (eq_style.eq.1) then
+                    ierr = calc_trigon_factors(grid_trim%theta_E,&
+                        &grid_trim%zeta_E,grid_trim%trigon_factors)
+                    CHCKERR('')
+                end if
+                
+                ! calculate X, Y and Z
+                allocate(XYZ_loc(grid_trim%n(1),grid_trim%n(2),&
+                    &grid_trim%loc_n_r,3,3))
+                ierr = calc_XYZ_grid(grid_eq,grid_trim,XYZ_loc(:,:,:,1,1),&
+                    &XYZ_loc(:,:,:,1,2),XYZ_loc(:,:,:,1,3))
+                CHCKERR('')
+                
+                ! produce a plot of center of curvature for every point
+                call plot_HDF5(['cen_of_curv'],'TEST_cen_of_curv_vec',&
+                    &k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
+                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
+                    &descr='center of curvature')
+                
+                ! displace the points to the center of curvature
+                do id = 1,3
+                    XYZ_loc(:,:,:,1,id) = XYZ_loc(:,:,:,1,id) + &
+                        &k_com_inv(:,:,:,id)
+                end do
+                XYZ_loc(:,:,:,2,:) = XYZ_loc(:,:,:,1,:)
+                XYZ_loc(:,:,:,3,:) = XYZ_loc(:,:,:,3,:)
+                
+                ! produce an inverted plot
+                call plot_HDF5(['cen_of_curv_inv'],'TEST_cen_of_curv_inv_vec',&
+                    &-k_com_inv,tot_dim=plot_dim,loc_offset=plot_offset,&
+                    &X=XYZ_loc(:,:,:,:,1),Y=XYZ_loc(:,:,:,:,2),&
+                    &Z=XYZ_loc(:,:,:,:,3),col=4,cont_plot=eq_job_nr.gt.1,&
+                    &descr='center of curvature')
+                
+                ! clean up
+                call grid_trim%dealloc()
+                
+                call lvl_ud(-1)
+            end if
+        end if
+#endif
+    end function kappa_plot
+    
+    !> Plots  \b HALF  of the  change in  the position  vectors for  2 different
+    !! toroidal positions, which can correspond to a ripple.
+    !!
+    !! Also calculates \b HALF of the relative magnetic perturbation, which also
+    !! corresponds to a ripple.
+    !!
+    !! Finally, if the  output grid contains a  fundamental interval \f$2\pi\f$,
+    !! the proportionality between both is written to a file.
+    !!
+    !! \note  The  metric   factors  and  transformation  matrices  have  to  be
+    !! allocated.
+    !!
+    !! \return ierr
+    integer function delta_r_plot(grid_eq,eq_1,eq_2,XYZ,rich_lvl) &
+        &result(ierr)
+        
+        use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid, &
+            &calc_tor_diff
+        use eq_utilities, only: calc_inv_met
+        use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, RZ_0, &
+            &use_normalization, rank, ex_plot_style, n_procs, prop_B_tor_i
+        use eq_vars, only: B_0
+        use num_utilities, only: c, calc_int, order_per_fun
+        use MPI_utilities, only: get_ser_var
+        
+        character(*), parameter :: rout_name = 'delta_r_plot'
+        
+        ! input / output
+        type(grid_type), intent(inout) :: grid_eq                               !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        real(dp), intent(in) :: XYZ(:,:,:,:)                                    !< X, Y and Z of grid
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
+        real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface in trimmed grid
+        real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
+        real(dp), allocatable :: delta_B_tor(:,:,:)                             ! delta_B/B
+        real(dp), allocatable :: prop_B_tor_tot(:,:)                            ! delta_r / delta_B/B in total grid
+        real(dp), allocatable :: prop_B_tor(:,:,:)                              ! delta_r / delta_B/B
+        real(dp), allocatable :: var_tot_loc(:)                                 ! auxilliary variable
+        real(dp), allocatable :: x_2D(:,:)                                      ! x for 2-D plotting
+        real(dp), allocatable :: delta_r(:,:,:)                                 ! normal displacement
+        real(dp), allocatable :: theta_geo(:,:,:)                               ! geometrical poloidal angle for proportionality factor output
+        real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius for proportionality factor output
+        real(dp), allocatable :: prop_B_tor_plot(:,:)                           ! prop_B_tor and angle at last normal position for plotting
+        logical :: new_file_found                                               ! name for new file found
+        character(len=25) :: base_name                                          ! base name
+        character(len=25) :: plot_name                                          ! plot name
+        character(len=max_str_ln) :: prop_B_tor_file_name                       ! name of B_tor proportionality file
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (eq_style.eq.1 .and. .not.allocated(grid_eq%trigon_factors)) then
+            ierr = 1
+            CHCKERR('trigonometric factors not allocated')
+        end if
+        
+        call writo('Calculate normal displacement')
+        call lvl_ud(1)
+        
+        ! trim grid
+        ierr = trim_grid(grid_eq,grid_trim,norm_id)
+        CHCKERR('')
+        
+        ! calculate local X, Y and Z
+        ! (Can be different from provided one for different plot grid styles)
+        allocate(XYZ_loc(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,4))
+        ierr = calc_XYZ_grid(grid_eq,grid_eq,XYZ_loc(:,:,:,1),XYZ_loc(:,:,:,2),&
+            &XYZ_loc(:,:,:,3),R=XYZ_loc(:,:,:,4))
+        CHCKERR('')
+        
+        ! calculate geometrical poloidal angle and radius
+        allocate(theta_geo(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        allocate(r_geo(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+        theta_geo = atan2(XYZ_loc(:,:,:,3)-RZ_0(2),&
+            &XYZ_loc(:,:,:,4)-RZ_0(1))
+        where (theta_geo.lt.0._dp) theta_geo = theta_geo + 2*pi
+        r_geo = sqrt((XYZ_loc(:,:,:,3)-RZ_0(2))**2 + &
+            &(XYZ_loc(:,:,:,4)-RZ_0(1))**2)
+        
+        ! plot
+        call plot_HDF5('theta_geo','theta_geo',&
+            &theta_geo(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &x=XYZ(:,:,norm_id(1):norm_id(2),1),&
+            &y=XYZ(:,:,norm_id(1):norm_id(2),2),&
+            &z=XYZ(:,:,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
+            &descr='geometrical poloidal angle')
+        call plot_HDF5('r_geo','r_geo',&
+            &r_geo(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &x=XYZ(:,:,norm_id(1):norm_id(2),1),&
+            &y=XYZ(:,:,norm_id(1):norm_id(2),2),&
+            &z=XYZ(:,:,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
+            &descr='geometrical radius')
+        
+        ! calculate perturbation delta_r on radius
+        ierr = calc_tor_diff(r_geo,theta_geo,norm_disc_prec_eq,&
+            &absolute=.true.,r=grid_eq%loc_r_F)
+        CHCKERR('')
+        allocate(delta_r(grid_eq%n(1),1,grid_eq%loc_n_r))
+        delta_r(:,1,:) = r_geo(:,2,:)*0.5_dp                                    ! take factor half as this is absolute
+        deallocate(r_geo)
+        
+        ! set plot variables for delta_r
+        base_name = 'delta_r'
+        plot_name = 'delta_r'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! plot
+        call plot_HDF5(trim(plot_name),trim(base_name),&
+            &delta_r(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
+            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
+            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),&
+            &cont_plot=eq_job_nr.gt.1,&
+            &descr='plasma position displacement')
+        
+        call lvl_ud(-1)
+        
+        call writo('Calculate magnetic field ripple')
+        call lvl_ud(1)
+        
+        ! Calculate cylindrical components of B
+        allocate(B_com(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3,2))
+        B_com = 0._dp
+        do id = 1,3
+            B_com(:,:,:,id,1) = eq_2%g_FD(:,:,:,c([3,id],.true.),0,0,0)/&
+                &eq_2%jac_FD(:,:,:,0,0,0)
+        end do
+        B_com(:,:,:,3,2) = 1._dp/eq_2%jac_FD(:,:,:,0,0,0)
+        if (use_normalization) B_com = B_com * B_0
+        ierr = calc_vec_comp(grid_eq,grid_eq,eq_1,eq_2,B_com,norm_disc_prec_eq,&
+            &max_transf=4)
+        CHCKERR('')
+        
+        ! calculate perturbation
+        ierr = calc_tor_diff(B_com,theta_geo,norm_disc_prec_eq,&
+            &r=grid_eq%loc_r_F)
+        CHCKERR('')
+        allocate(delta_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
+        delta_B_tor(:,1,:) = 0.5_dp*sum(B_com(:,2,:,2,:),3)
+        deallocate(B_com)
+        
+        ! set plot variables for delta_B_tor
+        base_name = 'delta_B_tor'
+        plot_name = 'delta_B_tor'
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! plot with HDF5
+        call plot_HDF5(trim(plot_name),trim(base_name),&
+            &delta_B_tor(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
+            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
+            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),cont_plot=eq_job_nr.gt.1,&
+            &descr='plasma position displacement')
+        
+        call lvl_ud(-1)
+        
+        call writo('Calculate proportionality factor')
+        call lvl_ud(1)
+        
+        allocate(prop_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
+        prop_B_tor = 0.0_dp
+        where (delta_B_tor.gt.0._dp) prop_B_tor = delta_r / delta_B_tor
+        
+        ! set plot variables for prop_B_tor
+        base_name = 'prop_B_tor'
+        plot_name = trim(base_name)
+        if (present(rich_lvl)) then
+            if (rich_lvl.gt.0) base_name = trim(base_name)//'_R_'//&
+                &trim(i2str(rich_lvl))
+        end if
+        
+        ! plot with HDF5
+        call plot_HDF5(plot_name,trim(base_name),&
+            &prop_B_tor(:,:,norm_id(1):norm_id(2)),&
+            &tot_dim=[grid_trim%n(1),1,grid_trim%n(3)],&
+            &loc_offset=[0,0,grid_trim%i_min-1],&
+            &x=XYZ(:,2:2,norm_id(1):norm_id(2),1),&
+            &y=XYZ(:,2:2,norm_id(1):norm_id(2),2),&
+            &z=XYZ(:,2:2,norm_id(1):norm_id(2),3),&
+            &cont_plot=eq_job_nr.gt.1,&
+            &descr='delta_r divided by delta_B_tor')
+        
+        ! plot in 2-D
+        r_lim_2D = [1,grid_trim%n(3)]
+        if (ex_plot_style.eq.2) r_lim_2D(1) = &
+            &max(r_lim_2D(1),r_lim_2D(2)-127+1)                                 ! Bokeh can only handle 255/2 input arguments
+        if (rank.eq.0) then
+            allocate(x_2D(grid_trim%n(1),grid_trim%n(3)))
+        end if
+        allocate(prop_B_tor_tot(grid_trim%n(1),grid_trim%n(3)))
+        do id = 1,grid_trim%n(1)
+            ! prop_B_tor (all procs)
+            ierr = get_ser_var(prop_B_tor(id,1,norm_id(1):norm_id(2)),&
+                &var_tot_loc,scatter=.true.)
+            CHCKERR('')
+            prop_B_tor_tot(id,:) = max(min(var_tot_loc,2._dp),-2._dp)           ! limit to avoid division by small delta_B_tor values
+            deallocate(var_tot_loc)
+            
+            ! theta_geo (only master)
+            ierr = get_ser_var(theta_geo(id,2,norm_id(1):norm_id(2)),&
+                &var_tot_loc)
+            CHCKERR('')
+            if (rank.eq.0) x_2D(id,:) = var_tot_loc/pi
+            deallocate(var_tot_loc)
+        end do
+        if (rank.eq.0) then
+            call print_ex_2D([trim(plot_name)],trim(base_name),&
+                &prop_B_tor_tot(:,r_lim_2D(1):r_lim_2D(2)),&
+                &x=x_2D(:,r_lim_2D(1):r_lim_2D(2)),draw=.false.)
+            call draw_ex([trim(plot_name)],trim(base_name),&
+                &r_lim_2D(2)-r_lim_2D(1)+1,1,.false.)
+        end if
+        
+        call lvl_ud(-1)
+        
+        call writo('Output to file as function of poloidal flux angle')
+        call lvl_ud(1)
+        
+        ! only last rank outputs to file (it has the last normal position)
+        if (rank.eq.n_procs-1) then
+            ! find new file name
+            new_file_found = .false.
+            prop_B_tor_file_name = 'prop_B_tor'
+            kd = 1
+            do while (.not.new_file_found)
+                open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
+                    &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
+                if (ierr.eq.0) then
+                    kd = kd + 1
+                else
+                    prop_B_tor_file_name = trim(prop_B_tor_file_name)//&
+                        &'_'//trim(i2str(kd))//'.dat'
+                    new_file_found = .true.
+                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
+                        &IOSTAT=ierr,STATUS='new')
+                    CHCKERR('Failed to open file')
+                end if
+            end do
+            
+            ! user output
+            call writo('Save toroidal field proportionality factor in &
+                &file "'//trim(prop_B_tor_file_name)//'"',persistent=.true.)
+            
+            ! order  output, taking away last  point as it is  equivalent to
+            ! the first
+            ierr = order_per_fun(reshape([&
+                &theta_geo(1:grid_trim%n(1)-1,1,grid_trim%loc_n_r),&
+                &prop_B_tor_tot(1:grid_trim%n(1)-1,grid_trim%n(3))],&
+                &[grid_trim%n(1)-1,2]),prop_B_tor_plot,0)
+            CHCKERR('')
+            
+            ! write to output file
+            write(prop_B_tor_i,'("# ",2(A23," "))') &
+                &'pol. angle [ ]', 'prop. factor [ ]'
+            do id = 1,grid_trim%n(1)-1
+                write(prop_B_tor_i,'("  ",2(ES23.16," "))') &
+                    &prop_B_tor_plot(id,:)
+            end do
+            
+            ! close
+            close(prop_B_tor_i)
+        end if
+        
+        call lvl_ud(-1)
+        
+        ! clean up
+        call grid_trim%dealloc()
+    end function delta_r_plot
+
+    !> Divides the equilibrium jobs.
+    !!
+    !! For PB3D,  the entire  parallel range  has to be  calculated, but  due to
+    !! memory limits this has  to be split up in pieces. Every  piece has to be!
+    !! able to  contain the equilibrium variables  (see note below), as  well as
+    !! the  vectorial  perturbation variables.  These  are  later combined  into
+    !! tensorial variables and integrated.
+    !! 
+    !! The  equilibrium variables  have to  be  operated on  to calculate  them,
+    !! which  translates to  a scale  factor \c  mem_scale_fac. However,  in the
+    !! perturbation phase,  when they are  just used,  this scale factor  is not
+    !! needed.
+    !! 
+    !! In its most  extreme form, the division in equilibrium  jobs would be the
+    !! individual  calculation  on a  fundamental  integration  integral of  the
+    !! parallel points:
+    !!  - for \c magn_int_style=1 (trapezoidal), this is 1 point,
+    !!  - for \c magn_int_style=2 (Simpson 3/8), this is 3 points.
+    !!
+    !! For  HELENA,  the parallel  derivatives  are  calculated discretely,  the
+    !! equilibrium and  vectorial perturbation variables are  tabulated first in
+    !! this HELENA  grid. This  happens in  the first  Richardson level.  In all
+    !! Richardson levels,  afterwards, these  variables are interpolated  in the
+    !! angular directions. In this case, therefore,  there can be no division of
+    !! this HELENA output interval for the first Richardson level.
+    !!
+    !! This procedure  does the  job of  dividing the  grids setting  the global
+    !! variables \c eq_jobs_lims.
+    !!
+    !! The integration of the tensorial perturbation variables is adjusted:
+    !!  - If  the first job  of the parallel jobs  and not the  first Richardson
+    !!  level: add half  of the integrated tensorial  perturbation quantities of
+    !!  the previous level.
+    !!  -  If  not the  first  job  of the  parallel  jobs,  add the  integrated
+    !!  tensorial perturbation quantities to those of the previous parallel job,
+    !!  same Richardson level.
+    !!
+    !! In fact,  the equilibrium jobs  have much  in common with  the Richardson
+    !! levels,  as is  attested by  the existence  of the  routines do_eq()  and
+    !! eq_info(, which are equivalent to do_rich() and rich_info().
+    !!
+    !! In  POST, finally,  the situation  is slightly  different for  HELENA, as
+    !! all  the requested  variables  have to  fit,  including the  interpolated
+    !! variables, as they are stored whereas  in PB3D they are not. The parallel
+    !! range to be  taken is then the  one of the output grid,  including a base
+    !! range for the variables tabulated on  the HELENA grid. Also, for extended
+    !! output grids,  the size  of the  grid in  the secondary  angle has  to be
+    !! included in \c n_par_X (i.e. toroidal when poloidal flux is used and vice
+    !! versa). Furthermore, multiple equilibrium jobs are allowed.
+    !!
+    !! To this  end, optionally, a base  number can be provided  for \c n_par_X,
+    !! that is always added to the number of points in the divided \c n_par_X.
+    !!
+    !! \note For  PB3D, only the  variables \c g_FD, \c  h_FD and \c  jac_FD are
+    !! counted, as the equilibrium variables and the transformation matrices are
+    !! deleted after use. Also, \c S, \c sigma, \c kappa_n and \c kappa_g can be
+    !! neglected  as they  do not  contain  derivatives and  are therefore  much
+    !! smaller. in both routines  calc_memory_eq() and calc_memory_x(), however,
+    !! a 50% safety factor is used to account for this somewhat.
+    !!
+    !! \return ierr
     integer function divide_eq_jobs(n_par_X,arr_size,n_div,n_div_max,&
         &n_par_X_base,range_name) result(ierr)
         
@@ -4646,12 +4888,12 @@ contains
         character(*), parameter :: rout_name = 'divide_eq_jobs'
         
         ! input / output
-        integer, intent(in) :: n_par_X                                          ! number of parallel points to be divided
-        integer, intent(in) :: arr_size(2)                                      ! array size (using loc_n_r) for eq_2 and X_1 variables
-        integer, intent(inout) :: n_div                                         ! final number of divisions
-        integer, intent(in), optional :: n_div_max                              ! maximum n_div
-        integer, intent(in), optional :: n_par_X_base                           ! base n_par_X, undivisible
-        character(len=*), intent(in), optional :: range_name                    ! name of range
+        integer, intent(in) :: n_par_X                                          !< number of parallel points to be divided
+        integer, intent(in) :: arr_size(2)                                      !< array size (using loc_n_r) for eq_2 and X_1 variables
+        integer, intent(inout) :: n_div                                         !< final number of divisions
+        integer, intent(in), optional :: n_div_max                              !< maximum n_div
+        integer, intent(in), optional :: n_par_X_base                           !< base n_par_X, undivisible
+        character(len=*), intent(in), optional :: range_name                    !< name of range
         
         ! local variables
         real(dp) :: mem_size(2)                                                 ! approximation of memory required for eq_2 and X_1 variables
@@ -4750,18 +4992,25 @@ contains
         call writo('Equilibrium jobs divided')
     end function divide_eq_jobs
     
-    ! Calculate eq_jobs_lims.
-    ! Take into account that every job has to start and end at the start and end
-    ! of a fundamental integration interval, as discussed in above:
-    !   - for magn_int_style = 1 (trapezoidal), this is 1 point,
-    !   - for magn_int_style = 2 (Simpson 3/8), this is 3 points.
-    ! for POST, there are  no Richardson levels, and there has  to be overlap of
-    ! one always, in order to have  correct composite integrals of the different
-    ! regions.
-    ! Note that  the n_par_X passed into  this procedure refers to  the quantity
-    ! that is already possibly halved if  the Richardson level is higher than 1.
-    ! This information is then reflected in the eq_jobs_lims, which refer to the
-    ! local limits, i.e. only the parallel points currently under consideration.
+    !> Calculate \c eq_jobs_lims.
+    !!
+    !! Take  into  account  that  every  job   has  to  start  and  end  at  the
+    !! start  and end  of a  fundamental integration  interval, as  discussed in
+    !! divide_eq_jobs():
+    !!  - for \c magn_int_style=1 (trapezoidal), this is 1 point,
+    !!  - for \c magn_int_style=2 (Simpson 3/8), this is 3 points.
+    !!
+    !! for POST, there are no Richardson levels,  and there has to be overlap of
+    !! one always, in order to have correct composite integrals of the different
+    !! regions.
+    !!
+    !! \note The  \c n_par_X passed into  this procedure refers to  the quantity
+    !! that is already possibly halved if the Richardson level is higher than 1.
+    !! This  information is  then  reflected in  the  eq_jobs_lims, which  refer
+    !! to  the local  limits,  i.e.  only the  parallel  points currently  under
+    !! consideration.
+    !!
+    !! \return ierr
     integer function calc_eq_jobs_lims(n_par_X,n_div) result(ierr)
         use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
         use rich_vars, only: rich_lvl
@@ -4769,8 +5018,8 @@ contains
         character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
         
         ! input / output
-        integer, intent(in) :: n_par_X                                          ! number of parallel points in this Richardson level
-        integer, intent(in) :: n_div                                            ! nr. of divisions of parallel ranges
+        integer, intent(in) :: n_par_X                                          !< number of parallel points in this Richardson level
+        integer, intent(in) :: n_div                                            !< nr. of divisions of parallel ranges
         
         ! local variables
         integer :: id                                                           ! counter
@@ -4835,7 +5084,11 @@ contains
     end function calc_eq_jobs_lims
     
 #if ldebug
-    ! See if T_EF it complies with the theory of [ADD REF]
+    !> See if \c T_EF it complies with the theory of \cite Weyens3D.
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_T_EF(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style
         use grid_utilities, only: trim_grid
@@ -4845,9 +5098,9 @@ contains
         character(*), parameter :: rout_name = 'test_T_EF'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
         integer :: id, kd                                                       ! counter
@@ -5004,7 +5257,12 @@ contains
         call writo('Test complete')
     end function test_T_EF
     
-    ! Tests whether D1 D2 h_H is calculated correctly
+    !> Tests whether \f$ \frac{\partial^2}{\partial u_i \partial u_j} h_\text{H}
+    !! \f$ is calculated correctly.
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_D12h_H(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
         use num_utilities, only: c
@@ -5013,8 +5271,8 @@ contains
         character(*), parameter :: rout_name = 'test_D12h_H'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       !< metric equilibrium
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -5088,9 +5346,14 @@ contains
         call writo('Test complete')
     end function test_D12h_H
     
-    ! performs tests on Jacobian in Flux coordinates
-    !   - comparing it with the determinant of g_F
-    !   - comparing it with the direct formula
+    !> Performs  tests  on \f$  \mathcal{J}_\text{F}\f$.
+    !!
+    !!  - comparing it with the determinant of \f$g_\text{F}\f$
+    !!  - comparing it with the direct formula
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_jac_F(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: eq_style, use_pol_flux_F
         use grid_utilities, only: trim_grid
@@ -5100,9 +5363,9 @@ contains
         character(*), parameter :: rout_name = 'test_jac_F'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in), target :: eq_1                             ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in), target :: eq_1                             !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -5203,7 +5466,11 @@ contains
         call writo('Test complete')
     end function test_jac_F
     
-    ! Tests whether g_V is calculated correctly
+    !! Tests whether \f$g_\text{V}\f$ is calculated correctly.
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_g_V(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
         use num_utilities, only: c
@@ -5211,8 +5478,8 @@ contains
         character(*), parameter :: rout_name = 'test_g_V'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       !< metric equilibrium
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -5298,7 +5565,11 @@ contains
         call writo('Test complete')
     end function test_g_V
     
-    ! Tests whether jac_V is calculated correctly
+    !> Tests whether \f$\mathcal{J}_\text{V}\f$ is calculated correctly.
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_jac_V(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
         use num_utilities, only: calc_det
@@ -5306,8 +5577,8 @@ contains
         character(*), parameter :: rout_name = 'test_jac_V'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_2_type), intent(in) :: eq                                       ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_2_type), intent(in) :: eq                                       !< metric equilibrium
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -5358,7 +5629,11 @@ contains
         call writo('Test complete')
     end function test_jac_V
     
-    ! Tests whether B_F is calculated correctly
+    !> Tests whether \f$\vec{B}_\text{F}\f$ is calculated correctly.
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_B_F(grid_eq,eq_1,eq_2) result(ierr)
         use num_vars, only: eq_style
         use grid_utilities, only: trim_grid
@@ -5369,9 +5644,9 @@ contains
         character(*), parameter :: rout_name = 'test_B_F'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
@@ -5503,10 +5778,20 @@ contains
         call writo('Test complete')
     end function test_B_F
     
-    ! performs tests on pressure balance
-    !   - mu_0 D2p = 1/J (D3 B_2 - D2 B_3)
-    !   - mu_0 J D3p = 0 => D3 B_1 = D1 B_3
-    ! (working in the (modified) Flux coordinates (alpha,psi,theta)_F)
+    !> Performs tests on pressure balance.
+    !!
+    !!  \f[\mu_0 \frac{\partial p}{\partial u^2} = \frac{1}{\mathcal{J}}
+    !!      \left(\frac{\partial B_2}{\partial u^3} -
+    !!      \frac{\partial B_3}{\partial u^2}\right)\f]
+    !!  \f[\mu_0 \mathcal{J} \frac{\partial p}{\partial u^3} = 0 \rightarrow
+    !!      \left(\frac{\partial B_1}{\partial u^3} =
+    !!      \frac{\partial B_3}{\partial u^1}\right), \f]
+    !! working in the (modified) Flux coordinates
+    !!      \f$\left(\alpha,\psi,\theta\right)_\text{F}\f$
+    !!
+    !! \note Debug version only
+    !!
+    !! \return ierr
     integer function test_p(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c, spline3
         use grid_utilities, only: trim_grid
@@ -5517,9 +5802,9 @@ contains
         character(*), parameter :: rout_name = 'test_p'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids

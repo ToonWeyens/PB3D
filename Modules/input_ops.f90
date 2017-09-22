@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations concerning giving input                                         !
+!> Operations concerning giving input.
 !------------------------------------------------------------------------------!
 module input_ops
 #include <PB3D_macros.h>
@@ -13,9 +13,12 @@ module input_ops
     public read_input_opts, read_input_eq, print_output_in
     
 contains
-    ! reads input options from user-provided input file
-    ! These variables will be passed on through MPI.
-    ! [MPI] only master
+    !> Reads input options from user-provided input file.
+    !! 
+    !! This  is done  by the  master process  and these  variables will  then be
+    !! passed on through MPI to other processes in broadcast_input_opts().
+    !!
+    !! \return ierr
     integer function read_input_opts() result(ierr)
         use num_vars, only: &
             &max_it_zero, tol_zero, max_it_rich, input_i, use_pol_flux_F, &
@@ -44,12 +47,12 @@ contains
         character(*), parameter :: rout_name = 'read_input_opts'
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: PB3D_rich_lvl                                                ! Richardson level to post-process (for POST)
-        integer, parameter :: max_size_tol_SLEPC = 100                          ! maximum size of tol_SLEPC
-        real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               ! tol_SLEPC
-        real(dp), parameter :: min_tol = 1.E-12_dp                              ! minimum general tolerance
-        real(dp), parameter :: max_tol = 1.E-3_dp                               ! maximum general tolerance
+        character(len=max_str_ln) :: err_msg                                    !< error message
+        integer :: PB3D_rich_lvl                                                !< Richardson level to post-process (for POST)
+        integer, parameter :: max_size_tol_SLEPC = 100                          !< maximum size of tol_SLEPC
+        real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               !< tol_SLEPC
+        real(dp), parameter :: min_tol = 1.E-12_dp                              !< minimum general tolerance
+        real(dp), parameter :: max_tol = 1.E-3_dp                               !< maximum general tolerance
         
         ! input options
         namelist /inputdata_PB3D/ min_par_X, max_par_X, alpha, min_r_sol, &
@@ -886,8 +889,13 @@ contains
         end function adapt_normalization
     end function read_input_opts
     
-    ! Reads the equilibrium input file if no Richardson restart.
-    ! These variables will be passed on through HDF5 data files.
+    !> Reads the equilibrium input file if no Richardson restart.
+    !!
+    !! These variables will be passed on through the HDF5 data system.
+    !!
+    !! \see reconstruct_pb3d_in().
+    !!
+    !! \return ierr
     integer function read_input_eq() result(ierr)
         use num_vars, only: eq_style, use_pol_flux_E, eq_i
         use VMEC_ops, only: read_VMEC
@@ -916,40 +924,47 @@ contains
         close(eq_i)
     end function read_input_eq
     
-    ! Print input quantities to an output file:
-    !   - misc_in:   prog_version, eq_style, rho_style, R_0, pres_0, B_0, psi_0
-    !                rho_0, T_0, vac_perm, use_pol_flux_F, use_pol_flux_E,
-    !                use_normalization, norm_disc_prec_eq, norm_disc_style_sol, 
-    !                n_r_in, n_r_eq, n_r_sol, debug_version
-    !   - misc_in_V: is_asym_V, is_freeb_V, mnmax_V, mpol_V, ntor_V, gam_V
-    !   - flux_t_V
-    !   - flux_p_V
-    !   - pres_V
-    !   - rot_t_V
-    !   - q_saf_V
-    !   - mn_V
-    !   - R_V_c
-    !   - R_V_s
-    !   - Z_V_c
-    !   - Z_V_s
-    !   - L_V_c
-    !   - L_V_s
-    !   - B_V_sub:   B_V_sub_c, B_V_sub_s
-    !   - B_V: B_V_c, B_V_s
-    !   - jac_V: jac_V_c, jac_V_s
-    !   - misc_in_H: ias, nchi
-    !   - RZ_H:      R_H, Z_H
-    !   - chi_H
-    !   - q_saf_H
-    !   - rot_t_H
-    !   - RBphi_H
-    !   - pres_H
-    !   - flux_p_H
-    !   - flux_t_H
-    !   - misc_X:    prim_X, n_mod_X, min_sec_X, max_sec_X, norm_disc_prec_X,
-    !                norm_style, U_style, X_style, matrix_SLEPC_style, K_style
-    !   - misc_sol:  min_r_sol, max_r_sol, alpha, norm_disc_prec_sol, BC_style,
-    !                EV_BC, EV_BC
+    !> Print input quantities to an output file.
+    !!
+    !! Variables printed:
+    !!  -  \c misc_in:  \c  prog_version,  \c eq_style,  \c  rho_style, \c  R_0,
+    !!  \c  pres_0,   \c  B_0,  \c  psi_0   \c  rho_0,  \c  T_0,   \c  vac_perm,
+    !!  \c   use_pol_flux_F,  \c   use_pol_flux_E,   \c  use_normalization,   \c
+    !!  norm_disc_prec_eq, \c norm_disc_style_sol, \c n_r_in, \c n_r_eq, \c
+    !!  n_r_sol, \c debug_version
+    !!  -  \c misc_in_V: \c is_asym_V,  \c is_freeb_V, \c mnmax_V,  \c mpol_V, \c
+    !!  ntor_V, \c gam_V
+    !!  - \c flux_t_V
+    !!  - \c flux_p_V
+    !!  - \c pres_V
+    !!  - \c rot_t_V
+    !!  - \c q_saf_V
+    !!  - \c mn_V
+    !!  - \c R_V_c
+    !!  - \c R_V_s
+    !!  - \c Z_V_c
+    !!  - \c Z_V_s
+    !!  - \c L_V_c
+    !!  - \c L_V_s
+    !!  - \c B_V_sub: \c B_V_sub_c, \c B_V_sub_s
+    !!  - \c B_V: \c B_V_c, \c B_V_s
+    !!  - \c jac_V: \c jac_V_c, \c jac_V_s
+    !!  - \c misc_in_H: \c ias, \c nchi
+    !!  - \c RZ_H: \c R_H, \c Z_H
+    !!  - \c chi_H
+    !!  - \c q_saf_H
+    !!  - \c rot_t_H
+    !!  - \c RBphi_H
+    !!  - \c pres_H
+    !!  - \c flux_p_H
+    !!  - \c flux_t_H
+    !!  -  \c  misc_X:  \c  prim_X,  \c n_mod_X,  \c  min_sec_X,  \c  max_sec_X,
+    !!  \c  norm_disc_prec_X,   \c  norm_style,  \c  U_style,   \c  X_style,  \c
+    !!  matrix_SLEPC_style, \c K_style
+    !!  -   \c   misc_sol:   \c   min_r_sol,  \c   max_r_sol,   \c   alpha,   \c
+    !!  norm_disc_prec_sol, \c BC_style, \c EV_BC, \c EV_BC
+    !!
+    !! \return ierr
     integer function print_output_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
@@ -981,7 +996,7 @@ contains
         character(*), parameter :: rout_name = 'print_output_in'
         
         ! input / output
-        character(len=*), intent(in) :: data_name                               ! name under which to store
+        character(len=*), intent(in) :: data_name                               !< name under which to store
         
         ! local variables
         type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables

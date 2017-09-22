@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables pertaining to the solution quantities                            !
+!> Variables pertaining to the solution quantities.
 !------------------------------------------------------------------------------!
 module sol_vars
 #include <PB3D_macros.h>
@@ -12,30 +12,30 @@ module sol_vars
     implicit none
     
     private
-    public sol_type, &
-        &alpha
+    public alpha
 #if ldebug
     public n_alloc_sols
 #endif
     
     ! global variables
-    real(dp) :: alpha                                                           ! field line label alpha
+    real(dp) :: alpha                                                           !< field line label alpha \ldebug
 #if ldebug
-    integer :: n_alloc_sols                                                     ! nr. of allocated grids
+    integer :: n_alloc_sols                                                     !< nr. of allocated grids \ldebug
 #endif
     
-    ! solution type
-    ! The arrays here are of the form:
-    !   - val: 1:n_EV
-    !   - vec: (1:n_mod,1:loc_n_r,1:n_EV)
-    type :: sol_type
-        integer :: n_mod                                                        ! size of n and m (nr. of modes)
-        integer, allocatable :: n(:,:)                                          ! vector of poloidal mode numbers
-        integer, allocatable :: m(:,:)                                          ! vector of poloidal mode numbers
-        complex(dp), allocatable :: vec(:,:,:)                                  ! Eigenvector solution
-        complex(dp), allocatable :: val(:)                                      ! Eigenvalue solution
+    !> solution type
+    !!
+    !! The arrays here are of the form:
+    !!  - \c val: <tt>(1:n_EV)</tt>
+    !!  - \c vec: <tt>(1:n_mod,1:loc_n_r,1:n_EV)</tt>
+    type, public :: sol_type
+        integer :: n_mod                                                        !< size of n and m (nr. of modes)
+        integer, allocatable :: n(:,:)                                          !< vector of poloidal mode numbers
+        integer, allocatable :: m(:,:)                                          !< vector of poloidal mode numbers
+        complex(dp), allocatable :: vec(:,:,:)                                  !< Eigenvector solution
+        complex(dp), allocatable :: val(:)                                      !< Eigenvalue solution
 #if ldebug
-        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
         procedure :: init => init_sol
@@ -43,13 +43,17 @@ module sol_vars
     end type
     
 contains
-    ! Initialize a solution type and allocate the variables. The number of modes
-    ! as well as n and m set up.
-    ! Optionally, the secondary mode number can be specified (m if poloidal flux
-    ! is used  and n  if toroidal  flux). By  default, they  are taken  from the
-    ! global X_vars variables.
-    ! Note: The lowest limits of the grid  need to be 1; e.g. grid_sol%i_min = 1
-    ! for first process.
+    !> \public Initialize a solution type and allocate the variables.
+    !!
+    !! The number of modes as well as \c n and \c m are also set up.
+    !!
+    !! Optionally, the secondary mode number can  be specified (\c m if poloidal
+    !! flux is used as normal coordinate and  c n if toroidal flux). By default,
+    !! they are taken from the global \c X_vars variables.
+    !!
+    !! \note If the lowest limits of  the grid is not 1 (e.g. <tt>grid_sol%i_min
+    !! = 1</tt> for first process), the input variable \c i_min should be set to
+    !! set correctly. For a full grid, it should be set to 1.
     subroutine init_sol(sol,grid_sol,n_EV,lim_sec_X)
         use X_vars, only: set_nm_X
 #if ldebug
@@ -57,10 +61,10 @@ contains
 #endif
         
         ! input / output
-        class(sol_type), intent(inout) :: sol                                   ! solution variables
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid
-        integer, intent(in) :: n_EV                                             ! nr. of Eigenvalues
-        integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
+        class(sol_type), intent(inout) :: sol                                   !< solution variables
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        integer, intent(in) :: n_EV                                             !< nr. of Eigenvalues
+        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         
 #if ldebug
         ! initialize memory usage
@@ -92,15 +96,16 @@ contains
 #endif
     end subroutine init_sol
     
-    ! deallocates solution variables
-    ! Note: intent(out) automatically deallocates the variable
+    !> \public Deallocates solution variables.
+    !!
+    !! \note intent(out) automatically deallocates the variable
     subroutine dealloc_sol(sol)
 #if ldebug
         use num_vars, only: rank, print_mem_usage
 #endif
         
         ! input / output
-        class(sol_type), intent(inout) :: sol                                   ! solution variables to be deallocated
+        class(sol_type), intent(inout) :: sol                                   !< solution variables to be deallocated
         
 #if ldebug
         ! local variables

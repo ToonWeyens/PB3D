@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables pertaining to the perturbation quantities                        !
+!> Variables pertaining to the perturbation quantities.
 !------------------------------------------------------------------------------!
 module X_vars
 #include <PB3D_macros.h>
@@ -12,7 +12,6 @@ module X_vars
     
     private
     public set_nm_X, set_nn_mod, &
-        &X_1_type, X_2_type, &
         &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
         &min_m_X, max_m_X, min_r_sol, max_r_sol, n_X, m_X, sec_X_ind
 #if ldebug
@@ -20,63 +19,69 @@ module X_vars
 #endif
     
     ! global variables
-    integer :: prim_X                                                           ! n_X (pol. flux) or m_X (tor. flux)
-    integer :: min_sec_X, max_sec_X                                             ! m_X (pol. flux) or n_X (tor. flux) (only for X style 1)
-    integer :: n_mod_X                                                          ! size of m_X (pol. flux) or n_X (tor. flux)
-    integer :: min_nm_X = 5                                                     ! minimum for the high-n theory (arbitrary and probably too low)
-    integer, allocatable :: min_n_X(:)                                          ! lowest poloidal mode number m_X, in total eq grid
-    integer, allocatable :: max_n_X(:)                                          ! highest poloidal mode number m_X, in total eq grid
-    integer, allocatable :: min_m_X(:)                                          ! lowest poloidal mode number m_X, in total eq grid
-    integer, allocatable :: max_m_X(:)                                          ! highest poloidal mode number m_X, in total eq grid
-    integer, allocatable :: n_X(:,:)                                            ! n for all modes, in total X grid
-    integer, allocatable :: m_X(:,:)                                            ! m for all modes, in total X grid
-    integer, allocatable :: sec_X_ind(:,:)                                      ! index of m or n for all possible modes, in total X grid
-    real(dp) :: min_r_sol, max_r_sol                                            ! min. and max. normal range for pert.
+    integer :: prim_X                                                           !< \c n_X (pol. flux) or \c m_X (tor. flux)
+    integer :: min_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for \c X style 1)
+    integer :: max_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for\ c X style 1)
+    integer :: n_mod_X                                                          !< size of \c m_X (pol. flux) or \c n_X (tor. flux)
+    integer :: min_nm_X = 5                                                     !< minimum for the high-n theory (debable)
+    integer, allocatable :: min_n_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: max_n_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: min_m_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: max_m_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: n_X(:,:)                                            !< \f$n\f$ for all modes, in total X grid
+    integer, allocatable :: m_X(:,:)                                            !< \f$m\f$ for all modes, in total X grid
+    integer, allocatable :: sec_X_ind(:,:)                                      !< index of \c m_X or \c n_X for all possible modes, in total X grid
+    real(dp) :: min_r_sol, max_r_sol                                            !< min. and max. normal range for pert.
 #if ldebug
-    integer :: n_alloc_X_1s                                                     ! nr. of allocated X_1's
-    integer :: n_alloc_X_2s                                                     ! nr. of allocated X_2's
+    integer :: n_alloc_X_1s                                                     !< nr. of allocated <tt>X_1</tt>'s \ldebug
+    integer :: n_alloc_X_2s                                                     !< nr. of allocated <tt>X_2</tt>'s \ldebug
 #endif
     
-    ! vectorial perturbation type with arrays of the form:
-    !   - (angle_1,angle_2,r,n_mod)         for U_X_i, DU_X_i
-    ! where it is refered to the discussion  of the grid type for an explanation
-    ! of the angles angle_1 and angle_2.
-    type :: X_1_type
-        integer :: n_mod                                                        ! size of n and m (nr. of modes)
-        integer, allocatable :: n(:,:)                                          ! vector of poloidal mode numbers
-        integer, allocatable :: m(:,:)                                          ! vector of poloidal mode numbers
-        complex(dp), allocatable :: U_0(:,:,:,:)                                ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
-        complex(dp), allocatable :: U_1(:,:,:,:)                                ! U_m(X_m) = [ U_m^0 + U_m^1 i/n d/dx] (X_m)
-        complex(dp), allocatable :: DU_0(:,:,:,:)                               ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
-        complex(dp), allocatable :: DU_1(:,:,:,:)                               ! d(U_m(X_m))/dtheta = [ DU_m^0 + DU_m^1 i/n d/dx] (X_m)
+    !> vectorial perturbation type
+    !!
+    !! The arrays here are of the form:
+    !!  - \c U_x_i and DU_X_i: <tt>(1:angle_1,1:angle_2,1;n_mod)</tt>
+    !!
+    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    type, public :: X_1_type
+        integer :: n_mod                                                        !< size of \f$n\f$ and \f$m\f$ (nr. of modes)
+        integer, allocatable :: n(:,:)                                          !< vector of poloidal mode numbers
+        integer, allocatable :: m(:,:)                                          !< vector of poloidal mode numbers
+        complex(dp), allocatable :: U_0(:,:,:,:)                                !< \f$U_m^0\f$
+        complex(dp), allocatable :: U_1(:,:,:,:)                                !< \f$U_m^1\f$
+        complex(dp), allocatable :: DU_0(:,:,:,:)                               !< \f$\mathcal{J}\vec{B}\cdot\nabla U_m^0\f$
+        complex(dp), allocatable :: DU_1(:,:,:,:)                               !< \f$\mathcal{J}\vec{B}\cdot\nabla U_m^1\f$
 #if ldebug
-        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
         procedure :: init => init_X_1
         procedure :: dealloc => dealloc_X_1
     end type
     
-    ! tensorial perturbation type with arrays of the form:
-    !   - (angle_1,angle_2,r,n_mod^2)       for PVi, KVi
-    ! where it is refered to the discussion  of the grid type for an explanation
-    ! of the angles angle_1 and angle_2.
-    ! Note that this type is also used for field-averaged tensorial perturbation
-    ! variables, with angle_1 = 1.
-    type :: X_2_type
-        integer :: n_mod(2)                                                     ! size of n and m (nr. of modes)
-        integer, allocatable :: n_1(:,:)                                        ! vector of toroidal mode numbers of dimension 1
-        integer, allocatable :: n_2(:,:)                                        ! vector of toroidal mode numbers of dimension 2
-        integer, allocatable :: m_1(:,:)                                        ! vector of poloidal mode numbers of dimension 1
-        integer, allocatable :: m_2(:,:)                                        ! vector of poloidal mode numbers of dimension 2
-        complex(dp), allocatable :: PV_0(:,:,:,:)                               ! ~PV^0 coefficient
-        complex(dp), allocatable :: PV_1(:,:,:,:)                               ! ~PV^1 coefficient
-        complex(dp), allocatable :: PV_2(:,:,:,:)                               ! ~PV^2 coefficient
-        complex(dp), allocatable :: KV_0(:,:,:,:)                               ! ~KV^0 coefficient
-        complex(dp), allocatable :: KV_1(:,:,:,:)                               ! ~KV^1 coefficient
-        complex(dp), allocatable :: KV_2(:,:,:,:)                               ! ~KV^2 coefficient
+    !> tensorial perturbation type
+    !!
+    !! The arrays here are of the form:
+    !!  - \c PV_i and KV_i: <tt>(1:angle_1,1:angle_2,1;n_mod^2)</tt>
+    !!
+    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !!
+    !! \note This  type is also  used for field-averaged  tensorial perturbation
+    !! variables, with \c angle_1 of size 1.
+    type, public :: X_2_type
+        integer :: n_mod(2)                                                     !< size of \f$n\f$ and \f$m\f$ (nr. of modes)
+        integer, allocatable :: n_1(:,:)                                        !< vector of toroidal mode numbers of dimension 1
+        integer, allocatable :: n_2(:,:)                                        !< vector of toroidal mode numbers of dimension 2
+        integer, allocatable :: m_1(:,:)                                        !< vector of poloidal mode numbers of dimension 1
+        integer, allocatable :: m_2(:,:)                                        !< vector of poloidal mode numbers of dimension 2
+        complex(dp), allocatable :: PV_0(:,:,:,:)                               !< \f$\widetilde{PV}^0\f$ coefficient
+        complex(dp), allocatable :: PV_1(:,:,:,:)                               !< \f$\widetilde{PV}^1\f$ coefficient
+        complex(dp), allocatable :: PV_2(:,:,:,:)                               !< \f$\widetilde{PV}^2\f$ coefficient
+        complex(dp), allocatable :: KV_0(:,:,:,:)                               !< \f$\widetilde{KV}^0\f$ coefficient
+        complex(dp), allocatable :: KV_1(:,:,:,:)                               !< \f$\widetilde{KV}^1\f$ coefficient
+        complex(dp), allocatable :: KV_2(:,:,:,:)                               !< \f$\widetilde{KV}^2\f$ coefficient
 #if ldebug
-        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
         procedure :: init => init_X_2
@@ -84,30 +89,86 @@ module X_vars
     end type
     
     ! interfaces
+    
+    !> \public Sets \c n_X and \c m_X.
+    !!
+    !! By default, this is done using  by default global \c X_vars variables but
+    !! optionally different  limits for the  secondary mode numbers (\c  m_X for
+    !! poloidal flux or \c n_X for toroidal flux).
+    !!
+    !! \note \c n_X and \c m_X need to  have been set up with the same limits as
+    !! the grid used here. This is done in setup_nm_X().
     interface set_nm_X
-        module procedure set_nm_X_1, set_nm_X_2
+        !> \public
+        module procedure set_nm_X_1
+        !> \public
+        module procedure set_nm_X_2
     end interface
     
 contains
-    ! Initializes a  vectorial or tensorial  perturbation type and  allocate the
-    ! variables, the number of modes, as well as n and m
-    ! Optionally, the  secondary mode  numbers can be  specified (m  if poloidal
-    ! flux is used and n if toroidal  flux). By default, they are taken from the
-    ! global X_vars variables.
-    ! Furthermore, the tensorial  perturbation type can also be  used for field-
-    ! aligned  variables, in  which  case the  first index  is  assumed to  have
-    ! dimension 1 only. This can be triggered using "is_field_averaged".
-    ! Note: The  lowest limits of the grid  need to be 1; e.g.  grid_X%i_min = 1
-    ! for first process.
-    subroutine init_X_1(X,grid_X,lim_sec_X)                                     ! vectorial version
+    !> \private vectorial version
+    subroutine set_nm_X_1(grid_X,n_X_loc,m_X_loc,lim_sec_X)
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(inout), allocatable :: n_X_loc(:,:)                     !< toroidal mode numbers
+        integer, intent(inout), allocatable :: m_X_loc(:,:)                     !< poloidal mode numbers
+        integer, intent(in), optional :: lim_sec_X(2)                           !< optional limits on secondary mode numbers
+        
+        ! local variables
+        integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
+        
+        ! set local lim_sec_X
+        lim_sec_X_loc = [1,n_mod_X]
+        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        
+        ! set n and m
+        allocate(n_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
+        allocate(m_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
+        n_X_loc = n_X(grid_X%i_min:grid_X%i_max,&
+            &lim_sec_X_loc(1):lim_sec_X_loc(2))
+        m_X_loc = m_X(grid_X%i_min:grid_X%i_max,&
+            &lim_sec_X_loc(1):lim_sec_X_loc(2))
+    end subroutine set_nm_X_1
+    !> \private tensorial version
+    subroutine set_nm_X_2(grid_X,n_X_1,m_X_1,n_X_2,m_X_2,lim_sec_X)
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(inout), allocatable :: n_X_1(:,:)                       !< toroidal mode numbers for dimension 1
+        integer, intent(inout), allocatable :: m_X_1(:,:)                       !< poloidal mode numbers for dimension 1
+        integer, intent(inout), allocatable :: n_X_2(:,:)                       !< toroidal mode numbers for dimension 2
+        integer, intent(inout), allocatable :: m_X_2(:,:)                       !< poloidal mode numbers for dimension 2
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< optional limits on secondary mode numbers
+        
+        ! call vectorial version
+        if (present(lim_sec_X)) then
+            call set_nm_X(grid_X,n_X_1,m_X_1,lim_sec_X(:,1))
+            call set_nm_X(grid_X,n_X_2,m_X_2,lim_sec_X(:,2))
+        else
+            call set_nm_X(grid_X,n_X_1,m_X_1)
+            call set_nm_X(grid_X,n_X_2,m_X_2)
+        end if
+    end subroutine set_nm_X_2
+    
+    !> \public Initializes a vectorial perturbation.
+    !!
+    !! Allocates the variables, the number of modes, as well as \c n and \c m .
+    !!
+    !! Optionally, the secondary mode numbers can be specified (\c m if poloidal
+    !! flux is used and \c n if  toroidal flux). By default, they are taken from
+    !! the global \c X_vars variables.
+    !!
+    !! \note If the lowest limits of  the grid is not 1 (e.g. <tt>grid_sol%i_min
+    !! = 1</tt> for first process), the input variable \c i_min should be set to
+    !! set correctly. For a full grid, it should be set to 1.
+    subroutine init_X_1(X,grid_X,lim_sec_X)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
-        class(X_1_type), intent(inout) :: X                                     ! vectorial perturbation variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
+        class(X_1_type), intent(inout) :: X                                     !< vectorial perturbation variables
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         
         ! local variables
         integer :: loc_n_r                                                      ! local nr. of normal points
@@ -155,16 +216,23 @@ contains
             &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
 #endif
     end subroutine init_X_1
-    subroutine init_X_2(X,grid_X,lim_sec_X,is_field_averaged)                   ! tensorial version
+    !> \public Initializes a tensorial perturbation.
+    !!
+    !! \see See init_X_1().
+    !!
+    !! \note The tensorial perturbation type  can also be used for field-aligned
+    !! variables, in which  case the first index is assumed  to have dimension 1
+    !! only. This can be triggered using \c is_field_averaged.
+    subroutine init_X_2(X,grid_X,lim_sec_X,is_field_averaged)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
-        class(X_2_type), intent(inout) :: X                                     ! tensorial perturbation variables
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux) for both dimensions
-        logical, intent(in), optional :: is_field_averaged                      ! if field-aligned, only one dimension for first index
+        class(X_2_type), intent(inout) :: X                                     !< tensorial perturbation variables
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol. flux) or \c n_X (tor. flux) for both dimensions
+        logical, intent(in), optional :: is_field_averaged                      !< if field-aligned, only one dimension for first index
         
         ! local variables
         integer :: loc_n_r                                                      ! local nr. of normal points
@@ -249,57 +317,14 @@ contains
         end if
     end function set_nn_mod
     
-    ! Sets  n_X  and  m_X  using  by default  global  variables  but  optionally
-    ! different limits for the secundary mode  numbers (m_X for poloidal flux or
-    ! n_X for toroidal flux).
-    ! Note: n_X  and m_X need to  have been set up  with the same limits  as the
-    ! grid used here. This is done in setup_nm_X in X_ops.
-    subroutine set_nm_X_1(grid_X,n_X_loc,m_X_loc,lim_sec_X)                     ! vectorial version
-        ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        integer, intent(inout), allocatable :: n_X_loc(:,:), m_X_loc(:,:)       ! toroidal and poloidal mode numbers
-        integer, intent(in), optional :: lim_sec_X(2)
-        
-        ! local variables
-        integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
-        
-        ! set local lim_sec_X
-        lim_sec_X_loc = [1,n_mod_X]
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
-        
-        ! set n and m
-        allocate(n_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
-        allocate(m_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
-        n_X_loc = n_X(grid_X%i_min:grid_X%i_max,&
-            &lim_sec_X_loc(1):lim_sec_X_loc(2))
-        m_X_loc = m_X(grid_X%i_min:grid_X%i_max,&
-            &lim_sec_X_loc(1):lim_sec_X_loc(2))
-    end subroutine set_nm_X_1
-    subroutine set_nm_X_2(grid_X,n_X_1,m_X_1,n_X_2,m_X_2,lim_sec_X)             ! tensorial version
-        ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        integer, intent(inout), allocatable :: n_X_1(:,:), m_X_1(:,:)           ! toroidal and poloidal mode numbers for dimension 1
-        integer, intent(inout), allocatable :: n_X_2(:,:), m_X_2(:,:)           ! toroidal and poloidal mode numbers for dimension 2
-        integer, intent(in), optional :: lim_sec_X(2,2)
-        
-        ! call vectorial version
-        if (present(lim_sec_X)) then
-            call set_nm_X(grid_X,n_X_1,m_X_1,lim_sec_X(:,1))
-            call set_nm_X(grid_X,n_X_2,m_X_2,lim_sec_X(:,2))
-        else
-            call set_nm_X(grid_X,n_X_1,m_X_1)
-            call set_nm_X(grid_X,n_X_2,m_X_2)
-        end if
-    end subroutine set_nm_X_2
-    
-    ! deallocates perturbation variables
-    subroutine dealloc_X_1(X)                                                   ! vectorial version
+    !> \public Deallocates vectorial perturbation variables.
+    subroutine dealloc_X_1(X)
 #if ldebug
         use num_vars, only: rank, print_mem_usage
 #endif
         
         ! input / output
-        class(X_1_type), intent(inout) :: X                                     ! perturbation variables to be deallocated
+        class(X_1_type), intent(inout) :: X                                     !< perturbation variables to be deallocated
         
 #if ldebug
         ! local variables
@@ -337,13 +362,14 @@ contains
             type(X_1_type), intent(out) :: X                                    ! equilibrium to be deallocated
         end subroutine dealloc_X_1_final
     end subroutine dealloc_X_1
-    subroutine dealloc_X_2(X)                                                   ! tensorial version
+    !> \public Deallocates tensorial perturbation variables.
+    subroutine dealloc_X_2(X)
 #if ldebug
         use num_vars, only: rank, print_mem_usage
 #endif
         
         ! input / output
-        class(X_2_type), intent(inout) :: X                                     ! perturbation variables to be deallocated
+        class(X_2_type), intent(inout) :: X                                     !< perturbation variables to be deallocated
         
 #if ldebug
         ! local variables

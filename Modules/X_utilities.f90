@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to perturbation operations                     !
+!> Numerical utilities related to perturbation operations.
 !------------------------------------------------------------------------------!
 module X_utilities
 #include <PB3D_macros.h>
@@ -16,17 +16,23 @@ module X_utilities
         &do_X
     
     ! interfaces
+    
+    !> \public  Returns the  \c  sec_ind_tot  used to  refer  to a  perturbation
+    !! quantity.
     interface sec_ind_loc2tot
-        module procedure sec_ind_loc2tot_1, sec_ind_loc2tot_2
+        !> \public
+        module procedure sec_ind_loc2tot_1
+        !> \public
+        module procedure sec_ind_loc2tot_2
     end interface
     
 contains
-    ! Sets the sec_ind_tot used to refer to a perturbation quantity.
-    function sec_ind_loc2tot_1(id,lim_sec_X) result(res)                        ! vectorial version
+    !> \private vectorial version
+    function sec_ind_loc2tot_1(id,lim_sec_X) result(res)
         ! input / output
-        integer, intent(in) :: id                                               ! mode index
-        integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
-        integer :: res                                                          ! output
+        integer, intent(in) :: id                                               !< mode index
+        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
+        integer :: res                                                          !< output
         
         ! local variables
         integer :: lim_sec_X_loc(2)                                             ! local lim_sec_X
@@ -38,11 +44,13 @@ contains
         ! set sec_ind_tot
         res = lim_sec_X_loc(1)-1+id
     end function sec_ind_loc2tot_1
-    function sec_ind_loc2tot_2(id,jd,lim_sec_X) result(res)                     ! tensorial version
+    !> \private tensorial version
+    function sec_ind_loc2tot_2(id,jd,lim_sec_X) result(res)
         ! input / output
-        integer, intent(in) :: id, jd                                           ! mode indices
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
-        integer :: res(2)                                                       ! output
+        integer, intent(in) :: id                                               !< mode index for dimension 1
+        integer, intent(in) :: jd                                               !< mode index for dimension 1
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
+        integer :: res(2)                                                       !< output
         
         ! local variables
         integer :: lim_sec_X_loc(2,2)                                           ! local lim_sec_X
@@ -56,51 +64,76 @@ contains
         res = [lim_sec_X_loc(1,1)-1+id,lim_sec_X_loc(1,2)-1+jd]
     end function sec_ind_loc2tot_2
     
-    ! Gets  one of  the the  local ranges  of contiguous  tensorial perturbation
-    ! variables to be printed or read  during one call of the corresponding HDF5
-    ! variables. 
-    ! More specifically,  a range of indices  k in the first  dimension is given
-    ! for every value  of the indices m  in the second dimension.  An example is
-    ! now given for the subrange [2:3,2:5] of  a the total range [1:5, 1:5]. For
-    ! asymmetric variables the situation is simple: The k range is [2:3] for all
-    ! 5 values of m. However, for symmetric variables, the upper diagonal values
-    ! are not stored, which  gives k ranges [2:3], [3:3] and no range  for m = 4
-    ! and 5.
-    ! This routine then translates these  ranges to the corresponding 1-D ranges
-    ! that  are used  in  the actual  variables. For  above  example, the  total
-    ! indices are
-    !   [  1  6 11 16 21 ]
-    !   [  2  7 12 17 22 ]
-    !   [  3  8 13 18 23 ] -> [7:8], [12:13], [17:18] and [22:23],
-    !   [  4  9 14 19 24 ]
-    !   [  5 10 15 20 25 ]
-    ! for asymmetric variables and
-    !   [  1  2  3  4  5 ]
-    !   [  2  6  7  8  9 ]
-    !   [  3  7 10 11 12 ] -> [6:7], [10:10], [:] and [:],
-    !   [  4  8 11 13 14 ]
-    !   [  5  9 12 14 15 ]
-    ! for symmetric variables.
-    ! These can  then related  to the  local indices for  the variables  in this
-    ! perturbation job. For above example, the results are:
-    !   [1:2], [3:4], [5:6] and [7:8],
-    ! for asymmetric variables and
-    !   [1:2], [3:3], [:] and [:], 
-    ! for symmetric variables.
-    ! As can be seen, the local ranges of the variables in the submatrix of this
-    ! perturbation job are (designed to be)  contiguous, but the total ranges of
-    ! the variables in the submatrix are clearly not in general.
-    ! The procedure outputs both the local and total ranges.
+    !> Gets one  of the  the local ranges  of contiguous  tensorial perturbation
+    !! variables to be printed or read during one call of the corresponding HDF5
+    !! variables.
+    !!
+    !! More specifically,  a range  of indices  \c k in  the first  dimension is
+    !! given for every value of the indices \c m in the second dimension.
+    !!
+    !! An example  is now  given for  the subrange  <tt>[2:3,2:5]</tt> of  a the
+    !! total range  <tt>[1:5, 1:5]</tt>. For asymmetric  variables the situation
+    !! is simple:  The \c k range  is <tt>[2:3]</tt> for  all 5 values of  \c m.
+    !! However,  for symmetric  variables,  the upper  diagonal  values are  not
+    !! stored, which  gives \c  k ranges  <tt>[2:3]</tt>, <tt>[3:3]</tt>  and no
+    !! range for \c m = 4 and 5.
+    !!
+    !! This routine then translates these  ranges to the corresponding 1-D ranges
+    !! that  are used  in  the actual  variables. For  above  example, the  total
+    !! indices are
+    !!  \f[
+    !!      \left(\begin{array}{ccccc}
+    !!          1 &  6 & 11 & 16 & 21 \\
+    !!          2 &  7 & 12 & 17 & 22 \\
+    !!          3 &  8 & 13 & 18 & 23 \\
+    !!          4 &  9 & 14 & 19 & 24 \\
+    !!          5 & 10 & 15 & 20 & 25
+    !!      \end{array}\right)
+    !!      \rightarrow \left[7:8\right], \left[12:13\right],
+    !!      \left[17:18\right] \ \text{and} \ \left[22:23\right],
+    !!  \f]
+    !! for asymmetric variables and
+    !!  \f[
+    !!      \left(\begin{array}{ccccc}
+    !!          1 & 2 &  3 &  4 &  5 \\
+    !!          2 & 6 &  7 &  8 &  9 \\
+    !!          3 & 7 & 10 & 11 & 12 \\
+    !!          4 & 8 & 11 & 13 & 14 \\
+    !!          5 & 9 & 12 & 14 & 15
+    !!      \end{array}\right)
+    !!      \rightarrow \left[6:7\right], \left[10:10\right],
+    !!      \left[:\right] \ \text{and} \ \left[:\right],
+    !!  \f]
+    !! for symmetric variables.
+    !!
+    !! These can  then related  to the  local indices for  the variables  in this
+    !! perturbation job.
+    !!
+    !! For above example, the results are:
+    !!
+    !!   <tt>[1:2], [3:4], [5:6] and [7:8]</tt>,
+    !!
+    !! for asymmetric variables and
+    !!
+    !!   <tt>[1:2], [3:3], [:] and [:]</tt>, 
+    !!
+    !! for symmetric variables.
+    !!
+    !! As can  be seen, the  local ranges of the  variables in the  submatrix of
+    !! this  perturbation job  are (designed  to be)  contiguous, but  the total
+    !! ranges of the variables in the submatrix are clearly not in general.
+    !!
+    !! The procedure outputs both the local and total ranges.
     subroutine get_sec_X_range(sec_X_range_loc,sec_X_range_tot,m,sym,lim_sec_X)
         use X_vars, only: n_mod_X
         use num_utilities, only: c
         
         ! input / output
-        integer, intent(inout) :: sec_X_range_loc(2)                            ! start and end of local range in dimension 1 (vertical)
-        integer, intent(inout) :: sec_X_range_tot(2)                            ! start and end of total range in dimension 1 (vertical)
-        integer, intent(in) :: m                                                ! dimension 2 (horizontal)
-        logical, intent(in) :: sym                                              ! whether the variable is symmetric
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
+        integer, intent(inout) :: sec_X_range_loc(2)                            !< start and end of local range in dimension 1 (vertical)
+        integer, intent(inout) :: sec_X_range_tot(2)                            !< start and end of total range in dimension 1 (vertical)
+        integer, intent(in) :: m                                                !< dimension 2 (horizontal)
+        logical, intent(in) :: sym                                              !< whether the variable is symmetric
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         
         ! local variables
         integer :: k_range_loc(2)                                               ! local range of k
@@ -139,7 +172,9 @@ contains
         end do
     end subroutine get_sec_X_range
     
-    ! if this perturbation job should be done, also increment X_job_nr
+    !> Tests whether this perturbatino job should be done.
+    !!
+    !! Also increments \c X_job_nr
     logical function do_X()
         use num_vars, only: X_jobs_lims, X_job_nr
         
@@ -153,13 +188,16 @@ contains
         end if
     end function do_X
     
-    ! Determines whether a variable needs to be  considered: Only if it is on or
-    ! below the diagonal for symmetric quantities.
+    !> Determines whether a variable needs to be  considered:
+    !! 
+    !! This depends on whether the quantity is symmetric or not:
+    !!  - Only if it is on or below the diagonal for symmetric quantities.
+    !!  - Always for asymmetric quantities
     logical function is_necessary_X(sym,sec_X_id,lim_sec_X) result(res)
         ! input / output
-        logical, intent(in) :: sym                                              ! whether the variable is symmetric
-        integer, intent(in) :: sec_X_id(2)                                      ! mode indices
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        logical, intent(in) :: sym                                              !< whether the variable is symmetric
+        integer, intent(in) :: sec_X_id(2)                                      !< mode indices
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
         
         ! local variables
         integer :: lim_sec_X_loc(2,2)                                           ! local version of lim_sec_X
@@ -180,23 +218,30 @@ contains
         end if
     end function is_necessary_X
     
-    ! Calculate memory in MB necessary for X variables of a certain order
-    !   - order 1: 4x n_par_X x n_geo x loc_n_r x n_mod
-    !   - order 2: 2x n_par_X x n_geo x loc_n_r x n_mod^2
-    !              4x n_par_X x n_geo x loc_n_r x n_mod(n_mod+1)/2
-    !   - higher order: not used
-    ! where n_par_X x  n_geo x loc_n_r should be passed  as 'arr_size' and n_mod
-    ! as well
+    !> Calculate memory in MB necessary for X variables.
+    !!
+    !! This depends on the order:
+    !!  - order 1:
+    !!      - <tt>4x n_par_X x n_geo x loc_n_r x n_mod</tt>
+    !!  - order 2:
+    !!      - <tt>2x n_par_X x n_geo x loc_n_r x n_mod^2</tt>
+    !!      - <tt>4x n_par_X x n_geo x loc_n_r x n_mod(n_mod+1)/2</tt>
+    !!  - higher order: not used
+    !!
+    !! where <tt>n_par_X x n_geo x loc_n_r</tt>  should be passed as \c arr_size
+    !! and \c n_mod as well.
+    !!
+    !! \return ierr
     integer function calc_memory_X(ord,arr_size,n_mod,mem_size) result(ierr)
         use ISO_C_BINDING
         
         character(*), parameter :: rout_name = 'calc_memory_X'
         
         ! input / output
-        integer, intent(in) :: ord                                              ! order of data
-        integer, intent(in) :: arr_size                                         ! size of part of X array
-        integer, intent(in) :: n_mod                                            ! number of modes
-        real(dp), intent(inout) :: mem_size                                     ! total size
+        integer, intent(in) :: ord                                              !< order of data
+        integer, intent(in) :: arr_size                                         !< size of part of X array
+        integer, intent(in) :: n_mod                                            !< number of modes
+        real(dp), intent(inout) :: mem_size                                     !< total size
         
         ! local variables
         integer(C_SIZE_T) :: dp_size                                            ! size of dp

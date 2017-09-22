@@ -1,8 +1,9 @@
 !------------------------------------------------------------------------------!
-!   Operations on PB3D output.                                                 !
-!   Note: If you have parallel jobs, if the reconstruction routines are called !
-!   for  multiple equilibrium  jobs,  this can  only be  done  after the  last !
-!   equilibrium job is finished. There are no checks for this.                 !
+!> Operations on PB3D output.
+!!
+!! \note If  you have parallel jobs,  if the reconstruction routines  are called
+!! for  multiple  equilibrium  jobs,  this  can only  be  done  after  the  last
+!! equilibrium job is finished. There are no checks for this.
 !------------------------------------------------------------------------------!
 module PB3D_ops
 #include <PB3D_macros.h>
@@ -33,7 +34,9 @@ module PB3D_ops
     real(dp), allocatable :: dum_7D(:,:,:,:,:,:,:)                              ! dummy variables
     
 contains
-    ! Reconstructs the input variables from PB3D output.
+    !> Reconstructs the input variables from PB3D HDF5 output.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, use_pol_flux_E, max_deriv, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
@@ -61,7 +64,7 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
             
         ! input / output
-        character(len=*), intent(in) :: data_name                               ! name of grid
+        character(len=*), intent(in) :: data_name                               !< name of input variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -410,18 +413,25 @@ contains
         end select
     end function reconstruct_PB3D_in
     
-    ! Reconstructs grid variables from PB3D output.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name  if it  is  >  0.
-    ! With "tot_rich"  the information  from previous  Richardson levels  can be
-    ! combined.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
-    ! Note: "grid_" is added in front the data_name.
-    ! Note:  By providing  lim_pos equal  to 0  in the  angular dimensions,  the
-    ! angular part can be discarded when reconstructing the grid.
+    !> Reconstructs grid variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! With \c tot_rich  the information from previous Richardson  levels can be
+    !! combined.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \note
+    !!  -# <tt>grid_</tt> is added in front the data_name.
+    !!  -# By  providing \c lim_pos  equal to 0  in the angular  dimensions, the
+    !!  angular part can be discarded when reconstructing the grid.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
         &lim_pos,grid_limits) result(ierr)
         
@@ -432,12 +442,12 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_grid'
         
         ! input / output
-        type(grid_type), intent(inout) :: grid                                  ! grid 
-        character(len=*), intent(in) :: data_name                               ! name of grid
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer, intent(in), optional :: lim_pos(3,2)                           ! position limits of subset of data
-        integer, intent(in), optional :: grid_limits(2)                         ! i_limit of grid
+        type(grid_type), intent(inout) :: grid                                  !< grid 
+        character(len=*), intent(in) :: data_name                               !< name of grid
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
+        integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
+        integer, intent(in), optional :: grid_limits(2)                         !< i_limit of grid
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
@@ -573,11 +583,14 @@ contains
         if (product(grid%n(1:2)).ne.0) deallocate(dum_3D)
     end function reconstruct_PB3D_grid
     
-    ! Reconstructs the equilibrium variables from PB3D output.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
+    !> Reconstructs the equilibrium variables from PB3D HDF5 output.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_eq_1(grid_eq,eq,data_name,lim_pos) &
         &result(ierr)                                                           ! flux version
         use num_vars, only: PB3D_name
@@ -587,10 +600,10 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
-        type(eq_1_type), intent(inout), optional :: eq                          ! flux equilibrium
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: lim_pos(1,2)                           ! position limits of subset of data
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid 
+        type(eq_1_type), intent(inout), optional :: eq                          !< flux equilibrium
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: lim_pos(1,2)                           !< position limits of subset of data
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
@@ -666,15 +679,20 @@ contains
         deallocate(dum_2D)
     end function reconstruct_PB3D_eq_1
     
-    ! Reconstructs the equilibrium variables from PB3D output.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if it is > 0.
-    ! With "tot_rich"  the information  from previous  Richardson levels  can be
-    ! combined.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
+    !> Reconstructs the equilibrium variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! With \c tot_rich  the information from previous Richardson  levels can be
+    !! combined.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
         &tot_rich,lim_pos) result(ierr)                                         ! metric version
         use num_vars, only: PB3D_name
@@ -684,12 +702,12 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_2'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid 
-        type(eq_2_type), intent(inout) :: eq                                    ! metric equilibrium
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer, intent(in), optional :: lim_pos(3,2)                           ! position limits of subset of data
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid 
+        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
+        integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
@@ -802,15 +820,22 @@ contains
         deallocate(dum_7D)
     end function reconstruct_PB3D_eq_2
     
-    ! Reconstructs the vectorial perturbation variables from PB3D output.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if it is > 0.
-    ! With "tot_rich"  the information  from previous  Richardson levels  can be
-    ! combined.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
+    !> Reconstructs the vectorial perturbation variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! With \c tot_rich  the information from previous Richardson  levels can be
+    !! combined.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \c lim_sec_X, on the other hand, selects a range of mode numbers.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
@@ -821,13 +846,13 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid 
-        type(X_1_type), intent(inout) :: X                                      ! vectorial perturbation variables
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer, intent(in), optional :: lim_sec_X(2)                           ! limits of m_X (pol. flux) or n_X (tor. flux)
-        integer, intent(in), optional :: lim_pos(3,2)                           ! position limits of subset of data
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid 
+        type(X_1_type), intent(inout) :: X                                      !< vectorial perturbation variables
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
+        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of m_X (pol. flux) or n_X (tor. flux)
+        integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
@@ -952,18 +977,26 @@ contains
         deallocate(dum_4D)
     end function reconstruct_PB3D_X_1
     
-    ! Reconstructs the tensorial perturbation variables from PB3D output.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if it is > 0.
-    ! With "tot_rich"  the information  from previous  Richardson levels  can be
-    ! combined.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
-    ! Note: the tensorial perturbation type can  also be used for field- aligned
-    ! variables, in  which case the first  index is assumed to  have dimension 1
-    ! only. This can be triggered using "is_field_averaged".
+    !> Reconstructs the tensorial perturbation variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! With \c tot_rich  the information from previous Richardson  levels can be
+    !! combined.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \c lim_sec_X, on the other hand, selects a range of mode numbers.
+    !!
+    !! \note The tensorial perturbation type can also be used for field- aligned
+    !! variables, in which  case the first index is assumed  to have dimension 1
+    !! only. This can be triggered using \c is_field_averaged.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
@@ -974,14 +1007,14 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_2'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid 
-        type(X_2_type), intent(inout) :: X                                      ! tensorial perturbation vars
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
-        integer, intent(in), optional :: lim_pos(3,2)                           ! position limits of subset of data
-        logical, intent(in), optional :: is_field_averaged                      ! if field-averaged, only one dimension for first index
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid 
+        type(X_2_type), intent(inout) :: X                                      !< tensorial perturbation vars
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
+        logical, intent(in), optional :: is_field_averaged                      !< if field-averaged, only one dimension for first index
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D var
@@ -1197,9 +1230,12 @@ contains
         deallocate(dum_4D)
     end function reconstruct_PB3D_X_2
     
-    ! Reconstructs the vacuum variables from PB3D output.
-    ! Also, if  "rich_lvl" is  provided, "_R_rich_lvl" is  appended to  the data
-    ! name if it is > 0.
+    !> Reconstructs the vacuum variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_vac(vac,data_name,rich_lvl) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
@@ -1209,9 +1245,9 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_vac'
         
         ! input / output
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D var
@@ -1254,17 +1290,17 @@ contains
         vac%x_vec = dum_2D
         call dealloc_var_1D(var_1D)
         
-        ! RE_vac_res
+        ! RE_res
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'RE_vac_res',rich_lvl=rich_lvl_loc)
+            &'RE_res',rich_lvl=rich_lvl_loc)
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_2D)
         vac%res = dum_2D
         call dealloc_var_1D(var_1D)
         
-        ! IM_vac_res
+        ! IM_res
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'IM_vac_res',rich_lvl=rich_lvl_loc)
+            &'IM_res',rich_lvl=rich_lvl_loc)
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_2D)
         vac%res = vac%res + iu*dum_2D
@@ -1274,11 +1310,19 @@ contains
         deallocate(dum_4D)
     end function reconstruct_PB3D_vac
     
-    ! Reconstructs the solution variables from PB3D output.
-    ! Furthermore,  using "lim_pos",  you can  obtain a  subset of  the data  by
-    ! directly passing its limits to the underlying HDF5 routine. This refers to
-    ! the position dimensions only. If provided,  the normal limits of a divided
-    ! grid refer to the subset, as in "copy_grid".
+    !> Reconstructs the solution variables from PB3D HDF5 output.
+    !!
+    !! Also, if \c  rich_lvl is provided, <tt>_R_[rich_lvl]</tt>  is appended to
+    !! the data name if it is > 0.
+    !!
+    !! Furthermore, using  \c lim_pos, you  can obtain a  subset of the  data by
+    !! directly passing its  limits to the underlying HDF5  routine. This refers
+    !! to the  position dimensions  only. If  provided, the  normal limits  of a
+    !! divided grid refer to the subset, as in copy_grid().
+    !!
+    !! \c lim_sec_sol, on the other hand, selects a range of mode numbers.
+    !!
+    !! \return ierr
     integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,rich_lvl,&
         &lim_sec_sol,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
@@ -1289,12 +1333,12 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_sol                                 ! solution grid 
-        type(sol_type), intent(inout) :: sol                                    ! solution variables
-        character(len=*), intent(in) :: data_name                               ! name to reconstruct
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        integer, intent(in), optional :: lim_sec_sol(2)                         ! limits of m_X (pol. flux) or n_X (tor. flux)
-        integer, intent(in), optional :: lim_pos(1,2)                           ! position limits of subset of data
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid 
+        type(sol_type), intent(inout) :: sol                                    !< solution variables
+        character(len=*), intent(in) :: data_name                               !< name to reconstruct
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        integer, intent(in), optional :: lim_sec_sol(2)                         !< limits of m_X (pol. flux) or n_X (tor. flux)
+        integer, intent(in), optional :: lim_pos(1,2)                           !< position limits of subset of data
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable
@@ -1368,8 +1412,11 @@ contains
         call dealloc_var_1D(var_1D)
     end function reconstruct_PB3D_sol
     
-    ! get grid size
-    ! Note: "grid_" is added in front the grid_name.
+    !> get grid size
+    !!
+    !! \note <tt>grid_</tt> is added in front the grid_name.
+    !!
+    !! \return ierr
     integer function get_PB3D_grid_size(n,grid_name,rich_lvl,tot_rich) &
         &result(ierr)
         use num_vars, only: PB3D_name
@@ -1379,10 +1426,10 @@ contains
         character(*), parameter :: rout_name = 'get_PB3D_grid_size'
         
         ! input / output
-        integer, intent(inout) :: n(3)                                          ! n of grid
-        character(len=*), intent(in) :: grid_name                               ! name of grid
-        integer, intent(in), optional :: rich_lvl                               ! Richardson level to reconstruct
-        logical, intent(in), optional :: tot_rich                               ! whether to combine with previous Richardson levels
+        integer, intent(inout) :: n(3)                                          !< n of grid
+        character(len=*), intent(in) :: grid_name                               !< name of grid
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
         
         ! local variables
         type(var_1D_type) :: var_1D                                             ! 1D variable

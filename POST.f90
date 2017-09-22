@@ -8,17 +8,21 @@
 !   ╚═╝      ╚═════╝ ╚══════╝   ╚═╝   
 
 !------------------------------------------------------------------------------!
-!   program Peeling Ballooning in 3D: postprocessing                           !
+!>  Peeling Ballooning in 3D: postprocessing
 !------------------------------------------------------------------------------!
-!   Author: Toon Weyens                                                        !
-!   Institution: ITER Organization                                             !
-!   Contact: weyenst@gmail.com                                                 !
+!>  \author
+!!  Toon Weyens,
+!!  Institution: ITER Organization,
+!!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!   Version: 1.91                                                              !
+!>  \version    1.92
+!!  \date       2012-2017
+!!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
-!   References:                                                                !
-!       [1] Three dimensional peeling-ballooning theory in magnetic fusion     !
-!           devices, eq. (6.12) and (6.16)                                     !
+!>  \see
+!!  References:
+!!  \cite weyens2014theory
+!!  \cite Weyens2017PB3D
 !------------------------------------------------------------------------------!
 #define CHCKERR if(ierr.ne.0) then; call sudden_stop(ierr); end if
 program POST
@@ -26,7 +30,8 @@ program POST
     use num_vars, only: prog_name, prog_style, rank
     use messages
     use HDF5_vars, only: init_HDF5
-    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts
+    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, &
+        &sudden_stop
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input_opts
@@ -136,36 +141,4 @@ program POST
     call lvl_ud(-1)
     
     call print_goodbye
-    
-contains
-    ! stops the computations, aborting MPI, etc.
-    ! as a special case, if ierr = 66, no error message is printed
-    subroutine sudden_stop(ierr)
-        use num_vars, only: rank
-        use MPI_ops, only: abort_MPI
-        
-        ! input / output
-        integer, intent(in) :: ierr                                             ! error to output
-        
-        ! local variables
-        integer :: ierr_abort                                                   ! error to output
-        
-        if (ierr.ne.66) then
-            call writo('>> calling routine: POST (main) of rank '//&
-                &trim(i2str(rank)),persistent=.true.)
-            call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI rank '//trim(i2str(rank)),&
-                &persistent=.true.)
-            call lvl_ud(1)
-            ierr_abort = abort_MPI()
-        else
-            ierr_abort = stop_MPI()
-        end if
-        if (ierr_abort.ne.0) then
-            call writo('MPI cannot abort...',persistent=.true.)
-            call writo('Shutting down',persistent=.true.)
-        end if
-        call lvl_ud(-1)
-        stop
-    end subroutine
 end program POST

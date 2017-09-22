@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Driver of the solution part of PB3D.                                       !
+!> Driver of the solution part of PB3D.
 !------------------------------------------------------------------------------!
 module driver_sol
 #include <PB3D_macros.h>
@@ -16,26 +16,25 @@ module driver_sol
     implicit none
     private
     public run_driver_sol
-#if ldebug
-    public debug_sol_grid
-#endif
     
     ! global variables
 #if ldebug
-    logical :: debug_sol_grid = .false.                                         ! plot debug information for treatment of sol grid
-    logical :: debug_X_norm = .false.                                           ! plot debug information X_norm
+    logical :: debug_X_norm = .false.                                           !< plot debug information \c X_norm \ldebug
 #endif
     
 contains
-    ! Main driver of PB3D solution part.
-    ! sets up:
-    !   - grid_sol (only first Richardson level)
-    !   - sol
-    ! writes to HDF5:
-    !   - grid_sol (only first Richardson level)
-    !   - sol
-    ! deallocates:
-    !   - sol before setting up (but after guess)
+    !> Main driver of PB3D solution part.
+    !!
+    !!  - sets up:
+    !!      * \c grid_sol (only first Richardson level)
+    !!      * \c sol
+    !!  - writes to HDF5:
+    !!      * \c grid_sol (only first Richardson level)
+    !!      * \c sol
+    !!  - deallocates:
+    !!      * sol before setting up (but after guess)
+    !!
+    !! \return ierr
     integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,vac,sol) &
         &result(ierr)
         use num_vars, only: EV_style, eq_style, rich_restart_lvl
@@ -56,12 +55,12 @@ contains
         character(*), parameter :: rout_name = 'run_driver_sol'
         
         ! input / output
-        type(grid_type), intent(in), target :: grid_X                           ! perturbation grid
-        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
-        type(grid_type), intent(inout) :: grid_sol                              ! solution grid
-        type(X_2_type), intent(in) :: X                                         ! integrated tensorial perturbation variables
-        type(vac_type), intent(inout) :: vac                                    ! vacuum variables
-        type(sol_type), intent(inout) :: sol                                    ! solution variables
+        type(grid_type), intent(in), target :: grid_X                           !< perturbation grid
+        type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
+        type(grid_type), intent(inout) :: grid_sol                              !< solution grid
+        type(X_2_type), intent(in) :: X                                         !< integrated tensorial perturbation variables
+        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
+        type(sol_type), intent(inout) :: sol                                    !< solution variables
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message

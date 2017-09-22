@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations concerning Richardson extrapolation                             !
+!> Operations concerning Richardson extrapolation.
 !------------------------------------------------------------------------------!
 module rich_ops
 #include <PB3D_macros.h>
@@ -19,6 +19,11 @@ module rich_ops
         &calc_rich_ex, find_max_rich_lvl
     
 contains
+    !> Initialize Richardson extrapolation system.
+    !!
+    !! Needs to be called only once.
+    !!
+    !! \return ierr
     integer function init_rich() result(ierr)
         use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, rank
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
@@ -28,13 +33,13 @@ contains
         character(*), parameter :: rout_name = 'init_rich'
         
         ! local variables
-        type(grid_type) :: grid_eq_B                                            ! equilibrium grid
-        type(grid_type) :: grid_X_B                                             ! field-aligned perturbation grid
-        type(eq_1_type) :: eq                                                   ! flux equilibrium variables
-        type(sol_type) :: sol                                                   ! solution variables
-        character(len=4) :: grid_eq_name                                        ! name of equilibrium grid
-        character(len=4) :: grid_X_name                                         ! name of perturbation grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        type(grid_type) :: grid_eq_B                                            !< equilibrium grid
+        type(grid_type) :: grid_X_B                                             !< field-aligned perturbation grid
+        type(eq_1_type) :: eq                                                   !< flux equilibrium variables
+        type(sol_type) :: sol                                                   !< solution variables
+        character(len=4) :: grid_eq_name                                        !< name of equilibrium grid
+        character(len=4) :: grid_X_name                                         !< name of perturbation grid
+        character(len=max_str_ln) :: err_msg                                    !< error message
         
         ! set variables
         rich_lvl = 1
@@ -189,6 +194,9 @@ contains
         call lvl_ud(-1)
     end function init_rich
     
+    !> Terminate the Richardson extrapolation system.
+    !!
+    !! Needs to be called only once.
     subroutine term_rich()
         use num_vars, only: rank, norm_disc_prec_sol
         use input_utilities, only: dealloc_in
@@ -280,7 +288,7 @@ contains
         end subroutine draw_sol_val_rich
     end subroutine term_rich
     
-    ! if this Richardson level should be done
+    !> Tests whether this Richardson level should be done.
     logical function do_rich()
         if (rich_lvl.gt.max_it_rich .or. rich_conv) then
             do_rich = .false.
@@ -289,7 +297,12 @@ contains
         end if
     end function do_rich
     
-    ! start a Richardson level
+    !> Start a Richardson level.
+    !!
+    !! Calculates \c n_par_X for this level.  Then uses this to divide the jobs.
+    !! equilibrium Finally, the limits are set up for these                jobs.
+    !!
+    !! \return ierr
     integer function start_rich_lvl() result(ierr)
         use grid_utilities, only: calc_n_par_X_rich
         use grid_vars, only: n_r_eq, n_r_sol
@@ -301,10 +314,10 @@ contains
         character(*), parameter :: rout_name = 'start_rich_lvl'
         
         ! local variables
-        integer :: n_div                                                        ! number of divisions in equilibrium jobs
-        logical :: only_half_grid                                               ! calculate only half grid with even points
-        integer :: n_par_X_loc                                                  ! local n_par_X
-        integer :: var_size_without_par(2)                                      ! size without parallel dimension for eq_2 and X_1 variables
+        integer :: n_div                                                        !< number of divisions in equilibrium jobs
+        logical :: only_half_grid                                               !< calculate only half grid with even points
+        integer :: n_par_X_loc                                                  !< local n_par_X
+        integer :: var_size_without_par(2)                                      !< size without parallel dimension for eq_2 and X_1 variables
         
         ! initialize ierr
         ierr = 0
@@ -363,8 +376,11 @@ contains
         if (no_guess) use_guess = .false.
     end function start_rich_lvl
     
-    ! stop a Richardson level
-    subroutine stop_rich_lvl
+    !> Stop a Richardson level.
+    !!
+    !! It  decides whether  convergence has  been reached,  and possibly  sets a
+    !! guess for the next level.
+    subroutine stop_rich_lvl()
         ! update the x axis of the Eigenvalue plot
         x_axis_rich(rich_lvl,:) = 1._dp*n_par_X
         
@@ -406,17 +422,22 @@ contains
         end subroutine set_guess
     end subroutine stop_rich_lvl
     
-    ! Calculates  the   coefficients  of  the  Eigenvalues   in  the  Richardson
-    ! extrapolation. This is done using the recursive formula:
-    !   sol_val_rich(lvl,ir,:) = sol_val_rich(lvl,ir-1,:) +  1/(2^(2 p ir) - 1)*
-    !       (sol_val_rich(lvl,ir-1,:) - sol_val_rich(lvl-1,ir-1,:)),
-    ! where p is norm_disc_prec_sol, the order of the numerical discretization.
-    ! as described in [ADD REF]
+    !> Calculates  the  coefficients  of   the  Eigenvalues  in  the  Richardson
+    !! extrapolation.
+    !!
+    !! This is done using the recursive formula:
+    !!  \f[ s(l,i,:) = s(l,i-1,:) +  \frac{1}{2^{2 \ p \ i} - 1}
+    !!       (s(l,i-1,:) - s(l-1,i-1,:)),
+    !!  \f]
+    !! where  \f$s\f$  =  \c  sol_val_rich,  \f$i\f$  =  \c  ir,  \f$l\f$  =  \c
+    !! lvl  and \f$p\f$  = \c  norm_disc_prec_sol,  the order  of the  numerical
+    !! discretization. as  described in \cite  dahlquist2003numerical, algorithm
+    !! 3.2, p. 306.
     subroutine calc_rich_ex(sol_val)
         use num_vars, only: norm_disc_prec_sol
         
         ! input / output
-        complex(dp), intent(in) :: sol_val(:)                                   ! EV for this Richardson level
+        complex(dp), intent(in) :: sol_val(:)                                   !< EV for this Richardson level
         
         ! local variables
         integer :: ir                                                           ! counter
@@ -432,11 +453,16 @@ contains
         end do
     end subroutine calc_rich_ex
     
-    ! Decides  whether   the  difference   between  the  approximation   of  the
-    ! Eigenvalues in  this Richardson level  and the previous  Richardson level,
-    ! with the same order of the error, falls below a threshold
-    ! Also increases the next tol_SLEPC if it is too low.
-    ! [ADD SOURCE]
+    !> Decides  whether   convergence  has  been  reached   for  the  Richardson
+    !! extrapolation.
+    !!
+    !! This is done by checking whether the difference between the approximation
+    !! of the Eigenvalues  in this Richardson level and  the previous Richardson
+    !! level, with the same order of the error, falls below a threshold.
+    !!
+    !! Also increases the next tol_SLEPC if it is too low.
+    !!
+    !! \see calc_rich_ex()
     subroutine check_conv()
         use num_vars, only: tol_SLEPC
         
@@ -483,7 +509,9 @@ contains
         end if
     end subroutine check_conv
     
-    ! Probe to find out which Richardson levels are available.
+    !> Probe to find out which Richardson levels are available.
+    !!
+    !! \return ierr
     integer function find_max_rich_lvl(lvl_rich_req,max_lvl_rich_file) &
         &result(ierr)
         use num_vars, only: PB3D_name
@@ -492,8 +520,8 @@ contains
         character(*), parameter :: rout_name = 'find_max_rich_lvl'
         
         ! input / output
-        integer, intent(inout) :: lvl_rich_req                                  ! requested Richardson level
-        integer, intent(inout) :: max_lvl_rich_file                             ! max. Richardson level found in file
+        integer, intent(inout) :: lvl_rich_req                                  !< requested Richardson level
+        integer, intent(inout) :: max_lvl_rich_file                             !< max. Richardson level found in file
         
         ! local variables
         integer :: ir                                                           ! counter

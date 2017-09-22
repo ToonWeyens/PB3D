@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to the solution vectors                        !
+!> Numerical utilities related to the solution vectors.
 !------------------------------------------------------------------------------!
 module sol_utilities
 #include <PB3D_macros.h>
@@ -22,37 +22,55 @@ module sol_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr
+    logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr \ldebug
 #endif
     
     ! interfaces
+    
+    !> \public Calculates the normal (\f$\cdot_n\f$) or geodesic (\f$\cdot_g\f$)
+    !! components   of   the   plasma  perturbation   \f$\vec{\xi}\f$   or   the
+    !! magnetic  perturbation \f$\vec{Q}  = \nabla  \times \left(\vec{x}  \times
+    !! \vec{B}\right)\f$.
+    !!
+    !! Which variables are plot depends on \c XUQ_style \cite Weyens3D:
+    !!  - \c XUQ_style = 1: \f$X\f$ (supports parallel derivative)
+    !!  - \c XUQ_style = 2: \f$U\f$ (supports parallel derivative)
+    !!  - \c XUQ_style = 3: \f$Q_n\f$
+    !!  - \c XUQ_style = 4: \f$Q_g\f$
+    !!
+    !! \f$X\f$ and \f$U\f$ support the calculation  of the parallel derivative.
+    !!
+    !! For \f$Q_n\f$ and \f$Q_g\f$, the metric  variables have to be provided as
+    !! well.
+    !!
+    !! As  this operation  requires  the equilibrium,  metric, perturbation  and
+    !! solution  variables,  the  grid  in  which  this  happens  requires  some
+    !! explanation:
+    !!
+    !!  - The equilibrium  and metric variables are tabulated  in an equilibrium
+    !!  grid, which  needs to have the  same angular extent as  the perturbation
+    !!  grid, in which the perturbation variables are tabulated.
+    !!  - The normal extent of these two grids can be different, though, as well
+    !!  as  the normal  extent  of  the solution  grid,  in  which the  solution
+    !!  variables are tabulated.
+    !!  - Currently,  the perturbation variables  are supposed to have  the same
+    !!  angular extent  as the  equilibrium and metric  variables, and  the same
+    !!  normal extent  as the  solution variables. The  output then  follows the
+    !!  perturbation grid.
+    !!
+    !! \return ierr
     interface calc_XUQ
-        module procedure calc_XUQ_arr, calc_XUQ_ind
+        !> \public
+        module procedure calc_XUQ_ind
+        !> \public
+        module procedure calc_XUQ_arr
     end interface
 
 contains
-    ! Calculates the normal or geodesic components of the plasma perturbation or
-    ! the magnetic perturbation, indicated by the variable "XUQ_style":
-    !   - XUQ_style = 1: X (supports parallel derivative)
-    !   - XUQ_style = 2: U (supports parallel derivative)
-    !   - XUQ_style = 3: Qn
-    !   - XUQ_style = 4: Qg
-    ! X and U support the calculation  of the parallel derivative and for Qn and
-    ! Qg, the metric variables have to be provided as well.
-    ! As  this   operation  requires   the  equilibrium,   metric,  perturbation
-    ! and  solution  variables,  the  grid  in which  this  happens  is  not  so
-    ! straightforward:
-    ! The equilibrium and metric variables are tabulated in an equilibrium grid,
-    ! which needs to  have the same angular extent as  the perturbation grid, in
-    ! which the perturbation variables are tabulated. The normal extent of these
-    ! two grids can  be different, though, as  well as the normal  extent of the
-    ! solution grid, in which the solution variables are tabulated. 
-    ! Currently,  the  perturbation variables  are  supposed  to have  the  same
-    ! angular  extent as  the equilibrium  and  metric variables,  and the  same
-    ! normal  extent as  the solution  variables.  The output  then follows  the
-    ! perturbation grid.
+    !> \private (time) array version
     integer function calc_XUQ_arr(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
-        &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) array version
+        &XUQ_style,time,XUQ,deriv) result(ierr)
+        
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol
         use num_utilities, only: con2dis, spline3
         use grid_utilities, only: setup_interp_data, apply_disc
@@ -64,17 +82,17 @@ contains
         character(*), parameter :: rout_name = 'calc_XUQ_arr'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
-        type(X_1_type), intent(in) :: X                                         ! perturbation variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
-        real(dp), intent(in) :: time(:)                                         ! time range
-        complex(dp), intent(inout) :: XUQ(:,:,:,:)                              ! X, U, Qn or Qg
-        logical, intent(in), optional :: deriv                                  ! return parallel derivative
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
+        type(X_1_type), intent(in) :: X                                         !< perturbation variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
+        integer, intent(in) :: XUQ_style                                        !< whether to calculate \f$X\f$, \f$U\f$, \f$Q_n\f$ or \f$Q_g\f$
+        real(dp), intent(in) :: time(:)                                         !< time range
+        complex(dp), intent(inout) :: XUQ(:,:,:,:)                              !< \f$X\f$, \f$U\f$, \f$Q_n\f$ or \f$Q_g\f$
+        logical, intent(in), optional :: deriv                                  !< return parallel derivative
         
         ! local variables
         integer :: n_t                                                          ! number of time points
@@ -335,22 +353,24 @@ contains
             end do normal
         end do Fourier
     end function calc_XUQ_arr
+    !> \private (time) individual version
     integer function calc_XUQ_ind(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,&
-        &XUQ_style,time,XUQ,deriv) result(ierr)                                 ! (time) individual version
+        &XUQ_style,time,XUQ,deriv) result(ierr)
+        
         character(*), parameter :: rout_name = 'calc_XUQ_ind'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium
-        type(X_1_type), intent(in) :: X                                         ! perturbation variables
-        type(sol_type), intent(in) :: sol                                       ! solution variables
-        integer, intent(in) :: X_id                                             ! nr. of Eigenvalue
-        integer, intent(in) :: XUQ_style                                        ! whether to calculate X, U, Qn or Qg
-        real(dp), intent(in) :: time                                            ! time
-        complex(dp), intent(inout) :: XUQ(:,:,:)                                ! normal component of perturbation
-        logical, intent(in), optional :: deriv                                  ! return parallel derivative
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
+        type(X_1_type), intent(in) :: X                                         !< perturbation variables
+        type(sol_type), intent(in) :: sol                                       !< solution variables
+        integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
+        integer, intent(in) :: XUQ_style                                        !< whether to calculate X, U, Qn or Qg
+        real(dp), intent(in) :: time                                            !< time
+        complex(dp), intent(inout) :: XUQ(:,:,:)                                !< normal component of perturbation
+        logical, intent(in), optional :: deriv                                  !< return parallel derivative
         
         ! local variables
         complex(dp), allocatable :: XUQ_arr(:,:,:,:)                            ! dummy variable to use array version
@@ -370,20 +390,27 @@ contains
         deallocate(XUQ_arr)
     end function calc_XUQ_ind
     
-    ! Calculate the total version of the  solution vector from the local version
-    ! or  the other  way around.  This is  the solution  vector for  all of  the
-    ! possible mode numbers, which can be  different from the local mode numbers
-    ! for X style 2:
-    !   -  local: the  size of  the saved  perturbation and  solution variables,
-    !   prescribed  by the  user as  input--either directly  through n_mod_X  or
-    !   through the limits on the modes using min_sec_X and max_sec_X.
-    !   - total: all  the possible modes that can resonate  in the plasma, which
-    !   can  be different  from the  local number  for X  style 2,  as the  mode
-    !   numbers depend on the normal coordinate.
-    ! If the output variable is not allocated, it is done here.
-    ! Note: If the lowest limits of the grid is not 1 (e.g. grid_X%i_min = 1 for
-    ! first process), the  input variable i_min should be set  to set correctly.
-    ! For a full grid, it should be set to 1.
+    !> Calculate  the  total version  of  the  solution  vector from  the  local
+    !! version.
+    !!
+    !! This is the  solution vector for all of the  possible mode numbers, which
+    !! can be different from the local mode numbers for X style 2:
+    !!  -  local: the  size of  the saved  perturbation and  solution variables,
+    !!  prescribed  by the  user as  input:
+    !!  - either directly through \c n_mod_X
+    !!      -  or through  the limits  on the  modes using  \c min_sec_X  and \c
+    !!      max_sec_X.
+    !!  - total: all  the possible modes that can resonate  in the plasma, which
+    !!  can be  different from the  local number for \c  X_style 2, as  the mode
+    !!  numbers depend on the normal coordinate.
+    !!
+    !! If the output variable is not allocated, it is done here.
+    !!
+    !! \note If the lowest limits of the  grid is not 1 (e.g. <tt>grid_X%i_min =
+    !! 1</tt> for first  process), the input variable \c i_min  should be set to
+    !! set correctly. For a full grid, it should be set to 1.
+    !!
+    !! \return ierr
     integer function calc_tot_sol_vec(i_min,sol_vec_loc,sol_vec_tot) &
         &result(ierr)
         use num_vars, only: X_style
@@ -392,9 +419,9 @@ contains
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
         
         ! input / output
-        integer, intent(in) :: i_min                                            ! i_min of grid in which variables are tabulated
-        complex(dp), intent(in) :: sol_vec_loc(:,:)                             ! solution vector for local resonating modes
-        complex(dp), intent(inout), allocatable :: sol_vec_tot(:,:)             ! solution vector for all possible resonating modes
+        integer, intent(in) :: i_min                                            !< \c i_min of grid in which variables are tabulated
+        complex(dp), intent(in) :: sol_vec_loc(:,:)                             !< solution vector for local resonating modes
+        complex(dp), intent(inout), allocatable :: sol_vec_tot(:,:)             !< solution vector for all possible resonating modes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -455,6 +482,13 @@ contains
                 end do
         end select
     end function calc_tot_sol_vec
+    
+    !> Calculate  the  local version  of  the  solution  vector from  the  total
+    !! version.
+    !!
+    !! \see See calc_tot_sol_vec().
+    !!
+    !! \return ierr
     integer function calc_loc_sol_vec(i_min,sol_vec_tot,sol_vec_loc) &
         &result(ierr)
         use num_vars, only: X_style
@@ -463,9 +497,9 @@ contains
         character(*), parameter :: rout_name = 'calc_loc_sol_vec'
         
         ! input / output
-        integer, intent(in) :: i_min                                            ! i_min of grid in which variables are tabulated
-        complex(dp), intent(in) :: sol_vec_tot(:,:)                             ! solution vector for all possible resonating modes
-        complex(dp), intent(inout), allocatable :: sol_vec_loc(:,:)             ! solution vector for local resonating modes
+        integer, intent(in) :: i_min                                            !< \c i_min of grid in which variables are tabulated
+        complex(dp), intent(in) :: sol_vec_tot(:,:)                             !< solution vector for all possible resonating modes
+        complex(dp), intent(inout), allocatable :: sol_vec_loc(:,:)             !< solution vector for local resonating modes
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message

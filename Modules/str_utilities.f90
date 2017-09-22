@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Operations on strings                                                      !
+!> Operations on strings.
 !------------------------------------------------------------------------------!
 module str_utilities
 #include <wrappers.h>
@@ -10,47 +10,61 @@ module str_utilities
         &merge_strings
 
 contains
-    ! Convert an integer to string 
-    ! (from http://stackoverflow.com/questions/1262695/converting-integers-to-strings-in-fortran)
+    !> Convert an integer to string.
+    !!
+    !! \see from
+    !! <http://stackoverflow.com/questions/1262695/converting-integers-to-strings-in-fortran>
     elemental character(len=max_str_ln) function i2str(k)
         ! input / output
-        integer, intent(in) :: k
+        integer, intent(in) :: k                                                !< integer to convert
         
         write (i2str, *) k
         i2str = adjustl(i2str)
     end function i2str
+    !> Convert an integer to string.
+    !!
+    !! Version with kind 8 integers.
+    !!
+    !! \see See i2str().
     elemental character(len=max_str_ln) function ii2str(k)
         ! input / output
-        integer(kind=8), intent(in) :: k
+        integer(kind=8), intent(in) :: k                                        !< integer to convert
         
         write (ii2str, *) k
         ii2str = adjustl(ii2str)
     end function ii2str
 
-    ! Convert a real (double) to string
-    ! Note: See http://www.fortran90.org/src/best-practices.html how to not lose
-    ! precision
+    !> Convert a real (double) to string
+    !!
+    !! \note See  <http://www.fortran90.org/src/best-practices.html> how  to not
+    !! lose precision.
     elemental character(len=max_str_ln) function r2str(k)
         ! input / output
-        real(dp), intent(in) :: k
+        real(dp), intent(in) :: k                                               !< real to convert
         
         write (r2str, '(ES23.16)') k
         r2str = adjustl(r2str)
     end function r2str
+    !> Convert a real (double) to string
+    !!
+    !! Version with less precise output.
+    !!
+    !! \see See r2str().
     elemental character(len=max_str_ln) function r2strt(k)
         ! input / output
-        real(dp), intent(in) :: k
+        real(dp), intent(in) :: k                                               !< real to convert
         
         write (r2strt, '(ES9.2)') k
         r2strt = adjustl(r2strt)
     end function r2strt
     
-    ! Convert a complex (double) to string
-    ! Note: See http://www.fortran90.org/src/best-practices.html how to not lose
-    ! precision
+    !> Convert a complex (double) to string
+    !!
+    !! \note See  <http://www.fortran90.org/src/best-practices.html> how  to not
+    !! lose precision.
     elemental character(len=max_str_ln) function c2str(k)
         ! input / output
-        complex(dp), intent(in) :: k
+        complex(dp), intent(in) :: k                                            !< complex to convert
         
         ! local variables
         character(len=max_str_ln) :: dum_str                                    ! dummy string
@@ -65,9 +79,14 @@ contains
         c2str = trim(c2str)//' '//dum_str
         c2str = adjustl(c2str)
     end function c2str
+    !> Convert a complex (double) to string
+    !!
+    !! Version with less precise output.
+    !!
+    !! \see See c2str().
     elemental character(len=max_str_ln) function c2strt(k)
         ! input / output
-        complex(dp), intent(in) :: k
+        complex(dp), intent(in) :: k                                            !< complex to convert
         
         ! local variables
         character(len=max_str_ln) :: dum_str                                    ! dummy string
@@ -83,13 +102,13 @@ contains
         c2strt = adjustl(c2strt)
     end function c2strt
 
-    ! Convert a string to lowercase and vice versa
-    ! (from Figure 3.5B, pg 80, "Upgrading to Fortran 90", by Cooper Redwine,
-    ! 1995 Springer-Verlag, New York. ) 
+    !> Convert a string to lowercase.
+    !!
+    !! \see from \cite RedwineF90, figure 3.5B, pg 80. 
     function strh2l(input_string) result(output_string)
         ! input / output
-        character(*), intent(in)     :: input_string
-        character(len(input_string)) :: output_string
+        character(*), intent(in)     :: input_string                            !< input string
+        character(len(input_string)) :: output_string                           !< lowercase version
         
         ! local variables
         integer :: i, n
@@ -105,10 +124,13 @@ contains
           if ( n /= 0 ) output_string(i:i) = lower_case(n:n)
         end do
     end function strh2l
+    !> convert a string to uppercase.
+    !!
+    !! \see See strh2l()
     function strl2h(input_string) result(output_string)
         ! input / output
-        character(*), intent(in)     :: input_string
-        character(len(input_string)) :: output_string
+        character(*), intent(in)     :: input_string                            !< input string
+        character(len(input_string)) :: output_string                           !< uppercase version
         
         ! local variables
         integer :: i, n
@@ -125,10 +147,11 @@ contains
         end do
     end function strl2h
     
+    !> Merge array of strings.
     function merge_strings(input_strings)
         ! input / output
-        character(*), intent(in) :: input_strings(:)
-        character((len(input_strings)+2)*size(input_strings)) :: merge_strings
+        character(*), intent(in) :: input_strings(:)                            !< array of strings
+        character((len(input_strings)+2)*size(input_strings)) :: merge_strings  !< merged string
         
         ! local variables
         integer :: id                                                           ! counter

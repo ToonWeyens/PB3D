@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Variables pertaining to the vacuum quantities                              !
+!> Variables pertaining to the vacuum quantities.
 !------------------------------------------------------------------------------!
 module vac_vars
 #include <PB3D_macros.h>
@@ -12,38 +12,39 @@ module vac_vars
     implicit none
     
     private
-    public copy_vac, &
-        vac_type
+    public copy_vac
 #if ldebug
     public n_alloc_vacs
 #endif
     
     ! global variables
-    integer, parameter :: nb = 16                                               ! Blocksize of the 2D block-cyclic distribution
+    integer, parameter :: nb = 16                                               !< Blocksize of the 2D block-cyclic distribution
 #if ldebug
-    integer :: n_alloc_vacs                                                     ! nr. of allocated vacs
+    integer :: n_alloc_vacs                                                     !< nr. of allocated vacs \ldebug
 #endif
     
-    ! vacuum type with arrays
-    !   - (angle,angle)                     for H, G
-    !   - (n_mod_X,n_mod_X)                 for res
-    ! where angle is  the angle along the magnetic field  direction (see angle_1
-    ! in  the discussion  of the  grid  type for  an explanation  of the  angles
-    ! angle_1 and angle_2)
-    type :: vac_type
-        integer :: style                                                        ! style of vacuum (1: field-line 3-D, 2: axisymmetric)
-        integer :: ctxt_HG                                                      ! context for H and G
-        integer :: n_bnd                                                        ! number of points in boundary
-        integer :: n_loc(2)                                                     ! local number of points
-        integer :: start(2)                                                     ! start of local range n_loc
-        integer :: desc_HG(BLACSCTXTSIZE)                                       ! descriptor for H and G
-        real(dp), allocatable :: norm(:,:)                                      ! J nabla psi normal vector
-        real(dp), allocatable :: x_vec(:,:)                                     ! Cartesian vector of position
-        real(dp), allocatable :: H(:,:)                                         ! H coefficient
-        real(dp), allocatable :: G(:,:)                                         ! G coefficient
-        complex(dp), allocatable :: res(:,:)                                    ! vacuum response
+    !> vacuum type
+    !!
+    !! The arrays here are of the form:
+    !!  - \c H, \c G:   <tt>(angle,angle)</tt>
+    !!  - \c res:       <tt>(n_mod_X,n_mod_X)</tt>
+    !!
+    !! where \c  angle is the  angle along  the magnetic field  direction (which
+    !! refers to \c angle_1 in the discussion of \c grid_type)
+    type, public :: vac_type
+        integer :: style                                                        !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
+        integer :: ctxt_HG                                                      !< context for H and G
+        integer :: n_bnd                                                        !< number of points in boundary
+        integer :: n_loc(2)                                                     !< local number of points
+        integer :: start(2)                                                     !< start of local range n_loc
+        integer :: desc_HG(BLACSCTXTSIZE)                                       !< descriptor for H and G
+        real(dp), allocatable :: norm(:,:)                                      !< J nabla psi normal vector
+        real(dp), allocatable :: x_vec(:,:)                                     !< Cartesian vector of position
+        real(dp), allocatable :: H(:,:)                                         !< H coefficient
+        real(dp), allocatable :: G(:,:)                                         !< G coefficient
+        complex(dp), allocatable :: res(:,:)                                    !< vacuum response
 #if ldebug
-        real(dp) :: estim_mem_usage                                             ! estimated memory usage
+        real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
         procedure :: init => init_vac
@@ -51,8 +52,11 @@ module vac_vars
     end type
     
 contains
-    ! Initializes a vacuum type and allocate the variables, the number of modes,
-    ! as well as n and m.
+    !! \public Initializes a vacuum type.
+    !!
+    !! The number of modes as well as \c n and \c m are also set up.
+    !!
+    !! \return ierr
     integer function init_vac(vac,style,n_bnd) result(ierr)
         use num_vars, only: n_procs, rank
         use X_vars, only: n_mod_X
@@ -63,9 +67,9 @@ contains
         character(*), parameter :: rout_name = 'init_vac'
         
         ! input / output
-        class(vac_type), intent(inout) :: vac                                   ! vacuum variables
-        integer, intent(in) :: style                                            ! style of vacuum (1: field-line 3-D, 2: axisymmetric)
-        integer, intent(in) :: n_bnd                                            ! total number of points in boundary
+        class(vac_type), intent(inout) :: vac                                   !< vacuum variables
+        integer, intent(in) :: style                                            !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
+        integer, intent(in) :: n_bnd                                            !< total number of points in boundary
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -142,14 +146,14 @@ contains
 #endif
     end function init_vac
     
-    ! deallocates vacuum variables
+    !> \public Deallocates vacuum variables.
     subroutine dealloc_vac(vac)
 #if ldebug
         use num_vars, only: rank, print_mem_usage
 #endif
         
         ! input / output
-        class(vac_type), intent(inout) :: vac                                   ! vacuum variables to be deallocated
+        class(vac_type), intent(inout) :: vac                                   !< vacuum variables to be deallocated
         
 #if ldebug
         ! local variables
@@ -188,11 +192,11 @@ contains
         end subroutine dealloc_vac_final
     end subroutine dealloc_vac
     
-    ! copy a vacuum type
+    !> Copy a vacuum type.
     integer function copy_vac(vac,vac_copy) result(ierr)
         ! input / output
-        class(vac_type), intent(in) :: vac                                      ! vac to be copied
-        class(vac_type), intent(inout) :: vac_copy                              ! copy
+        class(vac_type), intent(in) :: vac                                      !< vac to be copied
+        class(vac_type), intent(inout) :: vac_copy                              !< copy
         
         character(*), parameter :: rout_name = 'copy_vac'
         

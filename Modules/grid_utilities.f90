@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to the grids and different coordinate systems  !
+!> Numerical utilities related to the grids and different coordinate systems.
 !------------------------------------------------------------------------------!
 module grid_utilities
 #include <PB3D_macros.h>
@@ -22,41 +22,189 @@ module grid_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_int_vol = .false.                                     ! plot debug information for calc_int_vol
-    logical :: debug_calc_vec_comp = .false.                                    ! plot debug information for calc_vec_comp
+    !> \ldebug
+    logical :: debug_calc_int_vol = .false.                                     !< plot debug information for calc_int_vol()
+    !> \ldebug
+    logical :: debug_calc_vec_comp = .false.                                    !< plot debug information for calc_vec_comp()
 #endif
     
+    ! interfaces
+    
+    !> \public Converts Flux coordinates
+    !!      \f$\left(r,\theta,\zeta\right)_\text{F}\f$
+    !!      to Equilibrium coordinates
+    !!      \f$\left(r,\theta,\zeta\right)_\text{E}\f$.
+    !!
+    !! Optionally, two  arrays \c  r_F_array and \c  r_E_array can  be provided,
+    !! that define the mapping between the both coordinate system.
+    !! 
+    !! Standard, for E, the poloidal or toroidal normalized flux is used and for
+    !! F, the poloidal or toroidal flux in F coordinates, divided by \f$2\pi\f$.
+    !!
+    !! \note For VMEC,  it can be slow,  as the zero of  a non-linear expression
+    !! must be sought. This is done currently using calc_zero_hh().
+    !!
+    !! \return ierr
     interface coord_F2E
-        module procedure coord_F2E_r, coord_F2E_rtz
+        !> \public
+        module procedure coord_F2E_r
+        !> \public
+        module procedure coord_F2E_rtz
     end interface
+    
+    !> \public Converts Equilibrium coordinates
+    !!      \f$\left(r,\theta,\zeta\right)_\text{E}\f$.
+    !!      to Flux coordinates
+    !!      \f$\left(r,\theta,\zeta\right)_\text{F}\f$
+    !!
+    !! Optionally, two  arrays \c  r_E_array and \c  r_F_array can  be provided,
+    !! that define the mapping between the both coordinate system.
+    !!
+    !! Standard, for E, the poloidal or toroidal normalized flux is used and for
+    !! F, the poloidal or toroidal flux in F coordinates, divided by \f$2\pi\f$.
+    !!
+    !! \return ierr
     interface coord_E2F
-        module procedure coord_E2F_r, coord_E2F_rtz
+        !> \public
+        module procedure coord_E2F_r
+        !> \public
+        module procedure coord_E2F_rtz
     end interface
+    
+    !> \public Calculate grid  of equidistant points, where  optionally the last
+    !! point can be excluded.
     interface calc_eqd_grid
-        module procedure calc_eqd_grid_1D, calc_eqd_grid_3D
+        !> \public
+        module procedure calc_eqd_grid_1D
+        !> \public
+        module procedure calc_eqd_grid_3D
     end interface
+    
+    !> \public Set up the factors for the derivative calculation.
+    !!
+    !! This is done through  a matrix \c A using finite  differences of order \c
+    !! ord with precision \c prec, by which is meant that the order of the error
+    !! is at least \f$\sim \Delta^{\texttt{prec}+1}\f$.
+    !! 
+    !! Afterwards, the matrix \c A has to  be multiplied with the variable to be
+    !! derived to obtain the requested derivative.
+    !! 
+    !! For a particular order and precision, the number of different points that
+    !! have to be combined is <tt>ord+prec</tt>, however, as it is better to use
+    !! symmetric  expressions, this  number is  possibly aumented  by one.  This
+    !! number is saved in \c n_loc.
+    !!
+    !! The  index  \c  kd  is  then  defined  to  go  from  <tt>-(n_loc-1)/2  ..
+    !! (n_loc-1)/2</tt>,  which is  translated  to local  coordinates by  adding
+    !! <tt>(n_loc+1)/2</tt>  and to  total coordinates  by adding  generally the
+    !! index in total coordinates \c i where  the local problem is to be set up,
+    !! but capping  it by <tt>(n_loc+1)/2</tt> and  <tt>n-(n_loc-1)/2</tt>, i.e.
+    !! by using
+    !!
+    !!   <tt>k_tot = kd + max((n_loc+1)/2,min(id,n-(n_loc-1)/2))</tt>,
+    !!
+    !! so that these never go out of bounds <tt>1 .. n</tt>.
+    !!
+    !! The local matrix element "mat_loc" is then set up as follows:
+    !!  \f[ \left[\begin{array}{ccccc}
+    !!      1 & 1 & \ldots & 1 & 1 \\
+    !!      \left(\Delta^{i-2}_i\right) & \left(\Delta^{i-1}_i\right) & 0 &
+    !!      \left(\Delta^{i+1}_i\right) & \left(\Delta^{i+1}_i\right) \\
+    !!      \frac{\left(\Delta^{i-2}_i\right)^2}{2!} &
+    !!      \frac{\left(\Delta^{i-1}_i\right)^2}{2!} & 0 &
+    !!      \frac{\left(\Delta^{i+1}_i\right)^2}{2!} &
+    !!      \frac{\left(\Delta^{i+1}_i\right)^2}{2!} \\
+    !!      \frac{\left(\Delta^{i-2}_i\right)^3}{3!} &
+    !!      \frac{\left(\Delta^{i-1}_i\right)^2}{3!} & 0 &
+    !!      \frac{\left(\Delta^{i+1}_i\right)^3}{3!} &
+    !!      \frac{\left(\Delta^{i+1}_i\right)^3}{3!} \\
+    !!      \ldots & \ldots  & \vdots & \ldots & \ldots \\
+    !!  \end{array}\right]\f]
+    !! for bulk matrices <tt>((n_loc+1)/2 <= i <= n-(n_loc-1)/2)</tt>, with
+    !!  \f[\Delta^j_i = x\left(j\right)-x\left(i\right). \f]
+    !! For other elements, this is shifted, e.g.:
+    !!
+    !!  <tt>mat_loc(j,k) = (x(k_tot)-X(i))^(j-1) </tt>
+    !!
+    !! where  <tt>j =  1..n_loc</tt> and <tt>k  = -(n_mod-1)/2..(n_mod-1)/2</tt>
+    !! and \c k_tot is defined above.
+    !!
+    !! This  system  of  equations  \c  D  can be  solved  by  relating  to  the
+    !! Vandermonde matrix \c V
+    !!  \f[ D = \text{Diag}\left(\frac{1}{0!},\frac{1}{1!},...,\frac{1}{\texttt{n_loc}!}\right) V^T \f]
+    !! and  solving it  using the  specific formula's, so  that the  solution is
+    !! given by row number \c ord, multiplied by <tt>(ord!)</tt>.
+    !!
+    !! \return ierr
     interface setup_deriv_data
-        module procedure setup_deriv_data_eqd, setup_deriv_data_reg
+        !> \public
+        module procedure setup_deriv_data_eqd
+        !> \public
+        module procedure setup_deriv_data_reg
     end interface
+    
+    !> \public Calculates the toroidal difference  for a magnitude calculated on
+    !! three toroidal points: two extremities and one in the middle.
+    !!
+    !! This is done using the formula
+    !!  \f[ \frac{b-a}{b+a} , \f]
+    !! for the relative  difference between \f$a\f$ and \f$b\f$.  This is useful
+    !! when it is used to calculate a  toroidal ripple and these are the extreme
+    !! points.
+    !! 
+    !! The procedure also needs the map  between the flux poloidal angle and the
+    !! geometrical poloidal angle.
+    !!
+    !! In a  first step the quantity  is interpolated on an  equidistant grid in
+    !! the geometrical poloidal angle.
+    !!
+    !! The  difference  is then  calculated  for  values of  constant  geometric
+    !! poloidal angle.
+    !!
+    !! Finally, this result is transformed back to the Flux coordinates.
+    !!
+    !! \note
+    !!  -# The theta map should have first and last point equal.
+    !!  -# This  routine should  be used  only for  periodic quantities  (so not
+    !!  for  some  of the  Flux  quantities  that  are defined  along  generally
+    !!  non-rational magnetic field lines).
+    !!
+    !! \return ierr
     interface calc_tor_diff
-        module procedure calc_tor_diff_0D, calc_tor_diff_2D
+        !> \public
+        module procedure calc_tor_diff_0D
+        !> \public
+        module procedure calc_tor_diff_2D
     end interface
+    
+    !> \public Applies the discretization  data calculated in setup_deriv_data()
+    !! or setup_interp_data() to calculate the  derivative or interpolation in a
+    !! dimension \c disc_dim.
+    !!
+    !! \return ierr
     interface apply_disc
-        module procedure &
-            &apply_disc_4D_real, apply_disc_4D_complex, &
-            &apply_disc_3D_real, apply_disc_3D_complex, &
-            &apply_disc_2D_real, apply_disc_2D_complex, &
-            &apply_disc_1D_real, apply_disc_1D_complex
+        !> \public
+        module procedure apply_disc_4D_real
+        !> \public
+        module procedure apply_disc_4D_complex
+        !> \public
+        module procedure apply_disc_3D_real
+        !> \public
+        module procedure apply_disc_3D_complex
+        !> \public
+        module procedure apply_disc_2D_real
+        !> \public
+        module procedure apply_disc_2D_complex
+        !> \public
+        module procedure apply_disc_1D_real
+        !> \public
+        module procedure apply_disc_1D_complex
     end interface
     
 contains
-    ! Converts  Flux  coordinates  (r,theta,zeta)_F to  Equilibrium  coordinates
-    ! (r,theta,zeta)_E. Optionally,  two arrays  r_F_array and r_E_array  can be
-    ! provided,  that define  the mapping  between the  both coordinate  system.
-    ! Standard, for E, the poloidal or  toroidal normalized flux is used and for
-    ! F, the poloidal or toroidal flux in F coordinates, divided by 2pi.
+    !> \private version withi r, theta and zeta
     integer function coord_F2E_rtz(grid_eq,r_F,theta_F,zeta_F,r_E,&
-        &theta_E,zeta_E,r_F_array,r_E_array,ord) result(ierr)                   ! version with r, theta and zeta
+        &theta_E,zeta_E,r_F_array,r_E_array,ord) result(ierr)
         use num_vars, only: tol_zero, eq_style
         use VMEC_utilities, only: fourier2real
         use VMEC_vars, only: L_V_c, L_V_s, is_asym_V
@@ -64,11 +212,16 @@ contains
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)           ! Flux coords.
-        real(dp), intent(inout) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)        ! Equilibrium coords.
-        real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
-        integer, intent(in), optional :: ord                                    ! order (only used for eq_style 1)
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
+        real(dp), intent(in) :: theta_F(:,:,:)                                  !< \f$\theta_\text{F}\f$
+        real(dp), intent(in) :: zeta_F(:,:,:)                                   !< \f$\zeta_\text{F}\f$
+        real(dp), intent(inout) :: r_E(:)                                       !< \f$r_\text{E}\f$
+        real(dp), intent(inout) :: theta_E(:,:,:)                               !< \f$\theta_\text{E}\f$
+        real(dp), intent(inout) :: zeta_E(:,:,:)                                !< \f$\zeta_\text{E}\f$
+        real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
+        real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
+        integer, intent(in), optional :: ord                                    !< order (only used for eq_style 1)
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -226,6 +379,7 @@ contains
             end if
         end function fun_pol
     end function coord_F2E_rtz
+    !> \private version with only r
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
@@ -233,10 +387,11 @@ contains
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_F(:)                                          ! Flux coords.
-        real(dp), intent(inout) :: r_E(:)                                       ! Equilibrium coords.
-        real(dp), intent(in), optional, target :: r_F_array(:), r_E_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
+        real(dp), intent(inout) :: r_E(:)                                       !< \f$r_\text{E}\f$
+        real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
+        real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -286,11 +441,7 @@ contains
         call norm_interp_data%dealloc()
     end function coord_F2E_r
     
-    ! Converts  Equilibrium  coordinates  (r,theta,zeta)_E to  Flux  coordinates
-    ! (r,theta,zeta)_F. Optionally,  two arrays  r_E_array and r_F_array  can be
-    ! provided,  that define  the mapping  between the  both coordinate  system.
-    ! Standard, for E, the poloidal or  toroidal normalized flux is used and for
-    ! F, the poloidal or toroidal flux in F coordinates, divided by 2pi.
+    !> version with r, theta and zeta
     integer function coord_E2F_rtz(grid_eq,r_E,theta_E,zeta_E,r_F,&
         &theta_F,zeta_F,r_E_array,r_F_array) result(ierr)                       ! version with r, theta and zeta
         use num_vars, only: eq_style
@@ -298,10 +449,15 @@ contains
         character(*), parameter :: rout_name = 'coord_E2F_rtz'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_E(:), theta_E(:,:,:), zeta_E(:,:,:)           ! Equilibrium coords.
-        real(dp), intent(inout) :: r_F(:), theta_F(:,:,:), zeta_F(:,:,:)        ! Flux coords.
-        real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        real(dp), intent(in) :: r_E(:)                                          !< \f$r_\text{E}\f$
+        real(dp), intent(in) :: theta_E(:,:,:)                                  !< \f$\theta_\text{E}\f$
+        real(dp), intent(in) :: zeta_E(:,:,:)                                   !< \f$\zeta_\text{E}\f$
+        real(dp), intent(inout) :: r_F(:)                                       !< \f$r_\text{F}\f$
+        real(dp), intent(inout) :: theta_F(:,:,:)                               !< \f$\theta_\text{F}\f$
+        real(dp), intent(inout) :: zeta_F(:,:,:)                                !< \f$\zeta_\text{F}\f$
+        real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
+        real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
         
         ! local variables (also used in child functions)
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -400,6 +556,7 @@ contains
             call norm_interp_data%dealloc()
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
+    !> version with only r
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
@@ -407,10 +564,11 @@ contains
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_E(:)                                          ! Equilibrium coords.
-        real(dp), intent(inout) :: r_F(:)                                       ! Flux coords.
-        real(dp), intent(in), optional, target :: r_E_array(:), r_F_array(:)    ! optional arrays that define mapping between two coord. systems
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        real(dp), intent(in) :: r_E(:)                                          !< \f$r_\text{D}\f$
+        real(dp), intent(inout) :: r_F(:)                                       !< \f$r_\text{F}\f$
+        real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
+        real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -459,21 +617,697 @@ contains
         nullify(loc_r_E,loc_r_F)
         call norm_interp_data%dealloc()
     end function coord_E2F_r
+
+    !> \private 3-D version
+    integer function calc_eqd_grid_3D(var,min_grid,max_grid,grid_dim,&
+        &excl_last) result(ierr)
+        character(*), parameter :: rout_name = 'calc_eqd_grid_3D'
+        
+        ! input and output
+        real(dp), intent(inout) :: var(:,:,:)                                   !< output
+        real(dp), intent(in) :: min_grid                                        !< min. of angles [\f$\pi\f$]
+        real(dp), intent(in) :: max_grid                                        !< max. of angles [\f$\pi\f$]
+        integer, intent(in) :: grid_dim                                         !< in which dimension to create the grid
+        logical, intent(in), optional :: excl_last                              !< .true. if last point excluded
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: excl_last_loc                                                ! local copy of excl_last
+        integer :: grid_size                                                    ! nr. of points
+        integer :: grid_size_mod                                                ! grid_size or grid_size + 1
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (grid_dim.lt.1 .or. grid_dim.gt.3) then
+            ierr = 1
+            err_msg = 'grid_dim has to point to a dimension going from 1 to 3'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up grid_size
+        grid_size = size(var,grid_dim)
+        
+        ! test some values
+        if (grid_size.lt.1) then
+            err_msg = 'The angular array has to have a length of at &
+                &least 1'
+            ierr = 1
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up local excl_last
+        excl_last_loc = .false.
+        if (present(excl_last)) excl_last_loc = excl_last
+        
+        ! add 1 to modified grid size if last point is to be excluded
+        if (excl_last_loc) then
+            grid_size_mod = grid_size + 1
+        else
+            grid_size_mod = grid_size
+        end if
+        
+        ! initialize output vector
+        var = 0.0_dp
+        
+        ! calculate grid points
+        if (grid_size.eq.1) then
+            var = min_grid                                                      ! = max_grid
+        else
+            if (grid_dim.eq.1) then
+                do id = 1,grid_size
+                    var(id,:,:) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            else if (grid_dim.eq.2) then
+                do id = 1,grid_size
+                    var(:,id,:) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            else
+                do id = 1,grid_size
+                    var(:,:,id) = min_grid + &
+                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
+                end do
+            end if
+        end if
+    end function calc_eqd_grid_3D
+    !> \private 1-D version
+    integer function calc_eqd_grid_1D(var,min_grid,max_grid,excl_last) &
+        &result(ierr)
+        character(*), parameter :: rout_name = 'calc_eqd_grid_1D'
+        
+        ! input and output
+        real(dp), intent(inout) :: var(:)                                       !< output
+        real(dp), intent(in) :: min_grid                                        !< min. of angles [\f$\pi\f$]
+        real(dp), intent(in) :: max_grid                                        !< max. of angles [\f$\pi\f$]
+        logical, intent(in), optional :: excl_last                              !< .true. if last point excluded
+        
+        ! local variables
+        real(dp), allocatable :: var_3D(:,:,:)                                  ! 3D version of var
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up var_3D
+        allocate(var_3D(size(var),1,1))
+        
+        ! call 3D version
+        ierr = calc_eqd_grid_3D(var_3D,min_grid,max_grid,1,excl_last)
+        CHCKERR('')
+        
+        ! update var
+        var = var_3D(:,1,1)
+    end function calc_eqd_grid_1D
     
-    ! Calculates  X,Y  and  Z  on   a  grid  grid_XYZ,  determined  through  its
-    ! E(quilibrium) coordinates.
-    ! Furthermore, a grid  grid_eq must be provided, which is  the grid in which
-    ! the variables concerning R and Z  are tabulated, i.e. the full equilibrium
-    ! grid  in E(quilibrium)  coordinates. Of  this grid,  however, only  r_E is
-    ! used,  and the  rest ignored.  It can  therefore be  provided without  the
-    ! angular part, i.e. by reconstructing it with a subset.
-    ! If VMEC is the equilibrium  model, this routine also optionally calculates
-    ! lambda on the grid, as this is  also needed some times. If HELENA is used,
-    ! this variable is not used.
-    ! Note: For  VMEC, the trigonometric factors of grid_XYZ  must be calculated
-    ! beforehand.
-    ! Note: The  normalization factor R_0 for  length is taken into  account and
-    ! the output is transformed back to unnormalized values:
+    !> \private equidistant version
+    integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)
+        use num_utilities, only: fac, solve_vand
+        
+        character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
+        
+        ! input / output
+        real(dp), intent(in) :: step                                            !< step size
+        integer, intent(in) :: n                                                !< problem size
+        type(disc_type), intent(inout) :: A                                     !< derivation data
+        integer, intent(in) :: ord                                              !< order of derivative
+        integer, intent(in) :: prec                                             !< precision
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        integer :: kd_tot                                                       ! kd in total index
+        integer :: n_loc                                                        ! local size of problem to solve
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
+        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n_loc
+        n_loc = prec+ord+1
+        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
+        
+        ! tests
+        if (prec.lt.1) then
+            ierr = 1
+            err_msg = 'precision has to be at least 1'
+            CHCKERR(err_msg)
+        end if
+        if (ord.lt.1) then
+            ierr = 1
+            err_msg = 'order has to be at least 1'
+            CHCKERR(err_msg)
+        end if
+        if (n.lt.2*n_loc) then
+            ierr = 1
+            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set variables
+        allocate(mat_loc(n_loc))
+        allocate(rhs_loc(n_loc))
+        allocate(sol_loc(n_loc))
+        ierr = A%init(n,n_loc)
+        CHCKERR('')
+        
+        ! iterate over all x values
+        do id = 1,n
+            ! for bulk of matrix, do calculation only once
+            if (id.le.(n_loc+1)/2 .or. id.gt.n-(n_loc-1)/2) then                ! first, last, or first of bulk
+                ! calculate elements of local matrix
+                do kd = -(n_loc-1)/2,(n_loc-1)/2
+                    kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
+                    mat_loc(kd+(n_loc+1)/2) = (kd_tot-id)*step
+                end do
+                
+                ! solve Vandermonde system
+                rhs_loc = 0._dp
+                rhs_loc(ord+1) = 1._dp                                          ! looking for derivative of this order
+                call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
+                
+                ! save in A
+                A%dat(id,:) = sol_loc*fac(ord)
+                A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
+            else                                                                ! bulk of matrix
+                ! copy from first bulk element in matrix A
+                A%dat(id,:) = A%dat(id-1,:)
+                A%id_start(id) = A%id_start(id-1)+1
+            end if
+        end do
+    end function setup_deriv_data_eqd
+    !> \private regular version
+    integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)
+        use num_utilities, only: fac, solve_vand
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'setup_deriv_data_reg'
+        
+        ! input / output
+        real(dp), intent(in) :: x(:)                                            !< independent variable
+        type(disc_type), intent(inout) :: A                                     !< discretization mat
+        integer, intent(in) :: ord                                              !< order of derivative
+        integer, intent(in) :: prec                                             !< precision
+        
+        ! local variables
+        integer :: n                                                            ! size of x
+        integer :: id, kd                                                       ! counters
+        integer :: kd_tot                                                       ! kd in total index
+        integer :: n_loc                                                        ! local size of problem to solve
+        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
+        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
+        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set n_loc and n
+        n_loc = prec+ord+1
+        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
+        n = size(x)
+        
+        ! tests
+        if (prec.lt.1) then
+            ierr = 1
+            err_msg = 'precision has to be at least 1'
+            CHCKERR(err_msg)
+        end if
+        if (ord.lt.1) then
+            ierr = 1
+            err_msg = 'order has to be at least 1'
+            CHCKERR(err_msg)
+        end if
+        if (n.lt.2*n_loc) then
+            ierr = 1
+            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set variables
+        allocate(mat_loc(n_loc))
+        allocate(rhs_loc(n_loc))
+        allocate(sol_loc(n_loc))
+        ierr = A%init(n,n_loc)
+        CHCKERR('')
+        
+        ! iterate over all x values
+        do id = 1,n
+            ! calculate elements of local matrix
+            do kd = -(n_loc-1)/2,(n_loc-1)/2
+                kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
+                mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
+            end do
+            
+            ! solve Vandermonde system
+            rhs_loc = 0._dp
+            rhs_loc(ord+1) = 1._dp                                              ! looking for derivative of this order
+            call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
+            
+            ! save in total matrix A
+            A%dat(id,:) = sol_loc*fac(ord)
+            A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
+        end do
+    end function setup_deriv_data_reg
+
+    !> \private 2-D version
+    integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
+        &result(ierr)
+        use num_vars, only: min_theta_plot, max_theta_plot
+        use num_utilities, only: spline3, order_per_fun
+        
+        character(*), parameter :: rout_name = 'calc_tor_diff_2D'
+        
+        ! input / output
+        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             !< covariant and contravariant components <tt>(dim1,dim2,dim3,3,2)</tt>
+        real(dp), intent(in) :: theta(:,:,:)                                    !< geometric poloidal angle
+        integer, intent(in) :: norm_disc_prec                                   !< precision for normal derivatives
+        logical, intent(in), optional :: absolute                               !< calculate absolute, not relative, difference
+        real(dp), intent(in), optional :: r(:)                                  !< normal positions for theta
+        
+        ! local variables
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: n_pol                                                        ! number of poloidal points to be used (1 less than total)
+        integer :: istat                                                        ! status
+        real(dp), allocatable :: theta_eqd(:)                                   ! equidistant grid
+        real(dp), allocatable :: v_com_interp(:,:)                              ! interpolated local v_com for outer points
+        real(dp), allocatable :: theta_ord(:)                                   ! ordered theta
+        real(dp), allocatable :: v_com_ord(:)                                   ! ordered v_com
+        logical :: absolute_loc                                                 ! local absolute
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up variables
+        n_pol = size(theta,1)-1
+        allocate(theta_eqd(n_pol))
+        allocate(v_com_interp(n_pol,3))
+        absolute_loc = .false.
+        if (present(absolute)) absolute_loc = absolute
+        
+        norm: do kd = 1,size(v_com,3)
+            ! set up equidistant grid
+            ierr = calc_eqd_grid(theta_eqd,min_theta_plot*pi,max_theta_plot*pi,&
+                &excl_last=.true.)
+            CHCKERR('')
+            do id = 1,size(v_com,4)
+                do ld = 1,size(v_com,5)
+                    ! interpolate the geometric poloidal angle for outer points
+                    do jd = 1,3,2
+                        ! order
+                        ierr = order_per_fun(theta(1:n_pol,jd,kd),&
+                            &v_com(1:n_pol,jd,kd,id,ld),theta_ord,v_com_ord,&
+                            &norm_disc_prec)
+                        CHCKERR('')
+                        
+                        istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                            &theta_eqd,ynew=v_com_interp(:,jd))
+                        deallocate(theta_ord,v_com_ord)
+                        
+                        if (istat.ne.0) then
+                            call display_interp_warning(r)
+                            v_com(:,2,kd,:,:) = 0._dp
+                            cycle norm
+                        end if
+                    end do
+                    
+                    ! calculate difference and save in middle point
+                    v_com_interp(:,2) = &
+                        &(v_com_interp(:,3)-v_com_interp(:,1))
+                    if (.not.absolute_loc) &                                    ! make it relative
+                        &v_com_interp(:,2) = v_com_interp(:,2)/&
+                        &(v_com_interp(:,3)+v_com_interp(:,1))
+                    
+                    ! order
+                    ierr = order_per_fun(theta_eqd,v_com_interp(:,2),&
+                        &theta_ord,v_com_ord,norm_disc_prec)
+                    CHCKERR('')
+                    
+                    ! interpolate back
+                    istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
+                        &theta(:,2,kd),ynew=v_com(:,2,kd,id,ld))
+                    deallocate(theta_ord,v_com_ord)
+                    
+                    if (istat.ne.0) then
+                        call display_interp_warning(r)
+                        v_com(:,2,kd,:,:) = 0._dp
+                        cycle norm
+                    end if
+                end do
+            end do
+        end do norm
+    contains
+        ! Displays warning if no interpolation possible.
+        ! Uses variable kd from parent procedure.
+        subroutine display_interp_warning(r)
+            ! input / output
+            real(dp), intent(in), optional :: r(:)                              ! normal positions for theta
+            
+            if (present(r)) then
+                call writo('Cannot interpolate geometrical &
+                    &theta at normal position '//&
+                    &trim(r2str(r(kd))),warning=.true.)
+            else
+                call writo('Cannot interpolate geometrical &
+                    &theta',warning=.true.)
+            end if
+            call lvl_ud(1)
+            call writo('Are you sure the origin is chosen &
+                &correctly?')
+            call writo('Skipping this normal position')
+            call lvl_ud(-1)
+        end subroutine display_interp_warning
+    end function calc_tor_diff_2D
+    !> \private 0-D version
+    integer function calc_tor_diff_0D(v_mag,theta,norm_disc_prec,absolute,r) &
+        &result(ierr)
+        character(*), parameter :: rout_name = 'calc_tor_diff_0D'
+        
+        ! input / output
+        real(dp), intent(inout) :: v_mag(:,:,:)                                 !< magnitude <tt>(dim1,dim2,dim3)</tt>
+        real(dp), intent(in) :: theta(:,:,:)                                    !< geometric poloidal angle
+        integer, intent(in) :: norm_disc_prec                                   !< precision for normal derivatives
+        logical, intent(in), optional :: absolute                               !< calculate absolute, not relative, difference
+        real(dp), intent(in), optional :: r(:)                                  !< normal positions for theta
+        
+        ! local variable
+        real(dp), allocatable :: v_com_loc(:,:,:,:,:)                           ! local copy of v_mag
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local copy of v_mag
+        allocate(v_com_loc(size(v_mag,1),size(v_mag,2),size(v_mag,3),1,1))
+        v_com_loc(:,:,:,1,1) = v_mag
+        
+        ! call 2-D version
+        ierr = calc_tor_diff_2D(v_com_loc,theta,norm_disc_prec,&
+            &absolute=absolute,r=r)
+        CHCKERR('')
+        
+        ! copy
+        v_mag = v_com_loc(:,:,:,1,1)
+    end function calc_tor_diff_0D
+    
+    !> 4-D real version
+    integer function apply_disc_4D_real(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_4D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:,:,:,:)                                    !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        real(dp), intent(inout) :: dvar(:,:,:,:)                                !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: n                                                            ! size of variable
+        integer :: id, jd                                                       ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (disc_dim.lt.1 .or. disc_dim.gt.4) then
+            err_msg = 'invalid dimension of derivative '//trim(i2str(disc_dim))
+            CHCKERR(err_msg)
+        end if
+        n = size(dvar,disc_dim)
+        if (n.ne.disc_data%n) then
+            err_msg = 'variables are not compatible'
+            CHCKERR(err_msg)
+        end if
+        
+        ! initialize output
+        dvar = 0._dp
+        
+        ! multiply the matrices
+        select case (disc_dim)
+            case (1)
+                do id = 1,n
+                    do jd = 1,disc_data%n_loc
+                        dvar(id,:,:,:) = dvar(id,:,:,:) + &
+                            &disc_data%dat(id,jd)*&
+                            &var(jd+disc_data%id_start(id)-1,:,:,:)
+                    end do
+                end do
+            case (2)
+                do id = 1,n
+                    do jd = 1,disc_data%n_loc
+                        dvar(:,id,:,:) = dvar(:,id,:,:) + &
+                            &disc_data%dat(id,jd)*&
+                            &var(:,jd+disc_data%id_start(id)-1,:,:)
+                    end do
+                end do
+            case (3)
+                do id = 1,n
+                    do jd = 1,disc_data%n_loc
+                        dvar(:,:,id,:) = dvar(:,:,id,:) + &
+                            &disc_data%dat(id,jd)*&
+                            &var(:,:,jd+disc_data%id_start(id)-1,:)
+                    end do
+                end do
+            case (4)
+                do id = 1,n
+                    do jd = 1,disc_data%n_loc
+                        dvar(:,:,:,id) = dvar(:,:,:,id) + &
+                            &disc_data%dat(id,jd)*&
+                            &var(:,:,:,jd+disc_data%id_start(id)-1)
+                    end do
+                end do
+            case default
+                ierr = 1
+                err_msg = 'dimension of discretization operation '//&
+                    &trim(i2str(disc_dim))//'impossible'
+                CHCKERR(err_msg)
+        end select
+    end function apply_disc_4D_real
+    !> 4-D complex version
+    integer function apply_disc_4D_complex(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_4D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:,:,:,:)                                 !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        complex(dp), intent(inout) :: dvar(:,:,:,:)                             !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),size(dvar,4)))
+        
+        ! call the real version for the real and imaginary part separately
+        ierr = apply_disc_4D_real(rp(var),disc_data,dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar_loc
+        ierr = apply_disc_4D_real(ip(var),disc_data,dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar + iu*dvar_loc
+    end function apply_disc_4D_complex
+    !> 3-D real version
+    integer function apply_disc_3D_real(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_3D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:,:,:)                                      !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        real(dp), intent(inout) :: dvar(:,:,:)                                  !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_real(reshape(var,[shape(var),1]),disc_data,&
+            &dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar_loc(:,:,:,1)
+    end function apply_disc_3D_real
+    !> 3-D complex version
+    integer function apply_disc_3D_complex(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_3D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:,:,:)                                   !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        complex(dp), intent(inout) :: dvar(:,:,:)                               !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1]),disc_data,&
+            &dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar_loc(:,:,:,1)
+    end function apply_disc_3D_complex
+    !> 2-D real version
+    integer function apply_disc_2D_real(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_2D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:,:)                                        !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        real(dp), intent(inout) :: dvar(:,:)                                    !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1]),disc_data,&
+            &dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar_loc(:,:,1,1)
+    end function apply_disc_2D_real
+    !> 2-D complex version
+    integer function apply_disc_2D_complex(var,disc_data,dvar,disc_dim) &
+        &result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_2D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:,:)                                     !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        complex(dp), intent(inout) :: dvar(:,:)                                 !< operated variable
+        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
+        
+        ! local variables
+        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1]),disc_data,&
+            &dvar_loc,disc_dim)
+        CHCKERR('')
+        dvar = dvar_loc(:,:,1,1)
+    end function apply_disc_2D_complex
+    !> 1-D real version
+    integer function apply_disc_1D_real(var,disc_data,dvar) result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_1D_real'
+        
+        ! input / output
+        real(dp), intent(in) :: var(:)                                          !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        real(dp), intent(inout) :: dvar(:)                                      !< operated variable
+        
+        ! local variables
+        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),1,1,1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1,1]),disc_data,&
+            &dvar_loc,1)
+        CHCKERR('')
+        dvar = dvar_loc(:,1,1,1)
+    end function apply_disc_1D_real
+    !> 1-D complex version
+    integer function apply_disc_1D_complex(var,disc_data,dvar) result(ierr)
+        use grid_vars, only: disc_type
+        
+        character(*), parameter :: rout_name = 'apply_disc_1D_complex'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:)                                       !< variable to be operated on
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        complex(dp), intent(inout) :: dvar(:)                                   !< operated variable
+        
+        ! local variables
+        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up local dvar
+        allocate(dvar_loc(size(dvar,1),1,1,1))
+        
+        ! call the 4D version
+        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1,1]),&
+            &disc_data,dvar_loc,1)
+        CHCKERR('')
+        dvar = dvar_loc(:,1,1,1)
+    end function apply_disc_1D_complex
+    
+    !> Calculates \f$X\f$, \f$Y\f$ and \f$Z\f$ on a grid \c grid_XYZ, determined
+    !! through its E(quilibrium) coordinates.
+    !!
+    !! Furthermore, a  grid \c grid_eq  must be provided,  which is the  grid in
+    !! which the  variables concerning \f$R\f$  and \f$Z\f$ are  tabulated, i.e.
+    !! the full equilibrium grid in E(quilibrium) coordinates.
+    !!
+    !! Of this grid, however, only \c r_E  is used, and the rest ignored. It can
+    !! therefore be provided without the angular part, i.e. by reconstructing it
+    !! with a subset.
+    !!
+    !! If VMEC is the equilibrium model, this routine also optionally calculates
+    !! \f$\lambda\f$ on the grid, as this  is also needed some times. for HELENA
+    !! this variable is not used.
+    !!
+    !! Optionally, \f$R\f$ and \f$\lambda\f$ (only for VMEC) can be returned.
+    !!
+    !! \note
+    !!  -# For VMEC, the trigonometric factors of \c grid_XYZ must be calculated
+    !!  beforehand.
+    !!  -# The normalization factor \c R_0  for length is taken into account and
+    !!  the output is transformed back to unnormalized values:
+    !!
+    !! \return ierr
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L,R) result(ierr)
         use num_vars, only: eq_style, use_normalization
         use num_utilities, only: round_with_tol
@@ -482,11 +1316,13 @@ contains
         character(*), parameter :: rout_name = 'calc_XYZ_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_XYZ                                 ! grid for which to calculate X, Y, Z and optionally L
-        real(dp), intent(inout) :: X(:,:,:), Y(:,:,:), Z(:,:,:)                 ! X, Y and Z of grid
-        real(dp), intent(inout), optional :: L(:,:,:)                           ! lambda of grid
-        real(dp), intent(inout), optional :: R(:,:,:)                           ! R of grid
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_XYZ                                 !< grid for which to calculate \f$X\f$, \f$Y\f$, \f$Z\f$ and optionally \f$L\f$
+        real(dp), intent(inout) :: X(:,:,:)                                     !< \f$X\f$ of grid
+        real(dp), intent(inout) :: Y(:,:,:)                                     !< \f$Y\f$ of grid
+        real(dp), intent(inout) :: Z(:,:,:)                                     !< \f$Z\f$ of grid
+        real(dp), intent(inout), optional :: L(:,:,:)                           !< \f$\lambda\f$ of grid
+        real(dp), intent(inout), optional :: R(:,:,:)                           !< \f$R\f$ of grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -743,114 +1579,20 @@ contains
             call pol_interp_data%dealloc()
         end function calc_XYZ_grid_HEL
     end function calc_XYZ_grid
-
-    ! Calculate grid of equidistant points,  where optionally the last point can
-    ! be excluded.
-    integer function calc_eqd_grid_3D(var,min_grid,max_grid,grid_dim,&
-        &excl_last) result(ierr)                                                ! 3D version
-        character(*), parameter :: rout_name = 'calc_eqd_grid_3D'
-        
-        ! input and output
-        real(dp), intent(inout) :: var(:,:,:)                                   ! output
-        real(dp), intent(in) :: min_grid, max_grid                              ! min. and max. of angles [pi]
-        integer, intent(in) :: grid_dim                                         ! in which dimension to create the grid
-        logical, intent(in), optional :: excl_last                              ! .true. if last point excluded
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: excl_last_loc                                                ! local copy of excl_last
-        integer :: grid_size                                                    ! nr. of points
-        integer :: grid_size_mod                                                ! grid_size or grid_size + 1
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (grid_dim.lt.1 .or. grid_dim.gt.3) then
-            ierr = 1
-            err_msg = 'grid_dim has to point to a dimension going from 1 to 3'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set up grid_size
-        grid_size = size(var,grid_dim)
-        
-        ! test some values
-        if (grid_size.lt.1) then
-            err_msg = 'The angular array has to have a length of at &
-                &least 1'
-            ierr = 1
-            CHCKERR(err_msg)
-        end if
-        
-        ! set up local excl_last
-        excl_last_loc = .false.
-        if (present(excl_last)) excl_last_loc = excl_last
-        
-        ! add 1 to modified grid size if last point is to be excluded
-        if (excl_last_loc) then
-            grid_size_mod = grid_size + 1
-        else
-            grid_size_mod = grid_size
-        end if
-        
-        ! initialize output vector
-        var = 0.0_dp
-        
-        ! calculate grid points
-        if (grid_size.eq.1) then
-            var = min_grid                                                      ! = max_grid
-        else
-            if (grid_dim.eq.1) then
-                do id = 1,grid_size
-                    var(id,:,:) = min_grid + &
-                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
-                end do
-            else if (grid_dim.eq.2) then
-                do id = 1,grid_size
-                    var(:,id,:) = min_grid + &
-                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
-                end do
-            else
-                do id = 1,grid_size
-                    var(:,:,id) = min_grid + &
-                        &(max_grid-min_grid)*(id-1)/(grid_size_mod-1)
-                end do
-            end if
-        end if
-    end function calc_eqd_grid_3D
-    integer function calc_eqd_grid_1D(var,min_grid,max_grid,excl_last) &
-        &result(ierr)                                                           ! 1D version
-        character(*), parameter :: rout_name = 'calc_eqd_grid_1D'
-        
-        ! input and output
-        real(dp), intent(inout) :: var(:)                                       ! output
-        real(dp), intent(in) :: min_grid, max_grid                              ! min. and max. of angles [pi]
-        logical, intent(in), optional :: excl_last                              ! .true. if last point excluded
-        
-        ! local variables
-        real(dp), allocatable :: var_3D(:,:,:)                                  ! 3D version of var
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up var_3D
-        allocate(var_3D(size(var),1,1))
-        
-        ! call 3D version
-        ierr = calc_eqd_grid_3D(var_3D,min_grid,max_grid,1,excl_last)
-        CHCKERR('')
-        
-        ! update var
-        var = var_3D(:,1,1)
-    end function calc_eqd_grid_1D
     
-    ! Extend a  grid angularly using  equidistant variables of  n_theta_plot and
-    ! n_zeta_plot angular and own loc_n_r points in F coordinates.
-    ! Optionally,  the grid  can  also  be converted  to  E  coordinates if  the
-    ! equilibrium grid is  provided. This is required for  many operations, such
-    ! as the calculation of X, Y and Z through calc_XYZ_grid.
+    !> Extend a grid angularly.
+    !!
+    !! This  is done  using  equidistant  variables of  \c  n_theta_plot and  \c
+    !! n_zeta_plot angular and own \c loc_n_r points in F coordinates.
+    !!
+    !! Optionally,  the grid  can  also be  converted to  E  coordinates if  the
+    !! equilibrium  grid is  provided.  This is  required  for many  operations,
+    !! such  as  the  calculation  of   \f$X\f$,  \f$Y\f$  and  \f$Z\f$  through
+    !! calc_XYZ_grid().
+    !!
+    !! \note For VMEC, it can be slow, as coord_F2E() is used.
+    !!
+    !! \return ierr
     integer function extend_grid_F(grid_in,grid_ext,grid_eq,n_theta_plot,&
         &n_zeta_plot,lim_theta_plot,lim_zeta_plot) result(ierr)
         use num_vars, only: n_theta => n_theta_plot, n_zeta => n_zeta_plot, &
@@ -859,13 +1601,13 @@ contains
         character(*), parameter :: rout_name = 'extend_grid_F'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_in                                  ! grid to be extended
-        type(grid_type), intent(inout) :: grid_ext                              ! extended grid
-        type(grid_type), intent(in), optional :: grid_eq                        ! equilibrium grid
-        integer, intent(in), optional :: n_theta_plot                           ! number of poins in theta direction
-        integer, intent(in), optional :: n_zeta_plot                            ! number of poins in zeta direction
-        real(dp), intent(in), optional :: lim_theta_plot(2)                     ! limits in theta
-        real(dp), intent(in), optional :: lim_zeta_plot(2)                      ! limits in zeta
+        type(grid_type), intent(in) :: grid_in                                  !< grid to be extended
+        type(grid_type), intent(inout) :: grid_ext                              !< extended grid
+        type(grid_type), intent(in), optional :: grid_eq                        !< equilibrium grid
+        integer, intent(in), optional :: n_theta_plot                           !< number of poins in theta direction
+        integer, intent(in), optional :: n_zeta_plot                            !< number of poins in zeta direction
+        real(dp), intent(in), optional :: lim_theta_plot(2)                     !< limits in theta
+        real(dp), intent(in), optional :: lim_zeta_plot(2)                      !< limits in zeta
         
         ! local variables
         integer :: n_theta_plot_loc                                             ! local n_theta_plot
@@ -921,21 +1663,26 @@ contains
         end if
     end function extend_grid_F
     
-    ! Copy a grid A to a new grid B, that was not yet initialized. This new grid
-    ! can contain  a subsection of the  previous grid in all  dimensions. It can
-    ! also be a divided grid, by providing the limits
-    ! Note: these normal limits for the divided grid should be given in terms of
-    ! the normal dimension of grid B.
-    ! Note: if the grids are not purely normal, the procedure can currently only
-    ! handle the copying of a grid_A that is not divided.
+    !> Copy a grid A to a new grid B, that was not yet initialized.
+    !!
+    !! This  new grid  can contain  a  subsection of  the previous  grid in  all
+    !! dimensions. It can also be a divided grid, by providing the limits
+    !!
+    !! \note
+    !!  -# The normal  limits for the divided  grid should be given  in terms of
+    !!  the normal dimension of \c grid B.
+    !!  -# if the grids are not  purely normal, the procedure can currently only
+    !!  handle the copying of a \c grid_A that is not divided.
+    !!
+    !! \return ierr
     integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
         character(*), parameter :: rout_name = 'copy_grid'
         
         ! input / output
-        class(grid_type), intent(in) :: grid_A                                  ! grid to be initialized
-        class(grid_type), intent(inout) :: grid_B                               ! grid to be initialized
-        integer, intent(in), optional :: lims_B(3,2)                            ! ranges for subset of grid
-        integer, intent(in), optional :: i_lim(2)                               ! min. and max. local normal index
+        class(grid_type), intent(in) :: grid_A                                  !< grid to be initialized
+        class(grid_type), intent(inout) :: grid_B                               !< grid to be initialized
+        integer, intent(in), optional :: lims_B(3,2)                            !< ranges for subset of grid
+        integer, intent(in), optional :: i_lim(2)                               !< min. and max. local normal index
         
         ! local variables
         integer :: n_B(3)                                                       ! n of grid B
@@ -993,44 +1740,71 @@ contains
         end if
     end function copy_grid
     
-    ! Calculates volume integral on a 3D grid.
-    ! Two angular and  one normal variable has  to be provided on a the grid. If
-    ! the  i'th dimension  of the  grid  is equal  to  one, the  function to  be
-    ! integrated is assumed not to vary in this dimension.
-    ! Furthermore, if i is 1 or  2, the corresponding i'th (angular) variable is
-    ! the only  variable that is  assumed to vary  in that dimension.  The other
-    ! angular variable as well as the normal variable are assumed to be constant
-    ! like the  function itself. However,  if i is 3,  an error is  displayed as
-    ! this does not represent a physical situation.
-    ! A common  case through which to  understand this is the  axisymmetric case
-    ! where the first  angular variable theta varies in the  dimensions 1 and 3,
-    ! the second angular  variable zeta varies only in the  dimension 2, and the
-    ! normal variable only varies in the dimension 3.
-    ! Alternatively,  there is  the case  of a  grid-aligned set  of coordinates
-    ! theta and  alpha, where the  first dimension corresponds to  the direction
-    ! along the magnetic field line, the  second to the geodesical direction and
-    ! the third to the normal direction. If the calculations for different field
-    ! lines are  decoupled, the variation in  the second dimension is  not taken
-    ! into account and no integration happens along it.
-    ! Internally, the angular  variables and the normal variable  are related to
-    ! the coordinates (x,y,z) that correspond to the three dimensions. They thus
-    ! form a computational orthogonal grid to which the original coordinates are
-    ! related through the transformation of Jacobians:
-    !   Jxyz = J r_F_z (ang_1_x ang_2_y-ang_1_y ang_2_x) ,
-    ! so that the integral becomes
-    !   sum_xyz f(x,y,z) J(x,y,z) r_F_z (ang_1_x ang_2_y-ang_1_y ang_2_x) dxdydz
-    ! where dx, dy and dz are all trivially equal to 1.
-    ! The integrand has to be evaluated at the intermediate positions inside the
-    ! cells. This is  done by taking the  average of the 2^3=8 points  for fJ as
-    ! well as the transformation of the Jacobian.
-    ! Note: if the coordinates are independent, this method is equivalent to the
-    ! repeated numerical integration using the trapezoidal method, NOT Simpson's
-    ! 3/8 rule!
-    ! Note: by  setting debug_calc_int_vol, this  method can be compared  to the
-    ! trapezoidal and simple  method for independent coordinates,  again NOT for
-    ! Simpson's 3/8 rule!
-    ! The  Simpson's  3/8  rule  could  be developed  but  it  is not  of  great
-    ! importance.
+    !> Calculates volume integral on a 3D grid.
+    !!
+    !! Two angular and  one normal variable have  to be provided on a the grid.
+    !!
+    !! If the <tt>i</tt>'th dimension of the  grid is equal to one, the function
+    !! to be integrated is assumed not to vary in this dimension.
+    !!
+    !! Furthermore, if \c i is 1 or 2, the corresponding <tt>i</tt>'th (angular)
+    !! variable is the only variable that  is assumed to vary in that dimension.
+    !! The other angular variable as well  as the normal variable are assumed to
+    !! be constant like the function itself. However,  if \c i is 3, an error is
+    !! displayed as this does not represent a physical situation.
+    !!
+    !! A common case  through which to understand this is  the axisymmetric case
+    !! where the first angular variable  \f$\theta\f$ varies in the dimensions 1
+    !! and  3,  the second  angular  variable  \f$\zeta\f$  varies only  in  the
+    !! dimension 2, and the normal variable only varies in the dimension 3.
+    !!
+    !! Alternatively, there  is the  case of a  grid-aligned set  of coordinates
+    !! \f$\theta\f$ and  \f$\alpha\f$, where the first  dimension corresponds to
+    !! the direction along the magnetic field line, the second to the geodesical
+    !! direction and the third to the  normal direction. If the calculations for
+    !! different  field  lines  are  decoupled,  the  variation  in  the  second
+    !! dimension is not taken into account and no integration happens along it.
+    !!
+    !! Internally, the angular variables and  the normal variable are related to
+    !! the  coordinates \f$\left(x,y,z\right)\f$  that correspond  to the  three
+    !! dimensions. They thus  form a computational orthogonal grid  to which the
+    !! original coordinates are related through the transformation of Jacobians:
+    !!  \f[\mathcal{J}_{xyz} = \mathcal{J}_\text{F}
+    !!      \frac{\partial r_\text{F}}{\partial z}
+    !!      \left(\frac{\partial \gamma_1}{\partial x}
+    !!      \frac{\gamma_2}{\partial y}-
+    !!      \frac{\partial \gamma_1}{\partial y}
+    !!      \frac{\gamma_2}{\partial x}\right) , \f]
+    !! where \f$\gamma_1\f$  and \f$\gamma_2\f$  are \c ang_1  and \c  ang_2, so
+    !! that the integral becomes
+    !!  \f[ \sum_{x,y,z} \left[ f\left(x,y,z\right) \mathcal{J}_\text{F}
+    !!      \frac{\partial r_\text{F}}{\partial z}
+    !!      \left(\frac{\partial \gamma_1}{\partial x}
+    !!      \frac{\gamma_2}{\partial y}-
+    !!      \frac{\partial \gamma_1}{\partial y}
+    !!      \frac{\gamma_2}{\partial x}\right)
+    !!      \Delta_x \Delta_y \Delta_z \right] \f]
+    !! where \f$\Delta_x\f$, \f$\Delta_y\f$ and \f$\Delta_z\f$ are all trivially
+    !! equal to 1.
+    !!
+    !! The integrand  has to be  evaluated at the intermediate  positions inside
+    !! the cells. This  is done by taking the average  of the \f$2^3=8\f$ points
+    !! for  \c fj  = \f$f  J_\text{F}\f$ as  well as  the transformation  of the
+    !! Jacobian to \f$\left(x,y,z\right)\f$ coordinates.
+    !!
+    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !!
+    !! \note
+    !!  -# if the coordinates are independent,  this method is equivalent to the
+    !!  repeated  numerical integration  using  the trapezoidal  method, \b  NOT
+    !!  Simpson's 3/8 rule!
+    !!  -# by setting \c debug_calc_int_vol, this  method can be compared to the
+    !!  trapezoidal and simple method for  independent coordinates, again \b NOT
+    !!  for Simpson's 3/8 rule!
+    !!  -# The  Simpson's 3/8  rule could be  developed but it  is not  of great
+    !!  importance.
+    !!
+    !! \return ierr
     integer function calc_int_vol(ang_1,ang_2,norm,J,f,f_int) result(ierr)
 #if ldebug
         use num_vars, only: rank, n_procs
@@ -1039,10 +1813,12 @@ contains
         character(*), parameter :: rout_name = 'calc_int_vol'
         
         ! input / output
-        real(dp), intent(in) :: ang_1(:,:,:), ang_2(:,:,:), norm(:)             ! coordinate variables
-        real(dp), intent(in) :: J(:,:,:)                                        ! Jacobian
-        complex(dp), intent(in) :: f(:,:,:,:)                                   ! input f(n_par,n_geo,n_r,size_X^2)
-        complex(dp), intent(inout) :: f_int(:)                                  ! output integrated f
+        real(dp), intent(in) :: ang_1(:,:,:)                                    !< coordinate variable \f$\gamma_1\f$
+        real(dp), intent(in) :: ang_2(:,:,:)                                    !< coordinate variable \f$\gamma_2\f$
+        real(dp), intent(in) :: norm(:)                                         !< coordinate variable \f$r_\text{F}\f$
+        real(dp), intent(in) :: J(:,:,:)                                        !< Jacobian
+        complex(dp), intent(in) :: f(:,:,:,:)                                   !< input f(n_par,n_geo,n_r,size_X^2)
+        complex(dp), intent(inout) :: f_int(:)                                  !< output integrated f
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
@@ -1322,225 +2098,60 @@ contains
         deallocate(Jf,transf_J,transf_J_tot)
     end function calc_int_vol
     
-    ! Set up  the factors for the  derivative calculation in a  matrix "A" using
-    ! finite differences of order "ord" with precision "prec", by which is meant
-    ! that the order of the error is at least ~ Delta^(prec+1).
-    ! Afterwards, the  matrix A  has to  be multiplied with  the variable  to be
-    ! derived to obtain the requested derivative.
-    ! For a particular order and precision,  the number of different points that
-    ! have to be combined is ord+prec, however, as it is better to use symmetric
-    ! expressions, this number is possibly aumented by one. This number is saved
-    ! in "n_loc".
-    ! The index kd is then defined to go from -(n_loc-1)/2 .. (n_loc-1)/2, which
-    ! is  translated to  local coordinates  by adding  (n_loc+1)/2 and  to total
-    ! coordinates by adding generally the index in total coordinates i where the
-    ! local  problem  is  to be  set  up,  but  capping  it by  (n_loc+1)/2  and
-    ! n-(n_loc-1)/2, so by using
-    !   k_tot = kd + max((n_loc+1)/2,min(id,n-(n_loc-1)/2)),
-    ! so that these never go out of bounds 1 .. n.
-    ! The local matrix element "mat_loc" is then set up as follows:
-    !   [        1               1       ...       1               1        ]
-    !   [     D^i-2_i         D^i-1,i     0     D^i+1_i         D^i+2_i     ]
-    !   [ (D^i-2_i)^2/2!  (D^i-1,i)^2/2!  0  (D^i+1_i)^2/2!  (D^i+2_i)^2/2! ]
-    !   [ (D^i-2_i)^3/3!  (D^i-1,i)^3/3!  0  (D^i+1_i)^3/3!  (D^i+2_i)^3/3! ]
-    !   [       ...             ...      ...      ...             ...       ]
-    ! for bulk matrices ((n_loc+1)/2 <= i <= n-(n_loc-1)/2), with
-    !   D^j_i = x(j)-x(i). 
-    ! For other elements, this is shifted, e.g.:
-    !   mat_loc(j,k) = (x(k_tot)-X(i))^(j-1)
-    ! where  j = 1..n_loc  and k  = -(n_mod-1)/2..(n_mod-1)/2. k_tot  is defined
-    ! above.
-    ! This system  of equations  can be  solved by  relating to  the Vandermonde
-    ! matrix V and solving it using the specific formula's:
-    !   D = Diag(1/0!,1/1!,...,1/n_loc!) V^T
-    ! so that the solution is given by row number ord, multiplied by (ord!).
-    integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)       ! equidistant version
-        use num_utilities, only: fac, solve_vand
-        
-        character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
-        
-        ! input / output
-        real(dp), intent(in) :: step                                            ! step size
-        integer, intent(in) :: n                                                ! problem size
-        type(disc_type), intent(inout) :: A                                     ! derivation data
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        integer :: id, kd                                                       ! counters
-        integer :: kd_tot                                                       ! kd in total index
-        integer :: n_loc                                                        ! local size of problem to solve
-        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
-        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
-        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set n_loc
-        n_loc = prec+ord+1
-        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
-        
-        ! tests
-        if (prec.lt.1) then
-            ierr = 1
-            err_msg = 'precision has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1) then
-            ierr = 1
-            err_msg = 'order has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (n.lt.2*n_loc) then
-            ierr = 1
-            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set variables
-        allocate(mat_loc(n_loc))
-        allocate(rhs_loc(n_loc))
-        allocate(sol_loc(n_loc))
-        ierr = A%init(n,n_loc)
-        CHCKERR('')
-        
-        ! iterate over all x values
-        do id = 1,n
-            ! for bulk of matrix, do calculation only once
-            if (id.le.(n_loc+1)/2 .or. id.gt.n-(n_loc-1)/2) then                ! first, last, or first of bulk
-                ! calculate elements of local matrix
-                do kd = -(n_loc-1)/2,(n_loc-1)/2
-                    kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                    mat_loc(kd+(n_loc+1)/2) = (kd_tot-id)*step
-                end do
-                
-                ! solve Vandermonde system
-                rhs_loc = 0._dp
-                rhs_loc(ord+1) = 1._dp                                          ! looking for derivative of this order
-                call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
-                
-                ! save in A
-                A%dat(id,:) = sol_loc*fac(ord)
-                A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
-            else                                                                ! bulk of matrix
-                ! copy from first bulk element in matrix A
-                A%dat(id,:) = A%dat(id-1,:)
-                A%id_start(id) = A%id_start(id-1)+1
-            end if
-        end do
-    end function setup_deriv_data_eqd
-    integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)            ! regular version
-        use num_utilities, only: fac, solve_vand
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'setup_deriv_data_reg'
-        
-        ! input / output
-        real(dp), intent(in) :: x(:)                                            ! independent variable
-        type(disc_type), intent(inout) :: A                                     ! discretization mat
-        integer, intent(in) :: ord                                              ! order of derivative
-        integer, intent(in) :: prec                                             ! precision
-        
-        ! local variables
-        integer :: n                                                            ! size of x
-        integer :: id, kd                                                       ! counters
-        integer :: kd_tot                                                       ! kd in total index
-        integer :: n_loc                                                        ! local size of problem to solve
-        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
-        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
-        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set n_loc and n
-        n_loc = prec+ord+1
-        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
-        n = size(x)
-        
-        ! tests
-        if (prec.lt.1) then
-            ierr = 1
-            err_msg = 'precision has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1) then
-            ierr = 1
-            err_msg = 'order has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (n.lt.2*n_loc) then
-            ierr = 1
-            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set variables
-        allocate(mat_loc(n_loc))
-        allocate(rhs_loc(n_loc))
-        allocate(sol_loc(n_loc))
-        ierr = A%init(n,n_loc)
-        CHCKERR('')
-        
-        ! iterate over all x values
-        do id = 1,n
-            ! calculate elements of local matrix
-            do kd = -(n_loc-1)/2,(n_loc-1)/2
-                kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
-            end do
-            
-            ! solve Vandermonde system
-            rhs_loc = 0._dp
-            rhs_loc(ord+1) = 1._dp                                              ! looking for derivative of this order
-            call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
-            
-            ! save in total matrix A
-            A%dat(id,:) = sol_loc*fac(ord)
-            A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
-        end do
-    end function setup_deriv_data_reg
-    
-    ! Set up the factors for the interpolation calculation in a matrix "A" using
-    ! a polynomial order "ord".
-    ! This  is  done  using  Barycentric Lagrangian  polynomials,  which  are  a
-    ! computationally  more  advantageous  way   of  expressing  the  Lagrangian
-    ! interpolating polynomial:
-    !   L(x) = sum_j=0^N (w_j f_j /(x-x_j)) / sum_j=0^N (w_j/(x-x_j)) , with 
-    !   w_j = 1 / l'(x_j) , where
-    !   l(x) = product_i=0^N (x-x_i) , so that
-    !   l'(x_j) = product_j.ne.i (x_j-x_i)
-    ! [https://people.maths.ox.ac.uk/trefethen/barycentric.pdf, 02/05/2016]
-    !  The  optimal range  of grid  points  "x" around  the interpolation  point
-    ! "x_interp" is first  calculated, after which the weight  functions w_j are
-    ! calculated  for  each of  the  interpolation  points,  multiplied by  1  /
-    ! (x-x_j). The result is scaled by the sum of all, and this is tabulated.
-    ! Note: To avoid numerical problems, the  factors (x_j-x_i) are divided by a
-    ! characteristic  length len,  equal to  the average  length of  the working
-    ! interval. This  scales both the  enumerator and the denominator  by len^N,
-    ! which  therefore cancel.  Also,  if the  interpolation  point x_interp  is
-    ! within a tiny tolerance of the grid points x, the machinery is bypassed to
-    ! avoid unstabilities.
-    ! Optionally,  this routine  can do  trigonometric interpolation  instead of
-    ! polynomial, which results in using sin((x-x_j)/2) instead of (x-x_j).
-    ! [https://en.wikipedia.org/wiki/Trigonometric_interpolation, 01/09/2016]
-    ! Currently, this only works  for an odd number of points,  as there is also
-    ! an odd number of constraints.
-    ! Note that this can  be used to resample a periodic  function that has been
-    ! sampled on an irregular grid, in  order to calculate the fourier transform
-    ! with a FFT, which requires a regular grid. In this case, a full 2pi period
-    ! is assumed.
-    ! The  fact  that  this is  can  be  done  can  be seen  by  realizing  that
-    ! trigonometric  interpolation can  also be  written in  Lagrange form,  and
-    ! subsequently in barycentric  Lagrange form. There is  an additional factor
-    ! 1/2 in l'(x_j),  due to the derivation of sin((x-x_k)/2)  but this cancels
-    ! as it is present in both enumerator and denominator.
-    ! Optionally  also  a normalization  length  can  be  provided so  that  the
-    ! individual terms in  the interpolation do not blow up.  This can be useful
-    ! for example for interpolation with many points.
+    !> Set up  the factors for  the interpolation calculation  in a matrix  \c A
+    !! using a polynomial order \c ord.
+    !!
+    !! This  is  done  using  Barycentric Lagrangian  polynomials,  which  are  a
+    !! computationally  more  advantageous  way   of  expressing  the  Lagrangian
+    !! interpolating polynomial:
+    !! \f[\begin{aligned}
+    !!   L(x) &= \left. \sum_{j=0}^N \frac{w_j f_j}{x-x_j} \right/
+    !!      \sum_{j=0}^N \frac{w_j}{x-x_j} , \ \text{with} \\
+    !!   w_j &= \left.1 \right/ l'(x_j) , \ \text{where} \\
+    !!   l(x) &= \prod_{i=0}^N (x-x_i) , \ \text{so that} \\
+    !!   l'(x_j) &= \prod_{j\ne i} (x_j-x_i) \ .
+    !!  \end{aligned}\f]
+    !! <https://people.maths.ox.ac.uk/trefethen/barycentric.pdf>, 02/05/2016.
+    !! 
+    !! The optimal range  of grid points \c x around  the interpolation point \c
+    !! x_interp is first calculated, after which the weight functions \c w_j are
+    !! calculated  for  each of  the  interpolation  points, multiplied  by  \f$
+    !! \frac{1}{x-x_j}\f$.
+    !!
+    !! The result is scaled by the sum of all, and this is tabulated.
+    !!
+    !! Optionally, this  routine can  do trigonometric interpolation  instead of
+    !! polynomial, which results in using \f$\sin\left(\frac{x-x_j}{2}\right)\f$
+    !! instead of \f$(x-x_j)\f$.
+    !! <https://en.wikipedia.org/wiki/Trigonometric_interpolation>, 01/09/2016.
+    !!
+    !! Currently, this only works  for an odd number of points,  as there is also
+    !! an odd number of constraints.
+    !!
+    !! \remark Trigonometric  interpolation can be  used to resample  a periodic
+    !! function  that  has been  sampled  on  an  irregular  grid, in  order  to
+    !! calculate  the fourier  transform with  a FFT,  which requires  a regular
+    !! grid. In this case, a full \f$2\pi\f$ period is assumed.
+    !! 
+    !! \remark The fact that  this is can be done can be  seen by realizing that
+    !! trigonometric interpolation  can also  be written  in Lagrange  form, and
+    !! subsequently  in  barycentric  Lagrange  form.  There  is  an  additional
+    !! factor  \f$\frac{1}{2}\f$  in \f$l'(x_j)\f$,  due  to  the derivation  of
+    !! \f$\sin\left(\frac{x-x_k}{2}\right)\f$ but this cancels  as it is present
+    !! in both enumerator and denominator.
+    !!
+    !! \note  To  avoid  numerical  problems, the  factors  \f$(x_j-x_i)\f$  are
+    !! divided by  a characteristic length \c  len, equal to the  average length
+    !! of  the  working  interval.  This  scales both  the  enumerator  and  the
+    !! denominator by \f$\texttt{len}^N\f$, which therefore cancel. Also, if the
+    !! interpolation point  \c x_interp is within  a tiny tolerance of  the grid
+    !! points \c x, the machinery is bypassed to avoid unstabilities.
+    !!
+    !! \note Optionally also a normalization length  can be provided so that the
+    !! individual terms in the interpolation do  not blow up. This can be useful
+    !! for example for interpolation with many points.
+    !! 
+    !! \return ierr
     integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len,&
         &tol) result(ierr)
         use grid_vars, only: disc_type
@@ -1549,13 +2160,13 @@ contains
         character(*), parameter :: rout_name = 'setup_interp_data'
         
         ! input / output
-        real(dp), intent(in) :: x(:)                                            ! independent variable of tabulated magnitude
-        real(dp), intent(in) :: x_interp(:)                                     ! values of x at which to interpolate
-        type(disc_type), intent(inout) :: A                                     ! interpolation mat
-        integer, intent(in) :: ord                                              ! order of derivative
-        logical, intent(in), optional :: is_trigon                              ! trigonometric interpolation
-        real(dp), intent(in), optional :: norm_len                              ! custom normalization length
-        real(dp), intent(in), optional :: tol                                   ! tolerance
+        real(dp), intent(in) :: x(:)                                            !< independent variable of tabulated magnitude
+        real(dp), intent(in) :: x_interp(:)                                     !< values of \c x at which to interpolate
+        type(disc_type), intent(inout) :: A                                     !< interpolation \c mat
+        integer, intent(in) :: ord                                              !< order of derivative
+        logical, intent(in), optional :: is_trigon                              !< trigonometric interpolation
+        real(dp), intent(in), optional :: norm_len                              !< custom normalization length
+        real(dp), intent(in), optional :: tol                                   !< tolerance
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -1662,290 +2273,31 @@ contains
         end do
     end function setup_interp_data
     
-    ! Applies  the   discretization  data  calculated  in   setup_deriv_data  or
-    ! setup_interp_data  to  calculate  the  derivative or  interpolation  in  a
-    ! dimension "disc_dim"
-    integer function apply_disc_4D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_4D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:,:,:)                                    ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        real(dp), intent(inout) :: dvar(:,:,:,:)                                ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n                                                            ! size of variable
-        integer :: id, jd                                                       ! counter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (disc_dim.lt.1 .or. disc_dim.gt.4) then
-            err_msg = 'invalid dimension of derivative '//trim(i2str(disc_dim))
-            CHCKERR(err_msg)
-        end if
-        n = size(dvar,disc_dim)
-        if (n.ne.disc_data%n) then
-            err_msg = 'variables are not compatible'
-            CHCKERR(err_msg)
-        end if
-        
-        ! initialize output
-        dvar = 0._dp
-        
-        ! multiply the matrices
-        select case (disc_dim)
-            case (1)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(id,:,:,:) = dvar(id,:,:,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(jd+disc_data%id_start(id)-1,:,:,:)
-                    end do
-                end do
-            case (2)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,id,:,:) = dvar(:,id,:,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,jd+disc_data%id_start(id)-1,:,:)
-                    end do
-                end do
-            case (3)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,:,id,:) = dvar(:,:,id,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,:,jd+disc_data%id_start(id)-1,:)
-                    end do
-                end do
-            case (4)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,:,:,id) = dvar(:,:,:,id) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,:,:,jd+disc_data%id_start(id)-1)
-                    end do
-                end do
-            case default
-                ierr = 1
-                err_msg = 'dimension of discretization operation '//&
-                    &trim(i2str(disc_dim))//'impossible'
-                CHCKERR(err_msg)
-        end select
-    end function apply_disc_4D_real
-    integer function apply_disc_4D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_4D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:,:,:)                                 ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        complex(dp), intent(inout) :: dvar(:,:,:,:)                             ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),size(dvar,4)))
-        
-        ! call the real version for the real and imaginary part separately
-        ierr = apply_disc_4D_real(rp(var),disc_data,dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc
-        ierr = apply_disc_4D_real(ip(var),disc_data,dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar + iu*dvar_loc
-    end function apply_disc_4D_complex
-    integer function apply_disc_3D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_3D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:,:)                                      ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        real(dp), intent(inout) :: dvar(:,:,:)                                  ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,:,1)
-    end function apply_disc_3D_real
-    integer function apply_disc_3D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_3D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:,:)                                   ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        complex(dp), intent(inout) :: dvar(:,:,:)                               ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,:,1)
-    end function apply_disc_3D_complex
-    integer function apply_disc_2D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_2D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:)                                        ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        real(dp), intent(inout) :: dvar(:,:)                                    ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,1,1)
-    end function apply_disc_2D_real
-    integer function apply_disc_2D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:)                                     ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        complex(dp), intent(inout) :: dvar(:,:)                                 ! operated variable
-        integer :: disc_dim                                                     ! dimension in which to discretization operation
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,1,1)
-    end function apply_disc_2D_complex
-    integer function apply_disc_1D_real(var,disc_data,dvar) result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_1D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)                                          ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        real(dp), intent(inout) :: dvar(:)                                      ! operated variable
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),1,1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1,1]),disc_data,&
-            &dvar_loc,1)
-        CHCKERR('')
-        dvar = dvar_loc(:,1,1,1)
-    end function apply_disc_1D_real
-    integer function apply_disc_1D_complex(var,disc_data,dvar) result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_1D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:)                                       ! variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                ! disc_data calculated in setup_deriv_data or setup_interp_data
-        complex(dp), intent(inout) :: dvar(:)                                   ! operated variable
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),1,1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1,1]),&
-            &disc_data,dvar_loc,1)
-        CHCKERR('')
-        dvar = dvar_loc(:,1,1,1)
-    end function apply_disc_1D_complex
-    
-    ! Trim a grid, removing any overlap between the different regions.
-    ! by default, the routine assumes a  symmetric ghost region and cuts as many
-    ! grid points from the end of the  previous process as from the beginning of
-    ! the next process, but if the number of overlapping grid points is odd, the
-    ! next process looses one more point.
-    ! optionally, the trimmed indices in the normal direction can be provided in
-    ! "norm_id", i.e. the indices in the  old, untrimmed grid that correspond to
-    ! the start and end indices of the trimmed grid. E.g. if
-    !   - proc 0:  3 ... 25
-    !   - proc 1: 20 ... 50
-    ! then the trimmed grid will be:
-    !   - proc 0:  3 ... 22
-    !   - proc 1: 23 ... 50
-    ! which is shifted down by 2 to 
-    !   - proc 0:  1 ... 20
-    !   - proc 1: 21 ... 48
-    ! in the trimmed grid. The indices of the previous step (3 & 22 and 23 & 50)
-    ! are saved in norm_id.
+    !> Trim a grid, removing any overlap between the different regions.
+    !! 
+    !! by default, the routine assumes a  symmetric ghost region and cuts as many
+    !! grid points from the end of the  previous process as from the beginning of
+    !! the next process, but if the number of overlapping grid points is odd, the
+    !! next process looses one more point.
+    !!
+    !! optionally, the trimmed indices in the normal direction can be provided in
+    !! \c norm_id, i.e. the indices in the  old, untrimmed grid that correspond to
+    !! the start and end indices of the trimmed grid. E.g. if
+    !!  - proc 0:  3 ... 25
+    !!  - proc 1: 20 ... 50
+    !!
+    !! then the trimmed grid will be:
+    !!  - proc 0:  3 ... 22
+    !!  - proc 1: 23 ... 50
+    !!
+    !! which is shifted down by 2 to 
+    !!  - proc 0:  1 ... 20
+    !!  - proc 1: 21 ... 48
+    !!
+    !! in the trimmed grid. The indices of the previous step (3 & 22 and 23 & 50)
+    !! are saved in \c norm_id.
+    !!
+    !! \return ierr
     integer function trim_grid(grid_in,grid_out,norm_id) result(ierr)
         use num_vars, only: n_procs, rank
         use mpi_utilities, only: get_ser_var
@@ -1953,9 +2305,9 @@ contains
         character(*), parameter :: rout_name = 'trim_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_in                                  ! input grid
-        type(grid_type), intent(inout) :: grid_out                              ! trimmed grid
-        integer, intent(inout), optional :: norm_id(2)                          ! normal indices corresponding to trimmed part
+        type(grid_type), intent(in) :: grid_in                                  !< input grid
+        type(grid_type), intent(inout) :: grid_out                              !< trimmed grid
+        integer, intent(inout), optional :: norm_id(2)                          !< normal indices corresponding to trimmed part
         
         ! local variables
         integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
@@ -2053,10 +2405,16 @@ contains
         end if
     end function trim_grid
     
-    ! untrims a trimmed  grid by introducing an assymetric ghost  regions at the
-    ! right. the width of the ghost region has to be provided.
-    ! note: the ghosted grid should be deallocated (with dealloc_grid).
-    ! note: the input grid has to be trimmed!
+    !> Untrims a trimmed grid by  introducing an asymmetric ghost regions at the
+    !! right.
+    !!
+    !! The width of the ghost region has to be provided.
+    !!
+    !! \note
+    !!  -# the ghosted grid should be deallocated (with dealloc_grid()).
+    !!  -# the input grid has to be trimmed.
+    !!
+    !! \return ierr
     integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
         use num_vars, only: n_procs, rank
         use mpi_utilities, only: get_ghost_arr, get_ser_var
@@ -2064,9 +2422,9 @@ contains
         character(*), parameter :: rout_name = 'untrim_grid'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_in                                  ! input grid
-        type(grid_type), intent(inout) :: grid_out                              ! ghosted grid
-        integer, intent(in) :: size_ghost                                       ! width of ghost region
+        type(grid_type), intent(in) :: grid_in                                  !< input grid
+        type(grid_type), intent(inout) :: grid_out                              !< ghosted grid
+        integer, intent(in) :: size_ghost                                       !< width of ghost region
         
         ! local variables
         integer :: i_lim_in(2)                                                  ! limits of input grid
@@ -2116,33 +2474,40 @@ contains
         grid_out%r_f = grid_in%r_f
     end function untrim_grid
     
-    ! Calculates  contra-  and covariant  components  of  a vector  in  multiple
-    ! coordinate systems:
-    !   1. F: (alpha,psi,theta),
-    !   2. M: (psi,theta,zeta),
-    !   3. - H: (psi,theta,phi) if HELENA is used,
-    !      - V: (r,theta,zeta) if VMEC is used,
-    !   4. C: (R,phi,Z),
-    !   5. X: (X,Y,Z),
-    ! as well  as the magnitude,  starting from  the input in  Flux coordinates.
-    ! Note that the components in X, Y and Z can be used to plot the real vector
-    ! and that covariant components should  be equal to contravariant components
-    ! in this coordinate system.
-    ! Also, the fluxes can be calculated and plot.
-    ! By  default,  the cartesian  components  are  returned,  but this  can  be
-    ! indicated differently.  Furthermore, the results for  different coordinate
-    ! systems can be plotted by providing a base name.
-    ! Note  that plots for different  Richardson levels can be  combined to show
-    ! the total grid by just plotting them all individually.
-    ! Note: The metric factors and transformation matrices have to be allocated.
-    ! They  can be  calculated  using  the routines  from  eq_ops,  for deriv  =
-    ! [0,0,0].
-    ! Note: For VMEC,  the trigonometric factors of grid_XYZ  must be calculated
-    ! beforehand. Optionally,  by providing X, Y  and Z, the ones  calculated in
-    ! this  routine are  overwritten. This  is  usefull for,  for example,  slab
-    ! geometries.
-    ! Note: The normalization  factors are taken into account and  the output is
-    ! transformed back to unnormalized values.
+    !> Calculates  contra-  and covariant  components  of  a vector  in  multiple
+    !! coordinate systems.
+    !!
+    !! Chain of coordinate systems considered:
+    !!  -# Flux F: \f$(\alpha,\psi,\theta)\f$,
+    !!  -# Magnetic M: \f$(\psi,\theta,\zeta)\f$,
+    !!      - H: \f$(\psi,\theta,\phi)\f$ if HELENA is used,
+    !!      - V: \f$(r,\theta,\zeta)\f$ if VMEC is used,
+    !!  -# Cylindrical C: \f$(R,\varphi,Z)\f$,
+    !!  -# Cartesian X: \f$(X,Y,Z)\f$,
+    !! as well  as the magnitude, starting  from the input in  Flux coordinates.
+    !! Note that  the Cartesian components  in X,  Y and Z  can be used  to plot
+    !! the  real  vector  and  that  covariant components  should  be  equal  to
+    !! contravariant components in this coordinate system.
+    !!
+    !! Also, the fluxes can be calculated and plot by providing a \c base_name.
+    !!
+    !! By  default,  the cartesian  components  are  returned,  but this  can  be
+    !! indicated differently by providing \c max_transf.
+    !!
+    !! \note
+    !!  -# Plots  for different Richardson  levels can  be combined to  show the
+    !!  total grid by just plotting them all individually and sequentially.
+    !!  -# The metric factors and  transformation matrices have to be allocated.
+    !!  They can be calculated using the routines from eq_ops, for
+    !!  <tt>deriv = [0,0,0]</tt>.
+    !!  -# For VMEC, the trigonometric factors of \c grid_XYZ must be calculated
+    !!  beforehand.  Optionally, by  providing \c  X, \c  Y and  \c Z,  the ones
+    !!  calculated  in this  routine are  overwritten. This  is useful  for, for
+    !!  example, slab geometries.
+    !!  -# The  normalization factors are taken  into account and the  output is
+    !!  transformed back to unnormalized values.
+    !!
+    !! \return ierr
     integer function calc_vec_comp(grid,grid_eq,eq_1,eq_2,v_com,norm_disc_prec,&
         &v_mag,base_name,max_transf,v_flux_tor,v_flux_pol,XYZ,compare_tor_pos) &
         &result(ierr)
@@ -2161,19 +2526,19 @@ contains
         character(*), parameter :: rout_name = 'calc_vec_comp'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! grid on which vector is calculated
-        type(grid_type), intent(in) :: grid_eq                                  ! grid on which equilibrium variables are calculated
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium quantities
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             ! covariant and contravariant components of v (dim1,dim2,dim3,3,2)
-        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
-        real(dp), intent(inout), optional :: v_mag(:,:,:)                       ! magnitude of v (dim1,dim2,dim3)
-        character(len=*), intent(in), optional :: base_name                     ! base name for output plotting
-        integer, intent(in), optional :: max_transf                             ! maximum transformation level (2: Magnetic, 3: Equilibrium, 4: Cylindrical, 5: Cartesian [def])
-        real(dp), intent(inout), allocatable, optional :: v_flux_pol(:,:)       ! poloidal flux of v as function of normal coordinate for all toroidal positions
-        real(dp), intent(inout), allocatable, optional :: v_flux_tor(:,:)       ! toroidal flux of v as function of normal coordinate for all poloidal positions
-        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          ! X, Y and Z of grid
-        logical, intent(in), optional :: compare_tor_pos                        ! compare toroidal positions
+        type(grid_type), intent(in) :: grid                                     !< grid on which vector is calculated
+        type(grid_type), intent(in) :: grid_eq                                  !< grid on which equilibrium variables are calculated
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium quantities
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             !< covariant and contravariant components <tt>(dim1,dim2,dim3,3,2)</tt>
+        integer, intent(in) :: norm_disc_prec                                   !< precision for normal derivatives
+        real(dp), intent(inout), optional :: v_mag(:,:,:)                       !< magnitude <tt>(dim1,dim2,dim3)</tt>
+        character(len=*), intent(in), optional :: base_name                     !< base name for output plotting
+        integer, intent(in), optional :: max_transf                             !< maximum transformation level (2: Magnetic, 3: Equilibrium, 4: Cylindrical, 5: Cartesian [def])
+        real(dp), intent(inout), allocatable, optional :: v_flux_pol(:,:)       !< poloidal flux as function of normal coordinate for all toroidal positions
+        real(dp), intent(inout), allocatable, optional :: v_flux_tor(:,:)       !< toroidal flux as function of normal coordinate for all poloidal positions
+        real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< \f$X\f$, \f$Y\f$ and \f$Z\f$ of grid
+        logical, intent(in), optional :: compare_tor_pos                        !< compare toroidal positions
         
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed plot grid
@@ -2390,7 +2755,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,:),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,:),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,:),&
-                    &cont_plot=cont_plot,description=description(id))
+                    &cont_plot=cont_plot,descr=description(id))
             end do
             if (present(v_mag)) then
                 call plot_HDF5(trim(base_name),trim(file_names(3)),&
@@ -2399,7 +2764,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,1),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,1),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,1),&
-                    &cont_plot=cont_plot,description=description(3))
+                    &cont_plot=cont_plot,descr=description(3))
             end if
         end if
         
@@ -2509,7 +2874,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,:),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,:),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,:),&
-                    &cont_plot=cont_plot,description=description(id))
+                    &cont_plot=cont_plot,descr=description(id))
             end do
             if (present(v_mag)) then
                 if (compare_tor_pos_loc) then
@@ -2522,7 +2887,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,1),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,1),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,1),&
-                    &cont_plot=cont_plot,description=description(3))
+                    &cont_plot=cont_plot,descr=description(3))
             end if
         end if
         
@@ -2856,7 +3221,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,:),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,:),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,:),&
-                    &cont_plot=cont_plot,description=description(id))
+                    &cont_plot=cont_plot,descr=description(id))
             end do
             if (present(v_mag)) then
                 if (compare_tor_pos_loc) then
@@ -2869,7 +3234,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,1),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,1),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,1),&
-                    &cont_plot=cont_plot,description=description(3))
+                    &cont_plot=cont_plot,descr=description(3))
             end if
         end if
         
@@ -3000,7 +3365,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,:),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,:),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,:),&
-                    &cont_plot=cont_plot,description=description(id))
+                    &cont_plot=cont_plot,descr=description(id))
             end do
             if (present(v_mag)) then
                 if (compare_tor_pos_loc) then
@@ -3013,7 +3378,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,1),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,1),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,1),&
-                    &cont_plot=cont_plot,description=description(3))
+                    &cont_plot=cont_plot,descr=description(3))
             end if
         end if
         
@@ -3095,7 +3460,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,:),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,:),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,:),&
-                    &cont_plot=cont_plot,description=description(id))
+                    &cont_plot=cont_plot,descr=description(id))
             end do
             if (present(v_mag)) then
                 if (compare_tor_pos_loc) then
@@ -3108,7 +3473,7 @@ contains
                     &X=X(:,tor_id(1):tor_id(2),:,1),&
                     &Y=Y(:,tor_id(1):tor_id(2),:,1),&
                     &Z=Z(:,tor_id(1):tor_id(2),:,1),&
-                    &cont_plot=cont_plot,description=description(3))
+                    &cont_plot=cont_plot,descr=description(3))
             end if
             
             ! plot vector as well
@@ -3117,7 +3482,7 @@ contains
                 &tot_dim=plot_dim,loc_offset=plot_offset,&
                 &X=X(:,tor_id(1):tor_id(2),:,:),Y=Y(:,tor_id(1):tor_id(2),:,:),&
                 &Z=Z(:,tor_id(1):tor_id(2),:,:),col=4,cont_plot=cont_plot,&
-                &description='magnetic field vector')
+                &descr='magnetic field vector')
         end if
         
         call lvl_ud(-1)
@@ -3126,170 +3491,21 @@ contains
         call norm_interp_data%dealloc()
         call grid_trim%dealloc()
     end function  calc_vec_comp
-
-    ! Calculates the  toroidal difference  for a  magnitude calculated  on three
-    ! toroidal points: two extremities and one in the middle.
-    ! The procedure also  needs the map between the flux  poloidal angle and the
-    ! geometrical poloidal angle.
-    ! In a first step the quantity is interpolated on an equidistant grid in the
-    ! geometrical poloidal angle.
-    ! The  difference  is  then  calculated for  values  of  constant  geometric
-    ! poloidal angle.
-    ! Finally, this result is transformed back to the Flux coordinates.
-    ! Note: The theta map should have first and last point equal.
-    ! Note: This routine should be used only for periodic quantities (so not for
-    ! some of the Flux quantities).
-    ! Note: This routine uses the formula
-    !   (b-a)/(b+a)
-    ! for the relative difference. This is useful when it is used to calculate a
-    ! toroidal ripple and a and b are the extreme points.
-    integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
-        &result(ierr)                                                           ! 2-D version
-        use num_vars, only: min_theta_plot, max_theta_plot
-        use num_utilities, only: spline3, order_per_fun
-        
-        character(*), parameter :: rout_name = 'calc_tor_diff_2D'
-        
-        ! input / output
-        real(dp), intent(inout) :: v_com(:,:,:,:,:)                             ! covariant and contravariant components of v (dim1,dim2,dim3,3,2)
-        real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
-        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
-        logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
-        real(dp), intent(in), optional :: r(:)                                  ! normal positions for theta
-        
-        ! local variables
-        integer :: id, jd, kd, ld                                               ! counters
-        integer :: n_pol                                                        ! number of poloidal points to be used (1 less than total)
-        integer :: istat                                                        ! status
-        real(dp), allocatable :: theta_eqd(:)                                   ! equidistant grid
-        real(dp), allocatable :: v_com_interp(:,:)                              ! interpolated local v_com for outer points
-        real(dp), allocatable :: theta_ord(:)                                   ! ordered theta
-        real(dp), allocatable :: v_com_ord(:)                                   ! ordered v_com
-        logical :: absolute_loc                                                 ! local absolute
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up variables
-        n_pol = size(theta,1)-1
-        allocate(theta_eqd(n_pol))
-        allocate(v_com_interp(n_pol,3))
-        absolute_loc = .false.
-        if (present(absolute)) absolute_loc = absolute
-        
-        norm: do kd = 1,size(v_com,3)
-            ! set up equidistant grid
-            ierr = calc_eqd_grid(theta_eqd,min_theta_plot*pi,max_theta_plot*pi,&
-                &excl_last=.true.)
-            CHCKERR('')
-            do id = 1,size(v_com,4)
-                do ld = 1,size(v_com,5)
-                    ! interpolate the geometric poloidal angle for outer points
-                    do jd = 1,3,2
-                        ! order
-                        ierr = order_per_fun(theta(1:n_pol,jd,kd),&
-                            &v_com(1:n_pol,jd,kd,id,ld),theta_ord,v_com_ord,&
-                            &norm_disc_prec)
-                        CHCKERR('')
-                        
-                        istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
-                            &theta_eqd,ynew=v_com_interp(:,jd))
-                        deallocate(theta_ord,v_com_ord)
-                        
-                        if (istat.ne.0) then
-                            call display_interp_warning(r)
-                            v_com(:,2,kd,:,:) = 0._dp
-                            cycle norm
-                        end if
-                    end do
-                    
-                    ! calculate difference and save in middle point
-                    v_com_interp(:,2) = &
-                        &(v_com_interp(:,3)-v_com_interp(:,1))
-                    if (.not.absolute_loc) &                                    ! make it relative
-                        &v_com_interp(:,2) = v_com_interp(:,2)/&
-                        &(v_com_interp(:,3)+v_com_interp(:,1))
-                    
-                    ! order
-                    ierr = order_per_fun(theta_eqd,v_com_interp(:,2),&
-                        &theta_ord,v_com_ord,norm_disc_prec)
-                    CHCKERR('')
-                    
-                    ! interpolate back
-                    istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
-                        &theta(:,2,kd),ynew=v_com(:,2,kd,id,ld))
-                    deallocate(theta_ord,v_com_ord)
-                    
-                    if (istat.ne.0) then
-                        call display_interp_warning(r)
-                        v_com(:,2,kd,:,:) = 0._dp
-                        cycle norm
-                    end if
-                end do
-            end do
-        end do norm
-    contains
-        ! Displays warning if no interpolation possible.
-        ! Uses variable kd from parent procedure.
-        subroutine display_interp_warning(r)
-            ! input / output
-            real(dp), intent(in), optional :: r(:)                              ! normal positions for theta
-            
-            if (present(r)) then
-                call writo('Cannot interpolate geometrical &
-                    &theta at normal position '//&
-                    &trim(r2str(r(kd))),warning=.true.)
-            else
-                call writo('Cannot interpolate geometrical &
-                    &theta',warning=.true.)
-            end if
-            call lvl_ud(1)
-            call writo('Are you sure the origin is chosen &
-                &correctly?')
-            call writo('Skipping this normal position')
-            call lvl_ud(-1)
-        end subroutine display_interp_warning
-    end function calc_tor_diff_2D
-    integer function calc_tor_diff_0D(v_mag,theta,norm_disc_prec,absolute,r) &
-        &result(ierr)                                                           ! 0-D version
-        character(*), parameter :: rout_name = 'calc_tor_diff_0D'
-        
-        ! input / output
-        real(dp), intent(inout) :: v_mag(:,:,:)                                 ! magnitude of v (dim1,dim2,dim3)
-        real(dp), intent(in) :: theta(:,:,:)                                    ! geometric poloidal angle
-        integer, intent(in) :: norm_disc_prec                                   ! precision for normal derivatives
-        logical, intent(in), optional :: absolute                               ! calculate absolute, not relative, difference
-        real(dp), intent(in), optional :: r(:)                                  ! normal positions for theta
-        
-        ! local variable
-        real(dp), allocatable :: v_com_loc(:,:,:,:,:)                           ! local copy of v_mag
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local copy of v_mag
-        allocate(v_com_loc(size(v_mag,1),size(v_mag,2),size(v_mag,3),1,1))
-        v_com_loc(:,:,:,1,1) = v_mag
-        
-        ! call 2-D version
-        ierr = calc_tor_diff_2D(v_com_loc,theta,norm_disc_prec,&
-            &absolute=absolute,r=r)
-        CHCKERR('')
-        
-        ! copy
-        v_mag = v_com_loc(:,:,:,1,1)
-    end function calc_tor_diff_0D
     
-    ! Calculates the  local number of  parallel grid points for  this Richardson
-    ! level, taking into account that it ould be half the actual number.
+    !> Calculates the local  number of parallel grid points  for this Richardson
+    !! level, taking into account that it ould be half the actual number.
+    !!
+    !! \see calc_ang_grid_eq_b().
+    !!
+    !! \return ierr
     integer function calc_n_par_X_rich(n_par_X_rich,only_half_grid) result(ierr)
         use rich_vars, only: n_par_X
         
         character(*), parameter :: rout_name = 'calc_n_par_X_rich'
         
         ! input / output
-        integer, intent(inout) :: n_par_X_rich                                  ! n_par_X for this Richardson level
-        logical, intent(in), optional :: only_half_grid                         ! calculate only half grid with even points
+        integer, intent(inout) :: n_par_X_rich                                  !< n_par_X for this Richardson level
+        logical, intent(in), optional :: only_half_grid                         !< calculate only half grid with even points
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -3312,21 +3528,25 @@ contains
         end if
     end function calc_n_par_X_rich
     
-    ! calculates the  cosine and sine  mode numbers of  a function defined  on a
-    ! non-regular grid.
-    ! If a plot name is provided, the modes are plotted.
-    ! Note that the fundamental interval is  assumed to be 0..2pi but that there
-    ! should be no overlap between the first and last point.
+    !> calculates the  cosine and sine mode  numbers of a function  defined on a
+    !! non-regular grid.
+    !!
+    !! If a plot name is provided, the modes are plotted.
+    !!
+    !! \note The  fundamental interval is  assumed to be \f$0\ldots  2\pi\f$ but
+    !! there should be no overlap between the first and last point.
+    !!
+    !! \return ierr
     integer function nufft(x,f,f_F,plot_name) result(ierr)
         use num_utilities, only: order_per_fun
         
         character(*), parameter :: rout_name = 'nufft'
         
         ! input / output
-        real(dp), intent(in) :: x(:)                                            ! coordinate values
-        real(dp), intent(in) :: f(:)                                            ! function values
-        real(dp), intent(inout), allocatable :: f_F(:,:)                        ! Fourier modes for cos and sin
-        character(len=*), intent(in), optional :: plot_name                     ! name of possible plot
+        real(dp), intent(in) :: x(:)                                            !< coordinate values
+        real(dp), intent(in) :: f(:)                                            !< function values
+        real(dp), intent(inout), allocatable :: f_F(:,:)                        !< Fourier modes for \f$\cos\f$ and \f$\sin\f$
+        character(len=*), intent(in), optional :: plot_name                     !< name of possible plot
         
         ! local variables
         integer :: m_F                                                          ! nr. of modes
@@ -3415,12 +3635,12 @@ contains
         end if
     end function nufft
     
-    ! finds smallest range that comprises a minimum and maximum value
+    !> finds smallest range that comprises a minimum and maximum value.
     subroutine find_compr_range(r_F,lim_r,lim_id)
         ! input / output
-        real(dp), intent(in) :: r_F(:)                                          ! all values of coordinate
-        real(dp), intent(in) :: lim_r(2)                                        ! limiting range
-        integer, intent(inout) :: lim_id(2)                                     ! limiting indices
+        real(dp), intent(in) :: r_F(:)                                          !< all values of coordinate
+        real(dp), intent(in) :: lim_r(2)                                        !< limiting range
+        integer, intent(inout) :: lim_id(2)                                     !< limiting indices
         
         ! local variables
         integer :: id                                                           ! counter
@@ -3446,12 +3666,20 @@ contains
         end if
     end subroutine find_compr_range
     
-    ! Calculate arclength  angle, based  on calculating  the arclength  from the
-    ! start of the grid, and then normalizing it from min(theta)..max(theta)
-    ! By  default, the  Flux variables are  used, but this  can be  changed with
-    ! "use_E".
-    ! Note:  For field-aligned  grids the  projection is  taken on  the poloidal
-    ! cross-section. For non-axisymmetric equilibria, this makes little sense.
+    !> Calculate arclength angle.
+    !!
+    !! This   angle   is   based   on   the   calculation   of   the   arclength
+    !! from   the  start   of   the   grid,  and   then   normalizing  it   from
+    !! \f$\min(\gamma)\ldots\max(\gamma)\f$, where \f$\gamma\f$  is the parallel
+    !! angle.
+    !!
+    !! By default, the Flux variables are used,  but this can be changed with \c
+    !! use_E.
+    !!
+    !! \note For  field-aligned grids  the projection is  taken on  the poloidal
+    !! cross-section. For non-axisymmetric equilibria, this makes little sense.
+    !!
+    !! \return ierr
     integer function calc_arc_angle(grid,eq_1,eq_2,arc,use_E) result(ierr)
         use eq_vars, only: eq_1_type, eq_2_type, &
             &R_0
@@ -3461,11 +3689,11 @@ contains
         character(*), parameter :: rout_name = 'calc_arc_angle'
         
         ! input / output
-        type(grid_type), intent(in) :: grid                                     ! equilibrium grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        real(dp), intent(inout), allocatable :: arc(:,:,:)                      ! arclength angle
-        logical, intent(in), optional :: use_E                                  ! use E variables instead of F
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        real(dp), intent(inout), allocatable :: arc(:,:,:)                      !< arclength angle
+        logical, intent(in), optional :: use_E                                  !< use E variables instead of F
         
         ! local variables
         integer :: jd, kd                                                       ! counters

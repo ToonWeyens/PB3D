@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Driver of the perturbation part of PB3D.                                   !
+!> Driver of the perturbation part of PB3D.
 !------------------------------------------------------------------------------!
 module driver_X
 #include <PB3D_macros.h>
@@ -17,33 +17,38 @@ module driver_X
     public run_driver_X
     
     ! global variables
-    integer :: X_limits(2)                                                      ! min. and max. index of X grid for this process
-    real(dp), allocatable :: r_F_X(:)                                           ! normal points in perturbation grid
-    character(len=8) :: flux_name(2)                                            ! name of flux variable
-    character(len=1) :: mode_name(2)                                            ! name of modes
-    integer :: rich_lvl_name                                                    ! either the Richardson level or zero
+    integer :: X_limits(2)                                                      !< min. and max. index of X grid for this process
+    real(dp), allocatable :: r_F_X(:)                                           !< normal points in perturbation grid
+    character(len=8) :: flux_name(2)                                            !< name of flux variable
+    character(len=1) :: mode_name(2)                                            !< name of modes
+    integer :: rich_lvl_name                                                    !< either the Richardson level or zero
 #if ldebug
-    logical :: debug_run_driver_X_1 = .false.                                   ! debug information for run_driver_X_1
-    logical :: debug_run_driver_X_2 = .false.                                   ! debug information for run_driver_X_2
-    logical :: plot_info= .false.                                               ! plot information for comparison with HELENA
+    logical :: debug_run_driver_X_1 = .false.                                   !< debug information for run_driver_X_1 \ldebug
+    logical :: debug_run_driver_X_2 = .false.                                   !< debug information for run_driver_X_2 \ldebug
+    logical :: plot_info= .false.                                               !< plot information for comparison with HELENA \ldebug
 #endif
     
 contains
-    ! Main driver of PB3D perturbation part.
-    ! sets up ([x] indicates driver x):
-    !   - [0] grid_X (for HELENA, only first Richardson level)
-    !   - [0] grid_X_B (for VMEC, equal to grid_X_out)
-    !   - [1] X_1 
-    !   - [2] X_2 
-    ! writes to HDF5:
-    !   - [0] grid_X (for HELENA, only first Richardson level)
-    !   - [0] grid_X_B (for VMEC, equal to grid_X)
-    !   - [1] X_1 (only for HELENA, only first Richardson level)
-    !   - [2] X_2 
-    ! deallocates:
-    !   - X_1 before setting up
-    !   - grid_X before setting up
-    !   - grid_X_B before setting up
+    !> Main driver of PB3D perturbation part.
+    !!
+    !!  - sets up:
+    !!      * [0] \c grid_X (for HELENA, only first Richardson level)
+    !!      * [0] \c grid_X_B (for VMEC, equal to grid_X_out)
+    !!      * [1] \c X_1 
+    !!      * [2] \c X_2 
+    !!  - writes to HDF5:
+    !!      * [0] \c grid_X (for HELENA, only first Richardson level)
+    !!      * [0] \c grid_X_B (for VMEC, equal to grid_X)
+    !!      * [1] \c X_1 (only for HELENA, only first Richardson level)
+    !!      * [2] \c X_2 
+    !!  - deallocates:
+    !!      * \c X_1 before setting up
+    !!      * \c grid_X before setting up
+    !!      * \c grid_X_B before setting up
+    !!
+    !!  ([x] indicates driver x)
+    !!
+    !! \return ierr
     integer function run_driver_X(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,eq_2,&
         &X_1,X_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
@@ -63,14 +68,14 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq                       ! equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
-        type(grid_type), intent(inout), pointer :: grid_eq_B                    ! field-aligned equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
-        type(grid_type), intent(inout), target :: grid_X                        ! perturbation grid
-        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables (should be in but needs inout for interp_HEL_on_grid)
-        type(X_1_type), intent(inout) :: X_1                                    ! vectorial perturbation variables
-        type(X_2_type), intent(inout) :: X_2                                    ! tensorial perturbation variables
+        type(grid_type), intent(inout), target :: grid_eq                       !< equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
+        type(grid_type), intent(inout), pointer :: grid_eq_B                    !< field-aligned equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
+        type(grid_type), intent(inout), target :: grid_X                        !< perturbation grid
+        type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables (should be in but needs inout for interp_HEL_on_grid)
+        type(X_1_type), intent(inout) :: X_1                                    !< vectorial perturbation variables
+        type(X_2_type), intent(inout) :: X_2                                    !< tensorial perturbation variables
         
         ! local variables
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
@@ -328,9 +333,12 @@ contains
         call writo('Perturbation grid set up')
     end function run_driver_X_0
     
-    ! Part 1 of driver_X: Vectorial jobs.
-    ! Note: everything  is  done  here in  the original  grids, not  necessarily
-    ! field-aligned.
+    !> Part 1 of driver_X: Vectorial jobs.
+    !!
+    !! \note  Everything is  done here  in the  original grids,  not necessarily
+    !! field-aligned.
+    !!
+    !! \return ierr
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2,X_1) result(ierr)
         use num_vars, only: rank, n_procs, eq_style, U_style, eq_job_nr, &
             &rich_restart_lvl
@@ -340,11 +348,11 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_1'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  ! equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   ! perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in) :: eq_2                                     ! metric equilibrium variables
-        type(X_1_type), intent(inout) :: X_1                                    ! vectorial X variables
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
+        type(X_1_type), intent(inout) :: X_1                                    !< vectorial X variables
         
         ! local variables
         logical :: do_X_1_ops                                                   ! whether specific calculations for X_1 are necessary
@@ -537,12 +545,14 @@ contains
 #endif
     end function run_driver_X_1
     
-    ! Part 2 of driver_X: Tensorial jobs.
-    ! Note:  Everything  is  done  in  the  field-aligned  grids,  where  HELENA
-    ! vectorial perturbation variables are first interpolated.
+    !> Part 2 of driver_X: Tensorial jobs.
+    !!
+    !! \note  Everything  is  done  in the  field-aligned  grids,  where  HELENA
+    !! vectorial perturbation variables are first interpolated.
+    !!
+    !! \return ierr
     integer function run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B,X_1,&
-        &X_2_int) &
-        &result(ierr)
+        &X_2_int) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_X_2
         use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
             &eq_job_nr, eq_jobs_lims, magn_int_style, no_output, &
@@ -555,13 +565,13 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_2'
         
         ! input / output
-        type(grid_type), intent(in), pointer :: grid_eq_B                       ! field-aligned equilibrium grid
-        type(grid_type), intent(in), target :: grid_X                           ! perturbation grid
-        type(grid_type), intent(in), pointer :: grid_X_B                        ! field-aligned perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(in), pointer :: eq_2_B                          ! field-aligned metric equilibrium variables
-        type(X_1_type), intent(in) :: X_1                                       ! vectorial X variables
-        type(X_2_type), intent(inout) :: X_2_int                                ! tensorial X variables
+        type(grid_type), intent(in), pointer :: grid_eq_B                       !< field-aligned equilibrium grid
+        type(grid_type), intent(in), target :: grid_X                           !< perturbation grid
+        type(grid_type), intent(in), pointer :: grid_X_B                        !< field-aligned perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(in), pointer :: eq_2_B                          !< field-aligned metric equilibrium variables
+        type(X_1_type), intent(in) :: X_1                                       !< vectorial X variables
+        type(X_2_type), intent(inout) :: X_2_int                                !< tensorial X variables
         
         ! local variables
         logical :: no_output_loc                                                ! local copy of no_output
@@ -806,7 +816,7 @@ contains
         end if
     end function run_driver_X_2
     
-    ! prints information for tensorial perturbation job
+    !> Prints information for tensorial perturbation job.
     subroutine print_info_X_2()
         use num_vars, only: X_job_nr, X_jobs_lims
         

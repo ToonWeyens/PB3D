@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to files                                       !
+!> Numerical utilities related to files
 !------------------------------------------------------------------------------!
 module files_utilities
 #include <PB3D_macros.h>
@@ -12,12 +12,17 @@ module files_utilities
         &skip_comment, count_lines
 
 contains
-    ! Search for available  new unit where lun_min and lun_max  define the range
-    ! of possible luns to check. The unit value is returned by the function, and
-    ! also  by the  optional  argument.  This allows  the  function  to be  used
-    ! directly in an  open statement, and optionally save the  result in a local
-    ! variable. If no units are available, -1 is returned.
-    ! (Adapted from: "http://fortranwiki.org/fortran/show/newunit")
+    !> Search for available new unit.
+    !! 
+    !! \c lun_min and \c lun_max define the range of possible luns to check.
+    !!
+    !! The unit  value is  returned by  the function, and  also by  the optional
+    !! argument.  This allows  the  function  to be  used  directly  in an  open
+    !! statement, and optionally save the result in a local variable.
+    !!
+    !! If no units are available, -1 is returned.
+    !!
+    !! \see Adapted from http://fortranwiki.org/fortran/show/newunit
     integer function nextunit(unit)
         ! input / output
         integer, intent(out), optional :: unit
@@ -41,7 +46,11 @@ contains
         if (present(unit)) unit=nextunit
     end function nextunit
     
-    ! Skips comment.
+    !> Skips comment when reading a file.
+    !!
+    !! By comment, a line is meant that starts with the character \c \#.
+    !!
+    !! \return ierr
     integer function skip_comment(file_i,file_name) result(ierr)
         character(*), parameter :: rout_name = 'skip_comment'
         
@@ -69,15 +78,16 @@ contains
         backspace(file_i)
     end function skip_comment
     
-    ! Gets file information
-    ! The  time informations  can be  converted to  strings using  the intrinsic
-    ! function "ctime".
+    !> Gets file information.
+    !!
+    !! The time  informations can  be converted to  strings using  the intrinsic
+    !! function "ctime".
     subroutine get_file_info(file_name,file_size,acc_time,mod_time)
         ! input / output
-        character(len=*), intent(in) :: file_name                               ! name of file
-        integer, intent(inout), optional :: file_size                           ! file size
-        integer, intent(inout), optional :: acc_time                            ! file access time
-        integer, intent(inout), optional :: mod_time                            ! file modification time
+        character(len=*), intent(in) :: file_name                               !< name of file
+        integer, intent(inout), optional :: file_size                           !< file size
+        integer, intent(inout), optional :: acc_time                            !< file access time
+        integer, intent(inout), optional :: mod_time                            !< file modification time
         
         ! local variables
         integer :: vals(13)                                                     ! values
@@ -99,8 +109,11 @@ contains
         end if
     end subroutine get_file_info
     
-    ! Returns the name of the PB3D output file, including the current Richardson
-    ! level. Optionally, this can be overridden If not positive, it is ignored.
+    !> Returns the name of the PB3D output file.
+    !!
+    !! Optionally, the Richardson level can be appended as <tt>_R_[lvl]</tt>.
+    !!
+    !! If not positive, it is ignored.
     character(len=max_str_ln) function get_full_PB3D_name(rich_lvl) &
         &result(full_PB3D_name)
         use num_vars, only: PB3D_name
@@ -124,10 +137,12 @@ contains
         end if
     end function get_full_PB3D_name
 
-    ! removes a file
+    !> Removes a file.
+    !!
+    !! \return istat
     integer function delete_file(file_name) result(istat)
         ! input / output
-        character(len=*), intent(inout) :: file_name                            ! the name that is deleted
+        character(len=*), intent(inout) :: file_name                            !< the name that is deleted
         
         ! local variables
         integer :: file_i                                                       ! file unit
@@ -150,10 +165,10 @@ contains
         CHCKSTT
     end function delete_file
     
-    ! count non-comment lines
+    !> Count non-comment lines in a file.
     integer function count_lines(file_i) result(nr_lines)
         ! input / output
-        integer, intent(in) :: file_i                                           ! file identifier
+        integer, intent(in) :: file_i                                           !< file identifier
         
         ! local variables
         integer :: istat                                                        ! status

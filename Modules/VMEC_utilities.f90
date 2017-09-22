@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Numerical utilities related to the output of VMEC                          !
+!> Numerical utilities related to the output of VMEC.
 !------------------------------------------------------------------------------!
 module VMEC_utilities
 #include <PB3D_macros.h>
@@ -19,25 +19,266 @@ module VMEC_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_trigon_factors = .false.                              ! plot debug information for calc_trigon_factors
+    logical :: debug_calc_trigon_factors = .false.                              !< plot debug information for calc_trigon_factors() \ldebug
 #endif
 
+    ! interfaces
+    
+    !> \public Inverse Fourier transformation, from VMEC.
+    !!
+    !! Also calculates the poloidal or  toroidal derivatives in VMEC coords., as
+    !! indicated by the variable \c deriv(2).
+    !!
+    !! (The normal derivative  is done on the variables in  Fourier space, and should
+    !! be provided here in \c varf_i if needed).
+    !!
+    !! There are two variants:
+    !!  -# version using trigon_factors, which is  useful when the grid on which
+    !!  the trigonometric  factors are defined  is not regular and  ideally when
+    !!  they are reused multiple times.
+    !!  -# version using \f$\theta\f$ and  \f$\zeta\f$ directly, which is useful
+    !!  for small, unique calculations.
+    !!
+    !! Both  these  versions  make  use  of  a  factor  that  represents  angular
+    !! derivatives. For <tt>deriv = [j,k]</tt>, this is:
+    !!  - \f$m^j (-n)^k (-1)^{\frac{j+k+1}{2}}\f$   for \c varf_c,
+    !!  - \f$m^j (-n)^k (-1)^{\frac{j+k}{2}}\f$     for \c varf_s,
+    !!
+    !! where  the  divisions  have  to  be  done  using  integers,  i.e.  without
+    !! remainder. The  first two factors  are straightforward, and the  third one
+    !! originates in  the change of  sign when deriving a  cosine, but not  for a
+    !! sine.
+    !!
+    !! Finally, depending  on whether  \f$(j+k)\f$ is even  or odd,  the correct
+    !! \f$\cos\f$ or \f$\sin\f$ is chosen.
+    !!
+    !! \return ierr
     interface fourier2real
-        module procedure fourier2real_1, fourier2real_2
+        !> \public
+        module procedure fourier2real_1
+        !> \public
+        module procedure fourier2real_2
     end interface
 
 contains
-    ! Calculate the trigonometric cosine and  sine factors on a grid (1:mnmax_V)
-    ! at given 3D arrays for the (VMEC) E(quilibrium) angles theta_E and zeta_E.
+    !> \private version with trigonometric factors
+    integer function fourier2real_1(varf_c,varf_s,trigon_factors,varr,sym,&
+        &deriv) result(ierr)
+        
+        character(*), parameter :: rout_name = 'fourier2real_1'
+        
+        ! input / output
+        real(dp), intent(in) :: varf_c(:,:)                                     !< \f$\cos\f$ factor of variable in Fourier space
+        real(dp), intent(in) :: varf_s(:,:)                                     !< \f$\sin\f$ factor of variable in Fourier space
+        real(dp), intent(in) :: trigon_factors(:,:,:,:,:)                       !< trigonometric factor cosine and sine at these angles (see calc_trigon_factors())
+        real(dp), intent(inout) :: varr(:,:,:)                                  !< variable in real space
+        logical, intent(in), optional :: sym(2)                                 !< whether to use \c varf_c (1) and / or \c varf_s (2)
+        integer, intent(in), optional :: deriv(2)                               !< optional derivatives in angular coordinates
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: dims(3)                                                      ! dimensions of varr
+        integer :: id, kd                                                       ! counters
+        integer :: deriv_loc(2)                                                 ! local derivative
+        logical :: sym_loc(2)                                                   ! local sym
+        real(dp) :: deriv_fac                                                   ! factur due to derivatives
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local deriv and sym
+        deriv_loc = [0,0]
+        sym_loc = [.true.,.true.]
+        if (present(deriv)) deriv_loc = deriv
+        if (present(sym)) sym_loc = sym
+        
+        ! set dimensions
+        dims = shape(varr)
+        
+        ! test
+        if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
+            ierr = 1
+            err_msg = 'Need at least the cosine or the sine factor'
+            CHCKERR(err_msg)
+        end if
+        if (size(trigon_factors,1).ne.mnmax_V .and. &
+            &size(trigon_factors,2).ne.dims(1) .and. &
+            &size(trigon_factors,3).ne.dims(2) .and. &
+            &size(trigon_factors,4).ne.dims(3) .and. &
+            &size(trigon_factors,5).ne.2) then
+            ierr = 1
+            err_msg = 'Trigonometric factors are not set up'
+            CHCKERR(err_msg)
+        end if
+        
+        ! initialize
+        varr = 0.0_dp
+        
+        ! sum over modes
+        do id = 1,mnmax_V
+            ! setup derivative factor for varf_c
+            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
+                &(-1)**((sum(deriv_loc)+1)/2)
+            
+            ! add terms ~ varf_c
+            if (sym_loc(1)) then
+                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_c(id,kd) * deriv_fac * &
+                            &trigon_factors(id,:,:,kd,1)
+                    end do
+                else                                                            ! odd number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_c(id,kd) * deriv_fac * &
+                            &trigon_factors(id,:,:,kd,2)
+                    end do
+                end if
+            end if
+            
+            ! setup derivative factor for varf_s
+            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
+                &(-1)**(sum(deriv_loc)/2)
+            
+            ! add terms ~ varf_s
+            if (sym_loc(2)) then
+                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_s(id,kd) * deriv_fac * &
+                            &trigon_factors(id,:,:,kd,2)
+                    end do
+                else                                                            ! odd number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_s(id,kd) * deriv_fac * &
+                            &trigon_factors(id,:,:,kd,1)
+                    end do
+                end if
+            end if
+        end do
+    end function fourier2real_1
+    !> \private version with angles
+    integer function fourier2real_2(varf_c,varf_s,theta,zeta,varr,sym,deriv) &
+        &result(ierr)
+        
+        character(*), parameter :: rout_name = 'fourier2real_2'
+        
+        ! input / output
+        real(dp), intent(in) :: varf_c(:,:)                                     !< \f$\cos\f$ factor of variable in Fourier space
+        real(dp), intent(in) :: varf_s(:,:)                                     !< \f$\sin\f$ factor of variable in Fourier space
+        real(dp), intent(in) :: theta(:,:,:)                                    !< \f$\theta_\text{E}\f$
+        real(dp), intent(in) :: zeta(:,:,:)                                     !< \f$\zeta_\text{E}\f$
+        real(dp), intent(inout) :: varr(:,:,:)                                  !< variable in real space
+        logical, intent(in), optional :: sym(2)                                 !< whether to use \c varf_c (1) and / or \c varf_s (2)
+        integer, intent(in), optional :: deriv(2)                               !< optional derivatives in angular coordinates
+        
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: dims(3)                                                      ! dimensions of varr
+        integer :: id, kd                                                       ! counters
+        integer :: deriv_loc(2)                                                 ! local derivative
+        logical :: sym_loc(2)                                                   ! local sym
+        real(dp) :: deriv_fac                                                   ! factur due to derivatives
+        real(dp), allocatable :: ang(:,:,:)                                     ! angle of trigonometric functions
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local deriv and sym
+        deriv_loc = [0,0]
+        sym_loc = [.true.,.true.]
+        if (present(deriv)) deriv_loc = deriv
+        if (present(sym)) sym_loc = sym
+        
+        ! test
+        if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
+            ierr = 1
+            err_msg = 'Need at least the cosine or the sine factor'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set dimensions
+        dims = shape(varr)
+        
+        ! initialize angle
+        allocate(ang(dims(1),dims(2),dims(3)))
+        
+        ! initialize output
+        varr = 0.0_dp
+        
+        ! sum over modes
+        do id = 1,mnmax_V
+            ! set angle
+            ang = mn_V(id,1)*theta - mn_V(id,2)*zeta
+            
+            ! setup derivative factor for varf_c
+            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
+                &(-1)**((sum(deriv_loc)+1)/2)
+            
+            ! add terms ~ varf_c
+            if (sym_loc(1)) then
+                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_c(id,kd) * deriv_fac * cos(ang(:,:,kd))
+                    end do
+                else                                                            ! odd number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_c(id,kd) * deriv_fac * sin(ang(:,:,kd))
+                    end do
+                end if
+            end if
+            
+            ! setup derivative factor for varf_s
+            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
+                &(-1)**(sum(deriv_loc)/2)
+            
+            ! add terms ~ varf_s
+            if (sym_loc(2)) then
+                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_s(id,kd) * deriv_fac * sin(ang(:,:,kd))
+                    end do
+                else                                                            ! odd number of derivatives
+                    do kd = 1,dims(3)
+                        varr(:,:,kd) = varr(:,:,kd) + &
+                            &varf_s(id,kd) * deriv_fac * cos(ang(:,:,kd))
+                    end do
+                end if
+            end if
+        end do
+    end function fourier2real_2
+    
+    !> Calculate the trigonometric cosine and sine factors.
+    !! 
+    !! This  is  done  on  a   grid  <tt>(1:mnmax_V)</tt>  at  given  3D  arrays
+    !! for   the   (VMEC)   E(quilibrium)   angles   \f$\theta_\text{E}\f$   and
+    !! \f$\zeta_\text{E}\f$.
+    !!
+    !! The dimensions of the output array are
+    !!
+    !! <tt>(1:mnmax_V,1:n_ang_1,1:n_ang_2,1:n_r,1:2)</tt>
+    !!
+    !! where  \c mnmax_V  is the number  of modes  in VMEC \c  n_r is  the total
+    !! number of normal points.
+    !!
+    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !!
+    !! \return ierr
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &
         &result(ierr)
         
         character(*), parameter :: rout_name = 'calc_trigon_factors'
         
         ! input / output
-        real(dp), intent(in) :: theta(:,:,:)                                    ! poloidal angles in equilibrium coords.
-        real(dp), intent(in) :: zeta(:,:,:)                                     ! toroidal angles in equilibrium coords.
-        real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:)       ! trigonometric factor cosine and sine at these angles
+        real(dp), intent(in) :: theta(:,:,:)                                    !< poloidal angles in equilibrium coords.
+        real(dp), intent(in) :: zeta(:,:,:)                                     !< toroidal angles in equilibrium coords.
+        real(dp), intent(inout), allocatable :: trigon_factors(:,:,:,:,:)       !< trigonometric factor cosine and sine at these angles
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -133,215 +374,4 @@ contains
         deallocate(cos_theta,sin_theta)
         deallocate(cos_zeta,sin_zeta)
     end function calc_trigon_factors
-    
-    ! Inverse Fourier transformation, from VMEC. Also calculates the poloidal or
-    ! toroidal  derivatives  in  VMEC  coords., as  indicated  by  the  variable
-    ! deriv(2).
-    ! (Normal derivative  is done on the variables in  Fourier space, and should
-    ! be provided here in varf_i if needed).
-    ! There are two variants:
-    !   1: version using trigon_factors, which is  useful when the grid on which
-    !   the trigonometric  factors are defined  is not regular and  ideally when
-    !   they are reused multiple times.
-    !   2: version  using theta and  zeta directly,  which is useful  for small,
-    !   unique calculations.
-    ! Both  these  versions  make  use  of  a  factor  that  represents  angular
-    ! derivatives. For deriv = [j,k], this is:
-    !   m^j (-n)^k (-1)^((j+k+1)/2)             for varf_c,
-    !   m^j (-n)^k (-1)^((j+k)/2)               for varf_c,
-    ! where  the  divisions  have  to  be  done  using  integers,  i.e.  without
-    ! remainder. The  first two factors  are straightforward, and the  third one
-    ! originates in  the change of  sign when deriving a  cosine, but not  for a
-    ! sine.
-    ! Finally,  depending on (j+k)  is even  or odd, the  correct cos or  sin is
-    ! chosen.
-    integer function fourier2real_1(varf_c,varf_s,trigon_factors,varr,sym,&
-        &deriv) result(ierr)
-        
-        character(*), parameter :: rout_name = 'fourier2real_1'
-        
-        ! input / output
-        real(dp), intent(in) :: varf_c(:,:)                                     ! cos factor of variable in Fourier space
-        real(dp), intent(in) :: varf_s(:,:)                                     ! sin factor of variable in Fourier space
-        real(dp), intent(in) :: trigon_factors(:,:,:,:,:)                       ! trigonometric factor cosine and sine at these angles
-        real(dp), intent(inout) :: varr(:,:,:)                                  ! variable in real space
-        logical, intent(in), optional :: sym(2)                                 ! whether to use varf_c (1) and / or varf_s (2)
-        integer, intent(in), optional :: deriv(2)                               ! optional derivatives in angular coordinates
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: dims(3)                                                      ! dimensions of varr
-        integer :: id, kd                                                       ! counters
-        integer :: deriv_loc(2)                                                 ! local derivative
-        logical :: sym_loc(2)                                                   ! local sym
-        real(dp) :: deriv_fac                                                   ! factur due to derivatives
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local deriv and sym
-        deriv_loc = [0,0]
-        sym_loc = [.true.,.true.]
-        if (present(deriv)) deriv_loc = deriv
-        if (present(sym)) sym_loc = sym
-        
-        ! set dimensions
-        dims = shape(varr)
-        
-        ! test
-        if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
-            ierr = 1
-            err_msg = 'Need at least the cosine or the sine factor'
-            CHCKERR(err_msg)
-        end if
-        if (size(trigon_factors,1).ne.mnmax_V .and. &
-            &size(trigon_factors,2).ne.dims(1) .and. &
-            &size(trigon_factors,3).ne.dims(2) .and. &
-            &size(trigon_factors,4).ne.dims(3) .and. &
-            &size(trigon_factors,5).ne.2) then
-            ierr = 1
-            err_msg = 'Trigonometric factors are not set up'
-            CHCKERR(err_msg)
-        end if
-        
-        ! initialize
-        varr = 0.0_dp
-        
-        ! sum over modes
-        do id = 1,mnmax_V
-            ! setup derivative factor for varf_c
-            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**((sum(deriv_loc)+1)/2)
-            
-            ! add terms ~ varf_c
-            if (sym_loc(1)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * &
-                            &trigon_factors(id,:,:,kd,1)
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * &
-                            &trigon_factors(id,:,:,kd,2)
-                    end do
-                end if
-            end if
-            
-            ! setup derivative factor for varf_s
-            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**(sum(deriv_loc)/2)
-            
-            ! add terms ~ varf_s
-            if (sym_loc(2)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * &
-                            &trigon_factors(id,:,:,kd,2)
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * &
-                            &trigon_factors(id,:,:,kd,1)
-                    end do
-                end if
-            end if
-        end do
-    end function fourier2real_1
-    integer function fourier2real_2(varf_c,varf_s,theta,zeta,varr,sym,deriv) &
-        &result(ierr)
-        
-        character(*), parameter :: rout_name = 'fourier2real_2'
-        
-        ! input / output
-        real(dp), intent(in) :: varf_c(:,:)                                     ! cos factor of variable in Fourier space
-        real(dp), intent(in) :: varf_s(:,:)                                     ! sin factor of variable in Fourier space
-        real(dp), intent(in) :: theta(:,:,:)                                    ! theta
-        real(dp), intent(in) :: zeta(:,:,:)                                     ! zeta
-        real(dp), intent(inout) :: varr(:,:,:)                                  ! variable in real space
-        logical, intent(in), optional :: sym(2)                                 ! whether to use varf_c (1) and / or varf_s (2)
-        integer, intent(in), optional :: deriv(2)                               ! optional derivatives in angular coordinates
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: dims(3)                                                      ! dimensions of varr
-        integer :: id, kd                                                       ! counters
-        integer :: deriv_loc(2)                                                 ! local derivative
-        logical :: sym_loc(2)                                                   ! local sym
-        real(dp) :: deriv_fac                                                   ! factur due to derivatives
-        real(dp), allocatable :: ang(:,:,:)                                     ! angle of trigonometric functions
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local deriv and sym
-        deriv_loc = [0,0]
-        sym_loc = [.true.,.true.]
-        if (present(deriv)) deriv_loc = deriv
-        if (present(sym)) sym_loc = sym
-        
-        ! test
-        if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
-            ierr = 1
-            err_msg = 'Need at least the cosine or the sine factor'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set dimensions
-        dims = shape(varr)
-        
-        ! initialize angle
-        allocate(ang(dims(1),dims(2),dims(3)))
-        
-        ! initialize output
-        varr = 0.0_dp
-        
-        ! sum over modes
-        do id = 1,mnmax_V
-            ! set angle
-            ang = mn_V(id,1)*theta - mn_V(id,2)*zeta
-            
-            ! setup derivative factor for varf_c
-            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**((sum(deriv_loc)+1)/2)
-            
-            ! add terms ~ varf_c
-            if (sym_loc(1)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * cos(ang(:,:,kd))
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * sin(ang(:,:,kd))
-                    end do
-                end if
-            end if
-            
-            ! setup derivative factor for varf_s
-            deriv_fac = mn_V(id,1)**deriv_loc(1)*(-mn_V(id,2))**deriv_loc(2)*&
-                &(-1)**(sum(deriv_loc)/2)
-            
-            ! add terms ~ varf_s
-            if (sym_loc(2)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * sin(ang(:,:,kd))
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * cos(ang(:,:,kd))
-                    end do
-                end if
-            end if
-        end do
-    end function fourier2real_2
 end module VMEC_utilities

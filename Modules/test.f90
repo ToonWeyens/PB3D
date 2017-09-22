@@ -1,5 +1,5 @@
 !------------------------------------------------------------------------------!
-!   Generic tests                                                              !
+!> Generic tests.
 !------------------------------------------------------------------------------!
 module test
 #include <PB3D_macros.h>
@@ -18,7 +18,23 @@ module test
 
 #if ldebug
 contains
-    ! performs generic tests
+    !> Performs generic tests.
+    !!
+    !! These tests  are run in interactive  fashion by running the  program with
+    !! the <tt>--test</tt> command-line option.
+    !! \see init_files()
+    !!
+    !! \note
+    !!  -#    It   is    probably   also    recommended   to    run   it    with
+    !!  <tt>--do_execute_command_line</tt>  in order  to generate  the plots  in
+    !!  real time.
+    !!  -#  It has  not  been  tested whether  testing  routines "pollutes"  the
+    !!  further simulations.  It is  therefore best  to not  use the  tests when
+    !!  doing a real run.
+    !!
+    !! \ldebug
+    !!
+    !! \return ierr
     integer function generic_tests() result(ierr)
         use num_vars, only: prog_style
         
@@ -81,7 +97,9 @@ contains
         end select
     end function generic_tests
     
-    ! test interpolation
+    !> Test interpolation.
+    !!
+    !! \return ierr
     integer function test_interp() result(ierr)
         use MPI_utilities, only: wait_MPI
         use grid_vars, only: disc_type
@@ -331,7 +349,9 @@ contains
         end subroutine
     end function test_interp
     
-    ! test lock system
+    !> Test lock system.
+    !!
+    !! \return ierr
     integer function test_lock() result(ierr)
         use MPI_vars, only: lock_type
         use MPI_utilities, only: lock_req_acc, lock_return_acc, wait_MPI, &
@@ -487,7 +507,9 @@ contains
         end function random_int
     end function test_lock
     
-    ! tests the calculation of derivatives
+    !> Tests the calculation of derivatives.
+    !!
+    !! \return ierr
     integer function test_calc_deriv() result(ierr)
         use num_vars, only: rank
         use grid_vars, only: disc_type
@@ -725,7 +747,9 @@ contains
         call writo('Test complete')
     end function test_calc_deriv
     
-    ! tests the calculation of R, Z, and L
+    !> Tests the calculation of R, Z, and L.
+    !!
+    !! \return ierr
     integer function test_calc_RZL() result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_in
         use num_vars, only: eq_style
@@ -870,7 +894,9 @@ contains
         end function test_calc_RZL_VMEC
     end function test_calc_RZL
     
-    ! test calculation of toroidal functions
+    !> Test calculation of toroidal functions.
+    !!
+    !! \return ierr
     integer function test_tor_fun() result(ierr)
         use num_vars, only: rank
         use grid_utilities, only: calc_eqd_grid
@@ -949,7 +975,9 @@ contains
         end do
     end function test_tor_fun
     
-    ! tests reading of HDF5 subset
+    !> Tests reading of HDF5 subset.
+    !!
+    !! \return ierr
     integer function test_read_HDF5_subset() result(ierr)
         use num_vars, only: rank, eq_style, n_procs
         use MPI_utilities, only: wait_MPI
@@ -1314,26 +1342,26 @@ contains
                         &eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0),&
                         &tot_dim=plot_dim,loc_offset=plot_offset,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                     call plot_HDF5('kappa_n',&
                         &'kappa_n'//trim(name_suff(1)),&
                         &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
                         &tot_dim=plot_dim,loc_offset=plot_offset,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                 case (2)                                                        ! X_1
                     call plot_HDF5('U_0_IM',&
                         &'U_0_IM'//trim(name_suff(1)),&
                         &ip(X_1%U_0(:,:,norm_id(1):norm_id(2),1)),&
                         &tot_dim=plot_dim,loc_offset=plot_offset,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                     call plot_HDF5('DU_1_RE',&
                         &'DU_1_RE'//trim(name_suff(1)),&
                         &rp(X_1%DU_1(:,:,norm_id(1):norm_id(2),1)),&
                         &tot_dim=plot_dim,loc_offset=plot_offset,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                 case (3)                                                        ! sol
                     call print_ex_2D(['sol_RE'],'sol_RE'//trim(name_suff(2)),&
                         &rp(sol%vec(1,norm_id(1):norm_id(2),:)),&
@@ -1424,20 +1452,20 @@ contains
                 case (1)                                                        ! eq_2
                     call plot_HDF5('jac_FD','jac_FD_tot',&
                         &eq_2%jac_FD(:,:,:,0,0,0),&
-                        &description=description,&
+                        &descr=description,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
                     call plot_HDF5('kappa_n','kappa_n_tot',eq_2%kappa_n,&
-                        &description=description,&
+                        &descr=description,&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3))
                 case (2)                                                        ! X_1
                     call plot_HDF5('U_0_IM','U_0_IM_tot',&
                         &ip(X_1%U_0(:,:,:,1)),&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                     call plot_HDF5('DU_1_RE','DU_1_RE_tot',&
                         &rp(X_1%DU_1(:,:,:,1)),&
                         &X=XYZ(:,:,:,1),Y=XYZ(:,:,:,2),Z=XYZ(:,:,:,3),&
-                        &description=description)
+                        &descr=description)
                 case (3)                                                        ! sol
                     call print_ex_2D(['sol_RE'],'sol_RE_tot',&
                         &rp(sol%vec(1,:,:)),x=XYZ_i(1,:,:,1),draw=.false.)
@@ -1473,7 +1501,9 @@ contains
         call writo('Test complete')
     end function test_read_HDF5_subset
     
-    ! tests calculation of volume integral
+    !> Tests calculation of volume integral.
+    !!
+    !! \return ierr
     integer function test_calc_int_vol() result(ierr)
         use num_vars, only: rank
         use grid_utilities, only: calc_eqd_grid, calc_int_vol, &
