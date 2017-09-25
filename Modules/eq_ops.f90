@@ -689,28 +689,33 @@ contains
         
         call writo('Done setting up metric equilibrium quantities')
     contains
-        ! Plots flux quantities in file for VMEC port.
-        ! Optionally, a  perturbation can be  added: Either the  displacement of
-        ! the plasma position can be described  (pert_style 1), or ripple in the
-        ! toroidal magnetic  field (pert_style  2), with  a fixed  toroidal mode
-        ! number.
-        ! Both perturbation styles can have various prescription types:
-        !   1. file with Fourier modes in the geometrical angular coordinate
-        !   2. same but manually
-        !   3. file  with perturbation from a  2-D map in the  geometric angular
-        !   coordinate.
-        ! For perturbation style 2, a file has to be provided that describes the
-        ! translation  between position  perturbation and  magnetic perturbation
-        ! for curves of  constant geometrical angle. This file  can be generated
-        ! for an already existing ripple  case using POST with --compare_tor_pos
-        ! with n_zeta_plot = 3  and min_theta_plot and max_theta_plot indicating
-        ! half a ripple period.
-        ! The output from this VMEC run can then be used to iteratively create a
-        ! new  file to  translate  toroidal magnetic  field  ripple to  position
-        ! perturbation.
-        ! A note about the indices of B_F, B_F_loc:
-        !   B_F_loc:  (pol modes, cos/sin)
-        !   B_F:      (tor_modes, pol modes, cos/sin (m theta), R/Z)
+        !> \public Plots flux quantities in file for VMEC port.
+        !!
+        !! Optionally, a perturbation  can be added: Either  the displacement of
+        !! the plasma position can be described  (\c pert_style 1), or ripple in
+        !! the toroidal magnetic field (\c  pert_style 2), with a fixed toroidal
+        !! mode number.
+        !!
+        !! Both perturbation styles can have various prescription types:
+        !!  -# file with Fourier modes in the geometrical angular coordinate
+        !!  -# same but manually
+        !!  -# file  with perturbation from a  2-D map in the  geometric angular
+        !!  coordinate.
+        !!
+        !! For \c  pert_style 2, a  file has to  be provided that  describes the
+        !! translation between  position perturbation and  magnetic perturbation
+        !! for  curves  of   constant  geometrical  angle.  This   file  can  be
+        !! generated  for  an  already  existing ripple  case  using  POST  with
+        !! <tt>--compare_tor_pos</tt>  with  <tt>n_zeta_plot  =  3</tt>  and  \c
+        !! min_theta_plot and \c max_theta_plot indicating half a ripple period.
+        !!
+        !! The output from this VMEC run can then be used to iteratively create a
+        !! new  file to  translate  toroidal magnetic  field  ripple to  position
+        !! perturbation.
+        !!
+        !! \note Meaning of the indices of \c B_F, \c B_F_loc:
+        !!  - <tt>(pol modes, cos/sin)</tt> for \c B_F_loc
+        !!  - <tt>(tor_modes, pol modes, cos/sin (m theta), R/Z)</tt> for \c B_F
         integer function create_VMEC_input(grid_eq,eq_1) result(ierr)
             use eq_vars, only: pres_0, R_0, psi_0, B_0
             use grid_vars, only: n_r_eq
@@ -729,8 +734,8 @@ contains
             character(*), parameter :: rout_name = 'create_VMEC_input'
             
             ! input / output
-            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid varibles
-            type(eq_1_type), intent(in) :: eq_1                                 ! flux equilibrium quantities
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid varibles
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium quantities
             
             ! local variables
             integer :: id, jd, kd                                               ! counters

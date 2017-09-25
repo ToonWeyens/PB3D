@@ -46,6 +46,12 @@ STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
 
 LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 
+##############################################################################
+#   Other variables
+##############################################################################
+PB3D_version := $(shell grep 'prog_version =' Modules/num_vars.f90 | cut --complement -d = -f 1 | sed -e 's/^ *//g' | cut -d'_' -f1)
+MIN_NM_X := $(shell grep 'min_nm_X =' Modules/X_vars.f90 | cut --complement -d = -f 1 | sed -e 's/^ *//g' | cut -d' ' -f1)
+
 
 ##############################################################################
 #   Include
@@ -140,7 +146,7 @@ LINK_FLAGS = -fPIC -finit-real=snan# debug
 ##############################################################################
 #   Prepare
 ##############################################################################
-# Add "Modules" to the search path for the prerequisites
+# Add "Modules" and "Libraries" to the search path for the prerequisites
 VPATH = Modules:Libraries
 
 # Contains list of source files (.o) and dependencies
@@ -196,3 +202,17 @@ clean_all:
 code_stats:
 	cloc .
 	#@find . -name '*.f90' | xargs wc -l
+
+doc:
+	@rm -f temp_user_vars
+	@echo 'PROJECT_NUMBER = version $(PB3D_version)' >> temp_user_vars
+	@echo 'ALIASES += min_nm_X="$(MIN_NM_X)"' >> temp_user_vars
+	( cat Doxyfile temp_user_vars ) | doxygen -
+	@rm -f temp_user_vars
+
+tag:
+	git tag -f -a $(PB3D_version) -m "version $(PB3D_version)"
+
+finalize_version: clean tag doc PB3D POST
+	@echo "\n Now upload to git using 'git commit -a' and copy the README changes.\n"
+	

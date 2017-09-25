@@ -2183,10 +2183,10 @@ contains
     !!  - symmetric finite differences for derivative \c deriv of order \c ord:
     !!      - \f$\texttt{nr_2} =
     !!          \text{ceiling}(\frac{\texttt{ord}+\texttt{deriv}}{2})\f$
-    !!      to guarantee the order
+    !!          to guarantee the order
     !!      - \f$\texttt{nr}   = 1+2\texttt{nr_2}\f$
     !!      - \f$\texttt{ind}  = 1+\texttt{nr_2}\f$
-    !!   - left finite differences for derivative \c deriv of order \c ord:
+    !!  - left finite differences for derivative \c deriv of order \c ord:
     !!      - \f$\texttt{nr}   = 1+\texttt{deriv}+\texttt{ord} \f$
     !!      - \f$\texttt{ind}  = \texttt{n_r} \f$
     !!
@@ -2398,7 +2398,8 @@ contains
     
     !> Retruns common denominator using the Euclid's algorithm.
     !!
-    !! \from <https://rosettacode.org/wiki/Greatest_common_divisor#Recursive_Euclid_algorithm_3>
+    !! \see From
+    !!  <https://rosettacode.org/wiki/Greatest_common_divisor#Recursive_Euclid_algorithm_3>
     recursive function GCD(u, v) result(res)
         integer, intent(in) :: u                                                !< input
         integer, intent(in) :: v                                                !< input

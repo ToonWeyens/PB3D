@@ -100,7 +100,7 @@ contains
             select case(eq_style)
                 case (1)                                                        ! VMEC
                     n_theta_plot = 201                                          ! nr. poloidal points in plot
-                    n_zeta_plot = 101                                           ! nr. toroidal points in plot
+                    n_zeta_plot = 51                                            ! nr. toroidal points in plot
                     min_zeta_plot = 0
                     max_zeta_plot = 2
                 case (2)                                                        ! HELENA
@@ -236,15 +236,58 @@ contains
         subroutine default_input_PB3D
             use num_vars, only: use_pol_flux_E
             
+            ! concerning solution
+            n_r_sol = 100                                                       ! 100 points in solution grid
+            min_r_sol = 0.1_dp                                                  ! minimum normal range
+            max_r_sol = 1.0_dp                                                  ! maximum normal range
+            tol_norm = 0.05                                                     ! tolerance for normal range
+            EV_style = 1                                                        ! slepc solver for EV problem
+            
+            ! concerning field line
+            alpha = 0._dp                                                       ! field line based in outboard
+            
+            ! concerning perturbation
+            min_n_par_X = req_min_n_par_X                                       ! nonsensible value to check for user overwriting
+            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
+            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
+            prim_X = 20                                                         ! main mode number of perturbation
+            min_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
+            max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
+            n_mod_X = huge(1)                                                   ! nonsensible value to check for user overwriting
+            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
+            
+            ! concerning normalization
+            rho_0 = 1E-7_dp                                                     ! for fusion, particle density of around 5E19 for detuerium
+            R_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
+            pres_0 = huge(1._dp)                                                ! nonsensible value to check for user overwriting
+            psi_0 = huge(1._dp)                                                 ! nonsensible value to check for user overwriting
+            B_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
+            T_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
+            
+            ! concerning input / output
+            n_sol_requested = 1                                                 ! request solution closest to guess
+            retain_all_sol = .false.                                            ! don't retain faulty ones
+            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
+            plot_magn_grid = .false.                                            ! do not plot the magnetic grid
+            plot_kappa = .false.                                                ! do not plot the curvature
+            plot_B = .false.                                                    ! do not plot the magnetic field
+            plot_J = .false.                                                    ! do not plot the current
+            plot_flux_q = .false.                                               ! do not plot the flux quantities
+            
+            ! concerning Richardson extrapolation
+            max_it_rich = 1                                                     ! by default no Richardson extrapolation
+            tol_rich = 1.E-4_dp                                                 ! tolerance of 1E-4
+            rich_restart_lvl = 1                                                ! don't restart
+            
             ! concerning finding zeros
             max_it_zero = 100                                                   ! maximum 100 iterations
             tol_zero = 1.0E-10_dp                                               ! very low tolerance for calculation of field lines
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
-            norm_disc_prec_eq = 1                                               ! precision 1 normal discretization of equilibrium
-            norm_disc_prec_X = 1                                                ! precision 1 normal discretization of perturbation
-            norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
+            norm_disc_prec_eq = 2                                               ! precision 1 normal discretization of equilibrium
+            norm_disc_prec_X = 2                                                ! precision 1 normal discretization of perturbation
+            norm_disc_prec_sol = 2                                              ! precision 1 normal discretization of solution
             norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
@@ -259,49 +302,6 @@ contains
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
-            plot_resonance = .false.                                            ! do not plot the q-profile with nq-m = 0
-            plot_magn_grid = .false.                                            ! do not plot the magnetic grid
-            plot_kappa = .false.                                                ! do not plot the curvature
-            plot_B = .false.                                                    ! do not plot the magnetic field
-            plot_J = .false.                                                    ! do not plot the current
-            plot_flux_q = .false.                                               ! do not plot the flux quantities
-            
-            ! variables concerning input / output
-            n_sol_requested = 3                                                 ! request solutions with 3 highes EV
-            retain_all_sol = .false.                                            ! don't retain faulty ones
-            rich_restart_lvl = 1                                                ! don't restart
-            
-            ! variables concerning poloidal mode numbers m
-            min_n_par_X = req_min_n_par_X                                       ! nonsensible value to check for user overwriting
-            prim_X = 20                                                         ! main mode number of perturbation
-            min_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
-            max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
-            n_mod_X = huge(1)                                                   ! nonsensible value to check for user overwriting
-            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
-            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
-            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
-            
-            ! variables concerning alpha
-            alpha = 0._dp                                                       ! field line based in outboard
-            
-            ! variables concerning solution
-            min_r_sol = 0.1_dp                                                  ! minimum normal range
-            max_r_sol = 1.0_dp                                                  ! maximum normal range
-            tol_norm = 0.05                                                     ! tolerance for normal range
-            EV_style = 1                                                        ! slepc solver for EV problem
-            n_r_sol = 100                                                       ! 100 points in solution grid
-            
-            ! variables concerning normalization
-            rho_0 = 10E-6_dp                                                    ! for fusion, particle density of around 1E21, mp around 1E-27
-            R_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
-            pres_0 = huge(1._dp)                                                ! nonsensible value to check for user overwriting
-            psi_0 = huge(1._dp)                                                 ! nonsensible value to check for user overwriting
-            B_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
-            T_0 = huge(1._dp)                                                   ! nonsensible value to check for user overwriting
-            
-            ! concerning Richardson extrapolation
-            max_it_rich = 1                                                     ! by default no Richardson extrapolation
-            tol_rich = 1.E-5_dp                                                 ! tolerance of 1E-5
         end subroutine default_input_PB3D
         
         subroutine default_input_POST()
@@ -350,7 +350,7 @@ contains
         
         ! Checks whether the variables concerning run-time are chosen correctly:
         !   rho_style has  to be 1  (constant rho = rho_0),
-        !   matrix_SLEPC_style has to be 0..1,
+        !   matrix_SLEPC_style has to be 0 or 1,
         !   max_it_SLEPC has to be at least 1,
         !   magnetic integral style has to be 1..2.
         integer function adapt_run_PB3D() result(ierr)
@@ -777,7 +777,8 @@ contains
             end if
             if (relax_fac_HH.lt.0) then
                 relax_fac_HH = def_relax_fac_HH
-                call writo('reset relax_fac_HH to '//trim(r2strt(def_relax_fac_HH))&
+                call writo('reset relax_fac_HH to '//&
+                    &trim(r2strt(def_relax_fac_HH))&
                     &//' as it should be larger than 0',warning=.true.)
             end if
         end subroutine adapt_zero

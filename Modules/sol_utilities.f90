@@ -32,7 +32,7 @@ module sol_utilities
     !! magnetic  perturbation \f$\vec{Q}  = \nabla  \times \left(\vec{x}  \times
     !! \vec{B}\right)\f$.
     !!
-    !! Which variables are plot depends on \c XUQ_style \cite Weyens3D:
+    !! Which variables are plot depends on \c XUQ_style \cite Weyens3D :
     !!  - \c XUQ_style = 1: \f$X\f$ (supports parallel derivative)
     !!  - \c XUQ_style = 2: \f$U\f$ (supports parallel derivative)
     !!  - \c XUQ_style = 3: \f$Q_n\f$

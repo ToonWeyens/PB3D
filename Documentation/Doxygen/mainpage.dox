@@ -1,0 +1,22 @@
+/*! \mainpage welcome to PB3D
+    
+    <i>The main presentation of the PB3D project information can be found at the <a href="https://pb3d.github.io/"><b>PB3D home</b></a>.</i>
+ 
+    This page contains the technical documentation of the \b PB3D project.
+    
+    It contains a general overview of the code in \ref page_overview, which is much more detailed than what can be found in \cite Weyens2017PB3D.
+    
+    To get started, for installation instructions, please see \ref page_installation instructions.
+    
+    Also, in \ref page_examples, you can find some examples on running the code.
+
+    Furthermore, in \ref page_inputs, the multitude of input variables is discussed.
+
+    Finally, in \ref page_outputs, the same is done for the output that can be produced, including the output by POST.
+    
+    Additionally, the various files of which the program consists can be explored in detail:
+        - the PB3D.f90 page for the main program
+        - the POST.f90 page for the post-processing program
+        - the <a href="namespaces.html"><b>Modules</b></a> page
+    
+*/

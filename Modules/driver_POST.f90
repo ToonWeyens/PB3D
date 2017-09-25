@@ -31,8 +31,8 @@ module driver_POST
     type(grid_type) :: grid_X_HEL                                               !< HELENA X grid
     type(eq_2_type) :: eq_2_HEL                                                 !< metric equilibrium for HELENA tables
     type(X_1_type) :: X_HEL                                                     !< vectorial perturbation variables for HELENA tables
-    complex(dp), allocatable :: E_pot_int(:,:)                                  !< \f$\int E_{pot} \text{d}V\f$ for requested solutions
-    complex(dp), allocatable :: E_kin_int(:,:)                                  !< \f$\int E_{kin} \text{d}V\f$ for requested solutions
+    complex(dp), allocatable :: E_pot_int(:,:)                                  !< \f$\int E_{\text{pot}} \text{d}V\f$ for requested solutions
+    complex(dp), allocatable :: E_kin_int(:,:)                                  !< \f$\int E_{\text{kin}} \text{d}V\f$ for requested solutions
 
 contains
     !> Initializes the POST driver.
@@ -1025,7 +1025,7 @@ contains
         use num_vars, only: rank
         
         ! input /output
-        complex(dp), intent(inout) :: sol_val_comp(:,:,:)                       !< fraction between total \f$E_{pot}\f$ and \f$E_{kin}\f$, compared with EV
+        complex(dp), intent(inout) :: sol_val_comp(:,:,:)                       !< fraction between total \f$E_{\text{pot}}\f$ and \f$E_{\text{kin}}\f$, compared with EV
         
         ! local variables
         character(len=max_str_ln) :: plot_title(2)                              ! title for plots

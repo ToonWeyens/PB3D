@@ -1673,7 +1673,7 @@ contains
     !!
     !! For VMEC, these factors are also derived in the parallel coordinate.
     !!
-    !! \see See \cite{weyens2014theory}.
+    !! \see See \cite weyens2014theory.
     !!
     !! \return ierr
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
@@ -2204,7 +2204,7 @@ contains
     !! replaced by  \f$m\f$ and \f$(nq-m)\f$  by \f$(n-\iota m)\f$  for toroidal
     !! Flux coordinates.
     !!
-    !! \see See \cite{weyens2014theory}.
+    !! \see See \cite weyens2014theory .
     !!
     !! \return ierr
     integer function calc_PV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
@@ -2409,7 +2409,7 @@ contains
     !! replaced by  \f$m\f$ and \f$(nq-m)\f$  by \f$(n-\iota m)\f$  for toroidal
     !! Flux coordinates.
     !!
-    !! \see See \cite{weyens2014theory}.
+    !! \see See \cite weyens2014theory .
     !!
     !! \return ierr
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &

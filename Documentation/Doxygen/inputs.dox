@@ -1,0 +1,550 @@
+/*! \page page_inputs input variables
+    
+    \tableofcontents
+    
+    This page describes the various input variables that PB3D and POST can take.
+
+    Inputs are generally done through the input file, but there are some inputs that are provided on runtime, using the command-line with <tt>--[option_name]</tt> format.
+    \see See init_files().
+
+    For both PB3D and POST, both types are discussed.
+    
+    Some general remarks:
+        - There is some fault detection built into the routines. These distinguish between minor faults, that trigger a warning but do not stop execution, and major faults, that trigger an error that stop execution.
+            \see See writo().
+        - The data type \c real refers to double precision real, defined by \c dp in num_vars. For integers, standard precision is used.
+        - There are hard-coded \c min_tol and \c max_tol in read_input_opts(), which are used to limit the tolerances \c tol_rich, \c tol_zero and \c tol_SLEPC. This could be changed if needed.
+        - If <tt>eq_style = 2</tt> (i.e. HELENA), the total maximum memory available must be enough to perform the first Richardson level in a single equilibrium job (see \ref page_overview).
+    
+    \section inputs_PB3D PB3D inputs
+    
+    \subsection inputs_PB3D_file input file
+    
+    <table>
+    <caption id="inputs_PB3D_file_tab">PB3D input file</caption>
+    <tr>
+        <th> input parameter </th><th> explanation </th><th> default value </th><th> data type </th><th> note
+    </tr>
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning solution</b>  </td>
+    </tr>
+    <tr>
+        <td> \c n_r_sol </td><td> number of points in solution grid </td><td> \f$ 100\f$   </td> <td> \c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c min_r_sol </td><td> minimum normalized flux of computational domain \f$\left(0\ldots 1\right)\f$ </td><td> \f$0.1\f$  </td><td>\c real</td><td> (\ref fn1 "1") </td>
+    </tr>
+    <tr>
+        <td> \c max_r_sol </td><td> maximum normalized flux of computational domain \f$\left(0\ldots 1\right)\f$ </td><td> \f$1.0\f$  </td><td>\c real</td><td> (\ref fn1 "1") </td>
+    </tr>
+    <tr>
+        <td> \c tol_norm </td><td> tolerance for normal range </td><td> \f$0.05\f$  </td><td>\c real</td><td> (\ref fn2 "2") </td>
+    </tr>
+    <tr>
+        <td> \c EV_style </td><td> style for EV calculation: 
+            <table>
+                <tr><td>\f$1\f$</td><td>SLEPC solver</td></tr>
+            </table>    
+        </td><td> \f$1\f$  </td><td> \c int</td><td></td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning field line</b>  </td>
+    </tr>
+    <tr>
+        <td> \c alpha </td><td> field line label \f$\left[\pi\right]\f$ </td><td> \f$0\f$  </td><td>\c real</td><td></td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning perturbation</b>  </td>
+    </tr>
+    <tr>
+        <td> \c min_n_par_X </td><td> minimum number of parallel points for integration </td><td> \f$20\f$ </td><td>\c int </td><td> (\ref fn3 "3")</td>
+    </tr>
+    <tr>
+        <td> \c min_par_X </td><td> minimum parallel angle \f$\left[\pi\right]\f$ for integration </td><td> \f$-4\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c max_par_X </td><td> maximum parallel angle \f$\left[\pi\right]\f$ for integration </td><td> \f$4\f$ </td><td></td>\c int<td></td>
+    </tr>
+    <tr>
+        <td> \c prim_X </td><td> primary mode number in geodesic direction </td><td> \f$20\f$ </td><td>\c int</td><td> (\ref fn4 "4")</td>
+    </tr>
+    <tr>
+        <td> \c min_sec_X </td><td> minimum secondary mode number in parallel direction </td><td> </td><td>\c int</td><td> (\ref fn4 "4") (\ref fn5 "5")</td>
+    </tr>
+    <tr>
+        <td> \c max_sec_X </td><td> maximum secondary mode number in parallel direction </td><td> </td><td>\c int</td><td> (\ref fn4 "4") (\ref fn5 "5")</td>
+    </tr>
+    <tr>
+        <td> \c n_mod_X </td><td> number of secondary modes in parallel direction </td><td> \f$20\f$ </td><td>\c int</td><td> (\ref fn4 "4") (\ref fn5 "5")</td>
+    </tr>
+    <tr>
+        <td> \c use_pol_flux_F </td><td> flux to use as normal coordinate; by default the same one is used as in the equilibrium
+            <table>
+                <tr><td> <tt> .true.</tt> </td><td> rescaled poloidal flux \f$\frac{\Psi_\text{pol}}{2 \pi}\f$ </td></tr>
+                <tr><td> <tt> .false.</tt> </td><td> rescaled toroidal flux \f$\frac{\Psi_\text{tor}}{2 \pi}\f$ </td></tr>
+            </table>    
+        </td><td> </td><td>\c log</td><td></td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning normalization</b>  </td>
+    </tr>
+    <tr>
+        <td> \c rho_0 </td><td> Normalization factor for density \f$\rho\f$ \f$\frac{kg}{m^3}\f$ </td><td> \f$10^{-7}\f$ </td><td>\c real</td> <td></td>
+    </tr>
+    <tr>
+        <td> \c R_0 </td><td> Normalization factor for length scale \f$R\f$ \f$m\f$ </td><td>  </td><td>\c real</td> <td>  (\ref fn6 "6")</td>
+    </tr>
+    <tr>
+        <td> \c pres_0 </td><td> Normalization factor for pressure \f$p\f$ \f$Pa\f$ </td><td>  </td><td>\c real</td> <td>  (\ref fn6 "6")</td>
+    </tr>
+    <tr>
+        <td> \c psi_0 </td><td> Normalization factor for flux \f$\Psi\f$ \f$T m^2\f$ </td><td>  </td><td>\c real</td> <td>  (\ref fn6 "6")</td>
+    </tr>
+    <tr>
+        <td> \c B_0 </td><td> Normalization factor for magnetic field \f$\vec{B}\f$ \f$T\f$ </td><td>  </td><td>\c real</td> <td>  (\ref fn6 "6")</td>
+    </tr>
+    <tr>
+        <td> \c T_0 </td><td> Normalization factor for time \f$s\f$ </td><td>  </td><td>\c real</td> <td>  (\ref fn6 "6")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning input and output</b>  </td>
+    </tr>
+    <tr>
+        <td> \c n_sol_requested </td><td> number of solutions requested </td><td> \f$1\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c retain_all_sol </td><td> retain all solutions
+            <table>
+                <tr><td> <tt> .true.</tt> </td><td> unphysical eigenvalues are also retained </td></tr>
+                <tr><td> <tt> .false.</tt> </td><td> unphysical eigenvalues are left out  </td></tr>
+            </table>    
+        </td><td> \f$2\f$ </td><td>\c log</td><td> (\ref fn7 "7")</td>
+    </tr>
+    <tr>
+        <td> \c plot_resonance </td><td> plot the safety factor (poloidal flux) or rotational transform (toroidal flux) and the resonant values </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn13 "13")</td>
+    </tr>
+    <tr>
+        <td> \c plot_magn_grid </td><td> plot magnetic field lines in the flux surfaces in 3-D geometry as an animation </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn14 "14")</td>
+    </tr>
+    <tr>
+        <td> \c plot_B </td><td> plot magnetic field \f$\vec{B} = \nabla \alpha \times \nabla \psi \f$ \f$\left[T\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn15 "15")</td>
+    </tr>
+    <tr>
+        <td> \c plot_J </td><td> plot current \f$\vec{J} = \mu_0^{-1} \nabla \times \left(\nabla \alpha \times \nabla \psi\right) \f$ \f$\left[\frac{A}{m^2}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn16 "16")</td>
+    </tr>
+    <tr>
+        <td> \c plot_kappa </td><td> plot curvature \f$\vec{\kappa} = \frac{\vec{B}}{B} \cdot \nabla \frac{\vec{B}}{B}\f$ \f$\left[\frac{1}{m}\right]\f$ and its components \f$  \kappa_n = \frac{\nabla \psi}{\left|\nabla \psi\right|^2} \cdot \vec{\kappa} \f$ \f$\left[\frac{1}{T m^2}\right]\f$ and \f$ \kappa_g = \frac{\nabla \psi \times \vec{B}}{B^2} \cdot \vec{\kappa} \f$ \f$\left[\phantom{\cdot}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn17 "17")</td>
+    </tr>
+    <tr>
+        <td> \c plot_flux_q </td><td> plot flux quantities \f$q\f$, \f$\iota\f$, \f$p\f$ \f$\left[Pa\right]\f$, \f$\Psi_\text{pol}\f$ \f$\left[T m^2\right]\f$ and \f$\Psi_\text{tor}\f$ \f$\left[T m^2\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn18 "18")</td>
+    </tr>
+    <tr>
+        <td> \c n_theta_plot </td><td> number of points in plots in \f$\theta\f$ direction </td><td>  </td><td>\c int</td><td>(\ref fn19 "19")</td>
+    </tr>
+    <tr>
+        <td> \c n_zeta_plot </td><td> number of points in plots in \f$\zeta\f$ direction </td><td>  </td><td>\c int</td><td>(\ref fn19 "19")</td>
+    </tr>
+    <tr>
+        <td> \c min_theta_plot </td><td> minimum of \f$\theta\f$ range for plots </td><td>  </td>\f$1\f$<td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c max_theta_plot </td><td> minimum of \f$\theta\f$ range for plots </td><td>  </td>\f$3\f$<td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c min_zeta_plot </td><td> minimum of \f$\zeta\f$ range for plots </td><td>  </td><td>\c int</td><td> (\ref fn20 "20")</td>
+    </tr>
+    <tr>
+        <td> \c max_zeta_plot </td><td> minimum of \f$\zeta\f$ range for plots </td><td>  </td><td>\c int</td><td> (\ref fn20 "20")</td>
+    </tr>
+    <tr>
+        <td> \c plot_size </td><td> size of 2-D plots in inch by inch </td><td>\f$\left[10,5\right]\f$  </td><td> \c int(2)</td> <td></td>
+    </tr>
+    <tr>
+        <td> \c ex_plot_style </td><td> style how external plots are made
+            <table>
+                <tr><td> \f$1\f$ </td><td> GnuPlot </td></tr>
+                <tr><td> \f$2\f$ </td><td> Bokeh for 2-D and Mayavi for 3-D </td></tr>
+            </table>    
+        </td><td>\f$1\f$  </td><td> \c int</td> <td>(\ref fn21 "21")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning Richardson extrapolation</b>  </td>
+    </tr>
+    <tr>
+        <td> \c max_it_rich </td><td> maximum number of Richardson extrapolations </td><td> \f$1\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c tol_rich </td><td> tolerance for convergence of Richardson extrapolations </td><td> \f$1^{-4}\f$ </td><td>\c real</td><td></td>
+    </tr>
+    <tr>
+        <td> \c rich_restart_lvl </td><td> Richardson level at which to restart a previous simulation </td><td> \f$1\f$ </td><td>\c int</td><td> (\ref fn8 "8")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning finding zeros</b>  </td>
+    </tr>
+    <tr>
+        <td> \c max_it_zero </td><td> maximum number of iterations in calc_zero_hh() and calc_zero_zhang() </td><td> \f$100\f$ </td><td>\c int</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c tol_zero </td><td> tolerance for zero finding </td><td> \f$1^{-10}\f$ </td><td>\c real</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c relax_fac_HH </td><td> relaxation factor for calc_zero_hh() </td><td> \f$0.5\f$ </td><td>\c real</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c max_nr_tries_HH </td><td> maximum number of times the relaxation factor in calc_zero_hh() is halved if no convergence </td><td> \f$6\f$ </td><td>\c int</td><td> (\ref fn9 "9")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning runtime</b>  </td>
+    </tr>
+    <tr>
+        <td> \c use_normalization </td><td> use normalization for the internal calculations </td><td> <tt>.true.</tt> </td><td>\c log</td><td> (\ref fn6 "6")</td>
+    </tr>
+    <tr>
+        <td> \c max_tot_mem </td><td> maximum total memory available to the simulation \f$\left[kB\right]\f$ </td><td> <tt>6000</tt> </td><td>\c real</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c sol_n_procs </td><td> Number of processes available for SLEPC solution \f$(1\ldots N)\f$ where \f$N\f$ is the number of MPI processes </td><td> <tt>N</tt> </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c norm_disc_prec_eq </td><td> normal discretization precision for equilibrium quantities </td><td> \f$2\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c norm_disc_prec_X </td><td> normal discretization precision for perturbation quantities </td><td> \f$2\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c norm_disc_prec_sol </td><td> normal discretization precision for solution quantities </td><td> \f$2\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c norm_disc_style_sol </td><td> style how solution quantities are discretized
+            <table>
+                <tr><td> \f$1\f$ </td><td> central finite differences </td></tr>
+                <tr><td> \f$2\f$ </td><td> left finite differences </td></tr>
+            </table>    
+        </td><td> \f$2\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c magn_int_style </td><td> style how magnetic integrals are calculated
+            <table>
+                <tr><td> \f$1\f$ </td><td> trapezoidal rule </td></tr>
+                <tr><td> \f$2\f$ </td><td> Simpson 3/8 rule </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c max_it_SLEPC </td><td> maximum number of iterations in SLEPC calculation to find eigenvalue </td><td> \f$1000\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c EV_BC </td><td> eigenvalue used in boundary condition of style \c BC_style = 1  </td><td> \f$1\f$ </td><td>\c real</td><td> (\ref fn10 "10")</td>
+    </tr>
+    <tr>
+        <td> \c EV_guess </td><td> target guess for eigenvalue </td><td> \f$-0.3\f$ </td><td>\c real</td><td></td>
+    </tr>
+    <tr>
+        <td> \c tol_SLEPC </td><td> tolerance used in SLEPC for different Richardson levels </td><td> \f$[1^{-5},\ldots]\f$  </td><td>\c real(max_it_rich)</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c rho_style </td><td> style how the density \f$\rho\f$ is calculated
+            <table>
+                <tr><td> \f$1\f$ </td><td> constant \c rho_0 </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c U_style </td><td> style how to calculate geodesical perturbation \f$U = \vec{\xi} \cdot \frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2}\f$ is calculated
+            <table>
+                <tr><td> \f$1\f$ </td><td> up to order \f$ \sim \frac{1}{n} \f$ </td></tr>
+                <tr><td> \f$2\f$ </td><td> up to order \f$ \sim \left(\frac{1}{n}\right)^2 \f$ </td></tr>
+                <tr><td> \f$3\f$ </td><td> up to order \f$ \sim \left(\frac{1}{n}\right)^3 \f$ </td></tr>
+            </table>    
+        </td><td> \f$3\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c K_style </td><td> style how to calculate kinetic energy \f$K = \int \left|\vec{\xi}\right|^2 d \text{V}\f$
+            <table>
+                <tr><td> \f$1\f$ </td><td> normalization of full perpendicular component </td></tr>
+                <tr><td> \f$2\f$ </td><td> normalization of only normal component </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c BC_style </td><td> style how boundary conditions are applied for left and right boundary
+            <table>
+                <tr><td> \f$1\f$ </td><td> set to zero </td></tr>
+                <tr><td> \f$2\f$ </td><td> minization through extension of grid </td></tr>
+                <tr><td> \f$3\f$ </td><td> minimization of surface energy through asymmetric finite differences </td></tr>
+                <tr><td> \f$4\f$ </td><td> explicit introduction of the surface energy minimization </td></tr>
+            </table>    
+        </td><td> \f$[1,2]\f$ </td><td>\c int(2)</td><td> (\ref fn10 "10")</td>
+    </tr>
+    <tr>
+        <td> \c norm_style </td><td> style how to calculate normalization
+            <table>
+                <tr><td> \f$1\f$ </td><td> MISHKA normalization with magnetic field on axis </td></tr>
+                <tr><td> \f$2\f$ </td><td> COBRA normalization with pressure on axis </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td>(\ref fn11 "11")</td>
+    </tr>
+    <tr>
+        <td> \c solver_SLEPC_style </td><td> style used in SLEPC to solve the eigenvalue equation 
+            <table>
+                <tr><td> \f$1\f$ </td><td> Krylov-Schur with shift-invert </td></tr>
+                <tr><td> \f$2\f$ </td><td> generalized Davidson with preconditioner </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c matrix_SLEPC_style </td><td> style used for SLEPC matrices
+            <table>
+                <tr><td> \f$1\f$ </td><td> sparse matrices </td></tr>
+                <tr><td> \f$2\f$ </td><td> shell matrices </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td>(\ref fn12 "12")</td>
+    </tr>
+    </table>
+    
+    \subsection inputs_PB3D_cmd command-line inputs
+    
+    <table>
+    <caption id="inputs_PB3D_cmd_tab">PB3D command-line options</caption>
+    <tr>
+        <th> input parameter </th><th> explanation </th><th> argument </th><th> note
+    </tr>
+    <tr>
+        <td> \c test </td><td> test mode \ldebug </td><td>  </td> <td>(\ref fn28 "28") </td>
+    </tr>
+    <tr>
+        <td> \c no_plots </td><td> do not produce any output plots </td><td>  </td> <td> </td>
+    </tr>
+    <tr>
+        <td> \c no_outputs </td><td> do not produce text output </td><td>  </td> <td>(\ref fn29 "29") </td>
+    </tr>
+    <tr>
+        <td> \c do_execute_command_line </td><td> run the external command line shell commands during execution </td><td>  </td> <td>(\ref fn30 "30") </td>
+    </tr>
+    <tr>
+        <td> \c mem_info </td><td> produce memory profiles for each process \ldebug </td><td>  </td> <td>(\ref fn31 "31") </td>
+    </tr>
+    <tr>
+        <td> \c no_guess </td><td> do not use a guess</td><td>  </td> <td> </td>
+    </tr>
+    <tr>
+        <td> \c jump_to_sol </td><td> jump straight to the solution for the Richardson level at which the simulationes are (re)started </td><td>  </td> <td>(\ref fn33 "33") </td>
+    </tr>
+    <tr>
+        <td> \c export_HEL </td><td> create a VMEC input file from HELENA variables, possibly adding a toroidal ripple </td><td>  </td> <td>(\ref fn34 "34") </td>
+    </tr>
+    </table>
+    
+    
+    
+    \section inputs_POST POST inputs
+    
+    \subsection inputs_POST_file input file
+    
+    <table>
+    <caption id="inputs_POST_file_tab">POST input file</caption>
+    <tr>
+        <th> input parameter </th><th> explanation </th><th> default value </th><th> data type </th><th> note
+    </tr>
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning solution</b>  </td>
+    </tr>
+    <tr>
+        <td> \c min_r_plot </td><td> minimum normalized flux of output domain \f$\left(0\ldots 1\right)\f$ </td><td> </td><td>\c real</td><td> (\ref fn24 "24") </td>
+    </tr>
+    <tr>
+        <td> \c max_r_plot </td><td> maximum normalized flux of output domain \f$\left(0\ldots 1\right)\f$ </td><td> </td><td>\c real</td><td> (\ref fn24 "24") </td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning input and output</b>  </td>
+    </tr>
+    <tr>
+        <td> \c n_sol_plotted </td><td> number of solutions plotted </td><td> \c n_sol_requested </td><td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c pert_mult_factor_POST </td><td> factor by which the grid can be perturbed, with respect to the maximum perturbation of each solution independently </td><td> \f$0\f$ </td><td>\c real</td><td>(\ref fn25 "25")</td>
+    </tr>
+    <tr>
+        <td> \c plot_resonance </td><td> plot the safety factor (poloidal flux) or rotational transform (toroidal flux) and the resonant values </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn13 "13")</td>
+    </tr>
+    <tr>
+        <td> \c plot_magn_grid </td><td> plot magnetic field lines in the flux surfaces in 3-D geometry as an animation </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn14 "14")</td>
+    </tr>
+    <tr>
+        <td> \c plot_B </td><td> plot magnetic field \f$\vec{B} = \nabla \alpha \times \nabla \psi \f$ \f$\left[T\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn15 "15")</td>
+    </tr>
+    <tr>
+        <td> \c plot_J </td><td> plot current \f$\vec{J} = \mu_0^{-1} \nabla \times \left(\nabla \alpha \times \nabla \psi\right) \f$ \f$\left[\frac{A}{m^2}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn16 "16")</td>
+    </tr>
+    <tr>
+        <td> \c plot_kappa </td><td> plot curvature \f$\vec{\kappa} = \frac{\vec{B}}{B} \cdot \nabla \frac{\vec{B}}{B}\f$ \f$\left[\frac{1}{m}\right]\f$ and its components \f$  \kappa_n = \frac{\nabla \psi}{\left|\nabla \psi\right|^2} \cdot \vec{\kappa} \f$ \f$\left[\frac{1}{T m^2}\right]\f$ and \f$ \kappa_g = \frac{\nabla \psi \times \vec{B}}{B^2} \cdot \vec{\kappa} \f$ \f$\left[\phantom{\cdot}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn17 "17")</td>
+    </tr>
+    <tr>
+        <td> \c plot_flux_q </td><td> plot flux quantities \f$q\f$, \f$\iota\f$, \f$p\f$ \f$\left[Pa\right]\f$, \f$\Psi_\text{pol}\f$ \f$\left[T m^2\right]\f$ and \f$\Psi_\text{tor}\f$ \f$\left[T m^2\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn18 "18")</td>
+    </tr>
+    <tr>
+        <td> \c plot_sol_xi </td><td> plot normal mode \f$\vec{\xi}\f$ \f$\left[m\right]\f$ and its components \f$  X = \frac{\nabla \psi}{B^2} \cdot \vec{\xi} \f$ \f$\left[\frac{m^2}{T}\right]\f$ and \f$ U = \frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2} \cdot \vec{\xi} \f$ \f$\left[\phantom{\cdot}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn26 "26")</td>
+    </tr>
+    <tr>
+        <td> \c plot_sol_Q </td><td> plot magnetic field perturbation due to the normal mode \f$\vec{Q} = \nabla \times \left(\vec{\xi} \times \vec{B}\right) \f$ \f$\left[T\right]\f$ and its components \f$  Q_n = \frac{\nabla \psi}{B^2} \cdot \vec{Q} \f$ \f$\left[m\right]\f$ and \f$ Q_g = \frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2} \cdot \vec{Q} \f$ \f$\left[\frac{T}{m}\right]\f$ </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn26 "26")</td>
+    </tr>
+    <tr>
+        <td> \c plot_E_rec </td><td> plot energy reconstruction </td><td> <tt>.false.</tt> </td><td>\c log</td><td>(\ref fn27 "27")</td>
+    </tr>
+    <tr>
+        <td> \c n_theta_plot </td><td> number of points in plots in \f$\theta\f$ direction </td><td>  </td><td>\c int</td><td>(\ref fn19 "19")</td>
+    </tr>
+    <tr>
+        <td> \c n_zeta_plot </td><td> number of points in plots in \f$\zeta\f$ direction </td><td>  </td><td>\c int</td><td>(\ref fn19 "19")</td>
+    </tr>
+    <tr>
+        <td> \c min_theta_plot </td><td> minimum of \f$\theta\f$ range for plots </td><td>  </td>\f$1\f$<td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c max_theta_plot </td><td> minimum of \f$\theta\f$ range for plots </td><td>  </td>\f$3\f$<td>\c int</td><td></td>
+    </tr>
+    <tr>
+        <td> \c min_zeta_plot </td><td> minimum of \f$\zeta\f$ range for plots </td><td>  </td><td>\c int</td><td> (\ref fn20 "20")</td>
+    </tr>
+    <tr>
+        <td> \c max_zeta_plot </td><td> minimum of \f$\zeta\f$ range for plots </td><td>  </td><td>\c int</td><td> (\ref fn20 "20")</td>
+    </tr>
+    <tr>
+        <td> \c plot_size </td><td> size of 2-D plots in inch by inch </td><td>\f$\left[10,5\right]\f$  </td><td> \c int(2)</td> <td></td>
+    </tr>
+    <tr>
+        <td> \c ex_plot_style </td><td> style how external plots are made
+            <table>
+                <tr><td> \f$1\f$ </td><td> GnuPlot </td></tr>
+                <tr><td> \f$2\f$ </td><td> Bokeh for 2-D and Mayavi for 3-D </td></tr>
+            </table>    
+        </td><td>\f$1\f$  </td><td> \c int</td> <td>(\ref fn21 "21")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning Richardson extrapolation</b>  </td>
+    </tr>
+    <tr>
+        <td> \c PB3D_rich_lvl </td><td> Richardson level at which to perform post-processing </td><td>\c int</td><td> (\ref fn22 "22")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning finding zeros</b>  </td>
+    </tr>
+    <tr>
+        <td> \c max_it_zero </td><td> maximum number of iterations in calc_zero_hh() and calc_zero_zhang() </td><td> \f$100\f$ </td><td>\c int</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c tol_zero </td><td> tolerance for zero finding </td><td> \f$1^{-10}\f$ </td><td>\c real</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c relax_fac_HH </td><td> relaxation factor for calc_zero_hh() </td><td> \f$0.5\f$ </td><td>\c real</td><td> (\ref fn9 "9")</td>
+    </tr>
+    <tr>
+        <td> \c max_nr_tries_HH </td><td> maximum number of times the relaxation factor in calc_zero_hh() is halved if no convergence </td><td> \f$6\f$ </td><td>\c int</td><td> (\ref fn9 "9")</td>
+    </tr>
+    
+    <tr>
+        <td colspan="5" bgcolor=LightGray align="center"> <b>concerning runtime</b>  </td>
+    </tr>
+    <tr>
+        <td> \c max_tot_mem </td><td> maximum total memory available to the simulation \f$\left[kB\right]\f$ </td><td> <tt>6000</tt> </td><td>\c real</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c norm_disc_prec_sol </td><td> normal discretization precision for solution quantities </td><td> \f$2\f$ </td><td>\c int</td><td> </td>
+    </tr>
+    <tr>
+        <td> \c POST_style </td><td> style how post-processing is done
+            <table>
+                <tr><td> \f$1\f$ </td><td> extended rectangular grid in \f$\theta\f$ and \f$\zeta\f$ </td></tr>
+                <tr><td> \f$2\f$ </td><td> field-aligned grid used internally by PB3D </td></tr>
+            </table>    
+        </td><td> \f$1\f$ </td><td>\c int</td><td>(\ref fn23 "23")</td>
+    </tr>
+    <tr>
+        <td> \c plot_grid_style </td><td> style used for output plotting
+            <table>
+                <tr><td> \f$0\f$ </td><td> 3-D plots </td></tr>
+                <tr><td> \f$1\f$ </td><td> slab plots: \f$\theta\f$ and \f$\zeta\f$ are sides of a slab </td></tr>
+                <tr><td> \f$2\f$ </td><td> slab plots with folding of fundamental interval \f$0\ldots 2 \pi\f$ </td></tr>
+                <tr><td> \f$3\f$ </td><td> straight cylinder geometry: \f$\zeta\f$ is straightened </td></tr>
+            </table>    
+        </td><td> \f$0\f$ </td><td>\c int</td><td>(\ref fn23 "23")</td>
+    </tr>
+    </table>
+    
+    \subsection inputs_POST_cmd command-line inputs
+    
+    <table>
+    <caption id="inputs_POST_cmd_tab">POST command-line options</caption>
+    <tr>
+        <th> input parameter </th><th> explanation </th><th> argument </th><th> note
+    </tr>
+    <tr>
+        <td> \c test </td><td> test mode \ldebug </td><td>  </td> <td>(\ref fn28 "28") </td>
+    </tr>
+    <tr>
+        <td> \c no_plots </td><td> do not produce any output plots </td><td>  </td> <td> </td>
+    </tr>
+    <tr>
+        <td> \c no_outputs </td><td> do not produce text output </td><td>  </td> <td>(\ref fn29 "29") </td>
+    </tr>
+    <tr>
+        <td> \c do_execute_command_line </td><td> run the external command line shell commands during execution </td><td>  </td> <td>(\ref fn30 "30") </td>
+    </tr>
+    <tr>
+        <td> \c mem_info </td><td> produce memory profiles for each process \ldebug </td><td>  </td> <td>(\ref fn31 "31") </td>
+    </tr>
+    <tr>
+        <td> \c swap_angles </td><td> swap \f$\theta\f$ and \f$\zeta\f$ of output grid in <tt>POST_style = 2</tt> </td><td>  </td> <td> </td>
+    </tr>
+    <tr>
+        <td> \c compare_tor_pos </td><td> compare \f$\vec{B}\f$, \f$\vec{J}\f$ and \f$\vec{\kappa}\f$ from \c B_plot, \c J_plot and \c kappa_plot at different toroidal positions </td><td>  </td> <tt>RZ_0(2)</tt> <td>(\ref fn32 "32") </td>
+    </tr>
+    </table>
+    
+    \note
+        -# \anchor fn1 The normalized flux is either the poloidal (<tt>use_pol_flux_F = .true.</tt>) or toroidal (<tt>use_pol_flux_F = .false.</tt>), divided by its value at the boundary.
+        -# \anchor fn2 Is used in check_X_modes() whether there exists a range in which each of the modes resonates.
+        -# \anchor fn3 This is the number for the first Richardson level. It is doubled for every next level.
+        -# \anchor fn4 Should satisfy the high-\f$n\f$ approximation, currently set to > \min_nm_X .
+        -# \anchor fn5 If \c min_sec_X and \c max_sec_X is set, the user prescribes the secondary mode number range (<tt>X_style</tt> = 1). If \c n_mod_X is set, on the other hand, the user prescribes the size of the range, which is automatically chosen (<tt>X_style</tt> = 2). They cannot be both chosen.
+        -# \anchor fn6 Normalization constants, with exception of \c rho_0 are set in the routine calc_normalization_const().
+        -# \anchor fn7 In store_results(), it is decided whether the eigenvalue is physical or not, by considering the ratio between real and imaginary part.
+        -# \anchor fn8 This needs to be between 1 and the maximum level that was obtained in a previous solution, plus 1. For technical HDF5 reasons, if Richardson restart is used, the same input fil parameters should be used for \c max_tot_mem and the same number of processes should be used. Furthermore, it should not exceed \c max_it_rich.
+        -# \anchor fn9 For the case of calc_zero_hh(), if after \c max_it_zero iterations \c tol_zero has not been reached, the relaxation factor is halved. This is done \c max_nr_tries_HH times.
+        -# \anchor fn10 See set_bc().
+        -# \anchor fn11 See calc_normalization_const().
+        -# \anchor fn12 See solve_ev_system_slepc()
+        -# \anchor fn13 See resonance_plot().
+        -# \anchor fn14 See magn_grid_plot().
+        -# \anchor fn15 See b_plot(). The output is done in various coordinate system, as explained in calc_vec_comp().
+        -# \anchor fn16 See j_plot(). The output is done in various coordinate system, as explained in calc_vec_comp().
+        -# \anchor fn17 See kappa_plot(). The output is done in various coordinate system, as explained in calc_vec_comp().
+        -# \anchor fn18 See flux_q_plot().
+        -# \anchor fn19 For <tt>eq_style = 1</tt>, the equilibrium is axisymmetric, so by default <tt>n_theta_plot = 501</tt> and <tt>n_zeta_plot = 1</tt>; for <tt>eq_style = 2</tt>, the equilibrium can be 3-D, so <tt>n_theta_plot = 201</tt> and <tt>n_zeta_plot = 51</tt>
+        -# \anchor fn20 For <tt>eq_style = 1</tt>, the equilibrium is axisymmetric, so by default <tt>min_zeta_plot = max_zeta_plot 0</tt>; for <tt>eq_style = 2</tt>, the equilibrium can be 3-D, so  <tt>min_zeta_plot = 0</tt> and <tt>max_zeta_plot = 2</tt>.
+        -# \anchor fn21 This refers to the external plots, which are complimentary to the HDF5 plots. See draw_ex().
+        -# \anchor fn22 If output is done that requires a solution, this needs to be between 1 and the maximum level that was obtained in PB3D. See find_max_rich_lvl(). If no solution is found, some of the outputs that do not depend on this still work.Optionally, this can be forced by choosing \c PB3D_rich_lvl not positive.
+        -# \anchor fn23 The \c POST_style determines whether the post-processing is done on an extended, new grid, or on the PB3D internal grid. On top of this, through \c plot_grid_style the user can set the output grid for the post-processing. Note that some combinations of styles do not make sense.
+        -# \anchor fn24 By default, the plot normal range is chosen equal to the solution normal range from \c min_r_sol and \c max_r_sol, but it can be restricted. This is useful, for example, to reduce computation time.
+        -# \anchor fn25 The Cartesian components of the result of the division of \c pert_mult_factor_POST by the maximum value of the solution normal mode amplitude is added to the equilibrium Cartesian grid components to illustrate the perturbation in 3-D. This is done for each solution independently and sequentially. If it is not positive, it is ignored. Note that <tt>plot_sol_xi = .true.</tt> is necessary for this to be used.
+        -# \anchor fn26 These quantities are calculated in calc_xuq(). This is done for a time sequene, currently hard-coded in  plot_sol_vec(), depending on whether the solution is stable or unstable.
+        -# \anchor fn27 The energy reconstruction is performed if either one of \c plot_sol_xi, \c plot_sol_Q or \c plot_E_rec is true.
+        -# \anchor fn28 Equivalent use is through <tt>-t</tt>. If this is used, \c do_execute_command_line should be set to true as well. See generic_tests().
+        -# \anchor fn29 This is used internally as well, to suppress certain output. See run_driver_x() and run_driver_post().
+        -# \anchor fn30 This can fail on local systems, and generally works badly on computational clusters, where the computational nodes often don't have the external tools (see \c ex_plot_style) installed.
+        -# \anchor fn31 This is done by calling get_mem_usage() and storing the result at every allocation and deallocation of an \c eq_1_type, \c eq_2_type, \c X_1_type, \c X_2_type, \c vac_type or \c sol_type, as well as for input quantities. Furthermore at every user output with writo(), this is also done, and the output is prepended to the output string.
+        -# \anchor fn32 This is useful to calculate the ripple in these quantities. To use this, it is necessary to have an output grid of only 3 points, where the poloidal projection of the middle point should be the in the middle between the poloidal projections of the two others. Also, you have to provide through \c RZ_0 the \f$R\f$ and \f$Z\f$ value of the origin of the geometrical poloidal angle that is used to calculate distances. See calc_tor_diff().
+        -# \anchor fn33 Jumping straight to the solution is useful if a simulation already calculated all the necessary quantities to set up the solution matrices \f$\overline{\text{A}}\f$ and \f$\overline{\text{B}}\f$ in \f$\overline{\text{A}} \vec{X} = \lambda \overline{\text{B}} \vec{X}\f$ and the solution needs to be redone, for example because a calculation was attempted with a method that did not converge.
+        -# \anchor fn34 This is a rather complicated procedure that is only for expert use and that is best read straight in the code. See create_vmec_input().
+*/

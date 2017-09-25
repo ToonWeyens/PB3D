@@ -4,8 +4,8 @@
 
 Doctoral work by Toon Weyens
 Universidad Carlos III de Madrid
-ITER Organization
 Technische Universiteit Eindhoven
+ITER Organization
 2012-2017
 
 ## To set up:
@@ -1032,3 +1032,10 @@ Technische Universiteit Eindhoven
 ## 1.92: 
 * Changed to Doxygen formatting for comments.
 * An accompanying document is still missing.
+
+## 1.93:
+* Automated the makfile, including 'finalize_version' to get a commit ready, which calls 'tag' and 'doc' as well as 'clean', 'PB3D' and 'POST'.
+* 'make doc' creates the documentation, with the current version number.
+* 'make tag' creates the git tag, with the current version number.
+* Added the tags to the respective commits.
+* Created documentation for installation and for inputs.
