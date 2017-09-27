@@ -21,8 +21,8 @@ module num_vars
         &norm_disc_prec_X, norm_disc_prec_sol, norm_disc_style_sol, &
         &POST_style, magn_int_style, solver_SLEPC_style, &
         &max_it_rich, tol_rich, &
-        &max_it_zero, max_nr_tries_HH, relax_fac_HH, tol_zero, tol_norm, &
-        &def_relax_fac_HH, &
+        &max_it_zero, max_nr_backtracks_HH, relax_fac_HH, tol_zero, &
+        &tol_norm, def_relax_fac_HH, &
         &ex_max_size, eq_name, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
@@ -53,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 1.93_dp                               !< version number
+    real(dp), parameter :: prog_version = 1.94_dp                               !< version number
     real(dp), parameter :: min_PB3D_version = 1.89_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
@@ -122,7 +122,7 @@ module num_vars
     
     ! concerning finding the magnetic field lines
     integer :: max_it_zero                                                      !< maximum number of iterations to find zeros
-    integer :: max_nr_tries_HH                                                  !< maximum number of tries for Householder, relax. factors
+    integer :: max_nr_backtracks_HH                                             !< maximum number of backtracks for Householder, relax. factors
     real(dp), parameter :: def_relax_fac_HH = 0.5                               !< default \c relax_fac_HH (can be chosen higher for higher orders)
     real(dp) :: relax_fac_HH                                                    !< standard relaxation factor for Householder iterations
     real(dp) :: tol_zero                                                        !< tolerance for zeros

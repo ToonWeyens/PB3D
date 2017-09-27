@@ -314,7 +314,7 @@ contains
         end if
         
         ! redistribute equilibrium grid and variables and clean up
-        call writo('Redistribute the equilibrium grids')
+        call writo('Redistribute the equilibrium grids and variables')
         call lvl_ud(1)
         
         ! grid_eq_out

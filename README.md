@@ -1039,3 +1039,11 @@ ITER Organization
 * 'make tag' creates the git tag, with the current version number.
 * Added the tags to the respective commits.
 * Created documentation for installation and for inputs.
+
+## 1.94:
+* The Household methods have been modified by introducing backtracking instead of multiple tries.
+* The poloidal flux is used as default, as the toroidal flux is experimental and untested.
+* Fixed up some of the formatting in Doxygen for interfaces.
+* References to interfaces and custom types are now correctly displayed, prepended by the module name.
+* Added documentation for outputs and  general code structure and updated the main page.
+* Changed the Doxygen documentation style and looks.

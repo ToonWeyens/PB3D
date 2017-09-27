@@ -24,11 +24,11 @@ module eq_ops
     integer :: fund_n_par                                                       !< fundamental interval width
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q
+    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
-    logical :: debug_J_plot = .false.                                           !< plot debug information for J_plot
+    logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
-    logical :: debug_create_VMEC_input = .false.                                !< plot debug information for create_VMEC_input
+    logical :: debug_create_VMEC_input = .false.                                !< plot debug information for create_vmec_input()
 #endif
     
     ! interfaces
@@ -3510,12 +3510,12 @@ contains
             end if
             
             ! fill the 2D version of the plot
-            ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),0),ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,1) = ser_var_loc
-            ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),0),ser_var_loc)
-            CHCKERR('')
-            if (rank.eq.0) Y_plot_2D(:,2) = ser_var_loc
+            !ierr = get_ser_var(eq%q_saf_FD(norm_id(1):norm_id(2),0),ser_var_loc)
+            !CHCKERR('')
+            !if (rank.eq.0) Y_plot_2D(:,1) = ser_var_loc
+            !ierr = get_ser_var(eq%rot_t_FD(norm_id(1):norm_id(2),0),ser_var_loc)
+            !CHCKERR('')
+            !if (rank.eq.0) Y_plot_2D(:,2) = ser_var_loc
             ierr = get_ser_var(eq%pres_FD(norm_id(1):norm_id(2),0),ser_var_loc)
             CHCKERR('')
             if (rank.eq.0) Y_plot_2D(:,3) = ser_var_loc
@@ -4822,7 +4822,7 @@ contains
     !> Divides the equilibrium jobs.
     !!
     !! For PB3D,  the entire  parallel range  has to be  calculated, but  due to
-    !! memory limits this has  to be split up in pieces. Every  piece has to be!
+    !! memory limits this  has to be split  up in pieces. Every piece  has to be
     !! able to  contain the equilibrium variables  (see note below), as  well as
     !! the  vectorial  perturbation variables.  These  are  later combined  into
     !! tensorial variables and integrated.
@@ -4858,7 +4858,7 @@ contains
     !!
     !! In fact,  the equilibrium jobs  have much  in common with  the Richardson
     !! levels,  as is  attested by  the existence  of the  routines do_eq()  and
-    !! eq_info(, which are equivalent to do_rich() and rich_info().
+    !! eq_info(), which are equivalent to do_rich() and rich_info().
     !!
     !! In  POST, finally,  the situation  is slightly  different for  HELENA, as
     !! all  the requested  variables  have to  fit,  including the  interpolated
@@ -5471,7 +5471,7 @@ contains
         call writo('Test complete')
     end function test_jac_F
     
-    !! Tests whether \f$g_\text{V}\f$ is calculated correctly.
+    !> Tests whether \f$g_\text{V}\f$ is calculated correctly.
     !!
     !! \note Debug version only
     !!

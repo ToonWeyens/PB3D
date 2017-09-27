@@ -42,7 +42,7 @@ module X_vars
     !! The arrays here are of the form:
     !!  - \c U_x_i and DU_X_i: <tt>(1:angle_1,1:angle_2,1;n_mod)</tt>
     !!
-    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     type, public :: X_1_type
         integer :: n_mod                                                        !< size of \f$n\f$ and \f$m\f$ (nr. of modes)
         integer, allocatable :: n(:,:)                                          !< vector of poloidal mode numbers
@@ -64,7 +64,7 @@ module X_vars
     !! The arrays here are of the form:
     !!  - \c PV_i and KV_i: <tt>(1:angle_1,1:angle_2,1;n_mod^2)</tt>
     !!
-    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     !!
     !! \note This  type is also  used for field-averaged  tensorial perturbation
     !! variables, with \c angle_1 of size 1.

@@ -205,7 +205,7 @@ code_stats:
 
 doc:
 	@rm -f temp_user_vars
-	@echo 'PROJECT_NUMBER = version $(PB3D_version)' >> temp_user_vars
+	@echo 'PROJECT_NUMBER = [$(PB3D_version)]' >> temp_user_vars
 	@echo 'ALIASES += min_nm_X="$(MIN_NM_X)"' >> temp_user_vars
 	( cat Doxyfile temp_user_vars ) | doxygen -
 	@rm -f temp_user_vars

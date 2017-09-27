@@ -78,9 +78,9 @@ module grid_vars
     !!  - derivatives
     !!  - interpolation
     !!
-    !! \see   See  routines   setup_deriv_data()   and  setup_interp_data()   in
-    !! grid_utilities where discretization data  is setup and apply_disc() where
-    !! it is used.
+    !! \see    See   routines    setup_deriv_data()   and    setup_interp_data()
+    !! in   grid_utilities    where   discretization    data   is    setup   and
+    !! grid_utilities.apply_disc() where it is used.
     type, public :: disc_type
         integer :: n, n_loc                                                     !< total and local size of discretization variables
         real(dp), allocatable :: dat(:,:)                                       !< nonzero elements of matrix corresponding to discretization

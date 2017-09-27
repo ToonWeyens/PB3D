@@ -48,7 +48,7 @@ module num_utilities
     !> \public Calculate determinant of a matrix
     !!
     !! This  matrix can  be  defined on  a  3-D grid  or  constant. The  storage
-    !! convention described in \c eq_2_type is used.
+    !! convention described in eq_vars.eq_2_type is used.
     !!
     !! In the former  case the size of  the matrix (last two  indices) should be
     !! small,  as the  direct  formula  employing cofactors  is  used through  a
@@ -70,7 +70,7 @@ module num_utilities
     !> \public  Calculate inverse of square matrix \c A.
     !! 
     !! This  matrix can  be  defined on  a  3-D grid  or  constant. The  storage
-    !! convention described in \c eq_2_type is used.
+    !! convention described in eq_vars.eq_2_type is used.
     !!
     !! In the former  case the size of  the matrix (last two  indices) should be
     !! small, as direct inversion is performed using Cramer's rule.
@@ -89,7 +89,7 @@ module num_utilities
     !! \f$\overline{\text{AB}} = \overline{\text{A}} \ \overline{\text{B}}\f$.
     !!
     !! This  matrix can  be  defined on  a  3-D grid  or  constant. The  storage
-    !! convention described in \c eq_2_type is used.
+    !! convention described in eq_vars.eq_2_type is used.
     !!
     !! \return ierr
     interface calc_mult
@@ -102,7 +102,7 @@ module num_utilities
     end interface
     
     !> \public  Converts a  (symmetric)  matrix A  with  the storage  convention
-    !! described in \c eq_2_type.
+    !! described in eq_vars.eq_2_type.
     !! 
     !! This matric can have elements depending on a 3-D grid or be constant.
     !!
@@ -539,7 +539,7 @@ contains
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
         real(dp), allocatable :: work(:,:,:)                                    ! work array
-        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of eq_2_type
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of eq_vars.eq_2_type
         integer, allocatable :: k_sub(:)                                        ! first indices of submatrix in 2D
         
         ! initialize ierr
@@ -671,7 +671,7 @@ contains
         integer, allocatable :: slct(:,:)                                       ! 0 in between 1's selects which column to delete
         integer, allocatable :: idx(:)                                          ! counts from 1 to size(A)
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of eq_2_type
+        integer, allocatable :: c_sub(:)                                        ! indices of submatrix in storage convention of eq_vars.eq_2_type
         integer, allocatable :: l_sub(:), k_sub(:)                              ! first and second indices of submatrix in 2D
         integer :: kd_min                                                       ! min. of kd
        
@@ -2365,8 +2365,8 @@ contains
         end if
     end function fac
     
-    !> Determines  whether a matrix making  use of the storage  convention in \c
-    !! eq_2_type is symmetric or not.
+    !> Determines  whether a  matrix making  use  of the  storage convention  in
+    !! eq_vars.eq_2_type is symmetric or not.
     !!
     !! \return ierr
     integer function is_sym(n,nn,sym) result(ierr)

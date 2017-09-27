@@ -155,7 +155,7 @@ contains
     !! The rationale behind this  is that the E quantities are  only used in the
     !! pre-perturbation phase.
     !! \note
-    !!  -# The E quantities are not written in print_output_eq().
+    !!  -# The E quantities are not written in eq_ops.print_output_eq().
     !!  -#  The quantities  that  do  not have  a  derivative  are considered  F
     !!  quantities. Alternatively,  all quantities  that have only  one version,
     !!  are considered F quantities, such as \c rho, \c kappa_n, ...

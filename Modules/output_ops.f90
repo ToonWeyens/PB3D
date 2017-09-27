@@ -1055,13 +1055,13 @@ contains
     !! possible. Animations can take optional ranges arguments as well as delay.
     !! \note \c About draw_dim:
     !!  -  \c draw_dim  = 1:  2-D  plot; should  be  called with  the output  of
-    !!  print_ex_2D(), \c nplt should be correctly set.
+    !!  output_ops.print_ex_2d(), \c nplt should be correctly set.
     !!  -  \c draw_dim  = 2:  3-D  plot; should  be  called with  the output  of
     !!  print_ex_3D. For GNUPlot, \c nplt is  ignored, but not for Mayavi, as it
     !!  needs this information to be able to  reconstruct 2D arrays for X, Y and
     !!  Z.
     !!  - \c  draw_dim = 3: 2-D  plot in 3-D  slices; should be called  with the
-    !!  output of print_ex_2D(), \c nplt should be correctly set.
+    !!  output of output_ops.print_ex_2d(), \c nplt should be correctly set.
     subroutine draw_ex(var_names,draw_name,nplt,draw_dim,plot_on_screen,&
         &ex_plot_style,data_name,draw_ops,extra_ops,is_animated,ranges,delay)
         
@@ -1731,7 +1731,7 @@ contains
     !> Takes  two input  vectors and  plots these  as well  as the  relative and
     !! absolute difference in a HDF5 file.
     !!
-    !! This is similar to a basic version of plot_HDF5().
+    !! This is similar to a basic version of output_ops.plot_hdf5().
     !! 
     !! Optionally, an output message can be displayed on screen with the maximum
     !! relative and absolute error.

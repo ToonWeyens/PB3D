@@ -42,7 +42,7 @@ module grid_utilities
     !! F, the poloidal or toroidal flux in F coordinates, divided by \f$2\pi\f$.
     !!
     !! \note For VMEC,  it can be slow,  as the zero of  a non-linear expression
-    !! must be sought. This is done currently using calc_zero_hh().
+    !! must be sought. This is done currently using num_ops.calc_zero_hh().
     !!
     !! \return ierr
     interface coord_F2E
@@ -177,9 +177,9 @@ module grid_utilities
         module procedure calc_tor_diff_2D
     end interface
     
-    !> \public Applies the discretization  data calculated in setup_deriv_data()
-    !! or setup_interp_data() to calculate the  derivative or interpolation in a
-    !! dimension \c disc_dim.
+    !> \public    Applies     the    discretization    data     calculated    in
+    !! grid_utilities.setup_deriv_data() or setup_interp_data() to calculate the
+    !! derivative or interpolation in a dimension \c disc_dim.
     !!
     !! \return ierr
     interface apply_disc
@@ -237,7 +237,7 @@ contains
         dims = shape(theta_E)
         
         ! set up local ord
-        ord_loc = 3
+        ord_loc = 2
         if (present(ord)) ord_loc = ord
         
         ! tests
@@ -321,12 +321,12 @@ contains
             ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_F,zeta_E,&
                 &theta_E_guess_3D,sym=[is_asym_V,.true.],deriv=[0,0])
             CHCKERR('')
-            theta_E_guess_3D = theta_F - theta_E_guess_3D*0.75_dp               ! relax guess (not linear problem!)
+            theta_E_guess_3D = theta_F - theta_E_guess_3D
             
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
             err_msg = calc_zero_HH(dims,theta_E,fun_pol,ord_loc,&
-                &theta_E_guess_3D,relax_fac=0.75_dp,output=.true.)              ! relaxation in solution
+                &theta_E_guess_3D,output=.true.)
             if (err_msg.ne.'') then
                 ierr = 1
                 CHCKERR(err_msg)
@@ -1022,7 +1022,7 @@ contains
         
         ! input / output
         real(dp), intent(in) :: var(:,:,:,:)                                    !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         real(dp), intent(inout) :: dvar(:,:,:,:)                                !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1098,7 +1098,7 @@ contains
         
         ! input / output
         complex(dp), intent(in) :: var(:,:,:,:)                                 !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         complex(dp), intent(inout) :: dvar(:,:,:,:)                             !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1128,7 +1128,7 @@ contains
         
         ! input / output
         real(dp), intent(in) :: var(:,:,:)                                      !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         real(dp), intent(inout) :: dvar(:,:,:)                                  !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1156,7 +1156,7 @@ contains
         
         ! input / output
         complex(dp), intent(in) :: var(:,:,:)                                   !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         complex(dp), intent(inout) :: dvar(:,:,:)                               !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1184,7 +1184,7 @@ contains
         
         ! input / output
         real(dp), intent(in) :: var(:,:)                                        !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         real(dp), intent(inout) :: dvar(:,:)                                    !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1212,7 +1212,7 @@ contains
         
         ! input / output
         complex(dp), intent(in) :: var(:,:)                                     !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         complex(dp), intent(inout) :: dvar(:,:)                                 !< operated variable
         integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
         
@@ -1239,7 +1239,7 @@ contains
         
         ! input / output
         real(dp), intent(in) :: var(:)                                          !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         real(dp), intent(inout) :: dvar(:)                                      !< operated variable
         
         ! local variables
@@ -1265,7 +1265,7 @@ contains
         
         ! input / output
         complex(dp), intent(in) :: var(:)                                       !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in setup_deriv_data() or setup_interp_data()
+        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
         complex(dp), intent(inout) :: dvar(:)                                   !< operated variable
         
         ! local variables
@@ -1590,7 +1590,7 @@ contains
     !! such  as  the  calculation  of   \f$X\f$,  \f$Y\f$  and  \f$Z\f$  through
     !! calc_XYZ_grid().
     !!
-    !! \note For VMEC, it can be slow, as coord_F2E() is used.
+    !! \note For VMEC, it can be slow, as grid_utilities.coord_f2e() is used.
     !!
     !! \return ierr
     integer function extend_grid_F(grid_in,grid_ext,grid_eq,n_theta_plot,&
@@ -1792,7 +1792,7 @@ contains
     !! for  \c fj  = \f$f  J_\text{F}\f$ as  well as  the transformation  of the
     !! Jacobian to \f$\left(x,y,z\right)\f$ coordinates.
     !!
-    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     !!
     !! \note
     !!  -# if the coordinates are independent,  this method is equivalent to the

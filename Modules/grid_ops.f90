@@ -939,7 +939,7 @@ contains
     !! The equilibrium grid should contain the fieldline-oriented angles with \c
     !! ang_1 the parallel angle and \c ang_2 the field line label.
     !!
-    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     !!
     !! \note
     !!  -# This procedure  does not use \c n_theta_plot and  \c n_zeta_plot from

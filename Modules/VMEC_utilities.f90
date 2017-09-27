@@ -267,7 +267,7 @@ contains
     !! where  \c mnmax_V  is the number  of modes  in VMEC \c  n_r is  the total
     !! number of normal points.
     !!
-    !! \see See \c grid_type for a discussion on \c ang_1 and \c ang_2.
+    !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     !!
     !! \return ierr
     integer function calc_trigon_factors(theta,zeta,trigon_factors) &

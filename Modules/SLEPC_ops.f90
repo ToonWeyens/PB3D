@@ -62,7 +62,7 @@ contains
     !! grid,  if not,  this module  has  to be  adapted to  interpolate them.  A
     !! deprecated technique, using get_norm_interp_data()  and interp_V() can be
     !! seen  in  versions  previous  to  1.06. These  have  been  superseded  by
-    !! setup_interp_data() followed by \c apply_disc().
+    !! setup_interp_data() followed by grid_utilities.apply_disc().
     !!
     !! \return ierr
     integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol,i_geo) &

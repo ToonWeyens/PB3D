@@ -4,22 +4,25 @@
   <navindex>
     <tab type="mainpage" visible="yes" title=""/>
     <tab type="pages" visible="yes" title="Documentation" intro=""/>
-    <tab type="modules" visible="yes" title="no" intro=""/>
-    <tab type="namespaces" visible="yes" title="Modules">
-      <tab type="namespacelist" visible="yes" title="" intro=""/>
-      <tab type="namespacemembers" visible="yes" title="" intro=""/>
+    <tab type="modules" visible="no" title="no" intro=""/>
+    <tab type="files" visible="yes" title="">
+      <tab type="filelist" visible="no" title="" intro=""/>
+      <tab type="globals" visible="no" title="" intro=""/>
     </tab>
+    <tab type="namespaces" visible="yes" title="Modules">
+      <tab type="namespacelist" visible="no" title="" intro=""/>
+      <tab type="namespacemembers" visible="no" title="" intro=""/>
+    </tab>
+    <tab type="namespacemembers" visible="yes" title="Procedures and Variables" intro=""/>
     <tab type="classes" visible="no" title="">
       <tab type="classlist" visible="yes" title="" intro=""/>
       <tab type="classindex" visible="$ALPHABETICAL_INDEX" title=""/> 
       <tab type="hierarchy" visible="yes" title="" intro=""/>
       <tab type="classmembers" visible="yes" title="" intro=""/>
     </tab>
-    <tab type="files" visible="yes" title="">
-      <tab type="filelist" visible="yes" title="" intro=""/>
-      <tab type="globals" visible="yes" title="" intro=""/>
+    <tab type="user" url="page_examples.html" title="Examples">
+      <tab type="examples" visible="yes" title="List of examples" intro=""/>  
     </tab>
-    <tab type="examples" visible="no" title="" intro=""/>  
     <tab type="user" url="https://pb3d.github.io/" title="PB3D Home"/>
     <tab type="user" url="https://pb3d.github.io/contact.html" title="Contact"/>
   </navindex>
@@ -89,7 +92,7 @@
     <memberdecl>
       <nestednamespaces visible="yes" title=""/>
       <constantgroups visible="yes" title=""/>
-      <classes visible="yes" title=""/>
+      <classes visible="yes" title="Interfaces"/>
       <typedefs title=""/>
       <enums title=""/>
       <functions title=""/>
@@ -115,7 +118,7 @@
     <includedbygraph visible="$INCLUDED_BY_GRAPH"/>
     <sourcelink visible="yes"/>
     <memberdecl>
-      <classes visible="yes" title=""/>
+      <classes visible="yes" title="Interfaces"/>
       <namespaces visible="yes" title=""/>
       <constantgroups visible="yes" title=""/>
       <defines title=""/>

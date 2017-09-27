@@ -806,11 +806,11 @@ contains
     !!      - normal ballooning term:
     !!          \f$-2 p' X^2 \kappa_n\f$,
     !!      - geodesic ballooning term:
-    !!          \f$-2 p' X U* \kappa_g\f$,
+    !!          \f$-2 p' X U^* \kappa_g\f$,
     !!      - normal kink term:
-    !!          \f$-\sigma X*Q_g\f$,
+    !!          \f$-\sigma X^*Q_g\f$,
     !!      - geodesic kink term:
-    !!          \f$\sigma U*Q_n\f$,
+    !!          \f$\sigma U^*Q_n\f$,
     !!  - \f$E_\text{kin}\f$:
     !!      - normal kinetic term:
     !!          \f$\rho \frac{X^2}{h^{22}}\f$,

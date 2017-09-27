@@ -233,7 +233,7 @@ contains
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
             &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
-            &tol_rich, max_nr_tries_HH, sol_n_procs, &
+            &tol_rich, max_nr_backtracks_HH, sol_n_procs, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
             &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, no_plots, &
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
@@ -327,7 +327,8 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_zero,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(max_nr_tries_HH,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            call MPI_Bcast(max_nr_backtracks_HH,1,MPI_INTEGER,0,MPI_Comm_world,&
+                &ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)

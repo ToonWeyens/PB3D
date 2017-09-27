@@ -32,7 +32,7 @@ contains
             &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
+            &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
             &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style
@@ -66,14 +66,15 @@ contains
             &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, max_nr_tries_HH, &
-            &magn_int_style, ex_plot_style, solver_SLEPC_style
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, &
+            &max_nr_backtracks_HH, magn_int_style, ex_plot_style, &
+            &solver_SLEPC_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_tries_HH, POST_style, &
+            &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
             &plot_grid_style, max_tot_mem, ex_plot_style, &
             &pert_mult_factor_POST
         
@@ -111,7 +112,7 @@ contains
             end select
             plot_grid_style = 0                                                 ! normal plots on 3D geometry
             relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
-            max_nr_tries_HH = 6                                                 ! standard nr. of tries
+            max_nr_backtracks_HH = 20                                           ! standard nr. of backtracks
             ex_plot_style = 1                                                   ! GNUPlot
             
             ! select depending on program style
@@ -234,7 +235,7 @@ contains
         end if
     contains
         subroutine default_input_PB3D
-            use num_vars, only: use_pol_flux_E
+            !use num_vars, only: use_pol_flux_E
             
             ! concerning solution
             n_r_sol = 100                                                       ! 100 points in solution grid
@@ -254,7 +255,8 @@ contains
             min_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
             max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
             n_mod_X = huge(1)                                                   ! nonsensible value to check for user overwriting
-            use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
+            !use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
+            use_pol_flux_F = .true.                                             ! use poloidail flux as toroidal flux is untested
             
             ! concerning normalization
             rho_0 = 1E-7_dp                                                     ! for fusion, particle density of around 5E19 for detuerium

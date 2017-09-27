@@ -1,6 +1,8 @@
-/*! \page page_installation installation
+/*! \page page_installation Installation
     
     \tableofcontents
+    
+    \section installation_introduction Introduction
     
     PB3D is written in Fortran, and makes use of multiple numerical libraries:
         - <a href="http://www.netlib.org/lapack/">blas / lapack</a>
@@ -13,7 +15,7 @@
         - <a href="https://www.unidata.ucar.edu/software/netcdf/">NetCDF</a>
             - to read input of VMEC
             - sequential
-        - <a href="https://www.mcs.anl.gov/petsc/">petsc</a> / <a href="http://slepc.upv.es/">slepc</a>
+        - <a href="https://www.mcs.anl.gov/petsc/">PETSc</a> / <a href="http://slepc.upv.es/">SLEPc</a>
             - for linear algebra of large, sparse matrices
             - can reach \f$\sim \mathcal{O} (n)\f$ complexity
         - <a href="http://portal.nersc.gov/project/sparse/strumpack/">StrumPack</a>
@@ -23,26 +25,39 @@
             - part of Stellopt suite, which contains VMEC
             - provides routines to read VMEC output data
 
-    These packages should probably be installed in this order.
+    They should probably be installed in this order. On linux distributions such as Ubuntu, they may be available as packages.
     
-    The program is then compiled in the standard way:
+    Furthermore, PB3D comes bundled with some other, smaller libraries:
+        - <a href="http://www.netlib.org/fftpack/">fftpack</a>
+            - to calculate the fast Fourier transform
+        - <a href="https://github.com/jacobwilliams/bspline-fortran">bspline-fortran</a>
+            - multidimensional b-spline interpolation of data on a regular grid
+        - <a href="http://foul.sourceforge.net/">foul</a>
+            - the Fortran Output Library
+
+    These do not have to be installed separately.
+    
+    \section installation_compilation Compilation
+    
+    When all dependencies are satisfied, the program is then compiled in the standard way:
         - Including the headers of all the libraries in the compilation of the object files:
             - This is done using <tt>-I[path_to_library]</tt>.
             - Make sure you add the <tt>-o</tt> option to create only object files.
         - Linking with the actual libraries
             - This is done using <tt>-L[path_to_library] -l[library_name]</tt>.
+    
+    \section installation_makefile Makefile Example
 
-    An example makefile:
     \includelineno example.mk
 
     \note 
-        -# petsc and slepc don't like to be included in another makefile.
+        -# PETSc and SLEPc don't like to be included in another makefile.
         The trick is to include two files:
-        \snippetlineno example.mk PETSC and SLEPC trick
+        \snippetlineno example.mk PETSc and SLEPc trick
         which will load the variables  \c PETSC_FC_INCLUDES and \c SLEPC_INCLUDE, used in
-        \snippetlineno example.mk PETSC and SLEPC trick inc
+        \snippetlineno example.mk PETSc and SLEPc trick inc
         as well as the variables \c PETSC_LIB and \c SLEPC_LIB, used in
-        \snippetlineno example.mk PETSC and SLEPC trick lib
+        \snippetlineno example.mk PETSc and SLEPc trick lib
         -# There are versions of libstell that do not use the standard convention.
         In this case you have to look for the <tt>*.mod</tt> files.
         In the example makefile this is done with
@@ -52,6 +67,8 @@
         there are includefiles that contain macros and wrappers specifically for PB3D.
         -# In \snippetlineno example.mk PB3D libraries
         linking is done with external libraries that are bundled with PB3D.
+    
+    \example example.mk An example makefile:
 */
 
     PB3D can be obtained using git:

@@ -439,8 +439,9 @@ contains
     !! name if it is \c >0.
     !!
     !! \note
-    !!  -# This routine should be called by a single process, in contrast to the
-    !!  other output routines such as print_output_eq(), print_output_sol(), ...
+    !!  -#  This routine  should  be called  by a  single  process, in  contrast
+    !!  to  the   other  output   routines  such   as  eq_ops.print_output_eq(),
+    !!  print_output_sol(), ...
     !!  -# This routine  does not save the  \c H and \c G  matrices because they
     !!  are large and foreseen to be  saved directly as Hierarchical matrices in
     !!  the future. They therefore need  to be regenerated if Richardson restart

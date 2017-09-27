@@ -1,6 +1,7 @@
-/*! \mainpage welcome to PB3D
+BE SURE TO RUN THIS WITH DOXYGEN 1.8.13. OTHER VERSIONS ARE NOT TESTED.
+/*! \mainpage Welcome to PB3D
     
-    <i>The main presentation of the PB3D project information can be found at the <a href="https://pb3d.github.io/"><b>PB3D home</b></a>.</i>
+    <i>The main presentation of the PB3D project information can be found at the <a href="https://pb3d.github.io/">PB3D home</a>.</i>
  
     This page contains the technical documentation of the \b PB3D project.
     
@@ -12,11 +13,8 @@
 
     Furthermore, in \ref page_inputs, the multitude of input variables is discussed.
 
-    Finally, in \ref page_outputs, the same is done for the output that can be produced, including the output by POST.
+    Additionally, in \ref page_outputs, the same is done for the output that can be produced, including the output by POST.
     
-    Additionally, the various files of which the program consists can be explored in detail:
-        - the PB3D.f90 page for the main program
-        - the POST.f90 page for the post-processing program
-        - the <a href="namespaces.html"><b>Modules</b></a> page
+    Finally, the various files of which the program consists can be explored in detail in the <a href="files.html">Files</a> page, modules in the <a href="namespaces.html">Modules</a> page and the Procudures and variables in the <a href="namespacemembers.html">Procedures and Variables</a> page. 
     
 */

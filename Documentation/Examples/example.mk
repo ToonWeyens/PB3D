@@ -1,7 +1,7 @@
 ##############################################################################
 #
 #   Example makefile for the program PB3D (Peeling Ballooning in 3D)
-#   Author: Toon Weyens
+#   \author Author: Toon Weyens
 #
 #   Don't forget to set the directories:
 # 		- LIBSTELL_DIR
@@ -15,14 +15,14 @@
 ##############################################################################
 #   Include
 ##############################################################################
-## [PETSC and SLEPC trick]
+## [PETSc and SLEPc trick]
 include  $(PETSC_DIR)/lib/petsc/conf/variables
 include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
-## [PETSC and SLEPC trick]
+## [PETSc and SLEPc trick]
 
-## [PETSC and SLEPC trick inc]
+## [PETSc and SLEPc trick inc]
 INCLUDE = $(PETSC_FC_INCLUDES) $(SLEPC_INCLUDE)
-## [PETSC and SLEPC trick inc]
+## [PETSc and SLEPc trick inc]
 ## [Libstell special]
 INCLUDE += -I$(LIBSTELL_DIR)/libstell_dir
 ## [Libstell special]
@@ -41,10 +41,10 @@ LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 
 LINK := $(LIB_INTERNAL)
 
-## [PETSC and SLEPC trick lib]
+## [PETSc and SLEPc trick lib]
 LINK += $(PETSC_LIB)
 LINK += $(SLEPC_LIB)
-## [PETSC and SLEPC trick lib]
+## [PETSc and SLEPc trick lib]
 LINK += $(LIBSTELL_DIR)/libstell.a
 LINK += -L$(STRUMPACK_DIR)/lib -lstrumpack
 LINK += -L$(HDF5_DIR) -lhdf5_fortran -lhdf5

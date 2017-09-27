@@ -22,7 +22,7 @@ module X_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_check_X_modes_2 = .false.                                  !< plot debug information for calc_XUQ_arr \ldebug
+    logical :: debug_check_X_modes_2 = .false.                                  !< plot debug information for check_x_modes_2() \ldebug
 #endif
     
     ! interfaces
@@ -974,8 +974,9 @@ contains
         call lvl_ud(-1)
         call writo('Mode numbers checked')
     contains
-        ! version for  X style 1: Checks  whether there exists a  range in which
-        ! each of the modes resonates, with a certain tolerance tol_norm.
+        !> \public Version for \c X style 1: Checks whether there exists a range
+        !! in which each of the modes resonates, with a certain tolerance
+        !! \c tol_norm.
         integer function check_X_modes_1(eq) result(ierr)
             use X_vars, only: prim_X, min_sec_X, n_mod_X
             use num_vars, only: tol_norm
@@ -983,7 +984,7 @@ contains
             character(*), parameter :: rout_name = 'check_X_modes_1'
             
             ! input / output
-            type(eq_1_type), intent(in) :: eq                                   ! flux equilibrium
+            type(eq_1_type), intent(in) :: eq                                   !< flux equilibrium
             
             ! local variables
             integer :: id                                                       ! counter
@@ -1082,8 +1083,8 @@ contains
             end if
         end function check_X_modes_1
         
-        ! version for X style 2: Check  how efficient the chosen number of modes
-        ! is.
+        !> \public version  for \c  X style  2: Check  how efficient  the chosen
+        !! number of modes is.
         integer function check_X_modes_2(grid_eq,eq) result(ierr)
             use X_vars, only: min_n_X, min_m_X, n_mod_X
             use grid_utilities, only: trim_grid
@@ -1091,8 +1092,8 @@ contains
             character(*), parameter :: rout_name = 'check_X_modes_2'
             
             ! input / output
-            type(grid_type), intent(in) :: grid_eq                              ! equilibrium grid
-            type(eq_1_type), intent(in) :: eq                                   ! flux equilibrium
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq                                   !< flux equilibrium
             
             ! local variables
             type(grid_type) :: grid_eq_trim                                     ! trimmed equilibrium grid
@@ -1360,11 +1361,12 @@ contains
         call grid_eq_trim%dealloc()
         call norm_interp_data%dealloc()
     contains
-        ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
-        ! m/n or iota = n/m.
+        !> \private  Returns \f$q-\frac{m}{n}\f$  or \f$\iota-\frac{n}{m}\f$  in
+        !! Flux coordinates, used to solve for \f$q = \frac{m}{n}\f$ or \f$\iota
+        !! = \frac{n}{m}\f$.
         real(dp) function jq_fun(pt) result(res)
             ! input / output
-            real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
+            real(dp), intent(in) :: pt                                          !< normal position at which to evaluate
             
             ! local variables
             integer :: i_min, i_max                                             ! index of minimum and maximum value of x
@@ -2073,18 +2075,18 @@ contains
         nullify(h23,D1h23,D3h23,D13h23,D33h23)
 #if ldebug
     contains
-        ! test calculation of DU by deriving U numerically
+        !> \private Test calculation of DU by deriving U numerically.
         integer function test_DU() result(ierr)
             use num_vars, only: norm_disc_prec_X
             
             character(*), parameter :: rout_name = 'test_DU'
             
             ! local variables
-            integer :: jd, kd, ld                                               ! counters
-            complex(dp), allocatable :: DU_0(:,:,:)                             ! alternative calculation for DU_0
-            complex(dp), allocatable :: DU_1(:,:,:)                             ! alternative calculation for DU_1
-            character(len=max_str_ln) :: file_name                              ! name of plot file
-            character(len=max_str_ln) :: description                            ! description of plot
+            integer :: jd, kd, ld                                               !< counters
+            complex(dp), allocatable :: DU_0(:,:,:)                             !< alternative calculation for DU_0
+            complex(dp), allocatable :: DU_1(:,:,:)                             !< alternative calculation for DU_1
+            character(len=max_str_ln) :: file_name                              !< name of plot file
+            character(len=max_str_ln) :: description                            !< description of plot
             
             ! initialize ierr
             ierr = 0
@@ -2587,7 +2589,7 @@ contains
     !!  -# Simpson's 3/8  rule converges faster than the  trapezoidal rule, but
     !!  normally needs a better starting point (i.e. higher \c min_n_par_X)
     !!
-    !! \see See X_2_type.
+    !! \see See x_vars.x_2_type.
     !!
     !! \return ierr
     integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_int,prev_style,&
@@ -2809,14 +2811,15 @@ contains
         ! user output
         call lvl_ud(-1)
     contains
-        ! Integrate local magnetic integral, adding to the previous result.
-        ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang
+        !> \private Integrate local magnetic integral, adding to the previous result.
+        !!
+        !! Makes use of \c nr_int_regions, \c int_dims, \c int_facs and \c J_exp_ang.
         subroutine calc_magn_int_loc(V,V_int,V_int_work,step_size)
             ! input / output
-            complex(dp), intent(in) :: V(:,:,:)                                 ! V
-            complex(dp), intent(inout) :: V_int(:,:)                            ! integrated V
-            complex(dp), intent(inout) :: V_int_work(:,:)                       ! workint variable
-            real(dp) :: step_size(:)                                            ! step size for every normal point
+            complex(dp), intent(in) :: V(:,:,:)                                 !< V
+            complex(dp), intent(inout) :: V_int(:,:)                            !< integrated V
+            complex(dp), intent(inout) :: V_int_work(:,:)                       !< workint variable
+            real(dp) :: step_size(:)                                            !< step size for every normal point
             
             ! local variables
             integer :: id, kd, ld                                               ! counters
@@ -2931,21 +2934,23 @@ contains
         call lvl_ud(-1)
         call writo('Perturbation jobs divided')
     contains
-        ! Calculate X_jobs_lims.
-        ! These are  stored as follows: The  job index is the  second one, while
-        ! the first index ranges from 1 to  2*ord. For every job in the range of
-        ! job indices, thee first index shows the limits of the different orders
-        ! sequentially. For example:
-        !   - for order 1: [3,4],
-        !       which corresponds to the 1-D range 3..4,
-        !   - for order 2: [3,4,1,5],
-        !       which corresponds to the 2-D range 3..4 x 1..5,
-        ! etc.
+        !> \private Calculate X_jobs_lims.
+        !!
+        !! These are stored  as follows: The job index is  the second one, while
+        !! the first  index ranges  from \f$1\ldots 2\texttt{ord}\f$.  For every
+        !! job in the range of job indices, thee first index shows the limits of
+        !! the different orders sequentially. For example:
+        !!   - for order 1: <tt>[3,4]</tt>,
+        !!       which corresponds to the 1-D range <tt>3..4</tt>,
+        !!   - for order 2: <tt>[3,4,1,5]</tt>,
+        !!       which corresponds to the 2-D range <tt>3..4 x 1..5</tt>,
+        !!
+        !! etc.
         recursive subroutine calc_X_jobs_lims(res,n_mod,ord)
             ! input / output
-            integer, intent(inout), allocatable :: res(:,:)                     ! result
-            integer, intent(in) :: n_mod(:)                                     ! X jobs data
-            integer, intent(in) :: ord                                          ! order of data
+            integer, intent(inout), allocatable :: res(:,:)                     !< result
+            integer, intent(in) :: n_mod(:)                                     !< X jobs data
+            integer, intent(in) :: ord                                          !< order of data
             
             ! local variables
             integer, allocatable :: res_loc(:,:)                                ! local result

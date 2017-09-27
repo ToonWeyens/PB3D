@@ -27,8 +27,10 @@ module num_ops
     !> \public Finds the zero of a function using Householder iteration.
     !!
     !! If something goes  wrong, by default multiple tries can  be attempted, by
-    !! halving  the  relaxation  factor  a  number  of  times  indicated  by  \c
-    !! max_nr_tries. If still nothing is achieved, an error message is returned,
+    !! backtracking on the correction by  multiplying it by a relaxation factor.
+    !! This can be done \c max_nr_backtracks times.
+    !!
+    !! If still nothing is achieved, an error message is returned,
     !! that is empty otherwise.
     interface calc_zero_HH
         !> \public
@@ -43,9 +45,9 @@ contains
     !!  - <tt>x</tt> abscissa
     !!  - <tt>ord</tt> order of derivative
     !!  - <tt>fun</tt> ordinate
-    function calc_zero_HH_0D(zero,fun,ord,guess,relax_fac,max_nr_tries) &
+    function calc_zero_HH_0D(zero,fun,ord,guess,max_nr_backtracks,output) &
         &result(err_msg)
-        use num_vars, only: max_it_zero, tol_zero, relax_fac_HH, max_nr_tries_HH
+        use num_vars, only: max_it_zero, tol_zero, max_nr_backtracks_HH
         
         ! input / output
         real(dp), intent(inout) :: zero                                         !< output
@@ -59,16 +61,19 @@ contains
         end interface
         integer, intent(in) :: ord                                              !< order of solution
         real(dp), intent(in) :: guess                                           !< first guess
-        real(dp), intent(in), optional :: relax_fac                             !< relaxation factor
-        integer, intent(in), optional :: max_nr_tries                           !< max nr. of tries with different relaxation factors
+        integer, intent(in), optional :: max_nr_backtracks                      !< max nr. of tries with different relaxation factors
+        logical, intent(in), optional :: output                                 !< give output on convergence
         character(len=max_str_ln) :: err_msg                                    !< possible error message
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        integer :: max_nr_tries_loc                                             ! local max_nr_tries
+        integer :: max_nr_backtracks_loc                                        ! local max_nr_backtracks
+        logical :: output_loc                                                   ! local output
+        logical :: relaxed_enough                                               ! whether step was relaxed enough to get a smaller new value
+        real(dp) :: zero_new                                                    ! new zero calculated
+        real(dp) :: fun_new                                                     ! function value at new zero
         real(dp) :: corr                                                        ! correction
         real(dp), allocatable :: fun_vals(:)                                    ! function values
-        real(dp) :: relax_fac_loc                                               ! local relaxation factor
 #if ldebug
         real(dp), allocatable :: corrs(:)                                       ! corrections for all steps
         real(dp), allocatable :: values(:)                                      ! values for all steps
@@ -77,58 +82,83 @@ contains
         ! initialize error message
         err_msg = ''
         
+        ! set up local output
+        output_loc = .false.
+        if (present(output)) output_loc = output
+        
         ! set up zero
         zero = guess
         
-        ! set up local max_nr_tries
-        max_nr_tries_loc = max_nr_tries_HH
-        if (present(max_nr_tries)) max_nr_tries_loc = max_nr_tries
-        
-        ! set up local relaxation factor
-        relax_fac_loc = relax_fac_HH
-        if (present(relax_fac)) relax_fac_loc = relax_fac
+        ! set up local max_nr_backtracks
+        max_nr_backtracks_loc = max_nr_backtracks_HH
+        if (present(max_nr_backtracks)) &
+            &max_nr_backtracks_loc = max_nr_backtracks
         
         ! initialize function values
         allocate(fun_vals(0:ord))
         
-        ! possibly multiple tries with different relaxation factors
-        do id = 1,max_nr_tries_loc
+#if ldebug
+        if (debug_calc_zero) then
+            ! set up corrs
+            allocate(corrs(max_it_zero))
+            allocate(values(max_it_zero))
+        end if
+#endif
+        
+        ! loop over iterations
+        HH: do jd = 1,max_it_zero
+            ! calculate function values
+            do kd = 0,ord
+                fun_vals(kd) = fun(zero,kd)
+            end do
+            
+            ! correction to theta_HH
+            select case (ord)
+                case (1)                                                        ! Newton-Rhapson
+                    corr = -fun_vals(0)/fun_vals(1)
+                case (2)                                                        ! Halley
+                    corr = -fun_vals(0)*fun_vals(1)/&
+                        &(fun_vals(1)**2 - 0.5_dp*&
+                        &fun_vals(0)*fun_vals(2))
+                case (3)                                                        ! 3rd order
+                    corr = -(6*fun_vals(0)*fun_vals(1)**2-&
+                        &3*fun_vals(0)**2*fun_vals(2))/&
+                        &(6*fun_vals(1)**3 - 6*fun_vals(0)*&
+                        &fun_vals(1)*fun_vals(2)+&
+                        &fun_vals(0)**2*fun_vals(3))
+            end select
 #if ldebug
             if (debug_calc_zero) then
-                ! set up corrs
-                allocate(corrs(max_it_zero))
-                allocate(values(max_it_zero))
+                corrs(jd) = corr
+                values(jd) = zero
             end if
 #endif
-            
-            HH: do jd = 1,max_it_zero
-                ! calculate function values
-                do kd = 0,ord
-                    fun_vals(kd) = fun(zero,kd)
-                end do
+            relaxed_enough = .false.
+            do id = 1,max_nr_backtracks_loc
+                zero_new = zero + corr                                          ! propose a new zero
                 
-                ! correction to theta_HH
-                select case (ord)
-                    case (1)                                                    ! Newton-Rhapson
-                        corr = -fun_vals(0)/fun_vals(1)
-                    case (2)                                                    ! Halley
-                        corr = -fun_vals(0)*fun_vals(1)/&
-                            &(fun_vals(1)**2 - 0.5_dp*&
-                            &fun_vals(0)*fun_vals(2))
-                    case (3)                                                    ! 3rd order
-                        corr = -(6*fun_vals(0)*fun_vals(1)**2-&
-                            &3*fun_vals(0)**2*fun_vals(2))/&
-                            &(6*fun_vals(1)**3 - 6*fun_vals(0)*&
-                            &fun_vals(1)*fun_vals(2)+&
-                            &fun_vals(0)**2*fun_vals(3))
-                end select
-#if ldebug
-                if (debug_calc_zero) then
-                    corrs(jd) = corr
-                    values(jd) = zero
+                fun_new = fun(zero_new,0)                                       ! calculate function value there
+                
+                if (abs(fun_new)-abs(fun_vals(0)).le.0._dp) then                ! error has decreased
+                    relaxed_enough = .true.
+                    zero = zero_new
+                    exit
                 end if
-#endif
-                zero = zero + (relax_fac_loc*0.5_dp**id)*corr                   ! relaxation factor scaled by 2^id
+                corr = corr*0.5_dp
+            end do
+            
+            ! check for relaxation
+            if (.not.relaxed_enough) then
+                err_msg = trim(i2str(max_nr_backtracks_HH))//' backtracks were &
+                    &not sufficient to get a better guess for the zero'
+                zero = 0.0_dp
+            else
+                ! output
+                if (output_loc) call writo(trim(i2str(jd))//' / '&
+                    &//trim(i2str(max_it_zero))//&
+                    &' - relative error: '//&
+                    &trim(r2str(abs(corr)))//' (tol: '//&
+                    &trim(r2str(tol_zero))//')')
                 
                 ! check for convergence
                 if (abs(corr).lt.tol_zero) then
@@ -143,25 +173,16 @@ contains
                         call plot_evolution(corrs,values)
                         deallocate(corrs)
                         deallocate(values)
-                        if (id.lt.max_nr_tries_loc) &
-                            &call writo('Trying again with relaxation factor &
-                            &divided by '//trim(i2str(id)))
                     end if
 #endif
-                    if (id.eq.max_nr_tries_loc) then
-                        err_msg = 'Not converged after '//trim(i2str(jd))//&
-                            &' iterations, with residual '//&
-                            &trim(r2strt(corr))//' and final value '//&
-                            &trim(r2strt(zero))
-                        zero = 0.0_dp
-                    else
-                        call writo('Increasing relaxation factor to '//&
-                            &trim(r2strt(relax_fac_loc*0.5_dp**(id+1))),&
-                            &warning=.true.)
-                    end if
+                    err_msg = 'Not converged after '//trim(i2str(jd))//&
+                        &' iterations, with residual '//&
+                        &trim(r2strt(corr))//' and final value '//&
+                        &trim(r2strt(zero))
+                    zero = 0.0_dp
                 end if
-            end do HH
-        end do
+            end if
+        end do HH
 #if ldebug
     contains
         ! plots corrections
@@ -216,9 +237,9 @@ contains
     !!  - <tt>x(dims(1),dims(2),dims(3))</tt> abscissa
     !!  - <tt>ord</tt> order of derivative
     !!  - <tt>fun(dims(1),dims(2),dims(3))</tt> ordinate
-    function calc_zero_HH_3D(dims,zero,fun,ord,guess,relax_fac,&
-        &max_nr_tries,output) result(err_msg)
-        use num_vars, only: max_it_zero, tol_zero, relax_fac_HH, max_nr_tries_HH
+    function calc_zero_HH_3D(dims,zero,fun,ord,guess,max_nr_backtracks,output) &
+        &result(err_msg)
+        use num_vars, only: max_it_zero, tol_zero, max_nr_backtracks_HH
         
         ! input / output
         integer, intent(in) :: dims(3)                                          !< dimensions of the problem
@@ -234,19 +255,19 @@ contains
         end interface
         integer, intent(in) :: ord                                              !< order of solution
         real(dp), intent(in) :: guess(dims(1),dims(2),dims(3))                  !< first guess
-        real(dp), intent(in), optional :: relax_fac                             !< relaxation factor
-        integer, intent(in), optional :: max_nr_tries                           !< max nr. of tries with different relaxation factors
+        integer, intent(in), optional :: max_nr_backtracks                      !< max nr. of backtracks
         logical, intent(in), optional :: output                                 !< give output on convergence
         character(len=max_str_ln) :: err_msg                                    !< possible error message
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        integer :: jd_tot
-        integer :: max_nr_tries_loc                                             ! local max_nr_tries
+        integer :: max_nr_backtracks_loc                                        ! local max_nr_backtracks
         integer :: mc_ind(3)                                                    ! index of maximum correction
         logical :: output_loc                                                   ! local output
+        logical :: relaxed_enough                                               ! relaxed enough
+        real(dp) :: zero_new(dims(1),dims(2),dims(3))                           ! new zeros calculated
+        real(dp) :: fun_new(dims(1),dims(2),dims(3))                            ! function values at new zero
         real(dp) :: corr(dims(1),dims(2),dims(3))                               ! correction
-        real(dp) :: relax_fac_loc                                               ! local relaxation factor
         real(dp), allocatable :: fun_vals(:,:,:,:)                              ! function values
 #if ldebug
         real(dp), allocatable :: corrs(:,:,:,:)                                 ! corrections for all steps
@@ -271,57 +292,84 @@ contains
         ! set up zero
         zero = guess
         
-        ! set up local max_nr_tries
-        max_nr_tries_loc = max_nr_tries_HH
-        if (present(max_nr_tries)) max_nr_tries_loc = max_nr_tries
-        
-        ! set up local relaxation factor
-        relax_fac_loc = relax_fac_HH
-        if (present(relax_fac)) relax_fac_loc = relax_fac
+        ! set up local max_nr_backtracks
+        max_nr_backtracks_loc = max_nr_backtracks_HH
+        if (present(max_nr_backtracks)) &
+            &max_nr_backtracks_loc = max_nr_backtracks
         
         ! initialize function values
         allocate(fun_vals(dims(1),dims(2),dims(3),0:ord))
         
-        ! possibly multiple tries with different relaxation factors
-        jd_tot = 1
-        do id = 1,max_nr_tries_loc
+#if ldebug
+        if (debug_calc_zero) then
+            ! set up corrs
+            allocate(corrs(dims(1),dims(2),dims(3),max_it_zero))
+            allocate(values(dims(1),dims(2),dims(3),max_it_zero))
+        end if
+#endif
+        
+        ! loop over iterations
+        HH: do jd = 1,max_it_zero
+            ! calculate function values
+            do kd = 0,ord
+                fun_vals(:,:,:,kd) = fun(dims,zero,kd)
+            end do
+            
+            ! correction to theta_HH
+            select case (ord)
+                case (1)                                                        ! Newton-Rhapson
+                    corr = -fun_vals(:,:,:,0)/fun_vals(:,:,:,1)
+                case (2)                                                        ! Halley
+                    corr = -fun_vals(:,:,:,0)*fun_vals(:,:,:,1)/&
+                        &(fun_vals(:,:,:,1)**2 - 0.5_dp*&
+                        &fun_vals(:,:,:,0)*fun_vals(:,:,:,2))
+                case (3)                                                        ! 3rd order
+                    corr = -(6*fun_vals(:,:,:,0)*fun_vals(:,:,:,1)**2-&
+                        &3*fun_vals(:,:,:,0)**2*fun_vals(:,:,:,2))/&
+                        &(6*fun_vals(:,:,:,1)**3 - 6*fun_vals(:,:,:,0)*&
+                        &fun_vals(:,:,:,1)*fun_vals(:,:,:,2)+&
+                        &fun_vals(:,:,:,0)**2*fun_vals(:,:,:,3))
+            end select
 #if ldebug
             if (debug_calc_zero) then
-                ! set up corrs
-                allocate(corrs(dims(1),dims(2),dims(3),max_it_zero))
-                allocate(values(dims(1),dims(2),dims(3),max_it_zero))
+                corrs(:,:,:,jd) = corr
+                values(:,:,:,jd) = zero
             end if
 #endif
-            
-            HH: do jd = 1,max_it_zero
-                ! calculate function values
-                do kd = 0,ord
-                    fun_vals(:,:,:,kd) = fun(dims,zero,kd)
-                end do
+            relaxed_enough = .false.
+            do id = 1,max_nr_backtracks_loc
+                where (abs(corr).gt.tol_zero) zero_new = zero + corr            ! propose a new zero
                 
-                ! correction to theta_HH
-                select case (ord)
-                    case (1)                                                    ! Newton-Rhapson
-                        corr = -fun_vals(:,:,:,0)/fun_vals(:,:,:,1)
-                    case (2)                                                    ! Halley
-                        corr = -fun_vals(:,:,:,0)*fun_vals(:,:,:,1)/&
-                            &(fun_vals(:,:,:,1)**2 - 0.5_dp*&
-                            &fun_vals(:,:,:,0)*fun_vals(:,:,:,2))
-                    case (3)                                                    ! 3rd order
-                        corr = -(6*fun_vals(:,:,:,0)*fun_vals(:,:,:,1)**2-&
-                            &3*fun_vals(:,:,:,0)**2*fun_vals(:,:,:,2))/&
-                            &(6*fun_vals(:,:,:,1)**3 - 6*fun_vals(:,:,:,0)*&
-                            &fun_vals(:,:,:,1)*fun_vals(:,:,:,2)+&
-                            &fun_vals(:,:,:,0)**2*fun_vals(:,:,:,3))
-                end select
+                fun_new = fun(dims,zero_new,0)                                  ! calculate function value there
+                
 #if ldebug
-                if (debug_calc_zero) then
-                    corrs(:,:,:,jd) = corr
-                    values(:,:,:,jd) = zero
-                end if
+                if (debug_calc_zero) &
+                    &call writo('backtrack '//trim(i2str(id))//' of max. '//&
+                    &trim(i2str(max_nr_backtracks_loc))//' - criterion: '//&
+                    &trim(r2str(maxval(abs(fun_new)-abs(fun_vals(:,:,:,0)))))//&
+                    &' < 1?')
 #endif
-                where (abs(corr).gt.tol_zero) &
-                    &zero = zero + (relax_fac_loc*0.5_dp**id)*corr              ! relaxation factor scaled by 2^id
+                if (maxval(abs(fun_new)-abs(fun_vals(:,:,:,0))).le.0._dp) then  ! error has decreased
+                    relaxed_enough = .true.
+                    zero = zero_new
+                    exit
+                end if
+                corr = corr*0.5_dp
+            end do
+            
+            ! check for relaxation
+            if (.not.relaxed_enough) then
+                err_msg = trim(i2str(max_nr_backtracks_HH))//' backtracks were &
+                    &not sufficient to get a better guess for the zero'
+                zero = 0.0_dp
+                exit
+            else
+                ! output
+                if (output_loc) call writo(trim(i2str(jd))//' / '&
+                    &//trim(i2str(max_it_zero))//&
+                    &' - maximum relative error: '//&
+                    &trim(r2str(maxval(abs(corr))))//' (tol: '//&
+                    &trim(r2str(tol_zero))//')')
                 
                 ! check for convergence
                 if (maxval(abs(corr)).lt.tol_zero) then
@@ -336,35 +384,18 @@ contains
                         call plot_evolution(corrs,values)
                         deallocate(corrs)
                         deallocate(values)
-                        if (id.lt.max_nr_tries_loc) &
-                            &call writo('Trying again with relaxation factor &
-                            &divided by '//trim(i2str(id)))
                     end if
 #endif
-                    if (id.eq.max_nr_tries_loc) then
-                        mc_ind = maxloc(abs(corr))
-                        err_msg = 'Not converged after '//trim(i2str(jd))//&
-                            &' iterations, with maximum residual '//&
-                            &trim(r2strt(corr(mc_ind(1),mc_ind(2),mc_ind(3))))&
-                            &//' and final value '//trim(r2strt(&
-                            &zero(mc_ind(1),mc_ind(2),mc_ind(3))))
-                        zero = 0.0_dp
-                    else
-                        call writo('Increasing relaxation factor to '//&
-                            &trim(r2strt(relax_fac_loc*0.5_dp**(id+1))),&
-                            &warning=.true.)
-                    end if
-                else
-                    ! output
-                    if (output_loc) call writo(trim(i2str(jd))//' / '&
-                        &//trim(i2str(max_it_zero))//&
-                        &' - maximum relative error: '//&
-                        &trim(r2str(maxval(abs(corr))))//' > '//&
-                        &trim(r2str(tol_zero)))
+                    mc_ind = maxloc(abs(corr))
+                    err_msg = 'Not converged after '//trim(i2str(jd))//&
+                        &' iterations, with maximum residual '//&
+                        &trim(r2strt(corr(mc_ind(1),mc_ind(2),mc_ind(3))))&
+                        &//' and final value '//trim(r2strt(&
+                        &zero(mc_ind(1),mc_ind(2),mc_ind(3))))
+                    zero = 0.0_dp
                 end if
-                jd_tot = jd_tot + 1
-            end do HH
-        end do
+            end if
+        end do HH
 #if ldebug
     contains
         ! plots corrections

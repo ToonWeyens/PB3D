@@ -30,7 +30,7 @@ module vac_vars
     !!  - \c res:       <tt>(n_mod_X,n_mod_X)</tt>
     !!
     !! where \c  angle is the  angle along  the magnetic field  direction (which
-    !! refers to \c angle_1 in the discussion of \c grid_type)
+    !! refers to \c angle_1 in the discussion of grid_vars.grid_type)
     type, public :: vac_type
         integer :: style                                                        !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
         integer :: ctxt_HG                                                      !< context for H and G
