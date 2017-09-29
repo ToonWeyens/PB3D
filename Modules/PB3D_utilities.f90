@@ -158,19 +158,24 @@ contains
     !! to:
     !!  \f[ r_\text{max} = n - s + 1 + \mod(p-b-1,s). \f]
     !!
-    !! These limits and the strides are saved in \c par_id.
+    !! These limits  and the  strides are  saved in \c  par_id =  \f$\vec{r} =
+    !! \begin{pmatrix}r_\text{min}\\ r_\text{max}\end{pmatrix}\f$.
     !!
-    !! If  the optional  indices  \f$a\f$ and  \f$\f$b are  not  given they  are
+    !! If  the optional  indices  \f$a\f$ and  \f$b\f$ are  not  given they  are
     !! assumed to  be 1 and \f$n\f$,  with \f$n = 1+ks\f$,  which simplifies the
     !! equations to:
     !!  \f[\begin{aligned}
-    !!   r_\text{min} &\ p \\
-    !!   r_\text{max} &\ n-p+1 .
+    !!   r_\text{min} &= p \\
+    !!   r_\text{max} &= n-p+1 .
     !!  \end{aligned}\f]
     !!
-    !! Optionally, the  indices in the HDF5  arrays can also be  returned. These
-    !! are equal to \f$k-1\f$, where \f$k\f$ is the integer refered to above:
-    !!  \f[\texttt{par_id_mem} = 1 + \frac{a-1-p+\texttt{par_id}}{s}. \f]
+    !! Optionally,   the   indices   in   the    HDF5   arrays   can   also   be
+    !! returned    in   \c    par_id_mem   =    \f$\begin{pmatrix}R_\text{min}\\
+    !! R_\text{max}\end{pmatrix}\f$. These are equal to \f$k-1\f$, where \f$k\f$
+    !! is the integer refered to above:
+    !!  \f[\vec{R} = 1 + \frac{a-1-p+\vec{r}}{s}, \f]
+    !! where the addition  between a vector and  a scalar should be  seen as the
+    !! element-wise operation.
     function setup_par_id(grid,rich_lvl_max,rich_lvl_loc,tot_rich,par_lim,&
         &par_id_mem) result(par_id)
         use grid_vars, only: grid_type

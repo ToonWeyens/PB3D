@@ -430,6 +430,7 @@ contains
         end if
     contains
         ! formats the string, merging time information with the string.
+        !> \private
         subroutine format_str(lvl,str)
             ! input / output
             integer, intent(in) :: lvl                                          ! lvl of indentation
@@ -444,6 +445,7 @@ contains
         end subroutine format_str
         
         ! prints a string with time information
+        !> \private
         subroutine get_time_str(time_str)
             ! input / output
             character(len=*), intent(inout) :: time_str                         ! string with time information

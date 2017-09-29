@@ -51,6 +51,7 @@ LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 ##############################################################################
 PB3D_version := $(shell grep 'prog_version =' Modules/num_vars.f90 | cut --complement -d = -f 1 | sed -e 's/^ *//g' | cut -d'_' -f1)
 MIN_NM_X := $(shell grep 'min_nm_X =' Modules/X_vars.f90 | cut --complement -d = -f 1 | sed -e 's/^ *//g' | cut -d' ' -f1)
+DOXY_version := $(shell doxygen --version)
 
 
 ##############################################################################
@@ -207,12 +208,22 @@ doc:
 	@rm -f temp_user_vars
 	@echo 'PROJECT_NUMBER = [$(PB3D_version)]' >> temp_user_vars
 	@echo 'ALIASES += min_nm_X="$(MIN_NM_X)"' >> temp_user_vars
+	@echo 'ALIASES += doxy_version="$(DOXY_version)"' >> temp_user_vars
 	( cat Doxyfile temp_user_vars ) | doxygen -
 	@rm -f temp_user_vars
+	@./Documentation/Doxygen/clean_html_and_latex.sh
+
+doc_latex: doc
+	cd /home/toon/Documents/PB3D.github.io/Doxygen/latex && lualatex refman.tex && bibtex refman && lualatex refman.tex && lualatex refman.tex && mv refman.pdf ../../PB3D_manual.pdf
+	@echo "\n Created file 'PB3D_manual.pdf' in ~/Documents/PB3D.github.io/."
+	@echo "\n Warnings in refman.log file in ~/Documents/PB3D.github.io/Doxygen/latex:\n"
+	@echo "START OF WARNINGS"
+	cd /home/toon/Documents/PB3D.github.io/Doxygen/latex && grep -i 'warning' refman.log
+	@echo "END OF WARNINGS"
 
 tag:
 	git tag -f -a $(PB3D_version) -m "version $(PB3D_version)"
 
-finalize_version: clean tag doc PB3D POST
+finalize_version: clean PB3D POST doc_latex tag
 	@echo "\n Now upload to git using 'git commit -a' and copy the README changes.\n"
 	

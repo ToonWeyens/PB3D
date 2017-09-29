@@ -26,7 +26,7 @@ code {
 
 h1 {
 	padding: 15px 15px 10px 10px;
-    color: #000066;
+    color: #3D578C;
     font-family: 'Open Sans', sans-serif;
     font-weight: 900;
     font-size: x-large;
@@ -34,7 +34,7 @@ h1 {
 
 h2 {
 	padding: 5px 15px 5px 10px;
-    color: #000066;
+    color: #3D578C;
     font-family: 'Open Sans', sans-serif;
     font-weight: 700;
     font-size: large;
@@ -55,7 +55,7 @@ h3 {
 
 #projectname {
     font-family: 'Architects Daughter', sans-serif;
-    color: #000066;
+    color: #fff;
     font-size: 350%;
 	margin: -4px 0px;
 	padding: 2px 20px;
@@ -72,6 +72,7 @@ h3 {
     font-family: 'Lato', sans-serif;
 	margin: 2px 2px;
 	padding: 0px;
+    color: #9ddcff;
 }
 
 .sm-dox a, .sm-dox a:focus, .sm-dox a:hover, .sm-dox a:active {
@@ -82,12 +83,12 @@ h3 {
 }
 
 div.line {
-    font-family: 'Lato Mono', code;
+    font-family: 'Ubuntu Mono', code;
+    font-size: 100%;
 }
 
 span.lineno {
     font-family: 'Ubuntu Mono', code;
-    font-size: smaller;
 }
 
 /*div.toc {*/
@@ -102,6 +103,20 @@ div.toc h3 {
 div.toc li {
     font-family: 'Open Sans', sans-serif;
     font-size: smaller;
+}
+
+div.summary {
+    font-size: 75%;
+}
+
+div.title {
+    margin: 4px 2px;
+}
+
+div.fragment {
+    font-family: 'Ubuntu Mono', code;
+    font-weight: 400;
+    font-size: 100%;
 }
 
 .memtitle {
@@ -135,10 +150,19 @@ div.toc li {
     font-size: medium;
 }
 
-div.summary {
-    font-size: 75%;
+.caption {
+    margin-top: 10px;
+    font-family: 'Lato', sans-serif;
+    font-weight: 400;
 }
 
-div.title {
-    margin: 4px 2px;
+address {
+    font-family: 'Ubuntu Mono', code;
+	color: #000000;
 }
+
+#titlearea {
+  background-color: #3D578C;
+}
+/*background: #2e7bcf url(../../images/header-bg.jpg) 0 0 repeat-x;*/
+/*background: linear-gradient(#3D578C,#5DBCD2);*/

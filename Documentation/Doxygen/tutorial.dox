@@ -1,0 +1,73 @@
+/*! \page page_tutorial Tutorial
+    
+    \tableofcontents
+    
+    This page contains a hands-on tutorial to get you used to running PB3D to calculate 3-D ideal linear high-n MHD stability, and POST to post-process the results.
+    
+    Be sure to check out the \ref page_installation instruction first.
+    
+    \htmlonly
+    If at any point a routine is not clear, don't hesitate to consult the <a href="namespacemembers.html">Procedures and Variables</a> page.
+    \endhtmlonly
+    \latexonly
+    If at any point a routine is not clear, don't hesitate to consult the appendices.
+    \endlatexonly
+    
+    \section tutorial_eq Getting the Equilibrium
+    PB3D calculates stability of an equilibrium magnetic toroidal configuration.
+    It is written in a modular way to isolate this main task from the actual code that was used to obtain the equilibrium configuration, and the format that this code may use.
+    Currently, two formats are possible:
+        - 3-D VMEC \cite hirshman1983vmec.
+        - Axisymmetric HELENA \cite mikhailovskii1997optimization.
+
+    VMEC is a general 3-D code built on an interesting idea: The poloidal coordinate \f$\theta\f$ is deformed in such as a way to make the Fourier basis that is used to describe the cylindrical coordinates \f$R(s,\theta,\varphi)\f$ and \f$Z(s,\theta,\varphi)\f$ as narrow as possible, where \f$s\f$ is the flux label (\f$s=\sqrt{\Psi_\text{tor}/\Psi_{\text{tor,edge}}})\f$ and \f$\varphi\f$ is the regular cylindrical angle (\ref fnt1 "1"). This is done by introducing a deformation factor \f$\lambda(s,\theta,\varphi)\f$ defined so that the straight-field line coordinate \f$\theta_\text{F}\f$ is given by \f$\theta_\text{F} = \theta + \lambda \f$.
+
+    The fact that \f$R\f$, \f$Z\f$ and \f$\lambda\f$ are given as a double Fourier series in \f$\theta\f$ and \f$\zeta\f$ ensures that the angular derivatives can be done analytically. This property is used in PB3D. Apart from that, the flux functions that describe the profiles on the flux surfaces, the rotational transform \f$\iota(s)\f$ and pressure \f$p(s)\f$, are also returned.
+
+    For HELENA, the situation is different, as this code considers axisymmetric equilibria only.
+    Its output consists, aside from flux functions safety factor \f$q(\psi)\f$, presure \f$p(\psi)\f$ and toroidal covariant magnetic field \f$F(\psi)\f$, where \f$\psi=\Psi_\text{pol}/\Psi_{\text{pol,edge}}\f$ is the normalized poloidal angle, of a 2-D table for the upper metric factors \f$h^{\psi\psi}\f$ and \f$h^{\psi\theta}\f$ and the lower metric factor \f$g_{\zeta\zeta}\f$.
+    HELENA uses the same angular coordinates \f$\theta\f$ and \f$\zeta = -\varphi\f$ as PB3D (see \ref fnt1 "1").
+
+    \note The modular nature of PB3D enables easy integration of other equilibrium codes, if necessary.
+
+    To get the appropriate equilibrium code results into PB3D, it suffices to place the output files in the same directory in which PB3D is run:
+        - for HELENA, it is a text file, corresponding to the mapping file (<tt>fort.12</tt>),
+        - for VMEC, it is the so-called <tt>wout</tt> file,
+
+    and to specify their names as the second input argument, the first one being the file with user inputs (see \ref tutorial_inputs).
+
+    \note For VMEC, the <tt>wout</tt> file has to be in Netcdf format. The old <tt>.txt</tt> format is no longer supported.
+
+    In any case, if you forget how to run the PB3D (or POST) programs, you can always just type
+    \code ./PB3D --help \endcode
+    or even just
+    \code ./PB3D \endcode
+
+    \note The HELENA version used here outputs the variable \c ias to the mapping file on the first line, right after the variable \c js0.
+    Some versions only write the latter.
+    If yours is one of the above, the solution is to change
+    \code write(nmap,8) js0 \endcode
+    to 
+    \code write(nmap,8) js0, ias \endcode
+    in the subroutine \c mapping and recompile and re-run HELENA.
+
+    
+
+    \section tutorial_inputs Setting Up the Input File
+    Now that we have the equilibrium files, it is time to have a look at the input file.
+    
+    \includelineno example.input
+
+
+
+    \section tutorial_PB3D Running PB3D
+    
+
+
+
+    \section tutorial_POST Post-processing With POST
+    
+    \note
+        -# \anchor fnt1 The cylindrical angle \f$\varphi\f$ is often the inverse of the one used in nuclear fusion research, as it can lead to left-handed coordinate systems. In VMEC, it is opted to use it anyway, so it has a left-handed coordinate system. The poloidal angle is chosen to be anticlockwise if you look at a cross-section of the plasma that lies to the right of the \f$Z\f$-axis with the \f$Z\f$-axis pointing up, as in PB3D. In PB3D, however, the toroidal angle \f$\zeta = - \varphi\f$ is chosen as the inverse of the cylindrical angle, so it is right-handed.
+    
+*/

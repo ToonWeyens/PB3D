@@ -266,6 +266,7 @@ contains
         
         call lvl_ud(-1)
     contains
+        !> \private
         subroutine setup_x(x,description,x_lim,n_min)
             ! input / output
             real(dp), intent(inout), allocatable :: x(:)
@@ -311,6 +312,7 @@ contains
             x = x_lim(1) + (x+pi)/(2*pi)*(x_lim(2)-x_lim(1))
         end subroutine setup_x
         
+        !> \private
         subroutine plot_fft(x,f)
             ! input / output
             real(dp), intent(in) :: x(:)
@@ -482,6 +484,7 @@ contains
         call lvl_ud(-1)
     contains
         ! not very high quality random number between the limits
+        !> \private
         integer function random_int(lim) result(res)
             ! input / output
             integer, intent(in) :: lim(2)
@@ -775,6 +778,7 @@ contains
         ! clean up
         call dealloc_in()
     contains
+        !> \private
         integer function test_calc_RZL_VMEC() result(ierr)
             use num_vars, only: rank
             use grid_vars, only: n_r_eq, grid_type

@@ -66,12 +66,14 @@ module MPI_vars
         integer :: wu_tag                                                       !< wakeup tag
         logical :: blocking                                                     !< is a normal blocking process
     contains
+        !> initialize
         procedure :: init => init_lock                                          !< initialize
+        !> deallocate
         procedure :: dealloc => dealloc_lock                                    !< deallocate
     end type lock_type
     
     ! global variables
-    type(lock_type) :: HDF5_lock                                                ! HDF5 lock
+    type(lock_type) :: HDF5_lock                                                !< HDF5 lock
     
 contains
     !> Initializes a lock.

@@ -1649,7 +1649,7 @@ contains
             ! local variables
             integer :: data_i                                                   ! file number of data file
             real(dp), allocatable :: loc_data(:)                                ! one line of data
-            character(len=1) :: loc_data_char
+            character(len=1) :: loc_data_char                                   ! local first char
             
             
             ! open data file
@@ -1825,6 +1825,7 @@ contains
         end if
     contains
         ! returns relative or absolute difference between inputs A and B
+        !> \private
         function diff(A,B,dims,rel) result(C)
             ! local variables
             real(dp) :: max_diff = 1.E10                                        ! maximum absolute difference
@@ -1845,6 +1846,7 @@ contains
         end function diff
         
         ! returns limits and average value
+        !> \private
         subroutine stats(tot_dims,var,lim_lo,lim_hi,err_av)
             use MPI_utilities, only: get_ser_var
             

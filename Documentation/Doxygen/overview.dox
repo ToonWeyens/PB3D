@@ -6,11 +6,11 @@
     It is more complete than the documentation that can be found in \cite Weyens2017PB3D.
     
     \section overview_PB3D_flowchart PB3D flowchart
-    In \ref flowchart_fig "figure 1", the top-level flowchart of PB3D is shown:
-    <CENTER>
-        <img src='flowchart.svg' width=40% class="ImageBorder" />
-        Figure 1. \anchor flowchart_fig PB3D flowchart \cite Weyens2017PB3D
-    </CENTER>
+    In \ref flowchart_fig "figure 1", the top-level flowchart of PB3D is shown (adapted from \cite Weyens2017PB3D):
+    
+    \anchor flowchart_fig
+    \image html flowchart.svg "\b Figure \b 1 \b : basic PB3D flowchart" width=40%
+    \image latex flowchart.pdf "\b Figure \b 1 \b : basic PB3D flowchart" width=0.7\textwidth
     
     Roughly speaking, the main body of the code is taken up by four driver routines:
         - input driver

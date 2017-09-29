@@ -31,7 +31,8 @@ module X_vars
     integer, allocatable :: n_X(:,:)                                            !< \f$n\f$ for all modes, in total X grid
     integer, allocatable :: m_X(:,:)                                            !< \f$m\f$ for all modes, in total X grid
     integer, allocatable :: sec_X_ind(:,:)                                      !< index of \c m_X or \c n_X for all possible modes, in total X grid
-    real(dp) :: min_r_sol, max_r_sol                                            !< min. and max. normal range for pert.
+    real(dp) :: min_r_sol                                                       !< min. normal range for pert.
+    real(dp) :: max_r_sol                                                       !< max. normal range for pert.
 #if ldebug
     integer :: n_alloc_X_1s                                                     !< nr. of allocated <tt>X_1</tt>'s \ldebug
     integer :: n_alloc_X_2s                                                     !< nr. of allocated <tt>X_2</tt>'s \ldebug
@@ -55,7 +56,9 @@ module X_vars
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_X_1
+        !> deallocate
         procedure :: dealloc => dealloc_X_1
     end type
     
@@ -84,7 +87,9 @@ module X_vars
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_X_2
+        !> deallocate
         procedure :: dealloc => dealloc_X_2
     end type
     
@@ -288,11 +293,11 @@ contains
 #endif
     end subroutine init_X_2
     
-    ! Sets number of entries for tensorial perturbation variables.
+    !> Sets number of entries for tensorial perturbation variables.
     integer function set_nn_mod(sym,lim_sec_X) result(nn_mod)
         ! input / output
-        logical, intent(in) :: sym                                              ! whether the variable is symmetric
-        integer, intent(in), optional :: lim_sec_X(2,2)                         ! limits of m_X (pol flux) or n_X (tor flux) for both dimensions
+        logical, intent(in) :: sym                                              !< whether the variable is symmetric
+        integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -357,6 +362,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_X_1_final(X)
             ! input / output
             type(X_1_type), intent(out) :: X                                    ! equilibrium to be deallocated
@@ -402,6 +408,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_X_2_final(X)
             ! input / output
             type(X_2_type), intent(out) :: X                                    ! equilibrium to be deallocated

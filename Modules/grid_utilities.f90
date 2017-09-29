@@ -131,9 +131,10 @@ module grid_utilities
     !!
     !! This  system  of  equations  \c  D  can be  solved  by  relating  to  the
     !! Vandermonde matrix \c V
-    !!  \f[ D = \text{Diag}\left(\frac{1}{0!},\frac{1}{1!},...,\frac{1}{\texttt{n_loc}!}\right) V^T \f]
-    !! and  solving it  using the  specific formula's, so  that the  solution is
-    !! given by row number \c ord, multiplied by <tt>(ord!)</tt>.
+    !!  \f[ D = \text{Diag}\left(\frac{1}{0!},\frac{1}{1!},...,\frac{1}{m!}\right) V^T \f]
+    !! and solving  it using  the specific  formula's, so  that the  solution is
+    !! given  by  row  number  \c  ord,  multiplied  by  <tt>(ord!)</tt>.  Here,
+    !! \f$m\f$ = \c n_loc
     !!
     !! \return ierr
     interface setup_deriv_data
@@ -269,6 +270,8 @@ contains
                 zeta_E = zeta_F
         end select
     contains
+        ! VMEC version
+        !> \private
         integer function coord_F2E_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use num_ops, only: calc_zero_HH
@@ -349,6 +352,7 @@ contains
         ! function  that  returns  f  =  theta_F  -  theta_V  -  lambda  or  its
         ! derivatives in the poloidal direction.  It uses zeta_E (= zeta_V) from
         ! the parent function.
+        !> \private
         function fun_pol(dims,theta_E_in,dpol)
             character(*), parameter :: rout_name = 'fun_pol'
             
@@ -498,6 +502,8 @@ contains
                 zeta_F = zeta_E
         end select
     contains
+        ! VMEC version
+        !> \private
         integer function coord_E2F_VMEC() result(ierr)
             use num_vars, only: norm_disc_prec_eq
             use VMEC_utilities, only: fourier2real
@@ -963,6 +969,7 @@ contains
     contains
         ! Displays warning if no interpolation possible.
         ! Uses variable kd from parent procedure.
+        !> \private
         subroutine display_interp_warning(r)
             ! input / output
             real(dp), intent(in), optional :: r(:)                              ! normal positions for theta
@@ -1379,6 +1386,7 @@ contains
         end if
     contains
         ! VMEC version
+        !> \private
         integer function calc_XYZ_grid_VMEC(grid_eq,grid_XYZ,X,Y,Z,L,R) &
             &result(ierr)
             use num_vars, only: norm_disc_prec_eq
@@ -1476,6 +1484,7 @@ contains
         end function calc_XYZ_grid_VMEC
         
         ! HELENA version
+        !> \private
         integer function calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z,R) &
             &result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi

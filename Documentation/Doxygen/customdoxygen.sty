@@ -1,0 +1,20 @@
+% Font selection
+\usepackage{amssymb}
+\RequirePackage[no-math]{fontspec}
+\setsansfont[]{Lato}
+\setmainfont[]{Lato}
+\setmonofont{Ubuntu Mono}
+\renewcommand{\familydefault}{\sfdefault}
+\newfontface\SecFont[Scale=MatchLowercase]{MyriadPro-Bold}
+\newfontface\TitleFont{ArchitectsDaughter-Regular}
+\usepackage{sectsty}
+\allsectionsfont{%
+  \SecFont\selectfont%
+  \color{darkgray}%
+}
+
+% Appendix
+\usepackage[titletoc]{appendix}
+
+% Color
+\definecolor{stylecolor}{RGB}{61,87,140} 

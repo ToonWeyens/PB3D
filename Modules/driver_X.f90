@@ -227,8 +227,8 @@ contains
         call lvl_ud(-1)
     end function run_driver_X
     
-    ! part  0  of  driver X:  perturbation  grid as  well  as reconstruction  of
-    ! variables.
+    !> part  0 of  driver_x:  perturbation  grid as  well  as reconstruction  of
+    !! variables.
     integer function run_driver_X_0(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,&
         &eq_2,eq_2_B) result(ierr)
         use num_vars, only: eq_style, eq_job_nr, rich_restart_lvl, eq_jobs_lims
@@ -239,13 +239,13 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X_0'
         
         ! input / output
-        type(grid_type), intent(in), target :: grid_eq                          ! equilibrium grid
-        type(grid_type), intent(in), pointer :: grid_eq_B                       ! field-aligned equilibrium grid
-        type(grid_type), intent(inout), target :: grid_X                        ! perturbation grid
-        type(grid_type), intent(inout), pointer :: grid_X_B                     ! field-aligned perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     ! flux equilibrium variables
-        type(eq_2_type), intent(inout), target :: eq_2                          ! metric equilibrium variables
-        type(eq_2_type), intent(inout), pointer :: eq_2_B                       ! field-aligned metric equilibrium variables
+        type(grid_type), intent(in), target :: grid_eq                          !< equilibrium grid
+        type(grid_type), intent(in), pointer :: grid_eq_B                       !< field-aligned equilibrium grid
+        type(grid_type), intent(inout), target :: grid_X                        !< perturbation grid
+        type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables
+        type(eq_2_type), intent(inout), pointer :: eq_2_B                       !< field-aligned metric equilibrium variables
         
         ! local variables
         logical :: do_X_2_ops                                                   ! whether specific calculations for X_2 are necessary
@@ -333,7 +333,7 @@ contains
         call writo('Perturbation grid set up')
     end function run_driver_X_0
     
-    !> Part 1 of driver_X: Vectorial jobs.
+    !> Part 1 of driver_x: Vectorial jobs.
     !!
     !! \note  Everything is  done here  in the  original grids,  not necessarily
     !! field-aligned.
@@ -475,6 +475,7 @@ contains
 #endif
 #if ldebug
     contains
+        !> \private
         subroutine plot_info_for_VMEC_HEL_comparison(grid_X,X)
             use input_utilities, only: pause_prog, get_int, get_log
             use num_vars, only: use_pol_flux_F

@@ -53,7 +53,8 @@ module grid_vars
     type, public :: grid_type
         integer :: n(3)                                                         !< tot nr. of points
         integer :: loc_n_r                                                      !< local nr. of normal points
-        integer :: i_min, i_max                                                 !< min. and max. normal index of this process in full arrays
+        integer :: i_min                                                        !< min. normal index of this process in full arrays
+        integer :: i_max                                                        !< max. normal index of this process in full arrays
         logical :: divided                                                      !< whether the grid is split up among the processes
         real(dp), pointer :: r_E(:) => null()                                   !< E(quilibrium) coord. values at n points 
         real(dp), pointer :: r_F(:) => null()                                   !< F(lux) coord. values at n points 
@@ -68,7 +69,9 @@ module grid_vars
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_grid
+        !> deallocate
         procedure :: dealloc => dealloc_grid
     end type
     
@@ -82,11 +85,14 @@ module grid_vars
     !! in   grid_utilities    where   discretization    data   is    setup   and
     !! grid_utilities.apply_disc() where it is used.
     type, public :: disc_type
-        integer :: n, n_loc                                                     !< total and local size of discretization variables
+        integer :: n                                                            !< total size of discretization variables
+        integer :: n_loc                                                        !< local size of discretization variables
         real(dp), allocatable :: dat(:,:)                                       !< nonzero elements of matrix corresponding to discretization
         integer, allocatable :: id_start(:)                                     !< start index of data in \c dat
     contains
+        !> initialize
         procedure :: init => init_disc
+        !> deallocate
         procedure :: dealloc => dealloc_disc
     end type
     
@@ -258,6 +264,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_grid_final(grid)
             ! input / output
             type(grid_type), intent(out) :: grid                                ! grid to be deallocated
@@ -334,6 +341,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_disc_final(disc)
             ! input / output
             type(disc_type), intent(out) :: disc                                ! disc to be deallocated

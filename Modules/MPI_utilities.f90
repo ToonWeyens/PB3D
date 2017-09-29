@@ -323,17 +323,17 @@ contains
         CHCKERR(err_msg)
     end function get_ser_var_int
     
-    ! redistribute variables
+    !> Redistribute variables according to new limits.
     integer function redistribute_var(var,dis_var,lims,lims_dis) result(ierr)
         use num_vars, only: n_procs, rank
         
         character(*), parameter :: rout_name = 'redistribute_var'
         
         ! input / output
-        real(dp), intent(in) :: var(:)                                          ! parallel vector
-        real(dp), intent(inout) :: dis_var(:)                                   ! redistributed vector
-        integer, intent(in) :: lims(2)                                          ! indices of parallel vector
-        integer, intent(in) :: lims_dis(2)                                      ! indices of redistributed parallel vector
+        real(dp), intent(in) :: var(:)                                          !< parallel vector
+        real(dp), intent(inout) :: dis_var(:)                                   !< redistributed vector
+        integer, intent(in) :: lims(2)                                          !< indices of parallel vector
+        integer, intent(in) :: lims_dis(2)                                      !< indices of redistributed parallel vector
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -1187,7 +1187,7 @@ contains
     end function lock_wl_change
 
 #if ldebug
-    !! Returns the header for lock debug messages.
+    !> Returns the header for lock debug messages.
     !!
     !! \ldebug
     character(len=max_str_ln) function lock_header(lock_loc) result(header)

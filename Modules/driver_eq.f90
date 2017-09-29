@@ -397,6 +397,7 @@ contains
 #if ldebug
     contains
         ! Plots information for comparison between HELENA and VMEC.
+        !> \private
         subroutine plot_info_for_VMEC_HEL_comparision()
             use HELENA_vars, only: R_H, Z_H
             use input_utilities, only: pause_prog, get_int, get_log

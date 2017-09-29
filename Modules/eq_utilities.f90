@@ -356,29 +356,42 @@ contains
         end do
     end function calc_inv_met_arr_0D
 
-    ! Calculate  the metric  coefficients in  a  coordinate system  B using  the
-    ! metric coefficients in a coordinate system A and the transformation matrix
-    ! T_BA, general treatment using the formula described in [ADD REF TO DOC]
-    ! D_1^m1 D_2^m2 D_3^m3 g_B = sum_1 sum_2 sum_3 x
-    !   C1 C2 C3 D^(i1,j1,k1) T_BA D^(i2,j2,k2) G_A D^(i3,j3,k3) (T_BA)^T
-    ! with
-    !   kl = ml-il-jl
-    ! and with the sum_i  double summations, with the first one  going from 0 to
-    ! mi and the second one from m-j to 0
-    ! the coefficients Ci are calculated as mi!/(i!j!(m-i-j)!)
-    ! NOTE: It is assumed that the  lower order derivatives have been calculated
-    !       already. If not, the results will be incorrect. This is not checked!
+    !> Calculate  the metric coefficients in  a coordinate system B  ! using the
+    !metric  coefficients in  a coordinate  system  A and  the !  transformation
+    !matrix \f$\overline{\text{T}}_\text{B}^\text{A}\f$.
+    !!
+    !! This is  based on the  general treatment  using the formula  described in
+    !! \cite Weyens3D :
+    !!  \f[ \vec{D}_1^{m_1} \vec{D}_2^{m_2} \vec{D}_3^{m_3} g_\text{B}
+    !!      = \sum_1 \sum_2 \sum_3 C_1 C_2 C_3 \vec{D}^{i_1,j_1,k_1}
+    !!      \overline{\text{T}}_\text{B}^\text{A}
+    !!      \vec{D}^{i_2,j_2,k_2} g_\text{A} \vec{D}^{i_3,j_3,k_3}
+    !!      \left(\overline{\text{T}}_\text{B}^\text{A}\right)^T \ ,
+    !!  \f]
+    !! with
+    !!  \f[ k_l = m_l-i_l-j_l \ , \f]
+    !! and with  the \f$\sum_i\f$  double summations, with  the first  one going
+    !! from \f$0\f$ to \f$m_i\f$ and the second one from \f$m_j\f$ to \f$0\f$.
+    !! 
+    !! The coefficients \f$C_l\f$ are calculated as
+    !!  \f[
+    !!      C_l = \left(\begin{array}{c}m_l\\i_l,j_l,k_l\end{array}\right)
+    !!      \equiv \frac{m_l!}{i_l!j_l!(m_l-i_l-j_l)!} \ .
+    !!  \f]
+    !!
+    !! \note It is assumed that the lower order derivatives have been calculated
+    !! already. If not, the results will be incorrect. This is not checked.
     integer function calc_g(g_A,T_BA,g_B,deriv,max_deriv) result(ierr)
         use num_utilities, only: calc_mult, conv_mat
         
         character(*), parameter :: rout_name = 'calc_g'
         
         ! input / output
-        real(dp), intent(in) :: g_A(:,:,:,:,0:,0:,0:)
-        real(dp), intent(in) :: T_BA(:,:,:,:,0:,0:,0:)
-        real(dp), intent(inout) :: g_B(:,:,:,:,0:,0:,0:)
-        integer, intent(in) :: deriv(3)
-        integer, intent(in) :: max_deriv
+        real(dp), intent(in) :: g_A(:,:,:,:,0:,0:,0:)                           !< \f$g_\text{A}\f$
+        real(dp), intent(in) :: T_BA(:,:,:,:,0:,0:,0:)                          !< \f$\overline{\text{T}}_\text{B}^\text{A}\f$
+        real(dp), intent(inout) :: g_B(:,:,:,:,0:,0:,0:)                        !< \f$g_\text{B}\f$
+        integer, intent(in) :: deriv(3)                                         !< derivatives
+        integer, intent(in) :: max_deriv                                        !< maximum derivative
         
         ! local variables
         integer :: i1, j1, i2, j2, i3, j3, k1, k2, k3                           ! counters
@@ -454,6 +467,7 @@ contains
         !   C(j,i) = C(j,i+1) * (i+1)/(m-i-j)
         ! - If  it is  the last  value in  the current  i-summation, then  it is
         ! divided by 2 if (m-j) is even (see [ADD REF])
+        !> \private
         subroutine calc_C(m,j,C)
             ! input / output
             integer, intent(in) :: m, j

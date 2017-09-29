@@ -53,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 1.94_dp                               !< version number
+    real(dp), parameter :: prog_version = 1.95_dp                               !< version number
     real(dp), parameter :: min_PB3D_version = 1.89_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
@@ -149,9 +149,12 @@ module num_vars
     character(len=4) :: data_dir = 'Data'                                       !< directory where to save data for plots
     integer :: n_theta_plot                                                     !< nr. of poloidal points in plot
     integer :: n_zeta_plot                                                      !< nr. of toroidal points in plot
-    real(dp) :: min_theta_plot, max_theta_plot                                  !< min. and max. of \c theta_plot
-    real(dp) :: min_zeta_plot, max_zeta_plot                                    !< min. and max. of \c zeta_plot
-    real(dp) :: min_r_plot, max_r_plot                                          !< min. and max. of \c r_plot
+    real(dp) :: min_theta_plot                                                  !< min. of \c theta_plot
+    real(dp) :: max_theta_plot                                                  !< max. of \c theta_plot
+    real(dp) :: min_zeta_plot                                                   !< min. of \c zeta_plot
+    real(dp) :: max_zeta_plot                                                   !< max. of \c zeta_plot
+    real(dp) :: min_r_plot                                                      !< min. of \c r_plot
+    real(dp) :: max_r_plot                                                      !< max. of \c r_plot
     integer :: plot_grid_style                                                  !< style for POST plot grid (0: 3-D plots, 1: slab plots, 2: slab plots with folding, 3: straight cylinder))
     integer :: n_sol_requested                                                  !< how many solutions requested
     integer :: n_sol_plotted(4)                                                 !< how many solutions to be plot (first unstable, last unstable, first stable, last stable)

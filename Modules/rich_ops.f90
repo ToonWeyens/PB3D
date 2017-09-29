@@ -260,6 +260,7 @@ contains
     contains
         ! Draws  the   Eigenvalues  for  the  different   levels  of  Richardson
         ! extrapolation as a function of the number of parallel points.
+        !> \private
         subroutine draw_sol_val_rich()
             use num_vars, only: n_sol_requested
             
@@ -408,6 +409,7 @@ contains
     contains
         ! Decides whether  a guess should be used in  a possible next Richardson
         ! level.
+        !> \private
         subroutine set_guess()
             ! local variables
             real(dp), parameter :: tol = 5._dp                                  ! tolerance for increase of error

@@ -22,7 +22,7 @@ module sol_utilities
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_XUQ_arr = .false.                                     ! plot debug information for calc_XUQ_arr \ldebug
+    logical :: debug_calc_XUQ_arr = .false.                                     !< plot debug information for calc_XUQ_arr \ldebug
 #endif
     
     ! interfaces

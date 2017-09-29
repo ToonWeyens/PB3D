@@ -38,7 +38,9 @@ module sol_vars
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_sol
+        !> deallocate
         procedure :: dealloc => dealloc_sol
     end type
     
@@ -138,6 +140,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_sol_final(sol)
             ! input / output
             type(sol_type), intent(out) :: sol                                      ! solution to be deallocated

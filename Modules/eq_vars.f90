@@ -76,7 +76,9 @@ module eq_vars
         real(dp) :: estim_mem_usage(2)                                          !< expected memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_eq_1
+        !> deallocate
         procedure :: dealloc => dealloc_eq_1
     end type
     
@@ -140,7 +142,9 @@ module eq_vars
         real(dp) :: estim_mem_usage(2)                                          !< expected memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_eq_2
+        !> deallocate
         procedure :: dealloc => dealloc_eq_2
     end type
 
@@ -484,6 +488,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_eq_1_final(eq)
             ! input / output
             type(eq_1_type), intent(out) :: eq                                  ! equilibrium to be deallocated
@@ -529,6 +534,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_eq_2_final(eq)
             ! input / output
             type(eq_2_type), intent(out) :: eq                                  ! equilibrium to be deallocated

@@ -666,6 +666,7 @@ contains
         ! indices in g_ij  and h^ij. Furthermore, since  the metric coefficients
         ! are for  the Flux coordinate system,  they need to be  adapted for the
         ! secular coordinate theta or phi.
+        !> \private
         integer function interp_var_3D_real(var,var_int,sym_type) result(ierr)  ! 3D_real version, separate output variable
             ! input / output
             real(dp), intent(in) :: var(1:,1:,1:)                               ! variable to be interpolated
@@ -713,6 +714,7 @@ contains
                 end do
             end do
         end function interp_var_3D_real
+        !> \private
         integer function interp_var_3D_real_ow(var,sym_type) result(ierr)       ! 3D_real version, overwriting variable
             ! input / output
             real(dp), intent(inout), allocatable :: var(:,:,:)                  ! variable to be interpolated
@@ -745,6 +747,7 @@ contains
             ! overwrite variable
             var = var_3D_loc
         end function interp_var_3D_real_ow
+        !> \private
         integer function interp_var_4D_complex(var,var_int,sym_type) &
             &result(ierr)                                                       ! 4D_complex version, separate output variable
             
@@ -796,6 +799,7 @@ contains
                 end do
             end do
         end function interp_var_4D_complex
+        !> \private
         integer function interp_var_4D_complex_ow(var,sym_type) result(ierr)    ! 4D_complex version, overwriting variable
             ! input / output
             complex(dp), intent(inout), allocatable :: var(:,:,:,:)             ! variable to be interpolated
@@ -830,6 +834,7 @@ contains
             ! overwrite variable
             var = var_4D_loc
         end function interp_var_4D_complex_ow
+        !> \private
         integer function interp_var_6D_real(var,var_int,sym_type) result(ierr)  ! 6D_real version, separate output variable
             ! input / output
             real(dp), intent(in) :: var(1:,1:,1:,0:,0:,0:)                      ! variable to be interpolated
@@ -889,6 +894,7 @@ contains
                 end do
             end do
         end function interp_var_6D_real
+        !> \private
         integer function interp_var_6D_real_ow(var,sym_type) result(ierr)       ! 6D_real version, overwriting variable
             ! input / output
             real(dp), intent(inout), allocatable :: var(:,:,:,:,:,:)            ! variable to be interpolated
@@ -926,6 +932,7 @@ contains
             ! overwrite variable
             var = var_6D_loc
         end function interp_var_6D_real_ow
+        !> \private
         integer function interp_var_7D_real(var,var_int,sym_type) result(ierr)  ! 7D_real version, separate output variable
             use num_utilities, only: calc_mult, c, add_arr_mult, derivs
             use num_vars, only: max_deriv
@@ -1145,6 +1152,7 @@ contains
                 end if
             end if
         end function interp_var_7D_real
+        !> \private
         integer function interp_var_7D_real_ow(var,sym_type) result(ierr)       ! 7D_real version, overwriting variable
             
             ! input / output

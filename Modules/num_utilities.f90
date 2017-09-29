@@ -1875,22 +1875,25 @@ contains
     !!
     !! etc...
     !!
-    !! By  then   defining  <tt>n_dims   =  size(deriv)</tt>,   <tt>tot_deriv  =
-    !! sum(deriv)</tt>and  \c   id_max  as  the   index  of  the   last  nonzero
-    !! element  in deriv  and extending  deriv towards  the left  by considering
-    !! <tt>deriv(0)=0</tt>,  the  following  formula  can  be  deduced  for  the
+    !! By then  defining \f$d\f$ as  the vector  of derivatives, \f$n\f$  as the
+    !! size  of  \f$d\f$, \f$D  =  \sum_i^n  d(i)\f$  the  total degree  of  the
+    !! derivative,  and \f$I\f$  as the  index of  the last  nonzero element  in
+    !! \f$d\f$, and extending \f$d\f$ to the left by considering \f$d(0)\f$ = 0,
+    !! the following formula can be can be deduced for the displacements in this
+    !! table with respect to index 1:
+    !! 
     !! displacements in this table with respect to index 1:
-    !!  \f[\sum_{jd=0}^{\texttt{id_max}-1} \sum_{id=0}^
-    !!      {\texttt{tot_deriv}-(\texttt{deriv}(0)+...+\texttt{deriv}(jd))-1}
-    !!      \left(\begin{array}{c}\texttt{n_dims}-jd+id-1\\id\end{array}\right) ,
+    !!  \f[\sum_{j=0}^{I-1} \sum_{i=0}^
+    !!      {D-(d(0)+...+d(j))-1}
+    !!      \left(\begin{array}{c}n-j+i-1\\i\end{array}\right) ,
     !!  \f]
     !! making use of the binomial coefficients
     !!  \f[\left(\begin{array}{c}a\\b\end{array}\right) = \frac{a!}{b!(a-b)!}\f]
     !!
     !! It can be
-    !! seen that each of the terms in  the summation in \c jd corresponds to the
-    !! displacement in dimension  \c jd and the binomial  coefficient comes from
-    !! the classic stars and bars problem.
+    !! seen that  each of the terms  in the summation in  \f$j\f$ corresponds to
+    !! the displacement in dimension \f$j\f$  and the binomial coefficient comes
+    !! from the classic stars and bars problem.
     integer function calc_derivs_1D_id(deriv,dims) result(res)
         ! input / output
         integer, intent(in) :: deriv(:)                                         !< derivatives
@@ -1990,11 +1993,12 @@ contains
             res = 0
         end if
     end subroutine calc_derivs_of_order
+    !> Returns derivatives of certain order.
     function derivs(order,dims) result(res)
         ! input / output
-        integer, intent(in) :: order                                            ! order of derivative
-        integer, intent(in), optional :: dims                                   ! nr. of dimensions
-        integer, allocatable :: res(:,:)                                        ! array of all unique derivatives
+        integer, intent(in) :: order                                            !< order of derivative
+        integer, intent(in), optional :: dims                                   !< nr. of dimensions
+        integer, allocatable :: res(:,:)                                        !< array of all unique derivatives
         
         ! call the subroutine
         call calc_derivs_of_order(res,order,dims)
@@ -2175,20 +2179,22 @@ contains
     !!
     !! The result  returned in <tt>coeff(1:nr)</tt> are used in
     !!  \f[\frac{d f}{d x} =
-    !!      \sum_{j=1}^\texttt{nr} \texttt{coeff}(j) f(\texttt{ind}+j) . \f]
+    !!      \sum_{j=1}^n c(j) f(i+j) . \f]
+    !!
+    !! where \f$i\f$ = \c ind, \f$n\f$ = \c nr and \f$c\f$ = \c coeff
     !!
     !! \note They need to be divided by the step size before usage.
     !!
     !! Examples:
     !!  - symmetric finite differences for derivative \c deriv of order \c ord:
-    !!      - \f$\texttt{nr_2} =
-    !!          \text{ceiling}(\frac{\texttt{ord}+\texttt{deriv}}{2})\f$
+    !!      - \f$m = \text{ceiling}(\frac{p+d}{2})\f$
     !!          to guarantee the order
-    !!      - \f$\texttt{nr}   = 1+2\texttt{nr_2}\f$
-    !!      - \f$\texttt{ind}  = 1+\texttt{nr_2}\f$
+    !!      - \f$n   = 1+2m\f$
+    !!      - \f$i  = 1+m\f$
     !!  - left finite differences for derivative \c deriv of order \c ord:
-    !!      - \f$\texttt{nr}   = 1+\texttt{deriv}+\texttt{ord} \f$
-    !!      - \f$\texttt{ind}  = \texttt{n_r} \f$
+    !!      - \f$n   = 1+d+p \f$
+    !!      - \f$i  = m\f$
+    !! where \f$p\f$ = \c ord, \f$d\f$ = \c deriv and \f$m\f$ = \c nr_2.
     !!
     !! \return ierr
     integer function calc_coeff_fin_diff(deriv,nr,ind,coeff) result(ierr)
@@ -2256,18 +2262,15 @@ contains
     !!
     !! Their size is by default taken to be 3:
     !!  \f[
-    !!      \left(\begin{array}{c}
+    !!      \left(\begin{array}{ccc}
     !!          1 & 4 & 7 \\ 2 & 5 & 8 \\ 3 & 6 & 9
     !!      \end{array}\right)
     !!      \ \text{or} \
-    !!      \left(\begin{array}{c}
+    !!      \left(\begin{array}{ccc}
     !!          1 &   &   \\ 2 & 4 &   \\ 3 & 5 & 6
     !!      \end{array}\right) \
     !!      \text{for symmetic matrices} \ .
     !!  \f]
-    !!   (1 4 7)      (1    )
-    !!   (2 5 8)  or  (2 4  ) for symmetric matrices.
-    !!   (3 6 9)      (3 5 6)
     !! Optionally, this can be changed using \c n.
     !!
     !! The value of \f$c\f$ is then given by
@@ -2284,16 +2287,18 @@ contains
     !! corresponding to  the left,  above and  below parts  with respect  to the
     !! submatrix:
     !!  - left:
-    !!      \f[\sum_{i=1}^{\texttt{min}(2)-1} n-i+1 =
-    !!          (\text{min}(2)-1) (n+1-\frac{\text{min}(2)}{2}) \f]
+    !!      \f[\sum_{i=1}^{m(2)-1} n-i+1 =
+    !!          (m(2)-1) (n+1-\frac{m(2)}{2}) \f]
     !!  - above (if positive):
-    !!      \f[\sum_{i=1}^j \left(\texttt{min}(1)-\texttt{min}(2)+1-i\right) =
-    !!          j \left(\texttt{min}(1)-\texttt{min}(2)+\frac{1}{2} -
+    !!      \f[\sum_{i=1}^j \left(m(1)-m(2)+1-i\right) =
+    !!          j \left(m(1)-m(2)+\frac{1}{2} -
     !!          \frac{j^*}{2}\right) \ , \ \text{with} \ j^* =
-    !!          \text{min}\left(0,j,\texttt{min}(1)-\texttt{min}(2)+1\right) \f]
+    !!          \text{min}\left(0,j,m(1)-m(2)+1\right) \f]
     !!  - below:
-    !!      \f[\sum_{i=1}^{j-1} n-\texttt{max}(1) =
-    !!          \left(n-\texttt{max}(1)\right) \left(j-1\right) \f]
+    !!      \f[\sum_{i=1}^{j-1} n-M(1) =
+    !!          \left(n-M(1)\right) \left(j-1\right) \f]
+    !!
+    !! where \f$m\f$ = \c min and \f$M\f$ = \c max.
     !!
     !! \note
     !!  -# The  submatrix version is  not fast, so  results should be  saved and

@@ -3,13 +3,18 @@
 \documentclass[x11names,crop,tikz]{standalone}% 'crop' is the default for v1.0, before it was 'preview'
 \usepackage{tikz}
 \usetikzlibrary{shapes,arrows,chains}
+\RequirePackage[no-math]{fontspec}
+    \defaultfontfeatures{Ligatures=TeX}
+    \setsansfont{Lato}
+    \renewcommand{\familydefault}{\sfdefault}
 \begin{document}
 
 % Adapted from http://www.texample.net/tikz/examples/flexible-flow-chart/
 % =================================================
 % Set up a few colours
 \colorlet{lcfree}{Green3}
-\colorlet{lcnorm}{Blue3}
+%\colorlet{lcnorm}{Blue3}
+\definecolor{lcnorm}{HTML}{3D578C} 
 \colorlet{lccong}{Red3}
 % -------------------------------------------------
 % Set up a new layer for the debugging marks, and make sure it is on
@@ -111,7 +116,7 @@
   \draw [*->,lcnorm] (t0.east) -- (p2.west);
 \path (t0.west) to node [near start, yshift=1em] {\textit{R.A.}} (p5.east); 
   \draw [o->,lcnorm] (t0.west) -- (p5.east);
-\path (p2.south) to node [xshift=2.1em] {\textit{par. jobs}} (p3.north); 
+\path (p2.south) to node [xshift=2.1em] {\textit{eq. jobs}} (p3.north); 
   \draw [<->,lccong] (p2.south) -- (p3.north);
 % \path (p1.south) to node [near start, yshift=1em] {} (p2.north); 
   \draw [->,lcnorm] (p3.west) -- (p4.east);

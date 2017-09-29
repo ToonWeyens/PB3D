@@ -552,8 +552,9 @@ contains
             end if
         end if
     contains
-        ! check whether the  dimensions provided are a  valid parallel indicator
-        ! or not
+        ! Check whether the  dimensions provided are a  valid parallel indicator
+        ! or not.
+        !> \private
         integer function check_for_parallel_3D(dim_tot,loc_dim_out,&
             &loc_offset_out,loc_dim_in,loc_offset_in) result(ierr)
             character(*), parameter :: rout_name = 'check_for_parallel_3D'
@@ -1451,7 +1452,8 @@ contains
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
     contains
-        ! detects whether individual print
+        ! Detects whether individual print.
+        !> \private
         subroutine detect_ind_print(ind_print)
             ! input / output
             logical, intent(inout) :: ind_print                                 ! whether an individual or collective print

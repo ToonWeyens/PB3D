@@ -47,7 +47,9 @@ module vac_vars
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif
     contains
+        !> initialize
         procedure :: init => init_vac
+        !> deallocate
         procedure :: dealloc => dealloc_vac
     end type
     
@@ -186,6 +188,7 @@ contains
 #endif
     contains
         ! Note: intent(out) automatically deallocates the variable
+        !> \private
         subroutine dealloc_vac_final(vac)
             ! input / output
             type(vac_type), intent(out) :: vac                                  ! vacuum variables to be deallocated

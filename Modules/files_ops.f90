@@ -297,6 +297,7 @@ contains
         end if
     contains
         ! this subroutine scans for chosen options
+        !> \private
         subroutine read_opts
 #if ( lwith_intel && !lwith_gnu)
             use IFPORT
@@ -384,6 +385,7 @@ contains
         end subroutine read_opts
         
         ! apply chosen options for PB3D
+        !> \private
         subroutine apply_opt_PB3D(opt_nr,arg_nr)                                ! PB3D version
             use num_vars, only: n_procs
             
@@ -445,6 +447,7 @@ contains
         end subroutine apply_opt_PB3D
         
         ! apply chosen options for POST
+        !> \private
         subroutine apply_opt_POST(opt_nr,arg_nr)                                ! POST version
             use num_vars, only: RZ_0
             

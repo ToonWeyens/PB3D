@@ -1047,3 +1047,12 @@ ITER Organization
 * References to interfaces and custom types are now correctly displayed, prepended by the module name.
 * Added documentation for outputs and  general code structure and updated the main page.
 * Changed the Doxygen documentation style and looks.
+
+## 1.95:
+* Fixed some formatting for code fragments.
+* Changed 'examples' to 'tutorial' and moved the automated page of examples to files.
+* Changed colorscheme and other design tweaks.
+* Removed latex mistakes so that it compiles again.
+* Polished up the latex files so that we now have a manual.
+* Introduced 'clean_html_and_latex.sh' that does this.
+* 'create_VMEC_input' is now a public routine, which makes more sense.

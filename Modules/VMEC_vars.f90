@@ -47,7 +47,8 @@ module VMEC_vars
 #if ldebug
     real(dp), allocatable :: B_V_sub_c(:,:,:)                                   !< Coeff. of B_i in sine series (r,theta,phi) (FM) \ldebug
     real(dp), allocatable :: B_V_sub_s(:,:,:)                                   !< Coeff. of B_i in cosine series (r,theta,phi) (FM) \ldebug
-    real(dp), allocatable :: B_V_c(:,:), B_V_s(:,:)                             !< Coeff. of magnitude of B (HM and FM) \ldebug
+    real(dp), allocatable :: B_V_c(:,:)                                         !< Coeff. of magnitude of B in sine series (HM and FM) \ldebug
+    real(dp), allocatable :: B_V_s(:,:)                                         !< Coeff. of magnitude of B in cosine series (HM and FM) \ldebug
 #endif
 contains
     !> Deallocates VMEC quantities that are not used anymore.

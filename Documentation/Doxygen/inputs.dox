@@ -12,7 +12,7 @@
     Some general remarks:
         - There is some fault detection built into the routines. These distinguish between minor faults, that trigger a warning but do not stop execution, and major faults, that trigger an error that stop execution.
             \see See writo().
-        - The data type \c real refers to double precision real, defined by \c dp in num_vars. For integers, standard precision is used.
+        - The data type \c real refers to double precision real, defined by num_vars.dp. For integers, standard precision is used.
         - There are hard-coded \c min_tol and \c max_tol in read_input_opts(), which are used to limit the tolerances \c tol_rich, \c tol_zero and \c tol_SLEPC. This could be changed if needed.
         - If <tt>eq_style = 2</tt> (i.e. HELENA), the total maximum memory available must be enough to perform the first Richardson level in a single equilibrium job (see \ref page_overview).
     
@@ -195,12 +195,8 @@
         <td> \c tol_zero </td><td> tolerance for zero finding </td><td> \f$1^{-10}\f$ </td><td>\c real</td><td> (\ref fni9 "9")</td>
     </tr>
     <tr>
-        <td> \c relax_fac_HH </td><td> relaxation factor for num_ops.calc_zero_hh() </td><td> \f$0.5\f$ </td><td>\c real</td><td> (\ref fni9 "9")</td>
+        <td> \c max_nr_backtracks_HH </td><td> maximum number of times the correction can be relaxed by half in a backtrack for the Householder methods </td><td>\f$20\f$ </td><td>\c int</td><td> (\ref fni9 "9")</td>
     </tr>
-    <tr>
-        <td> \c max_nr_tries_HH </td><td> maximum number of times the relaxation factor in num_ops.calc_zero_hh() is halved if no convergence </td><td> \f$6\f$ </td><td>\c int</td><td> (\ref fni9 "9")</td>
-    </tr>
-    
     <tr>
         <td colspan="5" bgcolor=LightGray align="center"> <b>concerning runtime</b>  </td>
     </tr>
@@ -447,10 +443,7 @@
         <td> \c tol_zero </td><td> tolerance for zero finding </td><td> \f$1^{-10}\f$ </td><td>\c real</td><td> (\ref fni9 "9")</td>
     </tr>
     <tr>
-        <td> \c relax_fac_HH </td><td> relaxation factor for num_ops.calc_zero_hh() </td><td> \f$0.5\f$ </td><td>\c real</td><td> (\ref fni9 "9")</td>
-    </tr>
-    <tr>
-        <td> \c max_nr_tries_HH </td><td> maximum number of times the relaxation factor in num_ops.calc_zero_hh() is halved if no convergence </td><td> \f$6\f$ </td><td>\c int</td><td> (\ref fni9 "9")</td>
+        <td> \c max_nr_backtracks_HH </td><td> maximum number of times the correction can be relaxed by half in a backtrack for the Householder methods </td><td>\f$20\f$ </td><td>\c int</td><td> (\ref fni9 "9")</td>
     </tr>
     
     <tr>
@@ -521,7 +514,7 @@
         -# \anchor fni6 Normalization constants, with exception of \c rho_0 are set in the routine calc_normalization_const().
         -# \anchor fni7 In store_results(), it is decided whether the eigenvalue is physical or not, by considering the ratio between real and imaginary part.
         -# \anchor fni8 This needs to be between 1 and the maximum level that was obtained in a previous solution, plus 1. For technical HDF5 reasons, if Richardson restart is used, the same input fil parameters should be used for \c max_tot_mem and the same number of processes should be used. Furthermore, it should not exceed \c max_it_rich.
-        -# \anchor fni9 For the case of num_ops.calc_zero_hh(), if after \c max_it_zero iterations \c tol_zero has not been reached, the relaxation factor is halved. This is done \c max_nr_tries_HH times.
+        -# \anchor fni9 For the case of num_ops.calc_zero_hh(), at every iteration it is checked whether the correction approximation is better than the original one. If it is not, the correction is relaxed by a factor half. This is done \c max_nr_backtracks_HH times.
         -# \anchor fni10 See set_bc().
         -# \anchor fni11 See calc_normalization_const().
         -# \anchor fni12 See solve_ev_system_slepc()

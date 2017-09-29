@@ -47,8 +47,10 @@ module HDF5_vars
     !! storage.
     type, public :: var_1D_type
         real(dp), allocatable :: p(:)                                           !< 1D equivalent of data of variable
-        integer, allocatable :: tot_i_min(:), tot_i_max(:)                      !< total min. and max. of indices of variable
-        integer, allocatable :: loc_i_min(:), loc_i_max(:)                      !< group min. and max. of indices of variable
+        integer, allocatable :: tot_i_min(:)                                    !< total min.of indices of variable
+        integer, allocatable :: tot_i_max(:)                                    !< total max.of indices of variable
+        integer, allocatable :: loc_i_min(:)                                    !< group min.of indices of variable
+        integer, allocatable :: loc_i_max(:)                                    !< group max.of indices of variable
         character(len=max_str_ln) :: var_name                                   !< name of variable
     end type var_1D_type
     

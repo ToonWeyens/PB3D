@@ -109,6 +109,7 @@ contains
         ! calculated in 'eq_limits'. Furthermore, the input variables have to be
         ! tabulated on the full grid provided by the equilibrium code to be able
         ! to be used in PB3D and POST.
+        !> \private
         integer function calc_norm_range_PB3D_in(in_limits) &
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
@@ -224,6 +225,7 @@ contains
         ! exchange of  data from each process  to each process so  that they all
         ! have the tightest  possible fit of data of  the corresponding solution
         ! limits.
+        !> \private
         subroutine calc_norm_range_PB3D_eq(eq_limits)                           ! PB3D version for equilibrium grid
             use num_vars, only: n_procs, rank, norm_disc_prec_eq
             use grid_vars, only: n_r_eq
@@ -245,6 +247,7 @@ contains
         
         ! The normal range is determined by duplicating the normal range for the
         ! solution.
+        !> \private
         integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
             &result(ierr)                                                       ! PB3D version for perturbation grid
             use num_vars, only: n_procs
@@ -269,6 +272,7 @@ contains
         !   vector on the local processor.
         ! By default, this routine uses "sol_n_procs" processes, but this can be
         ! overruled.
+        !> \private
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol,n_procs) &
             &result(ierr)                                                       ! PB3D version for solution grid
             use num_vars, only: sol_n_procs, rank, norm_disc_prec_sol
@@ -331,6 +335,7 @@ contains
         ! The normal range is determined by simply dividing a possible subset of
         ! the solution range, indicated by min_r_plot and max_r_sol, including a
         ! ghost range and getting a bounding equilibrium range.
+        !> \private
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_sol)                                                           ! POST version
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
@@ -1096,6 +1101,7 @@ contains
         call writo('Done plotting magnetic field and flux surfaces')
     contains
         ! get pointer to full plotting variables X, Y and Z
+        !> \private
         subroutine get_full_XYZ(X,Y,Z,X_tot,Y_tot,Z_tot,merge_name)
             use MPI_utilities, only: get_ser_var
             
@@ -1144,6 +1150,7 @@ contains
         end subroutine get_full_XYZ
         
         ! Plot with HDF5
+        !> \private
         integer function magn_grid_plot_HDF5(X_1,X_2,Y_1,Y_2,Z_1,Z_2,&
             &anim_name) result(ierr)
             use HDF5_ops, only: open_HDF5_file, add_HDF5_item, &

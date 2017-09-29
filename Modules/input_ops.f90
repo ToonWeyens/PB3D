@@ -234,6 +234,8 @@ contains
             call writo('Input values set')
         end if
     contains
+        ! PB3D version
+        !> \private
         subroutine default_input_PB3D
             !use num_vars, only: use_pol_flux_E
             
@@ -306,6 +308,8 @@ contains
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
         end subroutine default_input_PB3D
         
+        ! POST version
+        !> \private
         subroutine default_input_POST()
             ! concerning finding zeros
             max_it_zero = 200                                                   ! more iterations than PB3D
@@ -335,6 +339,7 @@ contains
         ! Checks  whether the  variables  concerning MPI  are chosen  correctly:
         !   sol_n_procs cannot be greater than n_procs. If it is lower than 1,
         !   the maximum amount of n_procs is used.
+        !> \private
         subroutine adapt_MPI()
             use num_vars, only: n_procs
             
@@ -355,6 +360,7 @@ contains
         !   matrix_SLEPC_style has to be 0 or 1,
         !   max_it_SLEPC has to be at least 1,
         !   magnetic integral style has to be 1..2.
+        !> \private
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
             
@@ -394,6 +400,7 @@ contains
         ! Checks whether the variables concerning run-time are chosen correctly:
         !    POST_style  should be  1  (plotting  on extended  plot  grid) or  2
         !    (plotting on field-aligned grid also used in PB3D).
+        !> \private
         integer function adapt_run_POST() result(ierr)
             character(*), parameter :: rout_name = 'adapt_run_POST'
             
@@ -412,6 +419,7 @@ contains
         !   PB3D_rich_lvl can be at most the maximally found level
         !   POST_output_full is true if non-flux quantities are plot
         !   POST_output_sol is true if solution quantities are plot
+        !> \private
         integer function adapt_inoutput_POST() result(ierr)
             character(*), parameter :: rout_name = 'adapt_inoutput_POST'
             
@@ -465,6 +473,7 @@ contains
         !   n_sol_requested has to be at least one,
         !   rich_restart_lvl can  be at most  one more than the  maximally found
         !   level, nor can it be higher than max_it_rich.
+        !> \private
         integer function adapt_inoutput_PB3D() result(ierr)
             character(*), parameter :: rout_name = 'adapt_inoutput_PB3D'
             
@@ -514,6 +523,7 @@ contains
         !   ex_plot_style should be 1 (GNUPlot) or 2 (Bokeh / Mayavi)
         !   if toroidal positions are compared, theta_plot limits should contain
         !   0..2pi and max_r_plot should be 1.
+        !> \private
         integer function adapt_plot() result(ierr)
             use num_vars, only: compare_tor_pos
             
@@ -604,6 +614,7 @@ contains
         !   min_sec_X in absolute value,
         !   if  X style 2 (fast), n_mod_X has to be a number greater than 0,
         !   for every X style, some checks are made and some variables set.
+        !> \private
         integer function adapt_X_modes() result(ierr)
             use X_vars, only: min_nm_X
             
@@ -670,6 +681,7 @@ contains
         !   is to be calculated. However,  there are additional requirements for
         !   the different magnetic integral styles: for style 1 min_par_X has to
         !   be of the form 2+k and for style 2 of the form 4+3k.
+        !> \private
         subroutine adapt_min_n_par_X
             ! local variables
             integer :: fund_n_par                                               ! fundamental interval width
@@ -707,6 +719,7 @@ contains
         !   min_r should be lesser than max_r
         ! The number of solution points should be large enough for the numerical
         ! discretization scheme, and there should be enough points per process.
+        !> \private
         integer function adapt_sol_grid(min_r,max_r,var_name) result(ierr)
             use num_vars, only: n_procs
             
@@ -762,6 +775,7 @@ contains
         ! Checks  whether the variables concerning  Richardson extrapolation are
         ! correct:
         !   max_it_rich has to be at least 1.
+        !> \private
         subroutine adapt_rich
             if (max_it_rich.lt.1) then
                 max_it_rich = 1
@@ -772,6 +786,7 @@ contains
         ! Checks whether the variables concerning finding zeros are correct:
         !   max_it_zero has to be at least 2,
         !   relax_fac_HH has to be larger than 0.
+        !> \private
         subroutine adapt_zero
             if (max_it_zero.lt.1) then
                 max_it_zero = 2
@@ -791,6 +806,7 @@ contains
         !   tol_rich needs to be min_tol..max_tol,
         !   tol_SLEPC needs to be min_tol..max_tol.
         ! Also sets local tol_SLEPC.
+        !> \private
         subroutine adapt_tols
             ! local variables
             integer :: id                                                       ! counter
@@ -875,6 +891,7 @@ contains
         
         ! Checks whether normalization variables are chosen correctly:
         !   rho_0 has to be positive.
+        !> \private
         integer function adapt_normalization() result(ierr)
             character(*), parameter :: rout_name = 'adapt_normalization'
             

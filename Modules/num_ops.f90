@@ -186,6 +186,7 @@ contains
 #if ldebug
     contains
         ! plots corrections
+        !> \private
         subroutine plot_evolution(corrs,values)
             ! input / output
             real(dp), intent(in) :: corrs(:)                                    ! corrections
@@ -399,6 +400,7 @@ contains
 #if ldebug
     contains
         ! plots corrections
+        !> \private
         subroutine plot_evolution(corrs,values)
             ! input / output
             real(dp), intent(in) :: corrs(:,:,:,:)                              ! corrections
@@ -619,6 +621,7 @@ contains
 #if ldebug
     contains
         ! plots corrections
+        !> \private
         subroutine plot_evolution(x_ints)
             ! input / output
             real(dp), intent(in) :: x_ints(:,:)                                 ! x_intervals

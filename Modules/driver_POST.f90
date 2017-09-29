@@ -1214,6 +1214,7 @@ contains
         !   1: slab geometry
         !   2: slab geometry with wrapping of angles
         !   3: 3-D geometry with straightened toroidal coordinate
+        !> \private
         integer function calc_XYZ_of_output_grid(grid,XYZ) result(ierr)
             use grid_utilities, only: calc_XYZ_grid
             use sol_vars, only: alpha

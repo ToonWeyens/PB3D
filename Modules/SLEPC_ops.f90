@@ -232,6 +232,8 @@ contains
         CHCKERR('')
 #if ldebug
     contains
+        ! Test Hermiticity explicitely.
+        !> \private
         integer function test_mat_hermiticity(mat,mat_name) result(ierr)
             use num_vars, only: data_dir
             !use num_vars, only: rank
@@ -400,10 +402,10 @@ contains
         end do
     end function start_SLEPC
     
-    !> Sets up the matrices \f$A\f$ and \f$B\f$ in the EV problem
-    !! \f[
-    !!      \overline{\text{A}} \ \vec{X} = \lambda \overline{\text{B}} \vec{X}.
-    !! \f]
+    !> Sets      up     the      matrices     \f$\overline{\text{A}}\f$      and
+    !! \f$\overline{\text{B}}\f$  in  the  EV  problem  \f$  \overline{\text{A}}
+    !! \vec{X} = \lambda \overline{\text{B}} \vec{X}. \f$
+    !!
     !! The  geodesical index  at which  to perform  the calculations  has to  be
     !! provided as well in \c i_geo.
     !!
@@ -576,6 +578,7 @@ contains
     contains
         ! Sets the limits of the indices of the bulk matrix, depending on the BC
         ! style.
+        !> \private
         integer function set_bulk_lims(grid_X,i_lim) result(ierr)
             character(*), parameter :: rout_name = 'set_bulk_lims'
             
@@ -631,6 +634,7 @@ contains
         !   as  the interpolated  value  of  the previous  point  allow for  the
         !   calculation of every quantity.
         ! Makes use of n_r, grid_X_trim and  grid_sol_trim
+        !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
             use num_utilities, only: con, calc_coeff_fin_diff
             
@@ -802,6 +806,7 @@ contains
         end function fill_mat
         
         ! Display information about matrix.
+        !> \private
         integer function disp_mat_info(mat) result(ierr)
             character(*), parameter :: rout_name = 'disp_mat_info'
             
@@ -838,6 +843,7 @@ contains
         
         ! Sets nonzero elements d_nz and o_nz.
         ! Makes use of ndps and grid_sol_trim.
+        !> \private
         subroutine set_nonzeros()
             ! local variables
             PetscInt, allocatable :: tot_nz(:)                                  ! nr. of total non-zeros
@@ -1097,6 +1103,7 @@ contains
         !   A(ind,ind) = EV_BC, B(ind,ind) = 1,
         !   A(ind+1..ind+p,ind+1..ind+p) = 0, B(ind+1..ind+p,ind+1..ind+p) = 0,
         ! where ind indicates the row where the BC is centered.
+        !> \private
         integer function set_BC_1(r_id,A,B,BC_right) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_1'
             
@@ -1165,6 +1172,7 @@ contains
         
         ! set BC style 2:
         ! Minimization of surface energy through asymmetric fin. differences
+        !> \private
         integer function set_BC_2(r_id,X,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
@@ -1192,6 +1200,7 @@ contains
         
         ! set BC style 3:
         ! Minimization of surface energy through extension of grid
+        !> \private
         integer function set_BC_3(r_id,X,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_3'
             
@@ -1220,6 +1229,7 @@ contains
         ! set  BC style 4:
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
+        !> \private
         integer function set_BC_4(r_id,r_id_loc,X,A,B,i_geo,n_r) result(ierr)
             use num_vars, only: norm_disc_style_sol
             use num_utilities, only: calc_coeff_fin_diff
@@ -1979,6 +1989,7 @@ contains
     contains
         ! Removes id'th  Eigenvalue and  -vector. Optionally, all  the following
         ! can be removed as well.
+        !> \private
         subroutine remove_EV(id,max_id,remove_next)
             ! input / output
             PetscInt, intent(inout) :: id                                       ! id of faulty values

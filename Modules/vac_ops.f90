@@ -95,7 +95,9 @@ contains
                 CHCKERR('')
         end select
     contains
-        integer function store_vac_VMEC() result(ierr)                          ! VMEC version
+        ! VMEC version
+        !> \private
+        integer function store_vac_VMEC() result(ierr)
             use rich_vars, only: n_par_X
             use eq_utilities, only: calc_inv_met
             
@@ -205,7 +207,9 @@ contains
             
             call writo('Done storing vacuum quantities')
         end function store_vac_VMEC
-        integer function store_vac_HEL() result(ierr)                           ! HELENA version
+        ! HELENA version
+        !> \private
+        integer function store_vac_HEL() result(ierr)
             use HELENA_vars, only: R_H, Z_H, nchi
             
             character(*), parameter :: rout_name = 'store_vac_HEL'
@@ -334,7 +338,9 @@ contains
         
         call lvl_ud(-1)
     contains
-        integer function calc_GH_1() result(ierr)                               ! field-line 3-D vacuum
+        ! field-line 3-D vacuum
+        !> \private
+        integer function calc_GH_1() result(ierr)
             character(*), parameter :: rout_name = 'calc_GH_1'
             
             ! initialize ierr
@@ -343,7 +349,9 @@ contains
             call writo('Using field-line 3-D Boundary Element Method')
             
         end function calc_GH_1
-        integer function calc_GH_2() result(ierr)                               ! axisymmetric vacuum
+        ! axisymmetric vacuum
+        !> \private
+        integer function calc_GH_2() result(ierr)
             character(*), parameter :: rout_name = 'calc_GH_2'
             
             ! local variables
