@@ -16,7 +16,7 @@
         <td>"Zero pivot in LU factorization" </td> <td> There exist cases in which the eigenvalue solver fails when <tt>n_mod_X = 1</tt>, for unkown reasons. Increase <tt>n_mod_X</tt> or play with other parameters, such as the \c norm_disc_prec_sol. </td>
     </tr>
     <tr>
-        <td>\c jump_to_sol does not work</td> <td> Jumping over the equilibrium and perturbation drivers straight to the solution only works if solution parameters such as the boundary conditions are changed, \i not if the number of points in the solution, \c n_r_sol, is changed, as in this case the equilibrium and solution drivers need to be recalculated properly.</td>
+        <td>\c jump_to_sol does not work</td> <td> Jumping over the equilibrium and perturbation drivers straight to the solution only works if solution parameters such as the boundary conditions are changed, <i>not</i> if the number of points in the solution, \c n_r_sol, is changed, as in this case the equilibrium and solution drivers need to be recalculated properly.</td>
     </tr>
     <tr>
         <td>The solution suffers from numerical oscillations</td> <td> This is a work in progress. Change the limits of the solution grid \c min_r_sol (and possibly \c max_r_sol). Better even is to use asymmetric finite differences <tt>norm_disc_style_sol = 2</tt></td>

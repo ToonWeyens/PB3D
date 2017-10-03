@@ -114,6 +114,7 @@
     We can now run the code using \c mpirun. For example, with
     \code mpirun -np 4 ./PB3D PB3D.input wout.nc \endcode
     4 processes are used.
+    You can find the VMEC file <a href="wout.nc">here</a>.
     
     There are optional run-time options that can be triggered, such as <tt>--jump_to_sol</tt>, which can be used to easily change solution preferences, such as discretization order, etc.
     For an overview, see \ref inputs_POST_cmd; they are not treated here.
@@ -198,4 +199,6 @@
     \note
         -# \anchor fnt1 The cylindrical angle \f$\varphi\f$ is often the inverse of the one used in nuclear fusion research, as it can lead to left-handed coordinate systems. In VMEC, it is opted to use it anyway, so it has a left-handed coordinate system. The poloidal angle is chosen to be anticlockwise if you look at a cross-section of the plasma that lies to the right of the \f$Z\f$-axis with the \f$Z\f$-axis pointing up, as in PB3D. In PB3D, however, the toroidal angle \f$\zeta = - \varphi\f$ is chosen as the inverse of the cylindrical angle, so it is right-handed.
     
+    \example PB3D.input Example PB3D input.
+    \example POST.input Example POST input.
 */

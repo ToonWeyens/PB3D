@@ -834,7 +834,7 @@ contains
             call dealloc_XML_str(col_grid)
         end if
     contains
-        ! assigns the 3D subarray pointer variables
+        !> \private assigns the 3D subarray pointer variables
         subroutine assign_pointers(id)
             ! input / output
             integer :: id                                                       ! index at which to assing pointer
@@ -1232,7 +1232,7 @@ contains
             end if
         end if
     contains
-        ! GNUPlot version: wxt terminal or pdf output
+        !> \private GNUPlot version: wxt terminal or pdf output
         subroutine draw_ex_GNUPlot
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) 'set grid'
@@ -1323,7 +1323,7 @@ contains
             if (plot_on_screen) write(cmd_i,"(A)",IOSTAT=istat) 'pause -1'
         end subroutine draw_ex_GNUPlot
         
-        ! Bokeh version: 2D html output
+        !> \private Bokeh version: 2D html output
         ! Interactive checkbox from https://github.com/bokeh/bokeh/issues/3715.
         ! (Could be replaced by http://bokeh.pydata.org/en/latest/docs/
         !  user_guide/interaction/legends.html#userguide-interaction-legends)
@@ -1373,28 +1373,37 @@ contains
             
             ! create checkbox
             write(cmd_i,"(A)",IOSTAT=istat) 'checkbox = CheckboxGroup(labels=[\'
-            do iplt = 1,nplt-1
-                write(cmd_i,"(A)",IOSTAT=istat) &
-                    &'"'//trim(var_names_loc(iplt))//'",\'
+            do iplt = 1,nplt
+                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
+                    &'"'//trim(var_names_loc(iplt))
+                if (iplt.lt.nplt) then
+                    write(cmd_i,"(A)",IOSTAT=istat) '",\'
+                else
+                    write(cmd_i,"(A)",IOSTAT=istat) '"], active=[\'
+                end if
             end do
-            write(cmd_i,"(A)",IOSTAT=istat) &
-                &'"'//trim(var_names_loc(nplt))//'"], active=[\'
-            do iplt = 1,nplt-1
-                write(cmd_i,"(A)",IOSTAT=istat) trim(i2str(iplt-1))//',\'
+            do iplt = 1,nplt
+                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
+                    &trim(i2str(iplt-1))
+                if (iplt.lt.nplt) then
+                    write(cmd_i,"(A)",IOSTAT=istat) ',\'
+                else
+                    write(cmd_i,"(A)",IOSTAT=istat) '])'
+                end if
             end do
-            write(cmd_i,"(A)",IOSTAT=istat) trim(i2str(nplt-1))//'])'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! create callback
             write(cmd_i,"(A)",IOSTAT=istat) 'checkbox.callback = CustomJS(&
                 &args=dict('
             do iplt = 1,nplt
-                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="NO") &
+                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
                     &'l'//trim(i2str(iplt))//'=l'//&
                     &trim(i2str(iplt))//', c'//trim(i2str(iplt))//'=c'//&
                     &trim(i2str(iplt))
                 if (iplt.lt.nplt) then
                     write(cmd_i,"(A)",IOSTAT=istat) ',\'
+                    !write(cmd_i,"(A)",IOSTAT=istat) ',\'                       ! doxygen bug: need a meaningless line with slash
                 else
                     write(cmd_i,"(A)",IOSTAT=istat) '), code="""'
                 end if
@@ -1435,7 +1444,7 @@ contains
             end if
         end subroutine draw_ex_Bokeh
         
-        ! Mayavi version: 3D png output
+        !> \private Mayavi version: 3D png output
         subroutine draw_ex_Mayavi
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) 'from numpy import genfromtxt, &
@@ -1514,7 +1523,7 @@ contains
             end if
         end subroutine draw_ex_Mayavi
         
-        ! GNUPlot animated version: gif output
+        !> \private GNUPlot animated version: gif output
         subroutine draw_ex_animated_GNUPlot
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) 'set grid'
@@ -1579,7 +1588,7 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) ''
         end subroutine draw_ex_animated_GNUPlot
         
-        ! Bokeh animated version: html output
+        !> \private Bokeh animated version: html output
         subroutine draw_ex_animated_Bokeh
             ! initialize the script
             write(cmd_i,"(A)",IOSTAT=istat) '# Note: it is necessary to first &
@@ -1644,7 +1653,7 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) 'session.loop_until_closed()'
         end subroutine draw_ex_animated_Bokeh
         
-        ! gets ranges for animated plot
+        !> \private gets ranges for animated plot
         subroutine get_ranges(ranges)
             ! input / output
             real(dp), intent(inout) :: ranges(:,:)                              ! x and y range, and z range (if 3D) of plot
@@ -1693,7 +1702,7 @@ contains
             end if
         end subroutine get_ranges
         
-        ! sets local draw options either from pre-defined line styles or through
+        !> \private sets local draw options either from pre-defined line styles or through
         ! user specified option, for GNUPlot or Bokeh
         ! As for  Bokeh, there are  two default  draw options possible  (for the
         ! lines and for the points), there is an option to select between them.

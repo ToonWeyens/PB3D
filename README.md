@@ -1065,3 +1065,6 @@ ITER Organization
 * Fixed bugs in setting options of SLEPC.
 * Fixed bug in 'calc_zero_HH_3D' where zero_guess was not initialized at some points because the correction was zero.
 * Fised bug in Bokeh drawing where wrong slash was used and the comma was forgotten.
+
+## 1.97:
+* Fixed doxygen bugs and added files in examples.
