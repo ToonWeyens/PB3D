@@ -1,6 +1,9 @@
 /*! \page page_outputs Code outputs
     
     \tableofcontents
+    \latexonly
+        \textit{\scriptsize Footnotes are situated at the end of the chapter}
+    \endlatexonly
     
     This page describes the various outputs that PB3D and POST can produce.
 
@@ -111,7 +114,7 @@
     
     
     \subsection output_file_E_rec Energy reconstruction file
-    If energy reconstruction is performed by POST (see \c plot_E_rec in \ref page_inputs), the individual terms that make up the perturbed potential energy as well as the kinetic energy of the perturbation are calculated and plot.
+    If energy reconstruction is performed by POST (see \c plot_E_rec in \ref page_inputs), the individual terms that make up the perturbed potential energy as well as the kinetic energy of the perturbation are calculated and plot. (\ref fno3 "3")
     Furthermore, the integration of these quantities over the whole volume, is returned in an output file.
     
     In table \ref e_rec_tab "2", an overview is given of the different terms.
@@ -207,4 +210,5 @@
     \note
         -# \anchor fno1 See \c use_pol_flux_F in \ref page_inputs.
         -# \anchor fno2 The integrated energy reconstruction terms are also output to a file. See \ref output_file_E_rec.
+        -# \anchor fno3 Energy reconstruction only works well when <tt> POST_style = 2 </tt> is used, i.e. when the same grid is used as for PB3D.
 */

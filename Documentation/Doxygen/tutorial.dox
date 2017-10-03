@@ -1,6 +1,9 @@
 /*! \page page_tutorial Tutorial
     
     \tableofcontents
+    \latexonly
+        \textit{\scriptsize Footnotes are situated at the end of the chapter}
+    \endlatexonly
     
     This page contains a hands-on tutorial to get you used to running PB3D to calculate 3-D ideal linear high-n MHD stability, and POST to post-process the results.
     
@@ -36,7 +39,7 @@
 
     and to specify their names as the second input argument, the first one being the file with user inputs (see \ref tutorial_inputs).
 
-    \note For VMEC, the <tt>wout</tt> file has to be in Netcdf format. The old <tt>.txt</tt> format is no longer supported.
+    \note For VMEC, the <tt>wout</tt> file has to be in Netcdf's <tt>.nc</tt> format. The old <tt>.txt</tt> format is no longer supported.
 
     In any case, if you forget how to run the PB3D (or POST) programs, you can always just type
     \code ./PB3D --help \endcode
@@ -56,17 +59,142 @@
     \section tutorial_inputs Setting Up the Input File
     Now that we have the equilibrium files, it is time to have a look at the input file.
     
-    \includelineno example.input
+    \includelineno PB3D.input
+    
+    Have a look:
+        - \c min_n_par_X is the number of points in the parallel grid.
+        - They range from \c min_par_X to \c max_par_X. As this is an axisymmetric example, they can simply be chosen to be a fundamental period of \f$ 2\pi \f$. For 3-D equilibria, this number has to be increased until convergence is reached \cite Weyens2017PB3D.
+        - \c alpha indicates the field line at which the perturbations are situated.
+        - \c n_r_sol is the number of points in the solution grid, that ranges from \c min_r_sol to \c max_r_sol in the PB3D normal coordinate (see num_vars.use_pol_flux_f).
+        - \c n_mod_X is the number of resonating Harmonics with \c prim_X the primary mode number.
+        - \c BC_style(1:2) indicates the style with which the boundary conditions are implemented deep in the plasma and on the plasma edge.
+        - \c max_tot_mem is the total virtual memory that PB3D may consume.
+        - \c use_normalization indicates whether normalization is used (recommended), but it is useful to turn this off for debugging.
+
+    \note \c BC_style(2) is currently set to 1, indicating that the mode amplitude is zero at the edge.
+    In the upcoming version of PB3D, the vacuum perturbation on the potential energy will be taken into account, which enables other boundary condition styles at the plasma edge.
+    
+    There are also some extra options listed (but not loaded in PB3D as they com after the end of the \c inputdata_PB3D block of the Fortran namelist) below:
+    \snippetlineno PB3D.input some extra options for PB3D
+    They include:
+        - \c rich_restart_lvl is used to restart a simulation at a certain Richardson level. The Richardson level 1 refers to the first simulation, with the number of parallel points used in the calculation of line integrals along the magnetic field set by \c min_n_par_X (see \ref inputs_PB3D_file_tab). For every subsequent Richardson level, this number is approximately doubled in order to gain a grid size that is twice as fine. The results from these different levels are extrapolated to a theoretically infinitely fine grid. These operations are done in module rich_ops.
+        - \c tol_rich is the tolerance at which Richardson extrapolation is considered to have converged.
+        - \c tol_SLEPC is an array of tolerances used for the different SLEPc eigenvalue solutions.
+
+    There are many, many more input parameters. A short description of these can be found in \ref page_inputs.
 
 
 
     \section tutorial_PB3D Running PB3D
+    This tutorial provides a basic VMEC equilibrium file to experiment with, called \c cbm18, which represents a simple circular test case designed to be ballooning unstable. \cite ferraro2010ELMbenchmark
+    Some properties are given in table \ref tutorial_PB3D_tab "1".
+    <table>
+    <caption id="tutorial_PB3D_tab">Table 1. equilibrium parameters</caption>
+    <tr>
+        <td> toroidal current \f$I_\text{tot}\f$  </td> <td> \f$1.614MA\f$ </td>
+    </tr>
+    <tr>
+        <td> \f$\beta_\text{pol}\f$  </td> <td> \f$0.443 \f$ </td>
+    </tr>
+    <tr>
+        <td> aspect ratio \f$\epsilon\f$  </td> <td> \f$1.5 \f$ </td>
+    </tr>
+    </table>
+    
+    Put this equilibrium file, as well as the input file in a separate run directory; let's call it \c cbm18.
+
+    In order to produce outputs, PB3D needs three sub-directories in the run directory, called <tt>Data/</tt>, <tt>Scripts/</tt> and <tt>Plots/</tt>.
+        - In <tt>Data/</tt>, datafiles are stored that are used for plots.
+        - In <tt>Scripts/</tt>, scripts are generated that use the datafiles from <tt>Data</tt>.
+        - The <tt>Plots/</tt>, the resulting plots are located, both for external plots, and for HDF5 plots that can be read later in visualization software such as VisIt or ParaView.
+        In \ref output_plots, this is explained in more detail.
+
+    If these directories are not present, you will receive error message, so go ahead and create them.
+
+    We can now run the code using \c mpirun. For example, with
+    \code mpirun -np 4 ./PB3D PB3D.input wout.nc \endcode
+    4 processes are used.
+    
+    There are optional run-time options that can be triggered, such as <tt>--jump_to_sol</tt>, which can be used to easily change solution preferences, such as discretization order, etc.
+    For an overview, see \ref inputs_POST_cmd; they are not treated here.
+
+    You will see formatted output on the screen, with indentation that consistent indentation according to the depth of a routine in the program.
+    The same output is also written to an output file, unformatted but still indented (see \ref output_file_log).
+    
+    The resulting eigenvalues can also be read in a separate output file (see \ref output_file_EV).
+    
+    Take a look at these output files and shuffle a bit with the input parameters if you want.
+    For example, change \c n_mod_X to another value in order to get a different number Fourier harmonics, or \c n_r_sol to change the number of normal grid points in the solution.
+    The solution should not change a lot if you have enough harmonics and normal grid poins.
+
+    \note For VMEC, the magnetic axis is a bit problematic. It is necessary, therefore, to choose \c min_r_sol to be slightly larger than 0; 0.01 for example.
     
 
+    \section tutorial_scripts Run Script Tools
+
+    PB3D comes with a bunch of extra run tools, for which no support is given, but which may be useful for advanced users. In table \ref tutorial_scripts_tab "2", an overview is given:
+    <table>
+    <caption id="tutorial_scripts_tab">Table 2. extra tools</caption>
+    <tr>
+        <td> <tt>setup_Run.sh</tt>  </td> <td> Sets up the required files and scripts to run PB3D simulations in a folder different than the PB3D compilation folder. </td>
+    </tr>
+    <tr>
+        <td> <tt>run.sh</tt> </td> <td> modifiable run script that can be used for PB3D and POST. It can also run for an array of input variables, which is useful for parameter studies. </td>
+    </tr>
+    <tr>
+        <td> <tt>change_input_var.sh</tt>  </td> <td> Changes the value of a variable in a PB3D input file. This is used by <tt>run.sh</tt>. </td>
+    </tr>
+    <tr>
+        <td> <tt>extract_jobs_info.sh</tt>  </td> <td> Extracts the eigenvalues from the results of an input array produced by <tt>run.sh</tt>. </td>
+    </tr>
+    <tr>
+        <td> <tt>inspect_SLURM_jobs.sh</tt>  </td> <td> Finds the directories of all the jobs currently running in SLURM and in every directory, it gives the tail of <tt>PB3D.out</tt>. The user can decide to cancel the job. </td>
+    </tr>
+    </table>
 
 
     \section tutorial_POST Post-processing With POST
+
+    POST provides a way to visualize the results from PB3D.
+    Many options are possible, and they can be activated using <tt>plot_</tt> flags (see \ref inputs_POST_file).
+
+    An example is given in <tt>POST.input</tt>
+    \includelineno POST.input
+    It can be seen that apart from the <tt>plot_</tt> flags, there are also
+        - \c min_r_plot and \c max_r_plot, which are the direct equivalent of \c min_r_sol and \c max_r_sol in PB3D.
+        - \c min_theta_plot, \c max_theta_plot and \c n_theta_plot which indicate the range of the poloidal variable that is plot, as well as the the number of point. There is an equivalent for the toroidal variable.
+        - \c POST_style that allows the user to change between different styles, such as whether the output grid is chosen to be fill the torus in a regular way, for example, or whether it follows the PB3D equilibrium grid.
+        - \c plot_grid_style, subsequently, can be used to change the way in which these grids are produced. For example, they could be changed to slab plots or plots with a straightened toroidal angle.
+        - \c pert_mult_factor_POST can be used to deform the output grids by the perturbation itself.
+
+    Also here, there are also some extra options listed below:
+    \snippetlineno POST.input some extra options for POST
+    They include:
+        - \c ex_plot_style to indicate which program is to be used for external plotting. Changing it to 2 would engage Bokeh and Mayavi.
+        - \c PB3D_rich_lvl can be optionally employed to specify explicitely which Richardson level to use for the post-processing.
     
+    All of these options are explained in \ref inputs_POST_file.
+    Again, there are also run-time options that can be found in \ref inputs_POST_cmd.
+    
+    Now, run the POST program, for example using 4 MPI processes:
+    \code mpirun -np 4 ./POST POST.input PB3D_out.h5 \endcode
+
+    An interesting output is the energy reconstruction, which is activated with \c plot_E_rec.
+    This calculation reinserts the solution normal mode into the perturbed plasma potential terms, in order to check whether the Rayleigh quotient still holds, and to see which terms are dominant and which ones are less important.
+    The results are stored in a separate files as well (see \ref output_file_E_rec).
+
+    If <tt>--do_execute_command_line</tt> was not explicitely used, the actual external plot programs are not used yet, but their usage is given in a shell commands script file (see \ref output_file_shell).
+    Run this shell with
+    \code ./POST_shell_commands.sh \endcode
+
+    If everything is okay, you should now see output in the <tt>Plots/</tt> folder.
+    If an error occurs, please verfiy whether you have appropriate versions of the external plot programs (i.e. GnuPlot, Bokeh, ...)
+
+    Also, open some of the <tt>.xmf</tt> files in VisIt or ParaView to explore these plots.
+    
+    To finish this tutorial, feel free to adjust some input parameters.
+    For example, you can change the output grid to become 3-D by setting \c n_zeta_plot and \c max_zeta_plot, or you could deform it using \c pert_mult_factor_POST.
+
     \note
         -# \anchor fnt1 The cylindrical angle \f$\varphi\f$ is often the inverse of the one used in nuclear fusion research, as it can lead to left-handed coordinate systems. In VMEC, it is opted to use it anyway, so it has a left-handed coordinate system. The poloidal angle is chosen to be anticlockwise if you look at a cross-section of the plasma that lies to the right of the \f$Z\f$-axis with the \f$Z\f$-axis pointing up, as in PB3D. In PB3D, however, the toroidal angle \f$\zeta = - \varphi\f$ is chosen as the inverse of the cylindrical angle, so it is right-handed.
     

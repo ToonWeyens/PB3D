@@ -1702,7 +1702,6 @@ contains
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
-        character(len=max_str_ln) :: err_msg                                    ! error message
         type(disc_type) :: par_deriv_data                                       ! data for parallel derivative
         type(disc_type) :: geo_deriv_data                                       ! data for geodesic derivative
         integer :: T_size                                                       ! 2 for VMEC and 1 for HELENA
@@ -1780,7 +1779,6 @@ contains
                 T_size = 2
             case (2)                                                            ! HELENA
                 T_size = 1
-                CHCKERR(err_msg)
         end select
         allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
         allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
@@ -1874,7 +1872,6 @@ contains
                 else
                     D3Theta_3 = 0._dp
                 end if
-                CHCKERR(err_msg)
         end select
         
         ! set up U factors in eq grid

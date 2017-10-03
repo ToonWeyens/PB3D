@@ -339,6 +339,7 @@ contains
 #endif
             relaxed_enough = .false.
             do id = 1,max_nr_backtracks_loc
+                zero_new = zero                                                 ! otherwise some values might stay unitialized
                 where (abs(corr).gt.tol_zero) zero_new = zero + corr            ! propose a new zero
                 
                 fun_new = fun(dims,zero_new,0)                                  ! calculate function value there

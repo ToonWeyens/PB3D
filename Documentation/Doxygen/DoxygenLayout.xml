@@ -27,6 +27,7 @@
       <tab type="classmembers" visible="yes" title="" intro=""/>
     </tab>
     <tab type="user" url="page_tutorial.html" title="Tutorial" />
+    <tab type="user" url="page_faq.html" title="FAQ" />
     <tab type="user" url="https://pb3d.github.io/" title="PB3D Home"/>
     <tab type="user" url="https://pb3d.github.io/contact.html" title="Contact"/>
   </navindex>

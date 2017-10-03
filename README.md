@@ -1056,3 +1056,12 @@ ITER Organization
 * Polished up the latex files so that we now have a manual.
 * Introduced 'clean_html_and_latex.sh' that does this.
 * 'create_VMEC_input' is now a public routine, which makes more sense.
+
+## 1.96:
+* The tutorial is not yet ready yet, as there were numerical problems.
+* Fixed some errors in manual pdf generation.
+* Fixed small bugs in how many solutions are plot: By default all, and if none are chosen, it does not crash any more.
+* Rewrote procedure 'set_nonzeros', fixing many bugs.
+* Fixed bugs in setting options of SLEPC.
+* Fixed bug in 'calc_zero_HH_3D' where zero_guess was not initialized at some points because the correction was zero.
+* Fised bug in Bokeh drawing where wrong slash was used and the comma was forgotten.

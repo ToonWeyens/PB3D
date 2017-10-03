@@ -1388,14 +1388,17 @@ contains
             ! create callback
             write(cmd_i,"(A)",IOSTAT=istat) 'checkbox.callback = CustomJS(&
                 &args=dict('
-            do iplt = 1,nplt-1
-                write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//'=l'//&
+            do iplt = 1,nplt
+                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="NO") &
+                    &'l'//trim(i2str(iplt))//'=l'//&
                     &trim(i2str(iplt))//', c'//trim(i2str(iplt))//'=c'//&
-                    &trim(i2str(iplt))//',\ '
+                    &trim(i2str(iplt))
+                if (iplt.lt.nplt) then
+                    write(cmd_i,"(A)",IOSTAT=istat) ',\'
+                else
+                    write(cmd_i,"(A)",IOSTAT=istat) '), code="""'
+                end if
             end do
-            write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(nplt))//'=l'//&
-                &trim(i2str(nplt))//', c'//trim(i2str(nplt))//'=c'//&
-                &trim(i2str(nplt))//'), code="""'
             write(cmd_i,"(A)",IOSTAT=istat) '//console.log(cb_obj.active);'
             do iplt = 1,nplt
                 write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//&

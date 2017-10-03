@@ -1,6 +1,9 @@
 /*! \page page_inputs Input variables
     
     \tableofcontents
+    \latexonly
+        \textit{\scriptsize Footnotes are situated at the end of the chapter}
+    \endlatexonly
     
     This page describes the various input variables that PB3D and POST can take.
 

@@ -333,7 +333,7 @@ contains
             PB3D_rich_lvl = huge(1)                                             ! don't restart
             
             ! variables concerning output
-            n_sol_plotted = n_sol_requested                                     ! plot all solutions
+            n_sol_plotted = -1                                                  ! plot all solutions
         end subroutine default_input_POST
         
         ! Checks  whether the  variables  concerning MPI  are chosen  correctly:
@@ -769,6 +769,13 @@ contains
                 call writo('n_r_sol has been increased to '//&
                     &trim(i2str(n_r_sol))//' to have enough points per &
                     &process',warning=.true.)
+            end if
+            
+            ! warning if too close to axis for VMEC
+            if (eq_style.eq.1) then
+                if (min_r.le.tol_zero) &
+                    &call writo('For VMEC, you should not go all the way to &
+                    &the magnetic axis.',warning=.true.)
             end if
         end function adapt_sol_grid
         

@@ -20,6 +20,8 @@ BE SURE TO RUN THIS WITH DOXYGEN 1.8.13. OTHER VERSIONS ARE NOT TESTED.
     Furthermore, in \ref page_inputs, the multitude of input variables is discussed.
 
     Additionally, in \ref page_outputs, the same is done for the output that can be produced, including the output by POST.
+
+    For a list of frequently asked questions and frequently encountered problems, consult the \ref page_faq.
     
     \htmlonly
     Finally, the various modules of which the program consists can be explored in detail in the <a href="namespaces.html">Modules</a> page and the procudures and variables in the <a href="namespacemembers.html">Procedures and Variables</a> page. 

@@ -142,7 +142,6 @@ contains
             case (1)                                                            ! sparse
                 ierr = set_BC(grid_X,X,vac,A,B,i_geo_loc,grid_sol%n(3))
                 CHCKERR('')
-        
 #if ldebug
                 if (debug_set_BC) then
                     call writo('Testing if AFTER INSERTING BC''s, A and B &
@@ -265,12 +264,17 @@ contains
             CHCKERR('mat-mat_t failed')
             
             ! visualize the matrices
-            call PetscOptionsSetValue('-draw_pause','-1',ierr)
+            !!! Will have to be changed to PETSC_NULL_OPTION IN 3.8.0
+            call PetscOptionsSetValue(PETSC_NULL_OBJECT,'-draw_pause','-1',&
+                &ierr)
+            CHCKERR('Failed to set option')
             call writo(trim(mat_name)//' =')
             call MatView(mat,PETSC_VIEWER_STDOUT_WORLD,ierr)
             !call MatView(mat,PETSC_VIEWER_DRAW_WORLD,ierr)
+            CHCKERR('Failed to view')
             call writo(trim(mat_name)//' - '//trim(mat_name)//'^*T =')
             call MatView(mat_t,PETSC_VIEWER_STDOUT_WORLD,ierr)
+            CHCKERR('Failed to view')
             
             ! destroy matrices 
             call MatDestroy(mat_t,ierr)
@@ -445,6 +449,7 @@ contains
         type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed perturbation grid
         PetscInt :: kd, id                                                      ! counter
+        PetscInt :: i_lims(2)                                                   ! lower and upper limit of grid
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
         PetscInt, allocatable :: o_nz(:)                                        ! nr. of off-diagonal non-zeros
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -520,18 +525,22 @@ contains
         ! set up bulk matrix absolute limits
         ierr = set_bulk_lims(grid_X_trim,bulk_i_lim)
         CHCKERR('')
+        i_lims = [grid_sol_trim%i_min, grid_sol_trim%i_max]
         
         ! for BC_style 3 with symmetric finite differences, extend the grid
         if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
             n_r = n_r + ndps
-            if (rank.eq.sol_n_procs-1) loc_n_r = loc_n_r + ndps
+            if (rank.eq.sol_n_procs-1) then
+                loc_n_r = loc_n_r + ndps
+                i_lims(2) = i_lims(2) + ndps
+            end if
         end if
         
         ! setup matrix A and B
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
                 ! calculate nonzeros
-                call set_nonzeros()
+                call set_nonzeros(i_lims)
                 
                 ! create matrix A
                 call MatCreateBAIJ(PETSC_COMM_WORLD,n_mod_X,n_mod_X*loc_n_r,&
@@ -606,9 +615,14 @@ contains
             end select
             
             ! set up i_max
+            ! Note:   for   BC_style(2)  =   1,   one   could  argue   that   we
+            ! should  use  n_r-ndps.  This,  however,  generates  an  error  for
+            ! norm_disc_style_sol =  2 where these  elements are not  written in
+            ! the main bulk assembly, so that petsc thinks there are no nonzeros
+            ! there. This is avoided by using n_r.
             select case (BC_style(2))
                 case (1)
-                    i_lim(2) = min(grid_X%i_max,n_r-ndps)                       ! last ndps rows write right BC's
+                    i_lim(2) = min(grid_X%i_max,n_r)                            ! last ndps rows write right BC's, will be overwritten
                 case (2:4)
                     i_lim(2) = min(grid_X%i_max,n_r)                            ! right BC is added later
                 case default
@@ -844,60 +858,60 @@ contains
         ! Sets nonzero elements d_nz and o_nz.
         ! Makes use of ndps and grid_sol_trim.
         !> \private
-        subroutine set_nonzeros()
+        subroutine set_nonzeros(i_lims)
+            ! input / output
+            PetscInt, intent(in) :: i_lims(2)                                   ! lower and upper limit of grid
+            
             ! local variables
+            PetscInt, allocatable :: col_lims(:,:)                              ! column limits of nonzeros
             PetscInt, allocatable :: tot_nz(:)                                  ! nr. of total non-zeros
-            PetscInt :: st_size                                                 ! half stencil size
+            PetscInt :: st_size(2)                                              ! half stencil size left and right
             
             ! initialize the numbers of non-zeros in diagonal and off-diagonal
             allocate(tot_nz(loc_n_r)); tot_nz = 0
             allocate(d_nz(loc_n_r)); d_nz = 0
             allocate(o_nz(loc_n_r)); o_nz = 0
             
+            ! initialize helper variable
+            allocate(col_lims(loc_n_r,2)); col_lims = 0
+            
             if (rank.lt.sol_n_procs) then
                 ! set (half) stencil size
                 select case (norm_disc_style_sol)
                     case (1)                                                    ! central finite differences
-                        st_size = 2*ndps
+                        st_size = [ndps,ndps]
                     case (2)                                                    ! left finite differences
-                        st_size = ndps
+                        st_size = [ndps,0]
                 end select
                 
-                ! calculate number of total nonzero entries
-                tot_nz = 1+2*st_size
-                do kd = 1,st_size
-                    ! limit due to left BC
-                    if (kd.ge.grid_sol_trim%i_min .and. &
-                        &kd.le.grid_sol_trim%i_max) &
-                        &tot_nz(kd-grid_sol_trim%i_min+1) = &
-                        &tot_nz(kd-grid_sol_trim%i_min+1) - (st_size+1-kd)
+                ! Set column limits of nonzero columns per row
+                !   At row  i the largest nonzero  column is the one  due to the
+                !   row  at i+st_size(1),  as this  one will  work back  at most
+                !   st_size(1)  places.  The  last  column that  this  row  will
+                !   contribute to  is st_size(2)  further, which  makes for  i +
+                !   sum(st_size). For the lower bound  a similar argument can be
+                !   constructed.
+                do kd = 1,loc_n_r
+                    col_lims(kd,1) = max(kd+i_lims(1)-1-sum(st_size),1)
+                    col_lims(kd,2) =  min(kd+i_lims(1)-1+sum(st_size),n_r)
                 end do
-                if (norm_disc_style_sol.eq.1) then
-                    do kd = n_r,n_r-st_size+1,-1
-                        ! limit due to right BC
-                        if (kd.ge.grid_sol_trim%i_min .and. &
-                            &kd.le.grid_sol_trim%i_max) &
-                            &tot_nz(kd-grid_sol_trim%i_min+1) = &
-                            &tot_nz(kd-grid_sol_trim%i_min+1) - (kd-n_r+st_size)
-                    end do
-                end if
                 
-                ! calculate number of nonzero diagonal entries
-                if (loc_n_r.le.(st_size+1)) then                                ! up to (st_size+1) normal points in this process
-                    d_nz = loc_n_r
-                else                                                            ! more than (st_size+1) normal points in this process
-                    do kd = 1,st_size
-                        d_nz(kd) = st_size+kd
-                        d_nz(loc_n_r-kd+1) = st_size+kd
-                    end do
-                    d_nz(st_size+1:loc_n_r-st_size) = 2*st_size+1
-                end if
-                d_nz = min(d_nz,loc_n_r)                                        ! limit to loc_n_r
+                ! calculate number of total nonzero entries:
+                !   Number of nonzeros columns.
+                tot_nz = col_lims(:,2) - col_lims(:,1) + 1
                 
                 ! calculate number of nonzero off-diagonal entries
+                !   For row  i, this  is equal  to the  number of  elements with
+                !   column index greater than  the maximum row index (i_lims(2))
+                !   plus the number of elements with column index lower than the
+                !   minimum row index (i_lims(1)).
                 do kd = 1,loc_n_r
-                    o_nz(kd) = tot_nz(kd)-d_nz(kd)
+                    o_nz(kd) = max(0,i_lims(1)-col_lims(kd,1)) + &
+                        &max(0,col_lims(kd,2)-i_lims(2))
                 end do
+                
+                ! calculate number of nonzero diagonal entries
+                d_nz = tot_nz-o_nz
             else
                 d_nz = 0
                 o_nz = 0
@@ -920,18 +934,18 @@ contains
     !!      - An  artificial Eigenvalue  \c EV_BC is  introduced by  setting the
     !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
     !!      off-diagonal elements to zero.
-    !!  -# Minimization of surface energy through extension of grid:
-    !!      - For  symmetric finite differences,  \c ndps extra grid  points are
-    !!      introduced after the  edge and the vacuum term is  added to the edge
-    !!      element.
-    !!      - For left finite differences, the  vacuum term is just added to the
-    !!      edge element, so this method becomes idential to 3.
     !!  -# Minimization of surface energy through asymmetric fin. differences:
     !!      - For symmetric finite differences, the last \c ndps grid points are
     !!      treated asymmetrically in order not go  over the edge and the vacuum
     !!      term is added to the edge element.
     !!      -  For left  differences, this  is already  standard, so  the method
     !!      becomes identical to 2.
+    !!  -# Minimization of surface energy through extension of grid:
+    !!      - For  symmetric finite differences,  \c ndps extra grid  points are
+    !!      introduced after the  edge and the vacuum term is  added to the edge
+    !!      element.
+    !!      - For left finite differences, the  vacuum term is just added to the
+    !!      edge element, so this method becomes idential to 3.
     !!  -# Explicit introduction of the surface energy minimization:
     !!      -  The equation  due  to  the minimization  of  the  vacuum term  is
     !!      introduced explicitely  as an asymmetric finite  difference equation
@@ -1360,7 +1374,7 @@ contains
             CHCKERR(err_msg)
         end if
         
-        !call PetscOptionsSetValue('-eps_view','-1',ierr)
+        !call PetscOptionsSetValue(PETSC_NULL_OBJECT,'-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
         CHCKERR('EPSCreate failed')
         
@@ -1501,8 +1515,11 @@ contains
                     CHCKERR('Failed to get pointer')
                     
                     ! copy the values
-                    guess_vec_ptr = reshape([sol%vec(:,:,kd)],&
+                    guess_vec_ptr(1:size(sol%vec(:,:,kd))) = &
+                        &reshape([sol%vec(:,:,kd)],&
                         &[size(sol%vec(:,:,kd))])
+                    guess_vec_ptr(size(sol%vec(:,:,kd))+1:size(guess_vec_ptr)) &
+                        &= guess_vec_ptr(size(sol%vec(:,:,kd)))                 ! some BC's have a grid extension
                     
                     ! return pointer
                     call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
@@ -1771,7 +1788,6 @@ contains
                 &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
             sol%vec(:,:,id) = sol_vec_loc(:,1:size(sol%vec,2))
-            call print_ex_2D(['sol_vec'],'sol_vec',rp(transpose(sol_vec_loc)))
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
             !call EPSComputeRelativeError(solver,id_tot-1,error,ierr)            ! get error (starts at index 0) (petsc 3.5.3)
             CHCKERR('EPSComputeError failed')

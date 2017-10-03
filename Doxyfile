@@ -777,6 +777,7 @@ INPUT                  = "./" \
                          "./Modules/" \
                          "./Documentation/Doxygen/mainpage.dox" \
                          "./Documentation/Doxygen/inputs.dox" \
+                         "./Documentation/Doxygen/faq.dox" \
                          "./Documentation/Doxygen/outputs.dox" \
                          "./Documentation/Doxygen/overview.dox" \
                          "./Documentation/Doxygen/tutorial.dox" \

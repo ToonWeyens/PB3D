@@ -941,6 +941,7 @@ contains
     !! the last EV. These ranges can be disjoint but do not have to be.\n
     !! Also, it is  possible that a range  does not exist, for  example if there
     !! are no unstable EV's.
+    !!
     !! \note  A negative  value for  the  elements in  n_sol_plotted means  "all
     !! values in range":
     !!  1. or 2. full unstable range
@@ -1031,7 +1032,7 @@ contains
         character(len=max_str_ln) :: plot_title(2)                              ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         
-        if (rank.eq.0) then
+        if (rank.eq.0 .and. size(sol_val_comp,3).gt.0) then
             ! real part
             plot_title = ['RE sol_val','E_frac    ']
             plot_name = 'sol_val_comp_RE'

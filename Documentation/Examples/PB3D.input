@@ -1,0 +1,21 @@
+&inputdata_PB3D
+    min_n_par_X             = 500
+    min_par_X               = 0.0
+    max_par_X               = 2.0
+    alpha                   = 0.0
+    min_r_sol               = 0.1
+    max_r_sol               = 1.0
+    n_r_sol                 = 500
+    prim_X                  = 10
+    n_mod_X                 = 20
+    BC_style                = 1 1
+    U_style                 = 3
+    max_tot_mem             = 8000
+    max_it_rich             = 2
+    use_normalization       = .true.
+/
+//! [some extra options for PB3D]
+    rich_restart_lvl        = 1
+    tol_rich                = 1.0E-4
+    tol_SLEPC               = 1.0E-8 1.0E-8
+//! [some extra options for PB3D]

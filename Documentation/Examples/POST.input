@@ -1,0 +1,27 @@
+&INPUTDATA_POST
+    plot_resonance          = .true.
+    plot_magn_grid          = .true.
+    plot_flux_q             = .true.
+    plot_sol_xi             = .true.
+    plot_sol_Q              = .true.
+    plot_E_rec              = .true.
+    plot_B                  = .true.
+    plot_J                  = .true.
+    plot_kappa              = .true.
+    min_r_plot              = 0.0
+    max_r_plot              = 1.0
+    n_theta_plot            = 101
+    min_theta_plot          = 0.00
+    max_theta_plot          = 2.00
+    n_zeta_plot             = 1
+    min_zeta_plot           = 0.00
+    max_zeta_plot           = 0.00
+    POST_style              = 1
+    plot_grid_style         = 0
+    pert_mult_factor_POST   = 0.0000
+    max_tot_mem             = 8000
+/
+//! [some extra options for POST]
+    ex_plot_style           = 2
+    PB3D_rich_lvl           = 1
+//! [some extra options for POST]

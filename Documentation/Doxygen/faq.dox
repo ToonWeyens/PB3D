@@ -1,0 +1,30 @@
+/*! \page page_faq Frequently Asked Questions
+    
+    \tableofcontents
+    
+    \section faq_errors runtime errors
+
+    <table>
+    <caption id="faq_errors_tab">Table 1. frequently encountered errors</caption>
+    <tr>
+        <th> error </th><th> solution </th>
+    </tr>
+    <tr>
+        <td>"need at least N points in grid" </td> <td> grid_utilities.setup_deriv_data() needs a minimum number of points in a grid to setup data with which the derivatives can be calculated later in grid_utilities.apply_disc(). If the grid does not have enough points, and the order of the derivative is too high, the procedure gives this error message. The solution is to either increase the number of points, or to lower the order. It might be that the number of points in the grid is lower than you expect because the grid is divided. In this case, you need more memory (see \c max_tot_mem in \ref page_inputs). </td>
+    </tr>
+    <tr>
+        <td>"Zero pivot in LU factorization" </td> <td> There exist cases in which the eigenvalue solver fails when <tt>n_mod_X = 1</tt>, for unkown reasons. Increase <tt>n_mod_X</tt> or play with other parameters, such as the \c norm_disc_prec_sol. </td>
+    </tr>
+    <tr>
+        <td>\c jump_to_sol does not work</td> <td> Jumping over the equilibrium and perturbation drivers straight to the solution only works if solution parameters such as the boundary conditions are changed, \i not if the number of points in the solution, \c n_r_sol, is changed, as in this case the equilibrium and solution drivers need to be recalculated properly.</td>
+    </tr>
+    <tr>
+        <td>The solution suffers from numerical oscillations</td> <td> This is a work in progress. Change the limits of the solution grid \c min_r_sol (and possibly \c max_r_sol). Better even is to use asymmetric finite differences <tt>norm_disc_style_sol = 2</tt></td>
+    </tr>
+    </table>
+    
+    
+*/
+    \latexonly
+        \textit{\scriptsize Footnotes are situated at the end of the chapter}
+    \endlatexonly

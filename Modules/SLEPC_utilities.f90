@@ -123,7 +123,8 @@ contains
         ! user output
         if (debug_insert_block_mat) then
             if (.not.ind_insert_loc) call sleep(rank)
-            call writo('>>> at (k,m) = '//trim(i2str(r_id))//' + ('//&
+            call writo('>>> rank '//trim(i2str(rank))//&
+                &': at (k,m) = '//trim(i2str(r_id))//' + ('//&
                 &trim(i2str(ind(1)))//','//trim(i2str(ind(2)))//'):',&
                 &persistent=.true.)
             call lvl_ud(1)
@@ -181,7 +182,7 @@ contains
                     call writo('(with operation INSERT_VALUES)',&
                         &persistent=.true.)
                 else
-                    call writo('(with operation INSERT_VALUES)',&
+                    call writo('(with operation ADD_VALUES)',&
                         &persistent=.true.)
                 end if
             endif

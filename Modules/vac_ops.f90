@@ -147,13 +147,13 @@ contains
                 ierr = vac%init(eq_style,n_par_X)
                 CHCKERR('')
                 
-                ! copy previous results back in appropriate, interlaced place
-                if (rich_lvl.gt.1) then
-                    vac%norm(1:vac%n_bnd:2,:) = vac_old%norm
-                    vac%x_vec(1:vac%n_bnd:2,:) = vac_old%x_vec
-                    ierr = 1
-                    CHCKERR('DO THIS WITH PDGEMR2D')
-                end if
+                !! copy previous results back in appropriate, interlaced place
+                !if (rich_lvl.gt.1) then
+                    !vac%norm(1:vac%n_bnd:2,:) = vac_old%norm
+                    !vac%x_vec(1:vac%n_bnd:2,:) = vac_old%x_vec
+                    !ierr = 1
+                    !CHCKERR('DO THIS WITH PDGEMR2D')
+                !end if
             end if
             
             ! add results from current equilibrium job to the variables
@@ -389,10 +389,17 @@ contains
     !! matrices  that contain  the  integration rule,  respectively the  factors
     !! \f$(nq-m)\f$.
     !!
+    !! If \c  jump_to_sol is used for  the current Richardson level,  the vacuum
+    !! quantities are not calculated, but just restored.
+    !!
     !! \return ierr
     integer function calc_vac(vac) result(ierr)
         use MPI
+        use num_vars, only: eq_style
         use rich_vars, only: rich_lvl
+        use num_vars, only: jump_to_sol, rich_restart_lvl
+        use PB3D_ops, only: reconstruct_PB3D_vac
+        use rich_vars, only: n_par_X
         
         character(*), parameter :: rout_name = 'calc_vac'
         
@@ -404,6 +411,15 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
+            !!! temporarily just initializing
+            ierr = vac%init(eq_style,n_par_X)
+            CHCKERR('')
+            ! reconstruct old vacuum
+            !ierr = reconstruct_PB3D_vac(vac,'vac')
+            !CHCKERR('')
+        end if
         
         call writo('NOT YET IMPLEMENTED!!!! SET TO ZERO!!!',warning=.true.)
         vac%res = 0._dp
