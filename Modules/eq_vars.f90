@@ -46,8 +46,8 @@ module eq_vars
     real(dp) :: psi_0                                                           !< derived normalization constant for nondimensionalization
     real(dp) :: T_0                                                             !< derived normalization constant for nondimensionalization
     real(dp) :: vac_perm = mu_0_original                                        !< either usual mu_0 (default) or normalized
-    real(dp) :: max_flux_E                                                      !< max. flux in Equilibrium coordinates
-    real(dp) :: max_flux_F                                                      !< max. flux in Flux coordinates
+    real(dp) :: max_flux_E                                                      !< max. flux in Equilibrium coordinates, set in calc_norm_range_PB3D_in
+    real(dp) :: max_flux_F                                                      !< max. flux in Flux coordinates, set in calc_norm_range_PB3D_in
 #if ldebug
     !> \ldebug
     integer :: n_alloc_eq_1s                                                    !< nr. of allocated \c eq_1 variables

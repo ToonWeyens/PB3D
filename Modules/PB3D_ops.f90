@@ -1254,6 +1254,8 @@ contains
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: style                                                        ! style of vacuum
         integer :: n_bnd                                                        ! number of terms in boundary
+        integer :: n_tor                                                        ! toroidal mode number
+        integer :: n_ang(2)                                                     ! number of angles (1) and number of field lines (2)
         
         ! initialize ierr
         ierr = 0
@@ -1268,11 +1270,21 @@ contains
         call conv_1D2ND(var_1D,dum_1D)
         style = nint(dum_1D(1))
         n_bnd = nint(dum_1D(2))
+        n_tor = nint(dum_1D(3))
+        n_ang = nint(dum_1D(4:5))
         call dealloc_var_1D(var_1D)
         
         ! create vac
-        ierr = vac%init(style,n_bnd)
+        ierr = vac%init(style,n_bnd,n_tor,n_ang)
         CHCKERR('')
+        
+        ! ang
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'ang',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%ang = dum_2D
+        call dealloc_var_1D(var_1D)
         
         ! norm
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&

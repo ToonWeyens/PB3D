@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css?family=Lato:400,400i,700,700i|Open+Sans:400,600,700,800|Ubuntu+Mono:400,700|Architects+Daughter');
+@import url('https://fonts.googleapis.com/css?family=Lato:400,400i,700,700i|Open+Sans:400,600,700|Ubuntu+Mono:400,700|Architects+Daughter');
 /*@import url('https://fonts.googleapis.com/css?family=Roboto:400,700|Open+Sans:400,600,700,800|Roboto+Mono:400,700|Architects+Daughter');*/
 
 
@@ -28,7 +28,7 @@ h1 {
 	padding: 15px 15px 10px 10px;
     color: #3D578C;
     font-family: 'Open Sans', sans-serif;
-    font-weight: 900;
+    font-weight: 700;
     font-size: x-large;
 }
 

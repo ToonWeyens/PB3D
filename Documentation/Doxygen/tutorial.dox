@@ -46,12 +46,16 @@
     or even just
     \code ./PB3D \endcode
 
-    \note The HELENA version used here outputs the variable \c ias to the mapping file on the first line, right after the variable \c js0.
-    Some versions only write the latter.
+    \note The HELENA version used here outputs the variables \c IAS and \c B0 to the mapping file, after the variable \c JS0 and after the variable \c RAXIS.
+    Some versions do not write these by default.
     If yours is one of the above, the solution is to change
-    \code write(nmap,8) js0 \endcode
+    \code write(nmap,8) JS0 \endcode
     to 
-    \code write(nmap,8) js0, ias \endcode
+    \code write(nmap,8) JS0, IAS \endcode
+    and 
+    \code write(nmap,8) RAXIS \endcode
+    to 
+    \code write(nmap,8) RAXIS, B0 \endcode
     in the subroutine \c mapping and recompile and re-run HELENA.
 
     

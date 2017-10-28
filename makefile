@@ -218,7 +218,7 @@ doc_latex: doc
 	@echo "\n Created file 'PB3D_manual.pdf' in ~/Documents/PB3D.github.io/."
 	@echo "\n Warnings in refman.log file in ~/Documents/PB3D.github.io/Doxygen/latex:\n"
 	@echo "START OF WARNINGS"
-	cd /home/toon/Documents/PB3D.github.io/Doxygen/latex && grep -i 'warning' refman.log
+	@cd /home/toon/Documents/PB3D.github.io/Doxygen/latex && grep -i 'warning' refman.log
 	@echo "END OF WARNINGS"
 
 tag:

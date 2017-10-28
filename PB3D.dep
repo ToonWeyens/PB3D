@@ -453,6 +453,7 @@ vac_ops.o : \
     output_ops.o \
     PB3D_ops.o \
     MPI_utilities.o \
+    num_ops.o \
     num_utilities.o \
     grid_utilities.o \
     eq_utilities.o \
@@ -462,6 +463,15 @@ vac_ops.o : \
     grid_vars.o \
     rich_vars.o \
     HELENA_vars.o \
+    vac_utilities.o \
+    dtorh.o \
+
+vac_utilities.o: \
+    str_utilities.o \
+    messages.o \
+    output_ops.o \
+    num_vars.o \
+    vac_vars.o \
 
 HELENA_vars.o : \
     num_vars.o \
@@ -542,3 +552,4 @@ bspline_sub_module.o : \
 dtorh.o : \
     num_vars.o \
     messages.o \
+    str_utilities.o \

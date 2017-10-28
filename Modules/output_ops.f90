@@ -17,6 +17,7 @@ module output_ops
     public print_ex_2D, print_ex_3D, draw_ex, plot_HDF5, plot_diff_HDF5
     
     ! global variables
+    integer :: temp_id(2) = 1                                                   ! will be appended to temporary data and script files
     character(len=9) :: line_clrs(20) = [&
         &'"#7297E6"','"#67EB84"','"#F97A6D"','"#F9C96D"','"#1D4599"',&
         &'"#11AD34"','"#E62B17"','"#E69F17"','"#2F3F60"','"#2F6C3D"',&
@@ -142,13 +143,14 @@ module output_ops
     
 contains
     !> \private individual version
-    subroutine print_ex_2D_ind(var_name,file_name_i,y,x,draw)
+    subroutine print_ex_2D_ind(var_name,file_name_i,y,x,draw,persistent)
         ! input / output
         character(len=*), intent(in) :: var_name                                !< name of variable in legend
         character(len=*), intent(in) :: file_name_i                             !< name of input file
         real(dp), intent(in) :: y(1:)                                           !< ordinate
         real(dp), intent(in), optional :: x(1:)                                 !< absicca
         logical, intent(in), optional :: draw                                   !< whether to draw the plot as well
+        logical, intent(in), optional :: persistent                             !< keep on-screen plot open
         
         ! local variables
         integer :: npoints
@@ -159,14 +161,14 @@ contains
         ! call multiplot version
         if (present(x)) then
             call print_ex_2D_arr([var_name],file_name_i,reshape(y,[npoints,1]),&
-                &x=reshape(x,[npoints,1]),draw=draw)
+                &x=reshape(x,[npoints,1]),draw=draw,persistent=persistent)
         else
             call print_ex_2D_arr([var_name],file_name_i,reshape(y,[npoints,1]),&
-                &draw=draw)
+                &draw=draw,persistent=persistent)
         end if
     end subroutine print_ex_2D_ind
     !> \private array version
-    subroutine print_ex_2D_arr(var_names,file_name_i,y,x,draw)
+    subroutine print_ex_2D_arr(var_names,file_name_i,y,x,draw,persistent)
         use num_vars, only: rank
         
         ! input / output
@@ -175,6 +177,7 @@ contains
         real(dp), intent(in) :: y(1:,1:)                                        !< ordinate
         real(dp), intent(in), optional :: x(1:,1:)                              !< absicca
         logical, intent(in), optional :: draw                                   !< whether to draw the plot as well
+        logical, intent(in), optional :: persistent                             !< keep on-screen plot open
         
         ! local variables
         integer :: file_i
@@ -183,6 +186,7 @@ contains
         integer :: istat
         character(len=max_str_ln) :: file_name
         character(len=max_str_ln) :: write_format
+        logical :: persistent_loc                                               ! local persistent
         
         ! set nplt, npnt
         npnt = size(y,1)
@@ -196,6 +200,10 @@ contains
                     &same... Skipping plot',persistent=.true.,warning=.true.)
             end if
         end if
+        
+        ! set other variables
+        persistent_loc = .false.
+        if (present(persistent)) persistent_loc = persistent
         
         ! set x
         allocate(x_fin(npnt,nplt))
@@ -215,7 +223,9 @@ contains
         
         ! set default file name if empty
         if (trim(file_name_i).eq.'') then
-            file_name = 'temp_data_print_ex_2D_'//trim(i2str(rank))
+            file_name = 'temp_data_print_ex_2D_'//trim(i2str(rank))//'_'//&
+                trim(i2str(temp_id(1)))
+            temp_id(1) = temp_id(1)+1
         else
             file_name = trim(file_name_i)
         end if
@@ -246,9 +256,9 @@ contains
         if (present(draw)) then
             if (.not.draw) return
         end if
-        call draw_ex(var_names,file_name,nplt,1,.true.)
+        call draw_ex(var_names,file_name,nplt,1,.true.,persistent=persistent)
         
-        if (trim(file_name_i).eq.'') then
+        if (trim(file_name_i).eq.'' .and. .not.persistent_loc) then
             call use_execute_command_line('rm '//data_dir//'/'//&
                 &trim(file_name)//'.dat')
         end if
@@ -374,8 +384,9 @@ contains
         
         ! set default file name if empty
         if (trim(file_name_i).eq.'') then
-            file_name = 'temp_data_print_ex_3D_'//&
-                &trim(i2str(rank))//'.dat'
+            file_name = 'temp_data_print_ex_3D_'//trim(i2str(rank))//'_'//&
+                trim(i2str(temp_id(1)))
+            temp_id(1) = temp_id(1)+1
         else
             file_name = trim(file_name_i)
         end if
@@ -1063,7 +1074,8 @@ contains
     !!  - \c  draw_dim = 3: 2-D  plot in 3-D  slices; should be called  with the
     !!  output of output_ops.print_ex_2d(), \c nplt should be correctly set.
     subroutine draw_ex(var_names,draw_name,nplt,draw_dim,plot_on_screen,&
-        &ex_plot_style,data_name,draw_ops,extra_ops,is_animated,ranges,delay)
+        &ex_plot_style,data_name,draw_ops,extra_ops,is_animated,ranges,delay,&
+        &persistent)
         
         use num_vars, only: ex_plot_style_global => ex_plot_style, rank
         
@@ -1080,6 +1092,7 @@ contains
         logical, intent(in), optional :: is_animated                            !< plot is animated
         real(dp), intent(in), optional :: ranges(:,:)                           !< x and y range of animated plot
         integer, intent(in), optional :: delay                                  !< time delay between animated plot frames
+        logical, intent(in), optional :: persistent                             !< keep on-screen plot open
         
         ! local variables
         character(len=4) :: ex_ext                                              ! output extension of external program
@@ -1090,6 +1103,7 @@ contains
         character(len=max_str_ln), allocatable :: var_names_loc(:)              ! local variables names
         logical :: is_animated_loc                                              ! local is_animated
         logical :: run_shell_necessary                                          ! whether shell needs to be run
+        logical :: persistent_loc                                               ! local persistent
         real(dp), allocatable :: ranges_loc(:,:)                                ! local copy of ranges
         integer :: delay_loc                                                    ! local copy of delay
         integer :: n_draw_ops                                                   ! number of draw options provided
@@ -1118,6 +1132,8 @@ contains
         if (present(is_animated)) is_animated_loc = is_animated
         ex_plot_style_loc = ex_plot_style_global
         if (present(ex_plot_style)) ex_plot_style_loc = ex_plot_style
+        persistent_loc = .false.
+        if (present(persistent)) persistent_loc = persistent
         
         ! run shell to produce the plot by default
         run_shell_necessary = .true.
@@ -1142,7 +1158,8 @@ contains
         if (plot_on_screen .and. &
             &(ex_plot_style_loc.ne.1 .and. is_animated_loc)) then               ! not for GNUPlot animation
             script_name = trim(script_dir)//'/'//'temp_script_draw_ex_'//&
-                &trim(i2str(rank))
+                &trim(i2str(rank))//'_'//trim(i2str(temp_id(2)))
+            temp_id(2) = temp_id(2)+1
         else
             script_name = trim(script_dir)//'/'//trim(draw_name)
         end if
@@ -1219,7 +1236,8 @@ contains
                     &trim(script_name)//'"'//'" manually',persistent=.true.)
                 call lvl_ud(-1)
             else
-                if (plot_on_screen .and. run_shell_necessary) then
+                if (plot_on_screen .and. run_shell_necessary .and. &
+                    &.not.persistent_loc) then
                     call use_execute_command_line('rm '//&
                         &trim(script_name),exitstat=istat,&
                         &cmdstat=cmdstat,cmdmsg=cmdmsg)
@@ -1239,7 +1257,11 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) 'set border 4095 front linetype -1 &
                 &linewidth 1.0'
             if (plot_on_screen) then
-                write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt'
+                if (persistent_loc) then
+                    write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt persist'
+                else
+                    write(cmd_i,"(A)",IOSTAT=istat) 'set terminal wxt'
+                end if
             else
                 write(cmd_i,"(A)",IOSTAT=istat) 'set terminal pdf size '//&
                     &trim(i2str(plot_size(1)))//','//trim(i2str(plot_size(2)))

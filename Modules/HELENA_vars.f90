@@ -15,9 +15,11 @@ module HELENA_vars
     private
     public dealloc_HEL, &
         &pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, nchi, chi_H, ias, &
-        &RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33
+        &RBphi_H, R_H, Z_H, h_H_11, h_H_12, h_H_33, RMtoG_H, BMtoG_H
     
     ! global variables
+    real(dp) :: RMtoG_H                                                         !< R_geo/R_mag
+    real(dp) :: BMtoG_H                                                         !< B_geo/B_mag
     real(dp), allocatable :: chi_H(:)                                           !< poloidal angle
     real(dp), allocatable :: flux_p_H(:,:)                                      !< poloidal flux
     real(dp), allocatable :: flux_t_H(:,:)                                      !< toroidal flux

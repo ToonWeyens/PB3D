@@ -1068,3 +1068,17 @@ ITER Organization
 
 ## 1.97:
 * Fixed doxygen bugs and added files in examples.
+
+## 1.98:
+* '.javifile' has been renamed to '.jorek'.
+* HELENA now should also return B0 in the mapping file.
+* Cleaned up, fixed, and improved the creation of VMEC file in 'create_VMEC_input'.
+* 'create_VMEC_input' now can do either ncurr = 0 or ncurr = 1.
+* Fixed bug in the JOREK export. There is a good match now.
+
+## 1.99:
+* New module "vac_utilities" to house the utilities that are split off from "vac_ops".
+* "vac_vars" now include the angles along the magnetic field lines.
+* Implemented "calc_GH_2".
+* Implemented test on G and H, making use of test potential (R e^zeta)^n. Results are positive.
+* Implemented second test, making use of a spherical potential of dubious validity, as also indicated by negative results.

@@ -258,7 +258,7 @@ contains
             end if
             
             ! store vacuum variables
-            ierr = store_vac(grid_eq,eq_1,eq_2,vac)
+            ierr = store_vac(grid_eq,eq_2,vac)
             CHCKERR('')
         end if
         

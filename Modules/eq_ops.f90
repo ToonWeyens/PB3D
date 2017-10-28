@@ -22,6 +22,7 @@ module eq_ops
     
     ! global variables
     integer :: fund_n_par                                                       !< fundamental interval width
+    logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
     logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
@@ -720,15 +721,17 @@ contains
     !!  - <tt>(pol modes, cos/sin)</tt> for \c B_F_loc
     !!  - <tt>(tor_modes, pol modes, cos/sin (m theta), R/Z)</tt> for \c B_F
     integer function create_VMEC_input(grid_eq,eq_1) result(ierr)
-        use eq_vars, only: pres_0, R_0, psi_0, B_0
+        use eq_vars, only: pres_0, R_0, psi_0, B_0, vac_perm
+        !use eq_vars, only: max_flux_E
         use grid_vars, only: n_r_eq
         use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
             &calc_XYZ_grid, setup_deriv_data
-        use HELENA_vars, only: nchi, R_H, Z_H, ias, RBphi_H, flux_p_H
+        use HELENA_vars, only: nchi, R_H, Z_H, ias, RBphi_H, flux_p_H, &
+            &flux_t_H, chi_H, RMtoG_H, BMtoG_H
         use X_vars, only: min_r_sol, max_r_sol
         use input_utilities, only: pause_prog, get_log, get_int, get_real
         use num_utilities, only: GCD, bubble_sort, order_per_fun, &
-            &shift_F, spline3
+            &shift_F, spline3, calc_int
         use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
             &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original, &
             &use_normalization
@@ -760,6 +763,7 @@ contains
         integer :: n_prop_B_tor                                                 ! n of angular poins in prop_B_tor
         integer :: spline_init(3)                                               ! spline initialization parameter
         integer :: nr_m_max                                                     ! maximum nr. of poloidal mode numbers
+        integer :: ncurr                                                        ! ncurr VMEC flag (0: prescribe iota, 1: prescribe tor. current)
         integer, allocatable :: n_pert(:)                                       ! tor. mode numbers and pol. mode numbers for each of them
         integer, allocatable :: n_pert_copy(:)                                  ! copy of n_pert, for sorting
         integer, allocatable :: piv(:)                                          ! pivots for sorting
@@ -783,13 +787,22 @@ contains
         real(dp) :: prop_B_tor_smooth                                           ! smoothing of prop_B_tor_interp via Fourier transform
         real(dp) :: RZ_B_0(2)                                                   ! origin of R and Z of boundary
         real(dp) :: loc_F(0:1,2)                                                ! local trigonometric variable for holding cos and sin
-        real(dp) :: s_V(99)                                                     ! normal coordinate s for writing
-        real(dp) :: pres_V(99)                                                  ! pressure for writing
+        real(dp) :: s_VJ(99)                                                    ! normal coordinate s for writing
+        real(dp) :: pres_VJ(99,0:1)                                             ! pressure for writing
         real(dp) :: rot_T_V(99)                                                 ! rotational transform for writing
-        real(dp) :: FFp_J(99)                                                   ! FF' for writing
+        real(dp) :: F_VJ(99)                                                    ! F for writing
+        real(dp) :: FFp_VJ(99)                                                  ! FF' for writing
         real(dp) :: flux_J(99)                                                  ! normalized flux for writing
-        real(dp) :: q_saf_J(99)                                                 ! q_saf for writing
+        real(dp) :: q_saf_VJ(99)                                                ! q_saf for writing
+        real(dp) :: I_tor_V(99)                                                 ! enclosed toroidal current for VMEC
+        real(dp) :: I_tor_J(99)                                                 ! enclosed toroidal current for JOREK
+        real(dp) :: norm_J(3)                                                   ! normalization factors for Jorek (R_geo, Z_geo, F0)
         real(dp), allocatable :: FFp(:)                                         ! FF' in total grid
+        real(dp), allocatable :: I_tor(:)                                       ! toroidal current within flux surfaces
+        real(dp), allocatable :: norm_transf(:,:)                               ! transformation of normal coordinates between MISHKA and VMEC or JOREK
+        real(dp), allocatable :: I_tor_int(:)                                   ! integrated I_tor
+        real(dp), allocatable :: RRint(:)                                       ! R^2 integrated poloidally
+        real(dp), allocatable :: RRint_loc(:)                                   ! local RRint
         real(dp), allocatable :: R_plot(:,:,:)                                  ! R for plotting of ripple map
         real(dp), allocatable :: Z_plot(:,:,:)                                  ! Z for plotting of ripple map
         real(dp), allocatable :: spline_knots_R(:)                              ! knots of spline for R
@@ -837,6 +850,11 @@ contains
             CHCKERR(err_msg)
         end if
         
+        ! test if normalization constants chosen
+        if (.not.all(BR_normalization_provided,1)) &
+            &call writo('No normalization factors were provided. &
+            &Are you sure this is correct?',warning=.true.)
+        
         ! set up local R_H and Z_H
         allocate(R_H_loc(nchi,n_r_eq))
         allocate(Z_H_loc(nchi,n_r_eq))
@@ -860,15 +878,51 @@ contains
             Z_H_loc = Z_H_loc + eq_vert_shift
         end if
         
-        ! set up FF'
+        ! set up F, FF' and <R^2>
         allocate(FFp(n_r_eq))
-        ierr = setup_deriv_data(flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
-            &norm_deriv_data,1,norm_disc_prec_eq)
+        allocate(RRint(n_r_eq))
+        allocate(RRint_loc(nchi))                                               ! includes overlap, as necessary for integration
+        ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),&
+            &norm_deriv_data,1,norm_disc_prec_eq)                               ! derive in equilibrium poloidal flux_p_H/2pi
         CHCKERR('')
         ierr = apply_disc(RBphi_H**2*0.5_dp,norm_deriv_data,FFp)
         CHCKERR('')
-        if (use_normalization) FFp = FFp*(R_0*B_0)**2
+        do kd = 1,n_r_eq
+            ierr = calc_int(R_H(:,kd)**2,chi_H,RRint_loc)
+            CHCKERR('')
+            RRint(kd) = RRint_loc(nchi)
+        end do
+        if (ias.eq.0) RRint = 2*RRint
         call norm_deriv_data%dealloc()
+        
+        ! set up toroidal current:
+        ! This is the  toroidal current between neighbouring  flux surfaces (see
+        ! first commentary in VMEC2013/Sources/General/add_fluxes.f90:
+        !   <J^zeta J>  = - [2pi FF'/mu_0 <J/R^2> + p'<J>]
+        !               = - [2pi F'q/mu_0 + p' <R^2>q/F] ,
+        ! which all  have units  1/m. Here, <.>  means integration  in a
+        ! full poloidal period.
+        ! As VMEC  wants the toroidal current  within two infintesimally
+        ! separated  flux  surface as  a  function  of the  VMEC  normal
+        ! coordinate, above has to be multiplied by
+        !   dpsi_PB3D/dpsi_V = psi_tor(edge)/(2pi q)
+        ! Finally, there is  an extra factor -1 because  the toroidal coordinate
+        ! in VMEC is oposite.
+        ! For JOREK,  the same  is done  with the poloidal  flux instead  of the
+        ! toroidal and without the change of sign.
+        allocate(I_tor(n_r_eq))
+        allocate(norm_transf(n_r_eq,2))
+        norm_transf(:,1) = -flux_t_H(n_r_eq,0)/(2*pi*eq_1%q_saf_E(:,0))
+        norm_transf(:,2) = flux_p_H(n_r_eq,0)/(2*pi)
+        I_tor = - (eq_1%pres_E(:,1)*RRint*eq_1%q_saf_E(:,0)/RBphi_H + &
+            &2*pi*FFp*eq_1%q_saf_E(:,0)/(RBphi_H*vac_perm))
+        
+        ! calculate total toroidal current
+        allocate(I_tor_int(size(I_tor)))
+        ierr = calc_int(I_tor*norm_transf(:,1),&
+            &flux_t_H(:,0)/flux_t_H(n_r_eq,0),I_tor_int)
+        if (use_normalization) I_tor_int = I_tor_int * R_0*B_0/mu_0_original
+        CHCKERR('')
         
         ! user output
         call writo('Initialize boundary')
@@ -968,6 +1022,14 @@ contains
             end do
             call lvl_ud(-1)
         end if
+        
+        ! get ncurr
+        call writo('VMEC current style?')
+        call lvl_ud(1)
+        call writo('0: prescribe iota')
+        call writo('1: prescribe toroidal current')
+        ncurr = get_int(lim_lo=0,lim_hi=1)
+        call lvl_ud(-1)
         
         ! get input about equilibrium perturbation
         ! Note: negative  M values will  be converted  to negative N  values and
@@ -1628,24 +1690,41 @@ contains
             max_n_B_output = get_int(lim_lo=1)
         end if
         
-        ! interpolate for VMEC output
-        s_V = [((kd-1._dp)/(size(s_V)-1),kd=1,size(s_V))]
+        ! interpolate for VMEC (V) and Jorek (J) output
+        s_VJ = [((kd-1._dp)/(size(s_VJ)-1),kd=1,size(s_VJ))]
         ierr = setup_interp_data(&
-            &eq_1%flux_t_E(:,0)/eq_1%flux_t_E(grid_eq%n(3),0),s_V,&
+            &eq_1%flux_t_E(:,0)/eq_1%flux_t_E(grid_eq%n(3),0),s_VJ,&
             &norm_interp_data,norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(eq_1%pres_E(:,0),norm_interp_data,pres_V)
+        do id = 0,1
+            ierr = apply_disc(eq_1%pres_E(:,id),norm_interp_data,pres_VJ(:,id))
+            CHCKERR('')
+        end do
+        if (use_normalization) then
+            pres_VJ = pres_VJ*pres_0
+            pres_VJ(:,1) = pres_VJ(:,1) / psi_0
+        end if
+        ierr = apply_disc(RBphi_H,norm_interp_data,F_VJ)
         CHCKERR('')
-        if (use_normalization) pres_V = pres_V*pres_0
-        ierr = apply_disc(FFp,norm_interp_data,FFp_J)
+        if (use_normalization) F_VJ = F_VJ * R_0*B_0
+        ierr = apply_disc(FFp,norm_interp_data,FFp_VJ)
         CHCKERR('')
-        ierr = apply_disc(flux_p_H(:,0)/flux_p_H(n_r_eq,0),&
-            &norm_interp_data,flux_J)
+        if (use_normalization) then
+            FFp_VJ = FFp_VJ * (R_0*B_0)**2/psi_0
+        end if
+        ierr = apply_disc(flux_p_H(:,0),norm_interp_data,flux_J)
         CHCKERR('')
-        ierr = apply_disc(eq_1%q_saf_E(:,0),norm_interp_data,q_saf_J)
+        if (use_normalization) flux_J = flux_J*psi_0
+        ierr = apply_disc(eq_1%q_saf_E(:,0),norm_interp_data,q_saf_VJ)
         CHCKERR('')
         ierr = apply_disc(-eq_1%rot_t_E(:,0),norm_interp_data,rot_T_V)
         CHCKERR('')
+        ierr = apply_disc(I_tor*norm_transf(:,1),norm_interp_data,I_tor_V)
+        CHCKERR('')
+        ierr = apply_disc(I_tor*norm_transf(:,2),norm_interp_data,I_tor_J)
+        CHCKERR('')
+        if (use_normalization) I_tor_V = I_tor_V * R_0*B_0/mu_0_original
+        if (use_normalization) I_tor_J = I_tor_J * R_0*B_0/mu_0_original
         call norm_interp_data%dealloc()
         
         ! output to VMEC input file
@@ -1659,17 +1738,16 @@ contains
         write(HEL_export_i,"(A)") "PRECON_TYPE = 'NONE'"
         write(HEL_export_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
         write(HEL_export_i,"(A)") "DELT = 1.00E+00,"
-        write(HEL_export_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319, &
-            &639"
+        write(HEL_export_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319"
         write(HEL_export_i,"(A)") "LRFP = F"
         write(HEL_export_i,"(A,L1)") "LASYM = ", .not.stel_sym
         write(HEL_export_i,"(A)") "LFREEB = F"
         write(HEL_export_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))                ! -NTOR .. NTOR
         write(HEL_export_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))             ! 0 .. MPOL-1
         write(HEL_export_i,"(A)") "TCON0 = 1"
-        write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-6, &
-            &1.E-10, 1.E-14, 2.000E-18, "
-        write(HEL_export_i,"(A)") "NITER = 20000,"
+        write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-10, 1.E-14, &
+            &2.000E-18, "
+        write(HEL_export_i,"(A)") "NITER = 100000,"
         write(HEL_export_i,"(A)") "NSTEP = 200,"
         write(HEL_export_i,"(A)") "NFP = "//trim(i2str(nfp))
         if (use_normalization) then
@@ -1679,6 +1757,8 @@ contains
             write(HEL_export_i,"(A)") "PHIEDGE = "//&
                 &trim(r2str(-eq_1%flux_t_E(grid_eq%n(3),0)))
         end if
+        write(HEL_export_i,"(A)") "CURTOR = "//&
+            &trim(r2str(I_tor_int(size(I_tor_int))))
         
         write(HEL_export_i,"(A)") ""
         write(HEL_export_i,"(A)") ""
@@ -1688,13 +1768,13 @@ contains
         write(HEL_export_i,"(A)") "GAMMA =  0.00000000000000E+00"
         write(HEL_export_i,"(A)") ""
         write(HEL_export_i,"(A)",advance="no") "AM_AUX_S ="
-        do kd = 1,size(s_V)
-            write(HEL_export_i,"(A1,ES23.16)") " ", s_V(kd)
+        do kd = 1,size(s_VJ)
+            write(HEL_export_i,"(A1,ES23.16)") " ", s_VJ(kd)
         end do
         write(HEL_export_i,"(A)") ""
         write(HEL_export_i,"(A)",advance="no") "AM_AUX_F ="
-        do kd = 1,size(pres_V)
-            write(HEL_export_i,"(A1,ES23.16)") " ", pres_V(kd)
+        do kd = 1,size(pres_VJ,1)
+            write(HEL_export_i,"(A1,ES23.16)") " ", pres_VJ(kd,0)
         end do
         
         write(HEL_export_i,"(A)") ""
@@ -1702,17 +1782,34 @@ contains
         
         write(HEL_export_i,"(A)") &
             &"!----- Current/Iota Parameters -----"
-        write(HEL_export_i,"(A)") "NCURR = 0"
+        write(HEL_export_i,"(A)") "NCURR = "//trim(i2str(ncurr))
+        write(HEL_export_i,"(A)") ""
+        
+        ! iota (is used if ncur = 0)
         write(HEL_export_i,"(A)") "PIOTA_TYPE = 'Cubic_spline'"
         write(HEL_export_i,"(A)") ""
         write(HEL_export_i,"(A)",advance="no") "AI_AUX_S ="
-        do kd = 1,size(s_V)
-            write(HEL_export_i,"(A1,ES23.16)") " ", s_V(kd)
+        do kd = 1,size(s_VJ)
+            write(HEL_export_i,"(A1,ES23.16)") " ", s_VJ(kd)
         end do
         write(HEL_export_i,"(A)") ""
         write(HEL_export_i,"(A)",advance="no") "AI_AUX_F ="
         do kd = 1,size(rot_t_V)
             write(HEL_export_i,"(A1,ES23.16)") " ", rot_t_V(kd)
+        end do
+        write(HEL_export_i,"(A)") ""
+        
+        ! I_tor (is used if ncur = 1)
+        write(HEL_export_i,"(A)") "PCURR_TYPE = 'cubic_spline_Ip'"
+        write(HEL_export_i,"(A)") ""
+        write(HEL_export_i,"(A)",advance="no") "AC_AUX_S ="
+        do kd = 1,size(s_VJ)
+            write(HEL_export_i,"(A1,ES23.16)") " ", s_VJ(kd)
+        end do
+        write(HEL_export_i,"(A)") ""
+        write(HEL_export_i,"(A)",advance="no") "AC_AUX_F ="
+        do kd = 1,size(rot_t_V)
+            write(HEL_export_i,"(A1,ES23.16)") " ", I_tor_V(kd)
         end do
         
         write(HEL_export_i,"(A)") ""
@@ -1737,18 +1834,40 @@ contains
         
         close(HEL_export_i)
         
-        ! output to output file for free-boundary coil fitting
-        file_name = "flux_and_boundary_quantities_"//trim(eq_name)//&
-            &'.javifile'
+        ! output to output file for free-boundary coil fitting in JOREK
+        file_name = "flux_and_boundary_quantities_"//trim(eq_name)//'.jorek'
         open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
             &IOSTAT=ierr)
         CHCKERR('Failed to open file')
         
-        write(HEL_export_i,"('! ',4(A23,' '))") 'normalized pol. flux []', &
-            &'mu_0*pressure [T^2m]', '-FF [B^2 T^2]', 'safety factor []'
+        ! The normal derivatives in FFp are transformed for JOREK output.
+        !   - The difference between the HELENA coordinate system (used in the E
+        !   quantities here), and  the JOREK coordinate system is  the fact that
+        !   HELENA uses  psi_pol/2pi as  the norma  coordinate while  JOREK uses
+        !   psi_pol/psi_pol(s). This step therefore introduces a factor
+        !       d/dpsi_J = psi_pol(s)/(2*pi)  d/dpsi_H
+        ! However, JOREK  then asks for  a quantity  that has this  exact factor
+        ! multiplied back into  it, so that the end results  does not require to
+        ! be transformed back. The following lines are therefore commented out.
+        !!FFp_VJ = FFp_VJ * max_flux_E/(2*pi)
+        !!if (use_normalization) FFp_VJ = FFp_VJ * psi_0                          ! to scale max_flux_E
+        if (use_normalization) then
+            norm_J = [R_0*RMtoG_H,RZ_B_0(2),R_0*RMtoG_H*B_0*BMtoG_H]
+        else
+            norm_J = [1._dp,1._dp,1._dp]
+        end if
+        write(HEL_export_i,"('! ',A)") 'normalization factors:'
+        write(HEL_export_i,"('R_geo = ',ES23.16,' ! [m]')") norm_J(1)
+        write(HEL_export_i,"('Z_geo = ',ES23.16,' ! [m]')") norm_J(2)
+        write(HEL_export_i,"('F0 = ',ES23.16,' ! [Tm]')") norm_J(3)
+        write(HEL_export_i,*) ''
+        write(HEL_export_i,"('! ',7(A23,' '))") 'pol. flux [Tm^2]', &
+            &'normalized pol. flux []', 'mu_0 pressure [T^2]', 'F [Tm]', &
+            &'-FFp [T^2 m^2/(Wb/rad)]', 'safety factor []', 'I_tor [A]'
         do kd = 1,size(flux_J)
-            write(HEL_export_i,"('  ',4(ES23.16,' '))") flux_J(kd), &
-                &mu_0_original*pres_V(kd), -FFp_J(kd), q_saf_J(kd)
+            write(HEL_export_i,"('  ',7(ES23.16,' '))") flux_J(kd), &
+                &flux_J(kd)/flux_J(size(flux_J)), mu_0_original*pres_VJ(kd,0), &
+                &F_VJ(kd), -FFp_VJ(kd), q_saf_VJ(kd), I_tor_J(kd)
         end do
         write(HEL_export_i,*) ''
         write(HEL_export_i,*) '! R [m] and Z [m] of boundary at psi [ ]'
@@ -1759,6 +1878,29 @@ contains
                 &kd, BH_0(kd,1), kd, BH_0(kd,2), kd, 1._dp
         end do
         
+        close(HEL_export_i)
+        
+        ! output different files
+        file_name = "jorek_ffprime"
+        open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
+            &IOSTAT=ierr)
+        CHCKERR('Failed to open file')
+        !write(HEL_export_i,"('! ',2(A23,' '))") 'psi_norm [ ]', '-FFp [T]'
+        do kd = 1,size(flux_J)
+            write(HEL_export_i,"('  ',2(ES23.16,' '))") &
+                &flux_J(kd)/flux_J(size(flux_J)), -FFp_VJ(kd)
+        end do
+        close(HEL_export_i)
+        file_name = "jorek_temperature"
+        open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
+            &IOSTAT=ierr)
+        CHCKERR('Failed to open file')
+        !write(HEL_export_i,"('! ',2(A23,' '))") 'psi_norm [ ]', &
+            !&'mu_0 pressure [T^2]'
+        do kd = 1,size(flux_J)
+            write(HEL_export_i,"('  ',2(ES23.16,' '))") &
+                &flux_J(kd)/flux_J(size(flux_J)), mu_0_original*pres_VJ(kd,0)
+        end do
         close(HEL_export_i)
         
         ! user output
@@ -3838,19 +3980,22 @@ contains
         character(*), parameter :: rout_name = 'calc_normalization_const'
         
         ! local variables
-        integer :: nr_overriden_const                                           ! nr. of user-overriden constants, to print warning if > 0
+        integer :: nr_overridden_const                                          ! nr. of user-overridden constants, to print warning if > 0
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
+        
+        ! initialize BR_normalization_provided
+        BR_normalization_provided = [.false.,.false.]
         
         if (use_normalization) then
             ! user output
             call writo('Calculating the normalization constants')
             call lvl_ud(1)
             
-            ! initialize nr_overriden_const
-            nr_overriden_const = 0
+            ! initialize nr_overridden_const
+            nr_overridden_const = 0
             
             ! calculation
             if (rank.eq.0) then
@@ -3865,10 +4010,10 @@ contains
                 end select
             end if
             
-            ! print warning if user-overriden
-            if (nr_overriden_const.gt.0) &
-                &call writo(trim(i2str(nr_overriden_const))//&
-                &' constants were overriden by user. Consistency is NOT &
+            ! print warning if user-overridden
+            if (nr_overridden_const.gt.0) &
+                &call writo(trim(i2str(nr_overridden_const))//&
+                &' constants were overridden by user. Consistency is NOT &
                 &checked!',warning=.true.)
             
             ! print constants
@@ -3926,28 +4071,28 @@ contains
                     if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
                         R_0 = R_V_c(1,1,0)
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set B_0 from magnetic field on axis
                     if (B_0.ge.huge(1._dp)) then                                ! user did not provide a value
                         B_0 = B_0_V
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set reference pres_0 from B_0
                     if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
                         pres_0 = B_0**2/mu_0_original
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set reference flux from R_0 and B_0
                     if (psi_0.ge.huge(1._dp)) then                              ! user did not provide a value
                         psi_0 = R_0**2 * B_0
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                 case (2)                                                        ! COBRA
                     ! user output
@@ -3957,14 +4102,14 @@ contains
                     if (R_0.ge.huge(1._dp)) then                                ! user did not provide a value
                         R_0 = 0.5_dp*(rmin_surf+rmax_surf)
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set pres_0 from pressure on axis
                     if (pres_0.ge.huge(1._dp)) then                             ! user did not provide a value
                         pres_0 = pres_V(1,0)
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set the reference value for B_0 from pres_0 and beta
@@ -3972,7 +4117,7 @@ contains
                         !B_0 = sqrt(2._dp*pres_0*mu_0_original/beta_V)          ! exact COBRA
                         B_0 = sqrt(pres_0*mu_0_original)                        ! pure modified COBRA
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! set reference flux from R_0, B_0 and aspr
@@ -3980,7 +4125,7 @@ contains
                         !psi_0 = B_0 * (R_0/aspr_V)**2                          ! exact COBRA
                         psi_0 = B_0 * R_0**2                                    ! pure modified COBRA
                     else
-                        nr_overriden_const = nr_overriden_const + 1
+                        nr_overridden_const = nr_overridden_const + 1
                     end if
                     
                     ! user output concerning pure modified COBRA
@@ -4001,7 +4146,7 @@ contains
             if (T_0.ge.huge(1._dp)) then                                        ! user did not provide a value
                 T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0
             else
-                nr_overriden_const = nr_overriden_const + 1
+                nr_overridden_const = nr_overridden_const + 1
             end if
         end subroutine calc_normalization_const_VMEC
         
@@ -4013,19 +4158,23 @@ contains
             
             if (R_0.ge.huge(1._dp)) then                                        ! user did not provide a value
                 R_0 = 1._dp
+            else
+                BR_normalization_provided(1) = .true.
             end if
             if (B_0.ge.huge(1._dp)) then                                        ! user did not provide a value
                 B_0 = 1._dp
+            else
+                BR_normalization_provided(2) = .true.
             end if
             if (pres_0.ge.huge(1._dp)) then                                     ! user did not provide a value
                 pres_0 = B_0**2/mu_0_original
             else
-                nr_overriden_const = nr_overriden_const + 1
+                nr_overridden_const = nr_overridden_const + 1
             end if
             if (psi_0.ge.huge(1._dp)) then                                      ! user did not provide a value
                 psi_0 = R_0**2 * B_0
             else
-                nr_overriden_const = nr_overriden_const + 1
+                nr_overridden_const = nr_overridden_const + 1
             end if
             if (T_0.ge.huge(1._dp)) T_0 = sqrt(mu_0_original*rho_0)*R_0/B_0     ! only if user did not provide a value
         end subroutine calc_normalization_const_HEL

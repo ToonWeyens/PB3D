@@ -137,8 +137,8 @@ module num_utilities
     !!  - For an equidistant grid,
     !!      \f[\int_1^n f(x) dx = \sum_{k=1}^{n-1}
     !!          {\left(f(k+1)+f(k)\right) \frac{\Delta_x}{2}},\f]
-    !!  is used, with \f$n\f$ the number of points,  which are assumed to be  equidistant with a
-    !! given step size \f$Delta_x\f$.
+    !!  is used,  with \f$n\f$  the number  of points, which  are assumed  to be
+    !!  equidistant with a given step size \f$Delta_x\f$.
     !!  - For a regular grid,
     !!      \f[\int_1^n f(x) dx = \sum_{k=1}^{n-1}
     !!          {\left(f(k+1)+f(k)\right) \frac{x(k+1)-x(k)}{2}}, \f]
@@ -152,8 +152,8 @@ module num_utilities
     !!          \left(f(n)+f(n-1)\right) \frac{x(n)-x(n-1)}{2},\f]
     !!      which is used here
     !!
-    !! \note For periodic  function, the trapezoidal rule works well  only if the
-    !! last point of the  grid is included, i.e. the point  where the function is
+    !! \note For periodic function, the trapezoidal  rule works well only if the
+    !! last point of the grid is included,  i.e. the point where the function is
     !! equal to the first point.
     !!
     !! \return ierr
@@ -179,9 +179,9 @@ module num_utilities
     !! \c lim_d), in  which case the grid  is assumed to be  equidistant, or the
     !! grid values themselves, in which case the grid just has to be regular.
     !!
-    !! The output is a  real value where the floored integer is  the index in the
-    !! discrete grid  and the remainder  corresponds to the fraction  towards the
-    !! next index.  If no solution  is found, a  negative value is  outputted, as
+    !! The output is a real value where  the floored integer is the index in the
+    !! discrete grid and  the remainder corresponds to the  fraction towards the
+    !! next index.  If no solution is  found, a negative value  is outputted, as
     !! well as a message.
     !!
     !! \return ierr

@@ -45,13 +45,13 @@ contains
     !! MISHKA simple. This is done using the factors:
     !!  - <tt> radius[] = a[m] / R_m[m] </tt>,
     !!  - <tt> eps[] = a[m] / R_vac[m] </tt>,
+    !! which can be used to de
     !!
     !! so that the expressions become:
     !!  - <tt> R[m]          = radius[] (1/eps[] + X[])           R_m[m]</tt>,
     !!  - <tt> Z[m]          = radius[] Y[]                       R_m[m]</tt>,
     !!  - <tt> RBphi[Tm]     = F_H[]                     B_m[T]   R_m[m]</tt>,
-    !!  - <tt> pres[N/m^2]   = pres_H[]                  B_m[T]^2 mu_0[N/A^2]^-1
-    !!  </tt>,
+    !!  - <tt> pres[N/m^2]   = pres_H[]                  B_m[T]^2 mu_0[N/A^2]^-1</tt>,
     !!  - <tt> flux_p[Tm^2]  = 2pi (s[])^2 cpsurf[]      B_m[T]   R_m[T]^2</tt>.
     !!
     !! Finally, in  HELENA, the total  current \c I,  the poloidal beta  and the
@@ -61,21 +61,25 @@ contains
     !!  - <tt> ZN </tt>,
     !!
     !! where <tt> a_vac = eps R_vac </tt> and \c B_vac are vacuum quantities,
-    !! \c  S  is the  2-D  cross-sectional  area and  \<p\>  is  the 2-D  averaged
+    !! \c  S is  the 2-D  cross-sectional  area and  \<p\> is  the 2-D  averaged
     !! pressure.
     !!
-    !! \note To translate this to the MISHKA normalization factors as                 !
+    !! \note To translate this to the MISHKA normalization factors as
     !!  - <tt> R_m = (eps/radius) R_vac </tt>,
     !!  - <tt> B_m = B_vac / B0 </tt>,
-    !! \n where                                                                    !
+    !!
+    !! \note where
     !!  - \c radius is in the mapping file (12), as well as in the HELENA output
     !!  (20).
     !!  - \c  eps is in the  mapping file (12), as  well as in the  HELENA input
     !!  (10) and output (20).
-    !!  - \c B0 is in the HELENA output (20).
+    !!  - \c  B0 is in the  mapping file (12), as  well as in the  HELENA output
+    !!  (20).
     !! \note Furthermore,  the density on axis  can be specified as  \c ZN0 from
     !! HELENA input (10). \n The other  variables should probably not be touched
     !! for consistency.
+    !! \note Finally, the variables IAS and B0 are in the mapping file (12) only
+    !! in patched versions. See \ref tutorial_eq.
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
@@ -83,7 +87,7 @@ contains
         use grid_utilities, only: setup_deriv_data, apply_disc
         use num_utilities, only: calc_int, spline3
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
-            &nchi, chi_H, ias, RBphi_H, R_H, Z_H
+            &nchi, chi_H, ias, RBphi_H, R_H, Z_H, RMtoG_H, BMtoG_H
         
         character(*), parameter :: rout_name = 'read_HEL'
         
@@ -101,7 +105,8 @@ contains
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
         real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
-        real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t. magnetic axis
+        real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t.  magnetic axis (i.e. R_m)
+        real(dp) :: B0                                                          ! B_geo/B_m
         real(dp) :: eps                                                         ! inverse aspect ratio
         real(dp) :: cpsurf                                                      ! poloidal flux on surface
         real(dp) :: ellip                                                       ! ellipticity
@@ -117,7 +122,8 @@ contains
         call lvl_ud(1)
         
         ! set error messages
-        err_msg = 'Failed to read HELENA output file'
+        err_msg = 'Failed to read HELENA output file. &
+            &Does it output IAS and B0? See tutorial!'
         
         ! rewind input file
         rewind(eq_i)
@@ -184,7 +190,7 @@ contains
             &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
             &nchi_loc+1,n_r_in*nchi_loc)                                        ! (gem33)
         
-        read(eq_i,*,IOSTAT=ierr) raxis                                          ! major radius
+        read(eq_i,*,IOSTAT=ierr) raxis, B0                                      ! major radius
         CHCKERR(err_msg)
         h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = raxis**2                                                  ! first normal point is degenerate, major radius
@@ -236,6 +242,10 @@ contains
         Z_H(:,1) = 0._dp                                                        ! first normal point is degenerate, 0
         if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
+        
+        ! set conversion factors
+        RMtoG_H = radius/eps                                                    ! R_geo / R_mag
+        BMtoG_H = B0                                                            ! B_geo / B_mag
         
         ! calculate ellipticity and triangularity
         max_loc_Z = maxloc(Z_H)

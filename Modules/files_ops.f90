@@ -254,7 +254,7 @@ contains
                         call writo('Unable to recognize type of input file')
                         call writo('If you are trying to open HELENA files, &
                             &you need to have a version that outputs the &
-                            &variable IAS')
+                            &variable IAS. See tutorial!')
                         CHCKERR('')
                     end if
                     

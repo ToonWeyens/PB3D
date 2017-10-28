@@ -9,6 +9,7 @@ module dtorh
 #include <PB3D_macros.h>
     use num_vars, only: dp, pi, max_str_ln
     use messages
+    use str_utilities
     
     implicit none
     private
@@ -301,6 +302,7 @@ contains
         QL = QL_loc(0:NMAX)
     end function DTORH1
     
+    ! Adapted to 100k iterations in stead of 10k.
     integer function FRAC(Z,M,NMAX,EPS,TINYSQ,FC) result(ierr)
         character(*), parameter :: rout_name = 'FRAC'
         
@@ -333,12 +335,12 @@ contains
         MM=MM+1
         A=-(1.D0+DN4/(DN3+MM))  
         B=DZ2*(DN1+MM)/(DN2+MM)
-        IF (MM.LT.10000) THEN
+        IF (MM.LT.1000000) THEN
             IF (DABS(DELTA-1.D0).GT.EPS) GOTO 81
         END IF
-        IF (MM.EQ.10000) then
+        IF (MM.EQ.1000000) then
             ierr =1
-            err_msg = 'CF CONVERGENCE FAILS'
+            err_msg = 'CF CONVERGENCE FAILS FOR Z = '//trim(r2str(Z))
             CHCKERR(err_msg)
         END IF
     end function FRAC
@@ -371,12 +373,12 @@ contains
         MM=MM+1
         A=DN2-(MM+DM)*(MM+DM)  
         B=DZ2*(MM+M)
-        IF (MM.LT.10000) THEN
+        IF (MM.LT.1000000) THEN
             IF (ABS(DELTA-1._dp).GT.EPS) GOTO 82
         END IF
-        IF (MM.EQ.10000) then
+        IF (MM.EQ.1000000) then
             ierr =1
-            err_msg= 'CF CONVERGENCE FAILS'
+            err_msg = 'CF CONVERGENCE FAILS FOR QZ = '//trim(r2str(QZ))
             CHCKERR(err_msg)
         END IF
     end function FRACPS

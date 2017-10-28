@@ -909,7 +909,7 @@ contains
         character(*), parameter :: rout_name = 'test_tor_fun'
         
         ! local variables
-        integer :: kd                                                           ! counter
+        integer :: jd, kd                                                       ! counters
         integer :: npt                                                          ! number of points
         real(dp) :: lim(2)                                                      ! limits
         real(dp), allocatable :: x(:)                                           ! abscissa
@@ -917,16 +917,31 @@ contains
         integer :: n                                                            ! degree
         integer :: m                                                            ! order
         integer :: max_n                                                        ! max. degree that can be calculated
+        integer :: min_n                                                        ! max. degree that can be plot
         logical :: done                                                         ! whether done
-        character(len=max_str_ln) :: plot_name(2)                               ! names of plot
+        logical :: test_approx                                                  ! test approximation
+        logical :: test_rel_diff                                                ! relative difference, not absolute
+        character(len=max_str_ln), allocatable :: plot_name(:)                  ! names of plot
         character(len=max_str_ln), allocatable :: fun_names(:,:)                ! names of functions that are plot
         
         ! initialize ierr
         ierr = 0
         
         done = .false.
+        test_approx = .false.
         
         do while (.not.done .and. rank.eq.0)
+            call lvl_ud(1)
+            
+            ! user input
+            call writo('Test approximation at singular point?')
+            test_approx = get_log(.false.)
+            test_rel_diff = .false.
+            if (test_approx) then
+                call writo('Relative difference in stead of absolute?')
+                test_rel_diff = get_log(.false.)
+            end if
+            
             ! user output
             call writo('Lower bound to plot?')
             lim(1) = get_real(lim_lo=1._dp)
@@ -936,23 +951,53 @@ contains
             npt = get_int(lim_lo=1)
             call writo('Max. degree? (subscript n in P_(n-0.5)^m)')
             n = get_int(lim_lo=0)
-            call writo('Order? (superscript m in P_(n-0.5)^m)')
-            m = get_int(lim_lo=0)
+            call writo('Min. degree? (subscript n in P_(n-0.5)^m)')
+            min_n = get_int(lim_lo=0,lim_hi=n)
+            if (.not.test_approx) then
+                call writo('Order? (superscript m in P_(n-0.5)^m)')
+                m = get_int(lim_lo=0)
+            else
+                call writo('Order is 0 when testing approximation')
+                m = 0
+            end if
             
             ! set up
             allocate(x(npt))
             allocate(f(npt,0:n,2))
             ierr = calc_eqd_grid(x,lim(1),lim(2))
             CHCKERR('')
-            plot_name(1) = 'tor_P'
-            plot_name(2) = 'tor_Q'
-            allocate(fun_names(0:n,2))
-            do kd = 0,n
-                fun_names(kd,1) = 'P_{'//trim(i2str(kd))//'-0.5}^'//&
-                    &trim(i2str(m))
-                fun_names(kd,2) = 'Q_{'//trim(i2str(kd))//'-0.5}^'//&
-                    &trim(i2str(m))
-            end do
+            if (test_approx) then
+                allocate(plot_name(min_n:n))
+                allocate(fun_names(min_n:n,2))
+                if (test_rel_diff) then
+                    do kd = min_n,n
+                        plot_name(kd) = 'tor_Q_rel_diff_'//trim(i2str(kd))
+                        fun_names(kd,1) = 'ReldiffQ_{'//trim(i2str(kd))//&
+                            &'-0.5}^'//trim(i2str(m))
+                        fun_names(kd,2) = 'Q_{'//trim(i2str(kd))//&
+                            &'-0.5}^'//trim(i2str(m))
+                    end do
+                else
+                    do kd = min_n,n
+                        plot_name(kd) = 'tor_Q_comp_'//trim(i2str(kd))
+                        fun_names(kd,1) = 'ApproxQ_{'//trim(i2str(kd))//&
+                            &'-0.5}^'//trim(i2str(m))
+                        fun_names(kd,2) = 'Q_{'//trim(i2str(kd))//&
+                            &'-0.5}^'//trim(i2str(m))
+                    end do
+                end if
+            else
+                allocate(plot_name(2))
+                allocate(fun_names(2,min_n:n))
+                plot_name(1) = 'tor_P'
+                plot_name(2) = 'tor_Q'
+                do kd = min_n,n
+                    fun_names(1,kd) = 'P_{'//trim(i2str(kd))//'-0.5}^'//&
+                        &trim(i2str(m))
+                    fun_names(2,kd) = 'Q_{'//trim(i2str(kd))//'-0.5}^'//&
+                        &trim(i2str(m))
+                end do
+            end if
             
             ! calculate
             do kd = 1,npt
@@ -961,21 +1006,37 @@ contains
                 if (max_n.lt.n) call writo('For point x = '//&
                     &trim(r2str(x(kd)))//', the solution did not converge for &
                     &degree > '//trim(i2str(max_n)),warning=.true.)
+                if (test_approx) then
+                    f(kd,:,1) = -0.5*log((x(kd)-1._dp)/32)
+                    do jd = 1,n
+                        f(kd,jd:n,1) = f(kd,jd:n,1) - 2_dp/(2._dp*jd-1._dp)
+                    end do
+                    if (test_rel_diff) f(kd,:,1) = &
+                        &2._dp*(f(kd,:,1)-f(kd,:,2))/(f(kd,:,1)+f(kd,:,2))
+                end if
             end do
             
             ! plot
-            do kd = 1,2
-                call print_ex_2D(fun_names(:,kd),trim(plot_name(kd)),f(:,:,kd),&
-                    &x=reshape(x,[npt,1]))
-                call draw_ex(fun_names(:,kd),trim(plot_name(kd)),n+1,1,.false.)
+            do kd = lbound(plot_name,1),ubound(plot_name,1)
+                if (test_approx) then
+                    call print_ex_2D(fun_names(kd,:),trim(plot_name(kd)),&
+                        &f(:,kd,:),x=reshape(x,[npt,1]))
+                else
+                    call print_ex_2D(fun_names(kd,:),trim(plot_name(kd)),&
+                        &f(:,min_n:n,kd),x=reshape(x,[npt,1]))
+                end if
+                call draw_ex(fun_names(kd,:),trim(plot_name(kd)),&
+                    &size(fun_names,2),1,.false.)
             end do
             
             ! clean up
-            deallocate(x,f,fun_names)
+            deallocate(x,f,fun_names,plot_name)
             
             ! user input
             call writo('Test again?')
             done = .not.get_log(.true.)
+            
+            call lvl_ud(-1)
         end do
     end function test_tor_fun
     

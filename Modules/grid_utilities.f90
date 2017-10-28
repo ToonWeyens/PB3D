@@ -2134,7 +2134,7 @@ contains
     !! instead of \f$(x-x_j)\f$.
     !! <https://en.wikipedia.org/wiki/Trigonometric_interpolation>, 01/09/2016.
     !!
-    !! Currently, this only works  for an odd number of points,  as there is also
+    !! Currently, this only works for an odd  number of points, as there is also
     !! an odd number of constraints.
     !!
     !! \remark Trigonometric  interpolation can be  used to resample  a periodic
