@@ -37,7 +37,7 @@ contains
     !! \return ierr
     integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,vac,sol) &
         &result(ierr)
-        use num_vars, only: EV_style, eq_style, rich_restart_lvl
+        use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, n_procs
         use grid_vars, only: n_r_sol
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
@@ -45,7 +45,7 @@ contains
         use sol_ops, only: print_output_sol
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
-        use vac_ops, only: calc_vac
+        use vac_ops, only: calc_vac, print_output_vac
         !!use num_utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
@@ -92,7 +92,15 @@ contains
         
         ! calculate vacuum
         ierr = calc_vac(vac)
+        
+        call writo('Write to output file')
+        call lvl_ud(1)
         CHCKERR('')
+        if (rank.eq.n_procs-1) then
+            ierr = print_output_vac(vac,'vac',rich_lvl=rich_lvl_name)
+            CHCKERR('')
+        end if
+        call lvl_ud(-1)
         
         ! set up solution grid if first level
         if (rich_lvl.eq.rich_restart_lvl) then

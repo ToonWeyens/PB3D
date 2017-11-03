@@ -12,13 +12,13 @@ module vac_vars
     implicit none
     
     private
-    public copy_vac
+    public copy_vac, set_loc_lims
 #if ldebug
     public n_alloc_vacs
 #endif
     
     ! global variables
-    integer, parameter :: bs = 64                                               !< Blocksize of the 2D block-cyclic distribution
+    integer, parameter :: bs = 16                                               !< Blocksize of the 2D block-cyclic distribution
 #if ldebug
     integer :: n_alloc_vacs                                                     !< nr. of allocated vacs \ldebug
 #endif
@@ -36,17 +36,20 @@ module vac_vars
     !! which there can be multiple, but the total sum must be equal to n_bnd.
     type, public :: vac_type
         integer :: style                                                        !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
-        integer :: n_tor                                                        !< toroidal mode number n
+        integer :: prim_X                                                       !< primary mode number
         integer :: ctxt_HG                                                      !< context for H and G
         integer :: n_bnd                                                        !< number of points in boundary
         integer :: bs                                                           !< block size in cyclical storage
+        integer :: MPI_Comm                                                     !< communicator for vacuum
         integer :: desc_H(BLACSCTXTSIZE)                                        !< descriptor for H
         integer :: desc_G(BLACSCTXTSIZE)                                        !< descriptor for G
         integer :: n_p(2)                                                       !< nr. of processes in grid
         integer :: ind_p(2)                                                     !< index of local process in grid
         integer :: n_loc(2)                                                     !< local number of rows and columns
+        integer :: lim_sec_X(2)                                                 !< limits on secondary mode numbers
         integer, allocatable :: lims_c(:,:)                                     !< column limits for different subrows of G and H
         integer, allocatable :: lims_r(:,:)                                     !< row limits for different subcolumns of G and H
+        real(dp) :: jq                                                          !< iota (tor. flux) or q (pol. flux) at edge
         real(dp), allocatable :: ang(:,:)                                       !< angle along field line, for each field line
         real(dp), allocatable :: norm(:,:)                                      !< J nabla psi normal vector
         real(dp), allocatable :: dnorm(:,:)                                     !< poloidal derivative of norm (only for style 2)
@@ -103,7 +106,9 @@ contains
     !! exceed the global bounds.
     !! 
     !! \return ierr
-    integer function init_vac(vac,style,n_bnd,n_tor,n_ang) result(ierr)
+    integer function init_vac(vac,style,n_bnd,prim_X,n_ang,jq) result(ierr)
+        
+        use MPI
         use num_vars, only: n_procs, rank
         use X_vars, only: n_mod_X
 #if ldebug
@@ -116,13 +121,15 @@ contains
         class(vac_type), intent(inout) :: vac                                   !< vacuum variables
         integer, intent(in) :: style                                            !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
         integer, intent(in) :: n_bnd                                            !< total number of points in boundary
-        integer, intent(in) :: n_tor                                            !< toroidal mode number 
+        integer, intent(in) :: prim_X                                           !< primary mode number 
         integer, intent(in) :: n_ang(2)                                         !< number of angles (1) and number of field lines (2)
+        real(dp), intent(in) :: jq                                              !< iota (tor. flux) or q (pol. flux) at edge
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_dims                                                       ! number of dimensions to be saved in x_vec and norm
         integer :: jd                                                           ! counter
+        integer, allocatable :: proc_map(:,:)                                   ! process map
         
         ! initialize ierr
         ierr = 0
@@ -145,14 +152,21 @@ contains
         vac%bs = bs
         if (n_procs.eq.1) vac%bs = n_bnd
         
+        ! set other variables
+        vac%jq = jq
+        
         ! Initialize the BLACS grid for H and G
-        vac%n_tor = n_tor
+        vac%prim_X = prim_X
         vac%n_bnd = n_bnd
         vac%n_p(1)=floor(sqrt(n_procs*1._dp))
         vac%n_p(2)=n_procs/vac%n_p(1)
-        call blacs_get(IZERO,IZERO,vac%ctxt_HG)
-        call blacs_gridinit(vac%ctxt_HG,'R',vac%n_p(1),vac%n_p(2))
-        call BLACS_gridinfo(vac%ctxt_HG,vac%n_p(1),vac%n_p(2),vac%ind_p(1),&
+        allocate(proc_map(vac%n_p(1),vac%n_p(2)))
+        proc_map = transpose(reshape(&
+            &[(jd+n_procs-1-product(vac%n_p),jd=1,product(vac%n_p))],vac%n_p))
+        call blacs_get(0,0,vac%ctxt_HG)
+        call blacs_gridmap(vac%ctxt_HG,proc_map,vac%n_p(1),vac%n_p(1),&
+            &vac%n_p(2))                                                        ! last MPI proc is also last process in map
+        call blacs_gridinfo(vac%ctxt_HG,vac%n_p(1),vac%n_p(2),vac%ind_p(1),&
             &vac%ind_p(2))                                                      ! get nr. of rows and columns and local index
         if(minval(vac%ind_p).ge.0) then                                         ! only the ranks that participate
             do jd = 1,2                                                         ! loop over rows, then columns
@@ -165,34 +179,20 @@ contains
             call descinit(vac%desc_G,n_bnd,n_bnd,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
                 &max(1,vac%n_loc(1)),ierr)
             CHCKERR('descinit failed')
+            call MPI_Comm_split(MPI_COMM_WORLD,1,rank,vac%MPI_Comm,ierr)
+            CHCKERR('')
         else
             vac%n_loc = [0,0]
+            call MPI_Comm_split(MPI_COMM_WORLD,MPI_UNDEFINED,rank,&
+                &vac%MPI_Comm,ierr)
+            CHCKERR('')
         end if
         
         ! set limits
-        if (product(vac%n_loc).gt.0) then
-            allocate(vac%lims_r(2,ceiling(vac%n_loc(1)*1._dp/vac%bs)))
-            allocate(vac%lims_c(2,ceiling(vac%n_loc(2)*1._dp/vac%bs)))
-            do jd = 1,size(vac%lims_r,2)                                        ! rows
-                vac%lims_r(1,jd) = indxl2g((jd-1)*vac%bs+1,vac%bs,vac%ind_p(1),&
-                    &0,vac%n_p(1))
-                vac%lims_r(2,jd) = indxl2g(min(jd*vac%bs,vac%n_loc(1)),vac%bs,&
-                    &vac%ind_p(1),0,vac%n_p(1))
-            end do
-            do jd = 1,size(vac%lims_c,2)                                        ! columns
-                vac%lims_c(1,jd) = indxl2g((jd-1)*vac%bs+1,vac%bs,vac%ind_p(2),&
-                    &0,vac%n_p(2))
-                vac%lims_c(2,jd) = indxl2g(min(jd*vac%bs,vac%n_loc(2)),vac%bs,&
-                    &vac%ind_p(2),0,vac%n_p(2))
-            end do
-        else
-            ! these processes don't play along
-            allocate(vac%lims_r(2,1))
-            allocate(vac%lims_c(2,1))
-            vac%lims_r(:,1) = [0,-1]
-            vac%lims_c(:,1) = [0,-1]
-        end if
-        write(*,*) rank, 'lims_c', vac%lims_c
+        call set_loc_lims(vac%n_loc(1),vac%bs,vac%ind_p(1),vac%n_p(1),&
+            &vac%lims_r)
+        call set_loc_lims(vac%n_loc(2),vac%bs,vac%ind_p(2),vac%n_p(2),&
+            &vac%lims_c)
         
         ! set n_dims
         vac%style = style
@@ -216,8 +216,8 @@ contains
         allocate(vac%x_vec(vac%n_bnd,n_dims))
         if (style.eq.2) allocate(vac%dnorm(vac%n_bnd,n_dims))
         
-        ! allocate vacuum response
-        allocate(vac%res(n_mod_X,n_mod_X))
+        ! allocate vacuum response if last process
+        if (rank.eq.n_procs-1) allocate(vac%res(n_mod_X,n_mod_X))
         
         ! allocate H and G
         allocate(vac%G(vac%n_loc(1),vac%n_loc(2)))
@@ -240,6 +240,34 @@ contains
 #endif
     end function init_vac
     
+    !> Calculates the limits in local index.
+    !!
+    !! \see See init_var() for an explanation.
+    subroutine set_loc_lims(n_loc,bs,ind_p,n_p,lims)
+        ! input / output
+        integer, intent(in) :: n_loc                                            !< number of points owned by local process
+        integer, intent(in) :: bs                                               !< block size
+        integer, intent(in) :: ind_p                                            !< index of current process in this dimension
+        integer, intent(in) :: n_p                                              !< number of processes in this dimension
+        integer, intent(inout), allocatable :: lims(:,:)                        !< limits for different subregions in this dimension
+        
+        ! local variables
+        integer :: jd                                                           ! counter
+        
+        ! set limits
+        if (n_loc.gt.0) then
+            allocate(lims(2,ceiling(n_loc*1._dp/bs)))
+            do jd = 1,size(lims,2)
+                lims(1,jd) = indxl2g((jd-1)*bs+1,bs,ind_p,0,n_p)
+                lims(2,jd) = indxl2g(min(jd*bs,n_loc),bs,ind_p,0,n_p)
+            end do
+        else
+            ! these processes don't play along
+            allocate(lims(2,1))
+            lims(:,1) = [0,-1]
+        end if
+    end subroutine set_loc_lims
+    
     !> \public Deallocates vacuum variables.
     subroutine dealloc_vac(vac)
 #if ldebug
@@ -260,6 +288,10 @@ contains
             estim_mem_usage = vac%estim_mem_usage
         end if
 #endif
+        
+        ! stop blacs
+        call blacs_gridexit(vac%ctxt_HG)
+        call blacs_exit(0)
         
         ! deallocate allocatable variables
         call dealloc_vac_final(vac)
@@ -289,6 +321,8 @@ contains
     
     !> Copy a vacuum type.
     integer function copy_vac(vac,vac_copy) result(ierr)
+        use num_vars, only: rank
+        
         ! input / output
         class(vac_type), intent(in) :: vac                                      !< vac to be copied
         class(vac_type), intent(inout) :: vac_copy                              !< copy
@@ -300,7 +334,8 @@ contains
         
         ! reallocate
         call vac_copy%dealloc
-        ierr = vac_copy%init(vac%style,vac%n_bnd,vac%n_tor,shape(vac%ang))
+        ierr = vac_copy%init(vac%style,vac%n_bnd,vac%prim_X,shape(vac%ang),&
+            &vac%jq)
         CHCKERR('')
         
         ! copy Jacobian and position vector
@@ -308,7 +343,7 @@ contains
         vac_copy%x_vec = vac%x_vec
         
         ! copy vacuum response
-        vac_copy%res = vac%res
+        if (rank.eq.0) vac_copy%res = vac%res
         
         ! copy H and G
         vac_copy%H = vac%H

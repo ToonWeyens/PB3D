@@ -68,10 +68,10 @@ contains
     !! Richardson restart, it needs to be reconstructed only.
     !!
     !! \return ierr
-    integer function store_vac(grid,eq_2,vac) result(ierr)
+    integer function store_vac(grid,eq_1,eq_2,vac) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_vac
         use num_vars, only: rich_restart_lvl, eq_job_nr, eq_jobs_lims, &
-            &eq_style, rank, n_procs
+            &eq_style, rank, n_procs, use_pol_flux_F
         use rich_vars, only: rich_lvl
         use MPI_utilities, only: broadcast_var
         use num_utilities, only: c
@@ -82,15 +82,26 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid                                     !< equilibrium grid
+        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium variables
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
         integer :: id, jd                                                       ! counter
         integer :: r_id                                                         ! normal index
+        real(dp) :: jq                                                          ! iota or q
         
         ! initialize ierr
         ierr = 0
+        
+        ! set jq
+        if (use_pol_flux_F) then
+            jq = eq_1%q_saf_FD(grid%loc_n_r,0)
+        else
+            jq = eq_1%rot_t_FD(grid%loc_n_r,0)
+        end if
+        ierr = broadcast_var(jq,n_procs-1)
+        CHCKERR('')
         
         ! call the approriate procedure
         select case (eq_style)
@@ -150,7 +161,7 @@ contains
                 end if
                 
                 ! allocate
-                ierr = vac%init(eq_style,n_par_X,prim_X,[n_par_X,1])
+                ierr = vac%init(eq_style,n_par_X,prim_X,[n_par_X,1],jq)
                 CHCKERR('')
                 
                 !! copy previous results back in appropriate, interlaced place
@@ -245,7 +256,7 @@ contains
                     end if
                     
                     ! allocate
-                    ierr = vac%init(eq_style,n_theta,prim_X,[n_theta,1])
+                    ierr = vac%init(eq_style,n_theta,prim_X,[n_theta,1],jq)
                     CHCKERR('')
                     ! save points
                     if (rank.eq.n_procs-1) then
@@ -335,6 +346,8 @@ contains
                 CHCKERR('')
                 ierr = broadcast_var(vac%norm(:,id),n_procs-1)
                 CHCKERR('')
+                ierr = broadcast_var(vac%dnorm(:,id),n_procs-1)
+                CHCKERR('')
             end do
             ierr = broadcast_var(vac%ang(:,1),n_procs-1)
             CHCKERR('')
@@ -367,7 +380,7 @@ contains
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
-        integer :: jd                                                           ! counter
+        integer :: id, jd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         integer :: rd                                                           ! global counter for row
@@ -406,19 +419,19 @@ contains
                     &' possible'
                 CHCKERR(err_msg)
         end select
-    
+        
 #if ldebug
         if (debug_calc_GH .and. in_context(vac%ctxt_HG)) then
             ! initialize
             call descinit(desc_phi,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
                 &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed')
+            CHCKERR('descinit failed for phi')
             call descinit(desc_dphi,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
                 &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed')
+            CHCKERR('descinit failed for dphi')
             call descinit(desc_res,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
                 &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed')
+            CHCKERR('descinit failed for res')
             
             ! test whether G and H hold for test potentials phi
             if (vac%lims_c(1,1).eq.1) then                                      ! this process owns (part of) first column
@@ -428,8 +441,7 @@ contains
                 allocate(phi(vac%n_loc(1),2))
                 allocate(dphi(vac%n_loc(1),2))
                 
-                ! iterate over all potential types
-                ! set up RHS for H (phi) and G (dphi)
+                ! set up rhs for H (phi) and G (dphi)
                 subrows: do i_rd = 1,size(vac%lims_r,2)
                     row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                         ! set local row index
@@ -441,17 +453,17 @@ contains
                         r_sph(rdl) = sqrt(sum(vac%x_vec(rd,:)**2))
                         
                         ! test 1
-                        phi(rdl,1) = vac%x_vec(rd,1)**vac%n_tor
-                        dphi(rdl,1) = - vac%n_tor*vac%norm(rd,1)/&
+                        phi(rdl,1) = vac%x_vec(rd,1)**vac%prim_X
+                        dphi(rdl,1) = - vac%prim_X*vac%norm(rd,1)/&
                             &vac%x_vec(rd,1) * phi(rdl,1)
                         
                         ! test 2
                         phi(rdl,2) = (vac%x_vec(rd,1)/&
-                            &(r_sph(rdl)+abs(vac%x_vec(rd,2))))**vac%n_tor
-                        dphi(rdl,2) = vac%n_tor*(vac%norm(rd,2)-&
+                            &(r_sph(rdl)+abs(vac%x_vec(rd,2))))**vac%prim_X
+                        dphi(rdl,2) = vac%prim_X*(vac%norm(rd,2)-&
                             &vac%norm(rd,1)*vac%x_vec(rd,2)/vac%x_vec(rd,1)) / &
                             &r_sph(rdl)*sign(1._dp,vac%x_vec(rd,2)) * phi(rdl,2)
-                    enddo row
+                    end do row
                 end do subrows
             else
                 allocate(res(0,3,2))
@@ -513,48 +525,44 @@ contains
                 res(:,3,jd) = sum(res(:,1:2,jd),2)
             end do
             
-            ! output of test 1
+            ! output of tests
             allocate(loc_ser(vac%n_bnd,3))
-            do jd = 1,3
-                ierr = vec_dis2loc(vac%ctxt_HG,res(:,jd,1),vac%lims_r,&
-                    &loc_ser(:,jd))
-                CHCKERR('')
+            do id = 1,size(phi,2)
+                do jd = 1,3
+                    ierr = vec_dis2loc(vac%ctxt_HG,res(:,jd,id),vac%lims_r,&
+                        &loc_ser(:,jd))
+                    CHCKERR('')
+                end do
+                if (rank.eq.0) then
+                    select case (id)
+                        case (1)
+                            plot_title(1) = 'H R^n'
+                            plot_title(2) = '-G n Z_θ R^n'
+                            plot_title(3) = '(H - G n Z_θ) R^n'
+                            plot_name = 'test_vac_1'
+                        case (2)
+                            plot_title(1) = 'H (R/(r+|Z|))^n'
+                            plot_title(2) = '- G |Z|/Z n dr/dθ (R/(r+|Z|))^n'
+                            plot_title(3) = '(H - G |Z|/Z n dr/dθ) &
+                                &(R/(r+|Z|))^n'
+                            plot_name = 'test_vac_2'
+                    end select
+                    call print_ex_2D(plot_title,trim(plot_name)//'_all',&
+                        &loc_ser(:,:),x=vac%ang(:,1:1),&
+                        &draw=.false.)
+                    call draw_ex(plot_title,trim(plot_name)//'_all',3,1,.false.)
+                    call print_ex_2D(plot_title(3),plot_name,&
+                        &loc_ser(:,3),x=vac%ang(:,1),&
+                        &draw=.false.)
+                    call draw_ex(plot_title(3:3),plot_name,1,1,.false.)
+                end if
             end do
-            if (rank.eq.0) then
-                plot_title(1) = 'H R^n'
-                plot_title(2) = '-G n Z_θ R^n'
-                plot_title(3) = '(H - G n Z_θ) R^n'
-                plot_name = 'test_vac_1'
-                call print_ex_2D(plot_title,plot_name,&
-                    &loc_ser,x=vac%ang(:,1:1),draw=.false.)
-                call draw_ex(plot_title,plot_name,3,1,.false.)
-            end if
-            deallocate(loc_ser)
-            
-            ! output of test 2
-            allocate(loc_ser(vac%n_bnd,3))
-            do jd = 1,3
-                ierr = vec_dis2loc(vac%ctxt_HG,res(:,jd,2),vac%lims_r,&
-                    &loc_ser(:,jd))
-                CHCKERR('')
-            end do
-            if (rank.eq.0) then
-                ! test 2
-                plot_title(1) = 'H (R/(r+|Z|))^n'
-                plot_title(2) = '- G |Z|/Z n dr/dθ (R/(r+|Z|))^n'
-                plot_title(3) = '(H - G |Z|/Z n dr/dθ) (R/(r+|Z|))^n'
-                plot_name = 'test_vac_2'
-                call print_ex_2D(plot_title,plot_name,&
-                    &loc_ser,x=vac%ang(:,1:1),draw=.false.)
-                call draw_ex(plot_title,plot_name,3,1,.false.)
-            end if
             deallocate(loc_ser)
         end if
 #endif
         
         call lvl_ud(-1)
     end function calc_GH
-    
 
     !> \public Calculates matrices \c G and \c H in 3-D configuration.
     !!
@@ -612,12 +620,13 @@ contains
         real(dp), allocatable :: pl_loc(:), ql_loc(:)                           ! local toroidal functions
         logical, allocatable :: was_calc(:,:)                                   ! was already calculated
         character(len=max_str_ln) :: err_msg                                    ! error message
-        !character(len=max_str_ln) :: plot_title                                 ! plot title
-        !character(len=max_str_ln) :: plot_name                                  ! plot name
 #if ldebug
         real(dp) :: rho2_lims(2)                                                ! limits on rho2
         real(dp) :: gamma_lims(2)                                               ! limits on gamma
         integer :: beta_lims(2)                                                 ! limits to plot beta
+        !integer :: lims_cl(2)                                                   ! vac%lims_c in local coordinates
+        !character(len=max_str_ln) :: plot_title                                 ! plot title
+        !character(len=max_str_ln) :: plot_name                                  ! plot name
 #endif
         
         ! initialize ierr
@@ -631,10 +640,10 @@ contains
         
         ! set up b_coeff and local tolerance
         b_coeff = 0._dp
-        do kd = 1,vac%n_tor
+        do kd = 1,vac%prim_X
             b_coeff(2) = b_coeff(2) + 2._dp/(2*kd-1)
         end do
-        b_coeff(1) = b_coeff(2) - 2._dp/(2*vac%n_tor-1)
+        b_coeff(1) = b_coeff(2) - 2._dp/(2*vac%prim_X-1)
         err_msg = calc_zero_Zhang(tol_loc,fun_tol,&
             &[1.E-10_dp,&                                                       ! very low lower limit
             &exp(-2*b_coeff(2))])                                               ! upper limit for -1/2ln(x) = b
@@ -654,8 +663,8 @@ contains
         allocate(was_calc(1:vac%n_bnd,1:vac%n_bnd))
         was_calc = .false.
         allocate(ql(1:vac%n_bnd,1:vac%n_bnd,2))
-        allocate(pl_loc(0:max(vac%n_tor,1)))
-        allocate(ql_loc(0:max(vac%n_tor,1)))
+        allocate(pl_loc(0:max(vac%prim_X,1)))
+        allocate(ql_loc(0:max(vac%prim_X,1)))
 #if ldebug
         rho2_lims = [huge(1._dp),-huge(1._dp)]
         gamma_lims = [huge(1._dp),-huge(1._dp)]
@@ -694,7 +703,7 @@ contains
                         arg(cd) = 1._dp + &
                             &rho2(cd)/(2*vac%x_vec(cd,1)*vac%x_vec(rd,1))
                         if (rho2(cd).le.tol_loc**2) then
-                            cycle                                               ! don't set it
+                            ! don't set it
                         else if (was_calc(cd,rd)) then                          ! check symmetric element
                             ql(rd,cd,:) = ql(cd,rd,:)                           ! set it
                         else                                                    ! not yet calculated by this process
@@ -711,20 +720,20 @@ contains
 #endif
                             err_msg = 'The solutions did not converge for &
                                 &rho^2 = '//trim(r2str(rho2(cd)))//&
-                                &' and n = '//trim(i2str(vac%n_tor))
-                            if (vac%n_tor.gt.0) then                            ! positive n
-                                ierr = dtorh1(arg(cd),0,vac%n_tor,pl_loc,&
+                                &' and n = '//trim(i2str(vac%prim_X))
+                            if (vac%prim_X.gt.0) then                           ! positive n
+                                ierr = dtorh1(arg(cd),0,vac%prim_X,pl_loc,&
                                     &ql_loc,max_n)
                                 CHCKERR('')
-                                if (max_n.lt.vac%n_tor) then
+                                if (max_n.lt.vac%prim_X) then
                                     ierr = 1
                                     CHCKERR(err_msg)
                                 end if
-                                ql(rd,cd,:) = ql_loc(vac%n_tor-1:vac%n_tor)
-                            else if (vac%n_tor.eq.0) then
+                                ql(rd,cd,:) = ql_loc(vac%prim_X-1:vac%prim_X)
+                            else if (vac%prim_X.eq.0) then
                                 ierr = dtorh1(arg(cd),0,1,pl_loc,ql_loc,max_n)
                                 CHCKERR('')
-                                if (max_n.lt.vac%n_tor) then
+                                if (max_n.lt.vac%prim_X) then
                                     ierr = 1
                                     CHCKERR(err_msg)
                                 end if
@@ -740,7 +749,7 @@ contains
                         
                         ! set up Aij
                         if (rho2(cd).le.tol_loc**2) then
-                            Aij(cd) = 0.5_dp*(vac%n_tor - 0.5_dp) * &
+                            Aij(cd) = 0.5_dp*(vac%prim_X - 0.5_dp) * &
                                 &(vac%x_vec(rd,1) * &
                                 &(vac%norm(rd,1)*vac%dnorm(rd,2)-&
                                 &vac%norm(rd,2)*vac%dnorm(rd,1))/&
@@ -749,7 +758,7 @@ contains
                         else
                             Aij(cd) = 2._dp*vac%x_vec(rd,1)*vac%x_vec(cd,1) / &
                                 &(4._dp*vac%x_vec(rd,1)*vac%x_vec(cd,1)+&
-                                &rho2(cd)) *(vac%n_tor - 0.5_dp) * &
+                                &rho2(cd)) *(vac%prim_X - 0.5_dp) * &
                                 &(- 2._dp/rho2(cd) * sum(vac%norm(cd,:)*&
                                 &(vac%x_vec(cd,:)-vac%x_vec(rd,:))) + &
                                 &vac%norm(cd,1)/vac%x_vec(cd,1))
@@ -798,7 +807,7 @@ contains
                             &vac%x_vec(cd:cd+1,:),vac%x_vec(rd,:),&
                             &vac%norm(cd:cd+1,:),vac%norm(rd,:),&
                             &Aij(cd:cd+1),ql(rd,cd:cd+1,:),&
-                            &tol_loc**2,b_coeff,vac%n_tor)
+                            &tol_loc**2,b_coeff,vac%prim_X)
                         
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &
@@ -809,6 +818,30 @@ contains
                         end do
                     end do col2
                     
+#if ldebug
+                    if (debug_calc_GH) then
+                        !! local limits
+                        !lims_cl = sum(vac%lims_c(2,1:i_cd-1)-&
+                            !&vac%lims_c(1,1:i_cd-1)+1) + &
+                            !&vac%lims_c(:,i_cd)-vac%lims_c(1,i_cd)+1
+                        !! output
+                        !call print_ex_2D('G '//trim(plot_title),&
+                            !&'G'//trim(plot_name),&
+                            !&vac%G(rdl,lims_cl(1):lims_cl(2)),x&
+                            !&=vac%ang(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
+                            !&draw=.false.)
+                        !call draw_ex(['G '//trim(plot_title)],&
+                            !&'G'//trim(plot_name),1,1,.false.)
+                        !call print_ex_2D('H '//trim(plot_title),&
+                            !&'H'//trim(plot_name),&
+                            !&vac%H(rdl,lims_cl(1):lims_cl(2)),x&
+                            !&=vac%ang(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
+                            !&draw=.false.)
+                        !call draw_ex(['H '//trim(plot_title)],&
+                            !&'H'//trim(plot_name),1,1,.false.)
+                    end if
+#endif
+                    
                     ! calculate contribution due to fundamental solution
                     if (vac%lims_c(1,i_cd).le.rd .and. &
                         &rd.le.vac%lims_c(2,i_cd)) then                         ! this subcolumn includes the diagonal
@@ -817,15 +850,11 @@ contains
                             &vac%lims_c(1,1:i_cd-1)+1) + &
                             &rd-vac%lims_c(1,i_cd)+1
                         
-                        if (rd.eq.1) then                                       ! first global point
-                            ! combine first with last point
+                        if (rd.eq.1 .or. rd.eq.vac%n_bnd) then                  ! first or last global point
+                            ! loop around to get previous direction vector
                             del_r(1,:) = vac%x_vec(vac%n_bnd,:)-&
                                 &vac%x_vec(vac%n_bnd-1,:)
                             del_r(2,:) = vac%x_vec(2,:)-vac%x_vec(1,:)
-                        else if (rd.eq.vac%n_bnd) then                          ! last global point
-                            ! set it  later to  zero, because  the influence    
-                            ! has already  been accounted  for in  the first    
-                            ! point
                         else                                                    ! all points in between
                             del_r(1,:) = vac%x_vec(rd,:)-vac%x_vec(rd-1,:)
                             del_r(2,:) = vac%x_vec(rd+1,:)-vac%x_vec(rd,:)
@@ -836,12 +865,7 @@ contains
                         beta_comp = acos(sum(product(del_r,1)))
                         if (del_r(1,1)*del_r(2,2) .lt. &
                             &del_r(1,2)*del_r(2,1)) beta_comp = - beta_comp     ! concave
-                        if (rd.lt.vac%n_bnd) then
-                            beta(rd) = beta_comp + pi
-                        else
-                        write(*,*) '>>>>>>>>>>>>>>>>>>> not setting BETSA'
-                            beta(rd) = 0._dp
-                        end if
+                        beta(rd) = beta_comp + pi
 #if ldebug
                         if (debug_calc_GH) then
                             if (rd.lt.beta_lims(1)) beta_lims(1) = rd
@@ -903,7 +927,6 @@ contains
             end if
         end if
 #endif
-        
     contains
         ! function that returns f = -1/2 ln(x)-b - x/T.
         !
@@ -925,19 +948,20 @@ contains
     !! First  \c G and \c  H are completed if  this is not the  first Richardson
     !! level.
     !! 
-    !! The  diagonal elements need special  treatment if the vacuum  style is 1.
     !! Then the vacuum contribution is calculated using the two-fold strategy of
-    !! first solving \f$\overline{\text{H}}\overline{\text{C}} =
-    !! \overline{\text{G}}\overline{\text{I}}\overline{\text{E}}
-    !! \overline{\text{P}}\f$, followed by left-multiplication of
-    !! \f$\overline{\text{C}}\f$ by
-    !! \f$\overline{\text{P}}\overline{\text{E}}^\dagger \overline{\text{I}}\f$.
+    !! first solving 
+    !!  \f$\overline{\text{H}}\overline{\text{C}} =
+    !!  \overline{\text{G}}\overline{\text{E}} \overline{\text{P}}\f$,
+    !! followed by left-multiplication of \f$\overline{\text{C}}\f$ by
+    !!  \f$\overline{\text{P}}\overline{\text{E}}^\dagger\f$.
     !!
     !! The  non-square matrix  \f$\overline{\text{E}}\f$ contains  the exponents
     !! for different  mode numbers and  different poloidal grid  points, whereas
-    !! \f$\overline{\text{I}}\f$  and   \f$\overline{\text{P}}\f$  are  diagonal
-    !! matrices  that contain  the  integration rule,  respectively the  factors
+    !! \f$\overline{\text{P}}\f$ are diagonal matrices  that contain the factors
     !! \f$(nq-m)\f$.
+    !!
+    !! In practice, the complex matrix \f$\overline{\text{E}}\f$ is split in the
+    !! two components of a real matrix twice the width.
     !!
     !! If \c  jump_to_sol is used for  the current Richardson level,  the vacuum
     !! quantities are not calculated, but just restored.
@@ -946,17 +970,51 @@ contains
     integer function calc_vac(vac) result(ierr)
         use MPI
         use rich_vars, only: rich_lvl
-        use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style
+        use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
+            &use_pol_flux_F, rank, n_procs
         use PB3D_ops, only: reconstruct_PB3D_vac
+        use X_vars, only: n_mod_X, n_X, m_X
+        use vac_vars, only: set_loc_lims
+        use vac_utilities, only: in_context, mat_dis2loc
+        use MPI_utilities, only: wait_MPI
+        use eq_vars, only: vac_perm
         
         character(*), parameter :: rout_name = 'calc_vac'
         
         ! input / output
-        type(vac_type), intent(inout) :: vac                                    !< vacuum variables
+        type(vac_type), intent(inout), target :: vac                            !< vacuum variables
         
         ! local variables
+        integer :: jd                                                           ! counter
+        integer :: rd, cd                                                       ! global counter for row and col
+        integer :: rdl, cdl                                                     ! local counter for row and col
+        integer :: i_rd, i_cd                                                   ! index of subrow and subcol
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
-        type(StrumpackDensePackage_F90_dcomplex) :: SDP_F90                     ! Strumpack object
+        integer :: sec_X_loc                                                    ! local sec_X
+        integer :: n_loc(2)                                                     ! n_loc for n_mod_X instead of n_bnd
+        integer, allocatable :: lims_r_loc(:,:)                                 ! local row limits for n_loc
+        integer, allocatable :: lims_c_loc(:,:)                                 ! local column limits for n_loc
+        integer, target :: desc_EP(BLACSCTXTSIZE)                               ! descriptor for EP
+        integer, target :: desc_GEP(BLACSCTXTSIZE)                              ! descriptor for GEP
+        integer, target :: desc_Phi(BLACSCTXTSIZE)                              ! descriptor for Phi
+        integer, target :: desc_res2(BLACSCTXTSIZE)                             ! descriptor for res2
+        real(dp) :: arg_loc                                                     ! local argument
+        real(dp), allocatable, target :: EP(:,:)                                ! EP
+        real(dp), allocatable, target :: GEP(:,:)                               ! GEP
+        real(dp), allocatable, target :: Phi(:,:)                               ! intermediate Phi
+        real(dp), allocatable, target :: res2(:,:)                              ! vacuum response, real version
+        real(dp), allocatable, target :: res2_loc(:,:)                          ! local version of res2
+        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H Phi = GEP
+        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H and H itself
+        type(C_PTR) :: CdescGEP, CGEP                                           ! C pointers to descriptor of GEP and GEP itself
+        type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
+        real(dp) :: SDP_err                                                     ! error
+        integer :: lims_cl(2)                                                   ! lims_c_loc in local coordinates
+#if ldebug
+        !integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
+        !character(len=max_str_ln) :: plot_title                                 ! plot title
+        !character(len=max_str_ln) :: plot_name                                  ! plot name
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -983,21 +1041,266 @@ contains
         ierr = calc_GH(vac)
         CHCKERR('')
         
-        !! Initialize the solver and set parameters
-        !call SDP_F90_dcomplex_init(SDP_F90,MPI_COMM_WORLD)
-        !SDP_F90%use_HSS=1
-        !!SDP_F90%levels_HSS=4
-        !SDP_F90%min_rand_HSS=10
-        !SDP_F90%lim_rand_HSS=5
-        !SDP_F90%inc_rand_HSS=10
-        !SDP_F90%max_rand_HSS=100
-        !SDP_F90%tol_HSS=1D-12
-        !SDP_F90%steps_IR=10
-        !SDP_F90%tol_IR=1D-10
+        call lvl_ud(-1)
+        
+        ! Only for processes that are in the blacs context
+        if (in_context(vac%ctxt_HG)) then
+            ! user output
+            call writo('Launch STRUMPack')
+            call lvl_ud(1)
+            
+            ! set secondary mode numbers
+            if (use_pol_flux_F) then
+                vac%lim_sec_X(1) = m_X(size(m_X,1),1)
+                vac%lim_sec_X(2) = m_X(size(m_X,1),size(m_X,2))
+            else
+                vac%lim_sec_X(1) = n_X(size(n_X,1),1)
+                vac%lim_sec_X(2) = n_X(size(n_X,1),size(n_X,2))
+            end if
+            
+            ! set C pointers
+            CH = C_LOC(vac%H)
+            CdescH = C_LOC(vac%desc_H)
+            
+            ! initialize the solver and set parameters
+            call SDP_F90_double_init(SDP_loc,vac%MPI_Comm)
+            SDP_loc%use_HSS=1
+            SDP_loc%levels_HSS=4
+            SDP_loc%min_rand_HSS=10
+            SDP_loc%lim_rand_HSS=5
+            SDP_loc%inc_rand_HSS=10
+            SDP_loc%max_rand_HSS=100
+            SDP_loc%tol_HSS=1D-12
+            SDP_loc%steps_IR=10
+            SDP_loc%tol_IR=1D-10
+            
+            ! compression
+            call SDP_F90_double_compress_A(SDP_loc,CH,CdescH)
+            
+#if ldebug
+            ! accuracy checking
+            SDP_err = SDP_F90_double_check_compression(SDP_loc,CH,CdescH)
+#endif
+            
+            ! factorization
+            call SDP_F90_double_factor(SDP_loc,CH,CdescH)
+            
+            ! set sizes
+            do jd = 1,2
+                n_loc(jd) = numroc(2*n_mod_X,vac%bs,vac%ind_p(jd),0,vac%n_p(jd))
+            end do
+            call set_loc_lims(n_loc(1),vac%bs,vac%ind_p(1),vac%n_p(1),&
+                &lims_r_loc)
+            call set_loc_lims(n_loc(2),vac%bs,vac%ind_p(2),vac%n_p(2),&
+                &lims_c_loc)
+            
+            ! initialize descriptors
+            call descinit(desc_EP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+            CHCKERR('descinit failed for EP')
+            call descinit(desc_GEP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+            CHCKERR('descinit failed for GEP')
+            call descinit(desc_Phi,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+            CHCKERR('descinit failed for Phi')
+            call descinit(desc_res2,2*n_mod_X,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,n_loc(1)),ierr)
+            CHCKERR('descinit failed for res2')
+            
+            ! allocate auxililary matrices
+            allocate(EP(vac%n_loc(1),n_loc(2)))
+            allocate(GEP(vac%n_loc(1),n_loc(2)))
+            allocate(Phi(vac%n_loc(1),n_loc(2)))
+            allocate(res2(n_loc(1),n_loc(2)))
+            allocate(res2_loc(2*n_mod_X,2*n_mod_X))
+            
+            ! set EP
+            ! iterate over all subcolumns of matrix with 2n_mod_X columns
+            subcols: do i_cd = 1,size(lims_c_loc,2)
+                col: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
+                    ! set local column index
+                    cdl = sum(lims_c_loc(2,1:i_cd-1)-&
+                        &lims_c_loc(1,1:i_cd-1)+1) + &
+                        &cd-lims_c_loc(1,i_cd)+1
+                    
+                    ! iterate over all subrows of matrix with n_bnd rows
+                    subrows: do i_rd = 1,size(vac%lims_r,2)
+                        row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                            ! set local row index
+                            rdl = sum(vac%lims_r(2,1:i_rd-1)-&
+                                &vac%lims_r(1,1:i_rd-1)+1) + &
+                                &rd-vac%lims_r(1,i_rd)+1
+                                
+                            ! save EP
+                            sec_X_loc = vac%lim_sec_X(1)-1+(mod(cd-1,n_mod_X)+1)
+                            arg_loc = arg(vac%prim_X,sec_X_loc)
+                            if (cd.le.n_mod_X) then                             ! real part of rhs
+                                EP(rdl,cdl) = cos(vac%ang(rd,1)*arg_loc)        ! rp(i exp)
+                            else
+                                EP(rdl,cdl) = sin(vac%ang(rd,1)*arg_loc)        ! ip(i exp)
+                            end if
+                            EP(rdl,cdl) = (vac%prim_X*vac%jq-sec_X_loc)*&
+                                &EP(rdl,cdl)
+                        end do row
+                    end do subrows
+                end do col
+            end do subcols
+            
+            ! calculate GEP
+            call pdgemm('N','N',vac%n_bnd,2*n_mod_X,vac%n_bnd,1._dp,vac%G,1,1,&
+                &vac%desc_G,EP,1,1,desc_EP,0._dp,GEP,1,1,desc_GEP)
+            
+            ! set C pointers
+            CGEP = C_LOC(GEP)
+            CdescGEP = C_LOC(desc_GEP)
+            CPhi = C_LOC(Phi)
+            CdescPhi = C_LOC(desc_Phi)
+            
+            ! solve H c = G EP
+            call SDP_F90_double_solve(SDP_loc,CPhi,CdescPhi,CGEP,CdescGEP)
+            
+#if ldebug
+            ! accuracy checking
+            SDP_err = SDP_F90_double_check_solution(SDP_loc,CH,CdescH,CPhi,&
+                &CdescPhi,CGEP,CdescGEP)
+#endif
+            
+            ! iterative refinement
+            SDP_err = SDP_F90_double_refine(SDP_loc,CH,CdescH,CPhi,CdescPhi,&
+                &CGEP,CdescGEP)
+            
+#if ldebug
+            ! statistics
+            call SDP_F90_double_print_statistics(SDP_loc)
+            
+            !! user output
+            !subcols2: do i_cd = 1,size(lims_c_loc,2)
+                !col2: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
+                    !! set local column index
+                    !cdl = sum(lims_c_loc(2,1:i_cd-1)-&
+                        !&lims_c_loc(1,1:i_cd-1)+1) + &
+                        !&cd-lims_c_loc(1,i_cd)+1
+                    
+                    !subrows2: do i_rd = 1,size(vac%lims_r,2)
+                        !! set local row limits
+                        !lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
+                            !&vac%lims_r(1,1:i_rd-1)+1) + &
+                            !&vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
+                        
+                        !! output
+                        !plot_title = 'for column '//trim(i2str(cd))//&
+                            !&' and starting row '//&
+                            !&trim(i2str(vac%lims_r(1,i_rd)))
+                        !plot_name = '_'//trim(i2str(cd))//'_'//&
+                            !&trim(i2str(vac%lims_r(1,i_rd)))
+                        !call print_ex_2D('Phi '//trim(plot_title),&
+                            !&'Phi'//trim(plot_name),&
+                            !&Phi(lims_rl(1):lims_rl(2),cdl),&
+                            !&x=vac%ang(vac%lims_r(1,i_rd):&
+                            !&vac%lims_r(2,i_rd),1),draw=.false.)
+                        !call draw_ex(['Phi '//trim(plot_title)],&
+                            !&'Phi'//trim(plot_name),1,1,.false.)
+                    !end do subrows2
+                !end do col2
+            !end do subcols2
+#endif
+            
+            ! convert EP into IEP where I contains the integration rule:
+            !         (θ_{i+1}-θ_{i-1})/2   for i = 2..n-1
+            !   I_i = (θ_2-θ_1}/2           for i = 1
+            !         (θ_{n}-θ_{n-1}}/2     for i = n
+            ! with n = vac%n_bnd.
+            subrows3: do i_rd = 1,size(vac%lims_r,2)
+                row3: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                    ! set local row index
+                    rdl = sum(vac%lims_r(2,1:i_rd-1)-&
+                        &vac%lims_r(1,1:i_rd-1)+1) + &
+                        &rd-vac%lims_r(1,i_rd)+1
+                    
+                    subcols3: do i_cd = 1,size(lims_c_loc,2)
+                        ! set local column limits
+                        lims_cl = sum(lims_c_loc(2,1:i_cd-1)-&
+                            &lims_c_loc(1,1:i_cd-1)+1) + &
+                            &lims_c_loc(:,i_cd)-lims_c_loc(1,i_cd)+1
+                        
+                        EP(rdl,lims_cl(1):lims_cl(2)) = &
+                            &EP(rdl,lims_cl(1):lims_cl(2)) * 0.5_dp*&
+                            &(vac%ang(min(rd+1,vac%n_bnd),1)-&
+                            &vac%ang(max(rd-1,1),1))
+                    end do subcols3
+                end do row3
+            end do subrows3
+            
+            ! calculate (EP)^T Phi
+            ! Note that this means that the second  half of the rows in EP^T are
+            ! still missing a  minus sign if they are to  represent EP^†. This
+            ! will be taken into account when res2_loc is converted to vac%res.
+            call pdgemm('T','N',2*n_mod_X,2*n_mod_X,vac%n_bnd,1._dp,EP,1,1,&
+                &desc_EP,Phi,1,1,desc_Phi,0._dp,res2,1,1,desc_res2)
+            
+            ! get serial version on last process
+            ierr = mat_dis2loc(vac%ctxt_HG,res2,lims_r_loc,lims_c_loc,res2_loc,&
+                &proc=n_procs-1)
+            CHCKERR('')
+            
+            ! convert to complex numbers and save in vac%res
+            if (rank.eq.n_procs-1) then
+                vac%res = res2_loc(1:n_mod_X,1:n_mod_X)-&
+                    &(-res2_loc(n_mod_X+1:2*n_mod_X,n_mod_X+1:2*n_mod_X))       ! minus sign for lower rows
+                vac%res = vac%res + iu * &
+                    &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
+                    &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
+                vac%res = vac%res/vac_perm
+#if ldebug
+                call print_ex_2D(['real vacuum response'],'vac_res_Re',&
+                    &rp(vac%res),draw=.false.)
+                call draw_ex(['real vacuum response'],'vac_res_Re',n_mod_X,1,&
+                    &.false.)
+                call print_ex_2D(['imag vacuum response'],'vac_res_Im',&
+                    &ip(vac%res),draw=.false.)
+                call draw_ex(['imag vacuum response'],'vac_res_Im',n_mod_X,1,&
+                    &.false.)
+                call plot_HDF5(['real part','imag part','imag diff'],'vac_res',&
+                    &reshape([rp(vac%res),ip(vac%res),&
+                    &ip(vac%res+transpose(vac%res))],[n_mod_X,n_mod_X,1,3]))
+#endif
+            end if
+        end if
         
         call lvl_ud(-1)
         
         call writo('Done calculating vacuum quantities')
+    contains
+        ! Returns the argument to be used in EP
+        !>  \private
+        real(dp) function arg(n,m)
+            
+            ! input / output
+            integer, intent(in) :: n, m                                         ! toroidal and poloidal mode number
+            
+            ! local variables
+            real(dp) :: fac_n                                                   ! factor to multiply with n
+            real(dp) :: fac_m                                                   ! factor to multiply with m
+            
+            ! set factor for n and m
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    if (use_pol_flux_F) then
+                        fac_n = vac%jq
+                        fac_m = 1.0_dp
+                    else
+                        fac_n = 1.0_dp
+                        fac_m = vac%jq
+                    end if
+                case (2)                                                        ! axisymmetric
+                    fac_n = 0._dp
+                    fac_m = 1._dp
+            end select
+            
+            ! set argument
+            arg = n*fac_n - m*fac_m
+        end function arg
     end function calc_vac
     
     !> Print vacuum quantities of a certain order to an output file
@@ -1015,6 +1318,8 @@ contains
     !!  -#  This routine  should  be called  by a  single  process, in  contrast
     !!  to  the   other  output   routines  such   as  eq_ops.print_output_eq(),
     !!  print_output_sol(), ...
+    !!  -# This  process should  be the last  one, as it  will set  the boundary
+    !!  contribution.
     !!  -# This routine  does not save the  \c H and \c G  matrices because they
     !!  are large and foreseen to be  saved directly as Hierarchical matrices in
     !!  the future. They therefore need  to be regenerated if Richardson restart
@@ -1062,12 +1367,13 @@ contains
         allocate(vac_1D_loc%tot_i_min(1),vac_1D_loc%tot_i_max(1))
         allocate(vac_1D_loc%loc_i_min(1),vac_1D_loc%loc_i_max(1))
         vac_1D_loc%loc_i_min = [1]
-        vac_1D_loc%loc_i_max = [5]
+        vac_1D_loc%loc_i_max = [8]
         vac_1D_loc%tot_i_min = vac_1D_loc%loc_i_min
         vac_1D_loc%tot_i_max = vac_1D_loc%loc_i_max
-        allocate(vac_1D_loc%p(5))
-        vac_1D_loc%p = [vac%style*1._dp,vac%n_bnd*1._dp,vac%n_tor*1._dp,&
-            &shape(vac%ang)*1._dp]
+        allocate(vac_1D_loc%p(8))
+        vac_1D_loc%p = [vac%style*1._dp,vac%n_bnd*1._dp,vac%prim_X*1._dp,&
+            &vac%lim_sec_X(1)*1._dp,vac%lim_sec_X(2)*1._dp,&
+            &shape(vac%ang)*1._dp,vac%jq]
         
         ! ang
         vac_1D_loc => vac_1D(id); id = id+1
@@ -1092,6 +1398,18 @@ contains
         vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
         allocate(vac_1D_loc%p(size(vac%norm)))
         vac_1D_loc%p = reshape(vac%norm,[size(vac%norm)])
+        
+        ! dnorm
+        vac_1D_loc => vac_1D(id); id = id+1
+        vac_1D_loc%var_name = 'dnorm'
+        allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
+        allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
+        vac_1D_loc%tot_i_min = [1,1]
+        vac_1D_loc%tot_i_max = shape(vac%dnorm)
+        vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
+        vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
+        allocate(vac_1D_loc%p(size(vac%dnorm)))
+        vac_1D_loc%p = reshape(vac%dnorm,[size(vac%dnorm)])
         
         ! x_vec
         vac_1D_loc => vac_1D(id); id = id+1

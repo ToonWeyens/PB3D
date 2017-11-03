@@ -359,7 +359,8 @@ contains
         !   rho_style has  to be 1  (constant rho = rho_0),
         !   matrix_SLEPC_style has to be 0 or 1,
         !   max_it_SLEPC has to be at least 1,
-        !   magnetic integral style has to be 1..2.
+        !   magnetic integral style has to be 1..2,
+        !   for HELENA (eq_style 1), only poloidal flux can be used.
         !> \private
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
@@ -394,6 +395,11 @@ contains
                 err_msg = 'magn_int_style has to be 1 (trapezoidal) or 2 &
                     &(Simpson 3/8 rule)'
                 CHCKERR(err_msg)
+            end if
+            if (eq_style.eq.2 .and. .not.use_pol_flux_F) then
+                use_pol_flux_F = .true.
+                call writo('can only use poloidal flux for HELENA',&
+                    &warning=.true.)
             end if
         end function adapt_run_PB3D
         

@@ -14,16 +14,8 @@ module vac_utilities
 
     implicit none
     private
-    public calc_GH_int_2, vec_dis2loc, in_context
-#if ldebug
-    public debug_calc_GH
-#endif
+    public calc_GH_int_2, vec_dis2loc, mat_dis2loc, in_context
     
-    ! global variables
-#if ldebug
-    logical :: debug_calc_GH = .true.                                          !< plot debug information for calc_GH() \ldebug
-#endif
-
 contains
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
     !!
@@ -167,11 +159,14 @@ contains
     !! be provided, as discussed in init_vac().
     !!
     !! By  default, the  result lands  on the  master process,  but this  can be
-    !! changed using \c scatter. In any case, \c vec_loc will be utilized.
+    !! changed  using \c  proc. If  it is  negative, all  processes receive  the
+    !! result. In any case, \c vec_loc will be utilized.
     !!
     !! \note \c vec_loc needs to be allocated to the total dimensions, even when
-    !! the results is not scattered.
-    integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,scatter) result(ierr)
+    !! the results is not received by the process.
+    integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,proc) result(ierr)
+        use num_vars, only: n_procs
+        
         character(*), parameter :: rout_name = 'vec_dis2loc'
         
         ! input / output
@@ -179,12 +174,13 @@ contains
         real(dp), intent(in) :: vec_dis(:)                                      !< distributed vector
         integer, intent(in) :: lims(:,:)                                        !< limits for different subrows
         real(dp), intent(inout) :: vec_loc(:)                                   !< local vector
-        logical, intent(in), optional :: scatter                                !< scatter to all processes or not
+        integer, intent(in), optional :: proc                                   !< which process receives result
         
         ! local variables
         integer :: id                                                           ! index of subrow
         integer :: limsl(2)                                                     ! local limits
-        integer :: scatter_p(2)                                                 ! process that should receive the result
+        integer :: proc_loc                                                     ! local proc
+        integer :: proc_dest(2)                                                 ! destination process index
         
         ! initialize ierr
         ierr = 0
@@ -192,9 +188,14 @@ contains
         ! select only processes that are in the context
         if (.not.in_context(ctxt)) return
         
-        ! set up scatter integer
-        scatter_p = [0,0]
-        if (present(scatter)) scatter_p = [-1,-1]
+        ! set up destination process index
+        proc_loc = 0
+        if (present(proc)) proc_loc = proc
+        if (proc_loc.gt.0 .and. proc_loc.lt.n_procs) then
+            call blacs_pcoord(ctxt,proc_loc,proc_dest(1),proc_dest(2)) 
+        else
+            proc_dest = [-1,-1]
+        end if
         
         ! set up total copy of vector
         vec_loc = 0._dp
@@ -209,8 +210,72 @@ contains
         
         ! add them together
         call dgsum2d(ctxt,'all',' ',size(vec_loc),1,vec_loc,size(vec_loc),&
-            &scatter_p(1),scatter_p(2))
+            &proc_dest(1),proc_dest(2))
     end function vec_dis2loc
+    
+    !> Gathers a distributed vector on a single process.
+    !!
+    !! \see See vec_dis2loc() for exaplanation.
+    integer function mat_dis2loc(ctxt,mat_dis,lims_r,lims_c,mat_loc,proc) &
+        &result(ierr)
+        use num_vars, only: n_procs, rank
+        
+        character(*), parameter :: rout_name = 'mat_dis2loc'
+        
+        ! input / output
+        integer, intent(in) :: ctxt                                             !< context for matrix
+        real(dp), intent(in) :: mat_dis(:,:)                                    !< distributed matrix
+        integer, intent(in) :: lims_r(:,:)                                      !< limits for different subrows
+        integer, intent(in) :: lims_c(:,:)                                      !< limits for different subcolumns
+        real(dp), intent(inout) :: mat_loc(:,:)                                 !< local matrix
+        integer, intent(in), optional :: proc                                   !< which process receives result
+        
+        ! local variables
+        integer :: i_rd, i_cd                                                   ! index of subrow and subcolumn
+        integer :: limsl_r(2)                                                   ! local row limits
+        integer :: limsl_c(2)                                                   ! local column limits
+        integer :: proc_loc                                                     ! local proc
+        integer :: proc_dest(2)                                                 ! destination process index
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! select only processes that are in the context
+        if (.not.in_context(ctxt)) return
+        
+        ! set up destination process index
+        proc_loc = 0
+        if (present(proc)) proc_loc = proc
+        if (proc_loc.gt.0 .and. proc_loc.lt.n_procs) then
+            call blacs_pcoord(ctxt,proc_loc,proc_dest(1),proc_dest(2)) 
+        else
+            proc_dest = [-1,-1]
+        end if
+        
+        ! set up total copy of matrix
+        mat_loc = 0._dp
+        do i_rd = 1,size(lims_r,2)
+            if (size(mat_dis,1) .gt. 0) then
+                limsl_r = sum(&
+                    &lims_r(2,1:i_rd-1)-lims_r(1,1:i_rd-1)+1) + &
+                    &lims_r(:,i_rd)-lims_r(1,i_rd)+1
+                do i_cd = 1,size(lims_c,2)
+                    if (size(mat_dis,2) .gt. 0) then
+                        limsl_c = sum(&
+                            &lims_c(2,1:i_cd-1)-lims_c(1,1:i_cd-1)+1) + &
+                            &lims_c(:,i_cd)-lims_c(1,i_cd)+1
+                        mat_loc(lims_r(1,i_rd):lims_r(2,i_rd),&
+                            &lims_c(1,i_cd):lims_c(2,i_cd)) = mat_dis(&
+                            &limsl_r(1):limsl_r(2),limsl_c(1):limsl_c(2))
+                    end if
+                end do
+            end if
+        end do
+        
+        ! add them together
+        call dgsum2d(ctxt,'all',' ',size(mat_loc,1),size(mat_loc,2),mat_loc,&
+            &size(mat_loc,1),proc_dest(1),proc_dest(2))
+    end function mat_dis2loc
     
     !> Indicates whether current process is in the context.
     logical function in_context(ctxt) result(res)

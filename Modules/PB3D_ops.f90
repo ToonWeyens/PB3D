@@ -1254,8 +1254,10 @@ contains
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: style                                                        ! style of vacuum
         integer :: n_bnd                                                        ! number of terms in boundary
-        integer :: n_tor                                                        ! toroidal mode number
+        integer :: prim_X                                                       ! primary mode number
+        integer :: lim_sec_X(2)                                                 ! secondary mode number limits
         integer :: n_ang(2)                                                     ! number of angles (1) and number of field lines (2)
+        real(dp) :: jq                                                          ! iota or q
         
         ! initialize ierr
         ierr = 0
@@ -1270,13 +1272,18 @@ contains
         call conv_1D2ND(var_1D,dum_1D)
         style = nint(dum_1D(1))
         n_bnd = nint(dum_1D(2))
-        n_tor = nint(dum_1D(3))
-        n_ang = nint(dum_1D(4:5))
+        prim_X = nint(dum_1D(3))
+        lim_sec_X = nint(dum_1D(4:5))
+        n_ang = nint(dum_1D(6:7))
+        jq = dum_1D(8)
         call dealloc_var_1D(var_1D)
         
         ! create vac
-        ierr = vac%init(style,n_bnd,n_tor,n_ang)
+        ierr = vac%init(style,n_bnd,prim_X,n_ang,jq)
         CHCKERR('')
+        
+        ! secondary mode numbers
+        vac%lim_sec_X = lim_sec_X
         
         ! ang
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
@@ -1292,6 +1299,14 @@ contains
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_2D)
         vac%norm = dum_2D
+        call dealloc_var_1D(var_1D)
+        
+        ! dnorm
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'dnorm',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_2D)
+        vac%dnorm = dum_2D
         call dealloc_var_1D(var_1D)
         
         ! x_vec

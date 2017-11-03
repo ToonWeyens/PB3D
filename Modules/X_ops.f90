@@ -2586,6 +2586,12 @@ contains
     !!  the rest is ignored.
     !!  -# Simpson's 3/8  rule converges faster than the  trapezoidal rule, but
     !!  normally needs a better starting point (i.e. higher \c min_n_par_X)
+    !!  -# Weyl's  lemma is  used to  convert the surface  integral into  a line
+    !!  integral  along  the  magnetic  field. This  means  that  the  resulting
+    !!  line  integral still  needs  to be  multiplied by  \f$\frac{2\pi}{M}\f$,
+    !!  where \f$M\f$  is the  number of  times the  poloidal or  toroidal angle
+    !!  completes a full  \f$2\pi\f$ tour, depending on  \c use_pol_flux_F \cite
+    !!  Helander2014.
     !!
     !! \see See x_vars.x_2_type.
     !!
@@ -2596,7 +2602,8 @@ contains
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
-        use grid_vars, only: disc_type
+        use grid_vars, only: min_par_X, max_par_X, &
+            &disc_type
         use grid_utilities, only: setup_interp_data, apply_disc
         use rich_vars, only: rich_lvl
         
@@ -2618,6 +2625,7 @@ contains
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: c_tot(2)                                                     ! total c for symmetric and asymmetric variables
         integer :: prev_style_loc                                               ! local prev_style
+        real(dp) :: Weyl_fac                                                    ! factor due to Weyl's lemma
         real(dp) :: prev_mult_fac                                               ! multiplicative factor for previous style
         real(dp), allocatable :: step_size(:)                                   ! step size for every normal point
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
@@ -2668,6 +2676,9 @@ contains
         else
             ang_par_F => grid_X%zeta_F
         end if
+        
+        ! set up Weyl's integration factor
+        Weyl_fac = (2*pi)**2/(max_par_X-min_par_X)
         
         ! set up integration variables
         
@@ -2771,9 +2782,9 @@ contains
                         &prev_mult_fac*X_int%PV_0(1,:,:,c_tot(1))
                     X_int%KV_0(1,:,:,c_tot(1)) = &
                         &prev_mult_fac*X_int%KV_0(1,:,:,c_tot(1))
-                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1)),&
+                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1))*Weyl_fac,&
                         &X_int%PV_0(1,:,:,c_tot(1)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1)),&
+                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1))*Weyl_fac,&
                         &X_int%KV_0(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
                 
@@ -2783,9 +2794,9 @@ contains
                         &prev_mult_fac*X_int%PV_1(1,:,:,c_tot(2))
                     X_int%KV_1(1,:,:,c_tot(2)) = &
                         &prev_mult_fac*X_int%KV_1(1,:,:,c_tot(2))
-                    call calc_magn_int_loc(X%PV_1(:,:,:,c_loc(2)),&
+                    call calc_magn_int_loc(X%PV_1(:,:,:,c_loc(2))*Weyl_fac,&
                         &X_int%PV_1(1,:,:,c_tot(2)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_1(:,:,:,c_loc(2)),&
+                    call calc_magn_int_loc(X%KV_1(:,:,:,c_loc(2))*Weyl_fac,&
                         &X_int%KV_1(1,:,:,c_tot(2)),V_int_work,step_size)
                 end if
                 
@@ -2795,9 +2806,9 @@ contains
                         &prev_mult_fac*X_int%PV_2(1,:,:,c_tot(1))
                     X_int%KV_2(1,:,:,c_tot(1)) = &
                         &prev_mult_fac*X_int%KV_2(1,:,:,c_tot(1))
-                    call calc_magn_int_loc(X%PV_2(:,:,:,c_loc(1)),&
+                    call calc_magn_int_loc(X%PV_2(:,:,:,c_loc(1))*Weyl_fac,&
                         &X_int%PV_2(1,:,:,c_tot(1)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1)),&
+                    call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1))*Weyl_fac,&
                         &X_int%KV_2(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
             end do
@@ -2812,6 +2823,7 @@ contains
         ! Integrate local magnetic integral, adding to the previous result.
         !
         ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang.
+        !> \private
         subroutine calc_magn_int_loc(V,V_int,V_int_work,step_size)
             ! input / output
             complex(dp), intent(in) :: V(:,:,:)                                 ! V

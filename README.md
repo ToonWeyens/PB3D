@@ -1082,3 +1082,9 @@ ITER Organization
 * Implemented "calc_GH_2".
 * Implemented test on G and H, making use of test potential (R e^zeta)^n. Results are positive.
 * Implemented second test, making use of a spherical potential of dubious validity, as also indicated by negative results.
+
+## 2.00:
+* Fixed some bugs in vacuum.
+* For now, can only use poloidal flux for HELENA, because otherwise G and H of the vacuum would have to be calculated for every n, which is to be avoided for efficiency.
+* Implemented vacuum for HELENA, but untested.
+* It looks like H is almost equal to unity matrix times -2pi. Is this physical?

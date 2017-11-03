@@ -44,6 +44,10 @@ PB3D_DIR=/opt/PB3D# 1. XPS 9360
 STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
 #STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
 
+# SCALAPACK
+SCALAPACK_DIR=/opt/scalapack-2.0.2/INSTALL# 1. XPS 9360
+#SCALAPACK_DIR=$(COMPILE_DIR)# 2. ITER
+
 LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 
 ##############################################################################
@@ -85,8 +89,9 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   -L$(NETCDFF_DIR)/lib -lnetcdff \
   -Wl,-R$(NETCDFF_DIR)/lib \
   -L$(STRUMPACK_DIR)/lib -lstrumpack \
-  -lscalapack -lblacs -lblas -lm \
-  -lstdc++ -lmpi_cxx# 1. XPS 9360
+  -L$(SCALAPACK_DIR)/lib -lscalapack -llapack -lblas \
+  -Wl,-rpath,/opt/scalapack-2.0.2/INSTALL/lib \
+  -lm -lstdc++ -lmpi_cxx# 1. XPS 9360
 
 ####!!!!!!!!!!! NEEDS TO BE ADAPTED FROM ABOVE CASE !!!!!!!!!!!
 #LINK = -L$(BLASLAPACK_DIR)/lib -lblas -llapack \

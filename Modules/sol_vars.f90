@@ -30,7 +30,7 @@ module sol_vars
     !!  - \c vec: <tt>(1:n_mod,1:loc_n_r,1:n_EV)</tt>
     type, public :: sol_type
         integer :: n_mod                                                        !< size of n and m (nr. of modes)
-        integer, allocatable :: n(:,:)                                          !< vector of poloidal mode numbers
+        integer, allocatable :: n(:,:)                                          !< vector of toroidal mode numbers
         integer, allocatable :: m(:,:)                                          !< vector of poloidal mode numbers
         complex(dp), allocatable :: vec(:,:,:)                                  !< Eigenvector solution
         complex(dp), allocatable :: val(:)                                      !< Eigenvalue solution
