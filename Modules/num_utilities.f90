@@ -13,8 +13,8 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, order_per_fun, &
-        &shift_F, spline3, solve_vand
+        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, LCM, &
+        &order_per_fun, shift_F, spline3, solve_vand
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff
 #endif
@@ -2401,10 +2401,22 @@ contains
         end if
     end function is_sym
     
-    !> Retruns common denominator using the Euclid's algorithm.
+    !> Returns common multiple using the Euclid's algorithm.
     !!
     !! \see From
     !!  <https://rosettacode.org/wiki/Greatest_common_divisor#Recursive_Euclid_algorithm_3>
+    recursive function LCM(u, v) result(res)
+        integer, intent(in) :: u                                                !< input
+        integer, intent(in) :: v                                                !< input
+        integer :: res                                                          !< result
+        
+        res = u*v / GCD(u,v)
+    end function LCM
+    
+    !> Returns least denominator using the GCD.
+    !!
+    !! \see From
+    !!  <https://rosettacode.org/wiki/Least_common_multiple#Fortran>
     recursive function GCD(u, v) result(res)
         integer, intent(in) :: u                                                !< input
         integer, intent(in) :: v                                                !< input

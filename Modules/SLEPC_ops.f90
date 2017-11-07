@@ -743,6 +743,7 @@ contains
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
+                loc_block = loc_block*step_size                                 ! include step size of normal integral
 
 #if ldebug
                 if (test_diff) then
@@ -765,6 +766,7 @@ contains
                         loc_block(k,m) = V_1(kd_loc,c_tot(k,m,2))               ! asymetric matrices don't need con()
                     end do
                 end do
+                loc_block = loc_block*step_size                                 ! include step size of normal integral
                 
                 ! add block to kd +
                 ! (0,1-ndc_ind:1-st_size+jd)  +  Hermitian conjugate
@@ -784,6 +786,7 @@ contains
                             &con(V_2(kd_loc,c_tot(k,m,1)),[k,m],.true.)         ! symmetric matrices need con()
                     end do
                 end do
+                loc_block = loc_block*step_size                                 ! include step size of normal integral
                 
 #if ldebug
                 if (test_diff) then

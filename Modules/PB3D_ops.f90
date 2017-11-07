@@ -400,17 +400,6 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Input variables from PB3D output reconstructed')
-        
-        ! clean up
-        deallocate(dum_1D)
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-#if ldebug
-                deallocate(dum_3D)
-#endif
-            case (2)                                                            ! HELENA
-                deallocate(dum_3D)
-        end select
     end function reconstruct_PB3D_in
     
     !> Reconstructs grid variables from PB3D HDF5 output.
@@ -577,10 +566,6 @@ contains
                 call dealloc_var_1D(var_1D)
             end if
         end do
-        
-        ! clean up
-        deallocate(dum_1D)
-        if (product(grid%n(1:2)).ne.0) deallocate(dum_3D)
     end function reconstruct_PB3D_grid
     
     !> Reconstructs the equilibrium variables from PB3D HDF5 output.
@@ -673,10 +658,6 @@ contains
         call conv_1D2ND(var_1D,dum_1D)
         eq%rho = dum_1D
         call dealloc_var_1D(var_1D)
-        
-        ! clean up
-        deallocate(dum_1D)
-        deallocate(dum_2D)
     end function reconstruct_PB3D_eq_1
     
     !> Reconstructs the equilibrium variables from PB3D HDF5 output.
@@ -813,11 +794,6 @@ contains
             eq%sigma(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
             call dealloc_var_1D(var_1D)
         end do
-        
-        ! clean up
-        deallocate(dum_3D)
-        deallocate(dum_6D)
-        deallocate(dum_7D)
     end function reconstruct_PB3D_eq_2
     
     !> Reconstructs the vectorial perturbation variables from PB3D HDF5 output.
@@ -972,9 +948,6 @@ contains
                 X%DU_1(par_id(1):par_id(2):par_id(3),:,:,:) + iu*dum_4D
             call dealloc_var_1D(var_1D)
         end do
-        
-        ! clean up
-        deallocate(dum_4D)
     end function reconstruct_PB3D_X_1
     
     !> Reconstructs the tensorial perturbation variables from PB3D HDF5 output.
@@ -1225,9 +1198,6 @@ contains
                 end if
             end do
         end do
-        
-        ! clean up
-        deallocate(dum_4D)
     end function reconstruct_PB3D_X_2
     
     !> Reconstructs the vacuum variables from PB3D HDF5 output.
@@ -1237,7 +1207,7 @@ contains
     !!
     !! \return ierr
     integer function reconstruct_PB3D_vac(vac,data_name,rich_lvl) result(ierr)
-        use num_vars, only: PB3D_name
+        use num_vars, only: PB3D_name, rank, n_procs
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         use X_utilities, only: get_sec_X_range
@@ -1317,24 +1287,23 @@ contains
         vac%x_vec = dum_2D
         call dealloc_var_1D(var_1D)
         
-        ! RE_res
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'RE_res',rich_lvl=rich_lvl_loc)
-        CHCKERR('')
-        call conv_1D2ND(var_1D,dum_2D)
-        vac%res = dum_2D
-        call dealloc_var_1D(var_1D)
-        
-        ! IM_res
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'IM_res',rich_lvl=rich_lvl_loc)
-        CHCKERR('')
-        call conv_1D2ND(var_1D,dum_2D)
-        vac%res = vac%res + iu*dum_2D
-        call dealloc_var_1D(var_1D)
-        
-        ! clean up
-        deallocate(dum_4D)
+        if (rank.eq.n_procs-1) then
+            ! RE_res
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                &'RE_res',rich_lvl=rich_lvl_loc)
+            CHCKERR('')
+            call conv_1D2ND(var_1D,dum_2D)
+            vac%res = dum_2D
+            call dealloc_var_1D(var_1D)
+            
+            ! IM_res
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                &'IM_res',rich_lvl=rich_lvl_loc)
+            CHCKERR('')
+            call conv_1D2ND(var_1D,dum_2D)
+            vac%res = vac%res + iu*dum_2D
+            call dealloc_var_1D(var_1D)
+        end if
     end function reconstruct_PB3D_vac
     
     !> Reconstructs the solution variables from PB3D HDF5 output.

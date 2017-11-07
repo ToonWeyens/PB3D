@@ -781,21 +781,21 @@ contains
                     min_n_X = prim_X
                     max_n_X = prim_X
                     if (prim_X*jq_tot(1).gt.0) then                             ! nq > 0: m > 0
-                        min_m_X = nint(prim_X*jq_tot-n_mod_X*0.5)
+                        min_m_X = nint(prim_X*jq_tot-(n_mod_X-1)*0.5)
                         min_m_X = max(min_nm_X,min_m_X)
                         max_m_X = min_m_X + n_mod_X - 1
                     else                                                        ! nq < 0: m < 0
-                        max_m_X = nint(prim_X*jq_tot+n_mod_X*0.5)
+                        max_m_X = nint(prim_X*jq_tot+(n_mod_X-1)*0.5)
                         max_m_X = min(-min_nm_X,max_m_X)
                         min_m_X = max_m_X - n_mod_X + 1
                     end if
                 else
                     if (prim_X*jq_tot(1).gt.0) then                             ! m iota > 0: n > 0
-                        min_n_X = nint(prim_X*jq_tot-n_mod_X*0.5)
+                        min_n_X = nint(prim_X*jq_tot-(n_mod_X-1)*0.5)
                         min_n_X = max(min_nm_X,min_n_X)
                         max_n_X = min_n_X + n_mod_X - 1
                     else                                                        ! m iota < 0: n < 0
-                        max_n_X = nint(prim_X*jq_tot+n_mod_X*0.5)
+                        max_n_X = nint(prim_X*jq_tot+(n_mod_X-1)*0.5)
                         max_n_X = min(-min_nm_X,max_n_X)
                         min_n_X = max_n_X - n_mod_X + 1
                     end if
@@ -911,7 +911,7 @@ contains
     !!
     !! This depends on the \c X_style:
     !!
-    !! For X_style 1 (prescribed): every  mode should resonate at least somewhere
+    !! For X_style 1 (prescribed): every mode should resonate at least somewhere
     !! in the whole normal range:
     !!  - \f$\frac{\left|nq-m\right|}{\left|n\right|} < T\f$ and
     !!      \f$\frac{\left|nq-m\right|}{\left|m\right|} < T\f$
@@ -1326,7 +1326,11 @@ contains
             end if
             
             ! calculate zero using Zhang
-            res_surf_loc(ld_loc,1) = ld
+            if (use_pol_flux_F) then
+                res_surf_loc(ld_loc,1) = m_loc
+            else
+                res_surf_loc(ld_loc,1) = n_loc
+            end if
             res_surf_loc(ld_loc,3) = nmfrac_fun
             err_msg = calc_zero_Zhang(res_surf_loc(ld_loc,2),jq_fun,&
                 &[minval(grid_eq_trim%r_F),maxval(grid_eq_trim%r_F)])
@@ -1611,7 +1615,7 @@ contains
             
             do ld = 1,n_mod_loc
                 X_plot(1,ld,1,1) = x_plot_loc(1,ld+1)
-                Y_plot(1,ld,1,1) = res_surf(ld,1)-1
+                Y_plot(1,ld,1,1) = res_surf(ld,1)
                 Z_plot(1,ld,1,1) = 1._dp
             end do
             

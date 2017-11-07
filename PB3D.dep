@@ -88,6 +88,7 @@ sol_ops.o : \
     messages.o \
     grid_vars.o \
     sol_vars.o \
+    vac_vars.o \
     sol_utilities.o \
     rich_vars.o \
     files_utilities.o \
@@ -226,6 +227,7 @@ driver_POST.o : \
     eq_utilities.o \
     X_vars.o \
     sol_vars.o \
+    vac_vars.o \
     PB3D_ops.o \
     PB3D_utilities.o \
     sol_ops.o \

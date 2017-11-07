@@ -12,6 +12,7 @@ module driver_POST
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
+    use vac_vars, only: vac_type
     use rich_vars, only: rich_lvl
     
     implicit none
@@ -26,6 +27,7 @@ module driver_POST
     integer :: n_par_tot                                                        !< total \c n(1) for all equilibrium jobs together
     character(len=4) :: grid_name(3)                                            !< names of grids
     type(sol_type) :: sol                                                       !< solution variables
+    type(vac_type) :: vac                                                       !< vacuum variables
     type(grid_type) :: grid_eq_XYZ                                              !< eq grid for XYZ calculations
     type(grid_type) :: grid_eq_HEL                                              !< HELENA eq grid
     type(grid_type) :: grid_X_HEL                                               !< HELENA X grid
@@ -74,7 +76,8 @@ contains
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
-            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, get_PB3D_grid_size
+            &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, reconstruct_PB3D_vac, &
+            &get_PB3D_grid_size
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
         use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
@@ -213,6 +216,8 @@ contains
         CHCKERR('')
         if (POST_output_sol) then
             ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
+            CHCKERR('')
+            ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
             CHCKERR('')
         end if
         
@@ -584,8 +589,8 @@ contains
         ! initialize  integrated energies and  open decompose log file  if first
         ! equilibrium job
         if (POST_output_sol .and. eq_job_nr.eq.1) then
-            allocate(E_pot_int(6,n_EV_out))
-            allocate(E_kin_int(6,n_EV_out))
+            allocate(E_pot_int(7,n_EV_out))
+            allocate(E_kin_int(2,n_EV_out))
             E_pot_int = 0._dp
             E_kin_int = 0._dp
             
@@ -670,7 +675,7 @@ contains
                     call writo('Decompose the energy into its terms')
                     call lvl_ud(1)
                     ierr = decompose_energy(grids(1),grids(2),grids(3),&
-                        &eq_1,eq_2,X,sol,id,B_aligned=POST_style.eq.2,&
+                        &eq_1,eq_2,X,sol,vac,id,B_aligned=POST_style.eq.2,&
                         &XYZ=XYZ_X,E_pot_int=E_pot_int(:,i_EV_out),&
                         &E_kin_int=E_kin_int(:,i_EV_out))
                     CHCKERR('')
@@ -780,8 +785,7 @@ contains
         call lvl_ud(1)
         if (rank.eq.0) then
             ! set format strings
-            format_head = '("#  ",A23," ",A23," ",A23," ",A23," ",A23," ",&
-                &A23)'
+            format_head = '("#  ",7(A23," "))'
             ! open output file for the log
             full_output_name = prog_name//'_'//trim(output_name)//'_EN_R'//&
                 &trim(i2str(rich_lvl))//'.txt'
@@ -816,13 +820,15 @@ contains
             write(temp_output_str,format_head) &
                 &'RE E_pot line_bending_n', 'RE E_pot line_bending_g', &
                 &'RE E_pot ballooning_n  ', 'RE E_pot ballooning_g  ', &
-                &'RE E_pot kink_n        ', 'RE E_pot kink_g        '
+                &'RE E_pot kink_n        ', 'RE E_pot kink_g        ', &
+                &'RE E_pot vac           '
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
             write(temp_output_str,format_head) &
                 &'IM E_pot line_bending_n', 'IM E_pot line_bending_g', &
                 &'IM E_pot ballooning_n  ', 'IM E_pot ballooning_g  ', &
-                &'IM E_pot kink_n        ', 'IM E_pot kink_g        '
+                &'IM E_pot kink_n        ', 'IM E_pot kink_g        ', &
+                &'IM E_pot vac           '
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) trim(temp_output_str)
             CHCKERR('Failed to write')
         end if
@@ -839,7 +845,7 @@ contains
         
         ! input / output
         integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
-        complex(dp), intent(in) :: E_pot_int(6)                                 !< E_pot integrated for requested solutions
+        complex(dp), intent(in) :: E_pot_int(7)                                 !< E_pot integrated for requested solutions
         complex(dp), intent(in) :: E_kin_int(2)                                 !< E_kin integrated for requested solutions
         
         ! local variables
@@ -862,8 +868,7 @@ contains
             !   row 4: E_pot(1), E_pot(2)
             !   row 5: E_pot(3), E_pot(4)
             !   row 6: E_pot(5), E_pot(6)
-            format_val = '("  ",ES23.16," ",ES23.16," ",&
-                &ES23.16," ",ES23.16," ",ES23.16," ",ES23.16," ",ES23.16)'
+            format_val = '("  ",7(ES23.16," "))'
             
             ! write header
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
@@ -905,7 +910,8 @@ contains
                 &rp(E_pot_int(3)),&
                 &rp(E_pot_int(4)),&
                 &rp(E_pot_int(5)),&
-                &rp(E_pot_int(6))
+                &rp(E_pot_int(6)),&
+                &rp(E_pot_int(7))
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
                 &trim(temp_output_str)
             CHCKERR('Failed to write')
@@ -915,7 +921,8 @@ contains
                 &ip(E_pot_int(3)),&
                 &ip(E_pot_int(4)),&
                 &ip(E_pot_int(5)),&
-                &ip(E_pot_int(6))
+                &ip(E_pot_int(6)),&
+                &ip(E_pot_int(7))
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
                 &trim(temp_output_str)
             CHCKERR('Failed to write')

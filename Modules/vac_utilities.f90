@@ -57,8 +57,6 @@ contains
         real(dp) :: t_in_loc                                                    ! local t_in, possibly shifted by 2pi
         real(dp) :: delta_t(2)                                                  ! t_in - t_s
         real(dp) :: rho2(2)                                                     ! square of distance in projected poloidal plane
-        real(dp) :: G_base(2)                                                   ! basic G
-        real(dp) :: H_base(2)                                                   ! basic H
         real(dp) :: dlogd(2)                                                    ! delta log delta
         real(dp) :: n_loc(2)                                                    ! norm_s / |norm_s|
         real(dp) :: dn_loc(2)                                                   ! d n_loc / dtheta
@@ -139,17 +137,13 @@ contains
         else
             do kd = 1,2
                 ! fill G's and H's
-                G_base(kd) = - (t_s(2)-t_s(1))*2._dp/sqrt(x_in(1)*x_s(kd,1)) * &
+                G(kd) = - (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &ql(kd,2)
-                H_base(kd) = (t_s(2)-t_s(1))*2._dp/sqrt(x_in(1)*x_s(kd,1)) * &
+                H(kd) = (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &( (-0.5_dp*norm_s(kd,1)/x_s(kd,1) - &
                     &(1._dp+rho2(kd)/(2*x_in(1)*x_s(kd,1)))*&
                     &Aij(kd))*ql(kd,2) + Aij(kd)*ql(kd,1) )
             end do
-            G(1) = G_base(1)/3._dp + G_base(2)/6._dp
-            G(2) = G_base(2)/3._dp + G_base(1)/6._dp
-            H(1) = H_base(1)/3._dp + H_base(2)/6._dp
-            H(2) = H_base(2)/3._dp + H_base(1)/6._dp
         end if
     end subroutine calc_GH_int_2
     

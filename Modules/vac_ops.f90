@@ -38,12 +38,13 @@ module vac_ops
     private
     public store_vac, calc_vac, print_output_vac
 #if ldebug
-    public debug_calc_GH
+    public debug_calc_GH, debug_calc_vac
 #endif
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_GH = .true.                                          !< plot debug information for calc_GH() \ldebug
+    logical :: debug_calc_GH = .false.                                          !< plot debug information for calc_GH() \ldebug
+    logical :: debug_calc_vac = .false.                                          !< plot debug information for calc_vac() \ldebug
 #endif
 
 contains
@@ -373,6 +374,10 @@ contains
         use num_vars, only: rank
         use vac_utilities, only: vec_dis2loc, in_context
         use MPI_utilities, only: wait_MPI
+#if ldebug
+        use num_vars, only: n_procs
+        use vac_utilities, only: mat_dis2loc
+#endif
         
         character(*), parameter :: rout_name = 'calc_GH'
         
@@ -433,6 +438,28 @@ contains
                 &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
             CHCKERR('descinit failed for res')
             
+            ! plot H and G in HDF5
+            allocate(loc_ser(vac%n_bnd,vac%n_bnd))
+            ierr = mat_dis2loc(vac%ctxt_HG,vac%H,vac%lims_r,vac%lims_c,loc_ser,&
+                &proc=n_procs-1)
+            CHCKERR('')
+            if (rank.eq.n_procs-1) then
+                call plot_HDF5('H','H',reshape(loc_ser,[vac%n_bnd,vac%n_bnd,1]))
+                call plot_diff_HDF5(reshape(loc_ser,[vac%n_bnd,vac%n_bnd,1]),&
+                    &reshape(transpose(loc_ser),[vac%n_bnd,vac%n_bnd,1]),&
+                    &'H_transp')
+            end if
+            ierr = mat_dis2loc(vac%ctxt_HG,vac%G,vac%lims_r,vac%lims_c,loc_ser,&
+                &proc=n_procs-1)
+            CHCKERR('')
+            if (rank.eq.n_procs-1) then
+                call plot_HDF5('G','G',reshape(loc_ser,[vac%n_bnd,vac%n_bnd,1]))
+                call plot_diff_HDF5(reshape(loc_ser,[vac%n_bnd,vac%n_bnd,1]),&
+                    &reshape(transpose(loc_ser),[vac%n_bnd,vac%n_bnd,1]),&
+                    &'G_transp')
+            end if
+            deallocate(loc_ser)
+            
             ! test whether G and H hold for test potentials phi
             if (vac%lims_c(1,1).eq.1) then                                      ! this process owns (part of) first column
                 ! set up variables
@@ -474,9 +501,10 @@ contains
             
             ! output
             allocate(loc_ser(vac%n_bnd,3))
-            ierr = vec_dis2loc(vac%ctxt_HG,r_sph,vac%lims_r,loc_ser(:,1))
+            ierr = vec_dis2loc(vac%ctxt_HG,r_sph,vac%lims_r,loc_ser(:,1),&
+                &proc=n_procs-1)
             CHCKERR('')
-            if (rank.eq.0) then
+            if (rank.eq.n_procs-1) then
                 plot_title(1) = 'spherical r'
                 plot_name = 'r_sph'
                 call print_ex_2D(plot_title(1),plot_name,loc_ser(:,1),&
@@ -485,10 +513,10 @@ contains
             end if
             do jd = 1,size(phi,2)
                 ierr = vec_dis2loc(vac%ctxt_HG,phi(:,jd),vac%lims_r,&
-                    &loc_ser(:,jd))
+                    &loc_ser(:,jd),proc=n_procs-1)
                 CHCKERR('')
             end do
-            if (rank.eq.0) then
+            if (rank.eq.n_procs-1) then
                 plot_title(1) = 'test potential ϕ'
                 plot_name = 'phi'
                 call print_ex_2D([plot_title(1)],plot_name,&
@@ -497,10 +525,10 @@ contains
             end if
             do jd = 1,size(dphi,2)
                 ierr = vec_dis2loc(vac%ctxt_HG,dphi(:,jd),vac%lims_r,&
-                    &loc_ser(:,jd))
+                    &loc_ser(:,jd),proc=n_procs-1)
                 CHCKERR('')
             end do
-            if (rank.eq.0) then
+            if (rank.eq.n_procs-1) then
                 plot_title(1) = 'normal derivative of test potential dϕ/dn'
                 plot_name = 'dphi'
                 call print_ex_2D([plot_title(1)],plot_name,&
@@ -530,10 +558,10 @@ contains
             do id = 1,size(phi,2)
                 do jd = 1,3
                     ierr = vec_dis2loc(vac%ctxt_HG,res(:,jd,id),vac%lims_r,&
-                        &loc_ser(:,jd))
+                        &loc_ser(:,jd),proc=n_procs-1)
                     CHCKERR('')
                 end do
-                if (rank.eq.0) then
+                if (rank.eq.n_procs-1) then
                     select case (id)
                         case (1)
                             plot_title(1) = 'H R^n'
@@ -812,8 +840,8 @@ contains
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &
                                 &cd+kd.le.vac%lims_c(2,i_cd)) then
-                                vac%G(rdl,cdl+kd) = vac%G(rdl,cdl+kd) + G_loc(1)
-                                vac%H(rdl,cdl+kd) = vac%H(rdl,cdl+kd) + H_loc(1)
+                                vac%G(rdl,cdl+kd) = vac%G(rdl,cdl+kd) + G_loc(1+kd)
+                                vac%H(rdl,cdl+kd) = vac%H(rdl,cdl+kd) + H_loc(1+kd)
                             end if
                         end do
                     end do col2
@@ -978,6 +1006,7 @@ contains
         use vac_utilities, only: in_context, mat_dis2loc
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: vac_perm
+        use num_utilities, only: LCM
         
         character(*), parameter :: rout_name = 'calc_vac'
         
@@ -992,6 +1021,7 @@ contains
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         integer :: sec_X_loc                                                    ! local sec_X
         integer :: n_loc(2)                                                     ! n_loc for n_mod_X instead of n_bnd
+        integer :: lims_cl(2)                                                   ! lims_c_loc in local coordinates
         integer, allocatable :: lims_r_loc(:,:)                                 ! local row limits for n_loc
         integer, allocatable :: lims_c_loc(:,:)                                 ! local column limits for n_loc
         integer, target :: desc_EP(BLACSCTXTSIZE)                               ! descriptor for EP
@@ -1009,8 +1039,16 @@ contains
         type(C_PTR) :: CdescGEP, CGEP                                           ! C pointers to descriptor of GEP and GEP itself
         type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
         real(dp) :: SDP_err                                                     ! error
-        integer :: lims_cl(2)                                                   ! lims_c_loc in local coordinates
+        logical :: rank_o                                                       ! output rank
 #if ldebug
+        integer :: lwork                                                        ! size of work array
+        real(dp), allocatable :: res2_ev(:,:)                                   ! eigenvalues of res2
+        real(dp), allocatable :: tau(:)                                         ! array tau in upper Hessenberg form
+        real(dp), allocatable :: work(:)                                        ! work array
+        complex(dp), allocatable :: res_loc(:,:)                                ! local vac%res
+        complex(dp), allocatable :: res_ev(:)                                   ! eigenvalues of res2
+        complex(dp), allocatable :: work_c(:)                                   ! work array
+        complex(dp), allocatable :: tau_c(:)                                    ! array tau in upper Hessenberg form
         !integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
         !character(len=max_str_ln) :: plot_title                                 ! plot title
         !character(len=max_str_ln) :: plot_name                                  ! plot name
@@ -1037,16 +1075,21 @@ contains
         
         call lvl_ud(1)
         
+        ! set ouptut rank persistency
+        if (rank.eq.n_procs-1) then
+            rank_o = .true.
+        else
+            rank_o = .false.
+        end if
+        
         ! calculate matrices G and H
         ierr = calc_GH(vac)
         CHCKERR('')
         
-        call lvl_ud(-1)
-        
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! user output
-            call writo('Launch STRUMPack')
+            call writo('Launch STRUMPack',persistent=rank_o)
             call lvl_ud(1)
             
             ! set secondary mode numbers
@@ -1124,6 +1167,10 @@ contains
                         &lims_c_loc(1,1:i_cd-1)+1) + &
                         &cd-lims_c_loc(1,i_cd)+1
                     
+                    ! set local secondary mode number and angle
+                    sec_X_loc = vac%lim_sec_X(1)-1+(mod(cd-1,n_mod_X)+1)
+                    arg_loc = arg(vac%prim_X,sec_X_loc)
+                    
                     ! iterate over all subrows of matrix with n_bnd rows
                     subrows: do i_rd = 1,size(vac%lims_r,2)
                         row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
@@ -1133,8 +1180,6 @@ contains
                                 &rd-vac%lims_r(1,i_rd)+1
                                 
                             ! save EP
-                            sec_X_loc = vac%lim_sec_X(1)-1+(mod(cd-1,n_mod_X)+1)
-                            arg_loc = arg(vac%prim_X,sec_X_loc)
                             if (cd.le.n_mod_X) then                             ! real part of rhs
                                 EP(rdl,cdl) = cos(vac%ang(rd,1)*arg_loc)        ! rp(i exp)
                             else
@@ -1244,6 +1289,16 @@ contains
                 &proc=n_procs-1)
             CHCKERR('')
             
+#if ldebug
+            ! user output
+            if (debug_calc_vac) then
+                call writo('Calculate the eigenvalues of res_loc to &
+                    &investigate whether it is positive definite',&
+                    &persistent=rank_o)
+                call lvl_ud(1)
+            end if
+#endif
+            
             ! convert to complex numbers and save in vac%res
             if (rank.eq.n_procs-1) then
                 vac%res = res2_loc(1:n_mod_X,1:n_mod_X)-&
@@ -1264,8 +1319,95 @@ contains
                 call plot_HDF5(['real part','imag part','imag diff'],'vac_res',&
                     &reshape([rp(vac%res),ip(vac%res),&
                     &ip(vac%res+transpose(vac%res))],[n_mod_X,n_mod_X,1,3]))
+                
+                if (debug_calc_vac) then
+                    ! copy vacuum response
+                    allocate(res_loc(n_mod_X,n_mod_X))
+                    res_loc = vac%res
+                    
+                    ! get size of work matrix required for zgehrd
+                    allocate(work_c(1))
+                    allocate(tau_c(n_mod_X-1))
+                    call zgehrd(n_mod_X,1,n_mod_X,res_loc,n_mod_X,tau_c,work_c,&
+                        &-1,ierr)
+                    CHCKERR('zgehrd failed')
+                    lwork = nint(rp(work_c(1)))
+                    deallocate(work_c)
+                    allocate(work_c(lwork))
+                    
+                    ! convert to upper Heisenberg form
+                    call zgehrd(n_mod_X,1,n_mod_X,res_loc,n_mod_X,tau_c,work_c,&
+                        &lwork,ierr)
+                    CHCKERR('zgehrd failed')
+                    deallocate(work_c)
+                    
+                    ! get size of work matrix required for zhseqr
+                    allocate(work_c(1))
+                    allocate(res_ev(n_mod_X))
+                    call zhseqr('E','N',n_mod_X,1,n_mod_X,res_loc,n_mod_X,&
+                        &res_ev,0._dp,n_mod_X,work_c,-1,ierr)
+                    CHCKERR('zhseqr failed')
+                    lwork = nint(rp(work_c(1)))
+                    deallocate(work_c)
+                    allocate(work_c(lwork))
+                    
+                    ! calculate eigenvalues
+                    call zhseqr('E','N',n_mod_X,1,n_mod_X,res_loc,n_mod_X,&
+                        &res_ev,0._dp,n_mod_X,work_c,lwork,ierr)
+                    CHCKERR('zhseqr failed')
+                    call print_ex_2D(['real part','imag part'],'res_ev',&
+                        &reshape([rp(res_ev),ip(res_ev)],[n_mod_X,2]),&
+                        &draw=.false.)
+                    call draw_ex(['real part','imag part'],'res_ev',2,1,&
+                        &.false.)
+                    deallocate(work_c)
+                    deallocate(res_ev)
+                end if
 #endif
             end if
+#if ldebug
+            
+            ! calculate the Eigenvalues of the original real res2
+            if (debug_calc_vac) then
+                ! get size of work matrix required for pdgehrd
+                allocate(work(1))
+                allocate(tau(2*n_mod_X-1))
+                call pdgehrd(2*n_mod_X,1,2*n_mod_X,res2,1,1,desc_res2,tau,work,&
+                    &-1,ierr)
+                CHCKERR('pdgehrd failed')
+                lwork = nint(work(1))
+                deallocate(work)
+                allocate(work(lwork))
+                
+                ! convert to upper Heisenberg form
+                call pdgehrd(2*n_mod_X,1,2*n_mod_X,res2,1,1,desc_res2,tau,&
+                    &work,lwork,ierr)
+                CHCKERR('pdgehrd failed')
+                deallocate(work)
+                deallocate(tau)
+                
+                ! calculate eigenvalues
+                lwork = 2*n_mod_X / vac%bs
+                if (lwork*vac%bs.lt.2*n_mod_X) lwork = lwork + 1
+                lwork = 7*lwork / LCM(vac%n_p(1),vac%n_p(2))
+                lwork = 3*2*n_mod_X + max(2*2*n_mod_X+2*n_loc(2) , lwork)
+                allocate(work(lwork))
+                allocate(res2_ev(2*n_mod_X,2))
+                call pdlahqr(.false.,.false.,2*n_mod_X,1,2*n_mod_X,res2,&
+                    &desc_res2,res2_ev(:,1),res2_ev(:,2),1,2*n_mod_X,[0._dp],&
+                    &desc_res2,work,lwork,[0],1,ierr)
+                CHCKERR('pdlahqr failed')
+                call print_ex_2D(['real part','imag part'],'res2_ev',&
+                    &res2_ev,draw=.false.)
+                call draw_ex(['real part','imag part'],'res2_ev',2,1,.false.)
+                deallocate(work)
+                deallocate(res2_ev)
+                
+                ! user output
+                call lvl_ud(-1)
+                call writo('They should all be positive',persistent=rank_o)
+            end if
+#endif
         end if
         
         call lvl_ud(-1)

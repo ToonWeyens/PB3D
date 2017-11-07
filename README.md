@@ -1088,3 +1088,14 @@ ITER Organization
 * For now, can only use poloidal flux for HELENA, because otherwise G and H of the vacuum would have to be calculated for every n, which is to be avoided for efficiency.
 * Implemented vacuum for HELENA, but untested.
 * It looks like H is almost equal to unity matrix times -2pi. Is this physical?
+
+## 2.01:
+* Implemented vacuum for axisymmetry, but not sure about the verification.
+* There are rather large inconsistencies concerning the energy reconstruction, which have to be looked in to.
+* Slightly changed the routine that calculates the optimal fast modes.
+* Fixed an important bug in 'calc_GH_2' that introduced a strong asymmetry.
+* 'calc_GH_int_2' now uses factors 1/2 instead of 1/3 and 1/6 to make the matrix G more symmetric.
+* Fixed some bugs in the reading of vacuum variables.
+* Added test on 'calc_vac' that looks at whether the vacuum response is positive definite through the eigenvalues.
+* Improved output on the EV on the midplane, taking correct mode number now and using less HDF5 files.
+* 'calc_res_surf' now outputs the real mode number, not the index.

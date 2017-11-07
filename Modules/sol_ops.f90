@@ -12,6 +12,7 @@ module sol_ops
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type
     use sol_vars, only: sol_type
+    use vac_vars, only: vac_type
 
     implicit none
     private
@@ -562,9 +563,9 @@ contains
     !! \return ierr
     integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
         use MPI_utilities, only: get_ser_var
-        use num_vars, only: ex_max_size, rank, no_plots
+        use num_vars, only: ex_max_size, rank, no_plots, use_pol_flux_F
         use eq_vars, only: max_flux_F
-        use X_vars, only: sec_X_ind
+        use X_vars, only: sec_X_ind, min_n_X, min_m_X
         use sol_utilities, only: calc_tot_sol_vec
         use grid_utilities, only: trim_grid
         
@@ -583,8 +584,9 @@ contains
         integer :: ld_loc                                                       ! local ld
         integer :: n_mod_tot                                                    ! total number of modes that can resonate
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
+        integer :: min_nm_X                                                     ! minimum n or m in total modes
         character(len=max_str_ln) :: file_name                                  ! name of file of plots of this proc.
-        character(len=max_str_ln) :: plot_title(2)                              ! title for plots
+        character(len=max_str_ln), allocatable :: plot_title(:)                 ! title for plots
         real(dp) :: norm_factor                                                 ! conversion factor max_flux/2pi from flux to normal coordinate
         real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
         real(dp), allocatable :: y_plot(:,:)                                    ! y values of plot
@@ -592,6 +594,7 @@ contains
         complex(dp), allocatable :: sol_vec_ser_tot(:,:)                        ! serial MPI Eigenvector for total number of modes
         complex(dp), allocatable :: sol_vec_ser_loc(:)                          ! local sol_vec_ser
         real(dp), allocatable :: sol_vec_phase(:,:)                             ! phase of sol_vec
+        character :: nm_X                                                       ! n or m
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -608,6 +611,10 @@ contains
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
         n_mod_tot = size(sec_X_ind,2)
+        
+        ! if master, set up plot titles
+        if (rank.eq.0) then
+        end if
         
         ! set up serial sol_vec on master
         if (rank.eq.0) &
@@ -630,12 +637,26 @@ contains
             norm_factor = max_flux_F/(2*pi)
         end if
         
-        ! master sets up x_plot
+        ! master sets up x_plot, y_plot and plot titles
         if (rank.eq.0) then
-            ! identical copies of r_F of solution grid
+            ! prepare
             allocate(x_plot(grid_sol_trim%n(3),n_mod_tot))
+            allocate(y_plot(grid_sol_trim%n(3),n_mod_tot))
+            allocate(plot_title(n_mod_tot))
+            if (use_pol_flux_F) then
+                nm_X = 'm'
+                min_nm_X = minval(min_m_X)
+            else
+                nm_X = 'n'
+                min_nm_X = minval(min_n_X)
+            end if
+            
+            ! identical copies of r_F of solution grid and mode numbers
             do ld = 1,n_mod_tot
                 x_plot(:,ld) = grid_sol_trim%r_F
+                y_plot(:,ld) = min_nm_X+ld-1
+                plot_title(ld) = 'EV - midplane ('//nm_X//' = '//&
+                    &trim(i2str(min_nm_X+ld-1))//')'
             end do
             
             ! scale x_plot by normal factor
@@ -646,65 +667,50 @@ contains
         if (rank.eq.0) then
             ! set up file name of this rank and plot title
             file_name = trim(i2str(X_id))//'_EV_midplane_RE'
-            plot_title(1) = 'EV - midplane'
             
             ! print real amplitude of harmonics of eigenvector at midplane
-            call print_ex_2D(plot_title(1:1),file_name,&
+            call print_ex_2D(plot_title,file_name,&
                 &rp(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
             
             ! plot in file
-            call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+            call draw_ex(plot_title,file_name,n_mod_tot,1,&
                 &.false.,draw_ops=['with lines'],ex_plot_style=1)
-            call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+            call draw_ex(plot_title,file_name,n_mod_tot,1,&
                 &.false.,ex_plot_style=2)
             
-            ! plot in file using decoupled 3D
-            call draw_ex([trim(plot_title(1))//' - 3D'],&
-                &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                &draw_ops=['with lines'],data_name=file_name,&
-                &ex_plot_style=1)
-            
-            ! plot using HDF5
-            call plot_HDF5(trim(plot_title(1)),trim(file_name),&
-                &reshape(rp(transpose(sol_vec_ser_tot)),&
-                &[1,grid_sol_trim%n(3),n_mod_tot]),y=reshape(x_plot,&
-                &[1,grid_sol_trim%n(3),n_mod_tot]))
+            ! plot in file using decoupled 3D if not too big
+            if (n_mod_tot*grid_sol_trim%n(3).le.ex_max_size) then
+                call draw_ex(plot_title,trim(file_name)//'_3D',&
+                    &n_mod_tot,3,.false.,draw_ops=['with lines'],&
+                    &data_name=file_name,ex_plot_style=1)
+            end if
         end if
         
         ! master plots imaginary part at midplane
         if (rank.eq.0) then
             ! set up file name of this rank and plot title
             file_name = trim(i2str(X_id))//'_EV_midplane_IM'
-            plot_title(1) = 'EV - midplane'
             
             ! print imag amplitude of harmonics of eigenvector at midplane
-            call print_ex_2D(plot_title(1:1),file_name,&
+            call print_ex_2D(plot_title,file_name,&
                 &ip(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
             
             ! plot in file
-            call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,.false.,&
+            call draw_ex(plot_title,file_name,n_mod_tot,1,.false.,&
                 &draw_ops=['with lines'],ex_plot_style=1)
             
             ! plot in file using decoupled 3D if not too big
             if (n_mod_tot*grid_sol_trim%n(3).le.ex_max_size) then
-                call draw_ex([trim(plot_title(1))//' - 3D'],&
-                    &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                    &draw_ops=['with lines'],data_name=file_name,&
-                    &ex_plot_style=1)
+                call draw_ex(plot_title,trim(file_name)//'_3D',&
+                    &n_mod_tot,3,.false.,draw_ops=['with lines'],&
+                    &data_name=file_name,ex_plot_style=1)
             end if
-            
-            ! plot using HDF5
-            call plot_HDF5(trim(plot_title(1)),trim(file_name),&
-                &reshape(ip(transpose(sol_vec_ser_tot)),&
-                &[1,grid_sol_trim%n(3),n_mod_tot]),y=reshape(x_plot,&
-                &[1,grid_sol_trim%n(3),n_mod_tot]))
         end if
         
         ! master plots phase at midplane
         if (rank.eq.0) then
             ! set up file name of this rank and plot title
             file_name = trim(i2str(X_id))//'_EV_midplane_PH'
-            plot_title(1) = 'EV - midplane'
             
             ! set up phase
             allocate(sol_vec_phase(grid_sol_trim%n(3),n_mod_tot))
@@ -713,36 +719,52 @@ contains
             where (sol_vec_phase.lt.0) sol_vec_phase = sol_vec_phase + 2*pi
             
             ! print imag amplitude of harmonics of eigenvector at midplane
-            call print_ex_2D(plot_title(1:1),file_name,sol_vec_phase,&
+            call print_ex_2D(plot_title,file_name,sol_vec_phase,&
                 &x=x_plot,draw=.false.)
             
             ! plot in file
-            call draw_ex(plot_title(1:1),file_name,n_mod_tot,1,&
+            call draw_ex(plot_title,file_name,n_mod_tot,1,&
                 &.false.,draw_ops=['with lines'],ex_plot_style=1)
             
             ! plot in file using decoupled 3D if not too big
             if (n_mod_tot*grid_sol_trim%n(3).le.ex_max_size) then
-                call draw_ex([trim(plot_title(1))//' - 3D'],&
-                    &trim(file_name)//'_3D',n_mod_tot,3,.false.,&
-                    &draw_ops=['with lines'],data_name=file_name,&
-                    &ex_plot_style=1)
+                call draw_ex(plot_title,trim(file_name)//'_3D',&
+                    &n_mod_tot,3,.false.,draw_ops=['with lines'],&
+                    &data_name=file_name,ex_plot_style=1)
             end if
             
-            ! plot using HDF5
-            call plot_HDF5(trim(plot_title(1)),trim(file_name),&
-                &reshape(sol_vec_phase,[1,grid_sol_trim%n(3),n_mod_tot]),&
-                &y=reshape(x_plot,[1,grid_sol_trim%n(3),n_mod_tot]))
+            ! deallocate variables
+            deallocate(plot_title)
+        end if
+        
+        ! masters plots above in HDf5
+        if (rank.eq.0) then
+            allocate(plot_title(3))
+            plot_title(1) = 'real part'
+            plot_title(2) = 'imaginary part'
+            plot_title(3) = 'phase'
+            file_name = trim(i2str(X_id))//'_EV_midplane'
+            call plot_HDF5(plot_title,trim(file_name),&
+                &reshape([rp(transpose(sol_vec_ser_tot)),&
+                &ip(transpose(sol_vec_ser_tot)),&
+                &sol_vec_phase],[grid_sol_trim%n(3),n_mod_tot,1,3]),&
+                &x=reshape(x_plot,[grid_sol_trim%n(3),n_mod_tot,1,1]),&
+                &y=reshape(y_plot,[grid_sol_trim%n(3),n_mod_tot,1,1]))
             
             ! deallocate variables
             deallocate(x_plot)
+            deallocate(y_plot)
             deallocate(sol_vec_phase)
+            deallocate(plot_title)
         end if
         
         ! only plot maximum if resonant surfaces found
         if (rank.eq.0 .and. size(res_surf,1).gt.0) then
             ! set up file name of this rank and plot title
             file_name = trim(i2str(X_id))//'_EV_max'
-            plot_title = ['mode maximum      ','resonating surface']
+            allocate(plot_title(2))
+            plot_title(1) = 'mode maximum'
+            plot_title(2) = 'resonating surface'
             
             ! set up plot variables
             allocate(x_plot(n_mod_tot,2))
@@ -755,7 +777,7 @@ contains
                     ld_loc = ld_loc + 1
                     x_plot(ld_loc,1) = grid_sol_trim%r_F(&
                         &maxloc(abs(rp(sol_vec_ser_tot(ld,:))),1))
-                    y_plot(ld_loc,1) = ld
+                    y_plot(ld_loc,1) = min_nm_X+ld-1
                 end if
             end do
             if (ld_loc.eq.0) then
@@ -828,7 +850,7 @@ contains
     !!
     !! \return ierr
     integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-        &sol,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
+        &sol,vac,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
         use grid_utilities, only: trim_grid
         use num_vars, only: no_plots, eq_job_nr, eq_jobs_lims, eq_job_nr
         
@@ -842,10 +864,11 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         type(X_1_type), intent(in) :: X                                         !< perturbation variables
         type(sol_type), intent(in) :: sol                                       !< solution variables
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
         integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
         logical, intent(in) :: B_aligned                                        !< whether grid is field-aligned
         real(dp), intent(in), optional :: XYZ(:,:,:,:)                          !< X, Y and Z for plotting
-        complex(dp), intent(inout), optional :: E_pot_int(6)                    !< integrated potential energy
+        complex(dp), intent(inout), optional :: E_pot_int(7)                    !< integrated potential energy
         complex(dp), intent(inout), optional :: E_kin_int(2)                    !< integrated kinetic energy
         
         ! local variables
@@ -858,7 +881,7 @@ contains
         logical :: cont_plot                                                    ! continued plot
         complex(dp), allocatable, target :: E_pot(:,:,:,:)                      ! potential energy
         complex(dp), allocatable, target :: E_kin(:,:,:,:)                      ! kinetic energy
-        complex(dp) :: E_pot_int_loc(6)                                         ! integrated potential energy for this parallel job
+        complex(dp) :: E_pot_int_loc(7)                                         ! integrated potential energy for this parallel job
         complex(dp) :: E_kin_int_loc(2)                                         ! integrated kinetic energy for this parallel job
         complex(dp), pointer :: E_pot_trim(:,:,:,:) => null()                   ! trimmed part of E_pot
         complex(dp), pointer :: E_kin_trim(:,:,:,:) => null()                   ! trimmed part of E_kin
@@ -881,7 +904,7 @@ contains
         call lvl_ud(1)
         
         ! calculate for this parallel job
-        ierr = calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,B_aligned,&
+        ierr = calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,B_aligned,&
             &X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
         CHCKERR('')
         
@@ -1037,11 +1060,11 @@ contains
     !! \note see explanation of routine in decompose_energy().
     !!
     !! \return ierr
-    integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+    integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,&
         &B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
-            &norm_disc_prec_sol, rank
+            &norm_disc_prec_sol, rank, eq_job_nr, eq_jobs_lims
         use eq_vars, only: vac_perm
         use num_utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
@@ -1062,11 +1085,12 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         type(X_1_type), intent(in) :: X                                         !< perturbation variables
         type(sol_type), intent(in) :: sol                                       !< solution variables
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
         logical, intent(in) :: B_aligned                                        !< whether grid is field-aligned
         integer, intent(in) :: X_id                                             !< nr. of Eigenvalue
         complex(dp), intent(inout), allocatable :: E_pot(:,:,:,:)               !< potential energy
         complex(dp), intent(inout), allocatable :: E_kin(:,:,:,:)               !< kinetic energy
-        complex(dp), intent(inout) :: E_pot_int(6)                              !< integrated potential energy
+        complex(dp), intent(inout) :: E_pot_int(7)                              !< integrated potential energy
         complex(dp), intent(inout) :: E_kin_int(2)                              !< integrated kinetic energy
         
         ! local variables
@@ -1306,8 +1330,20 @@ contains
         ierr = calc_int_vol(ang_1(:,:,norm_id(1):norm_id(2)),&
             &ang_2(:,:,norm_id(1):norm_id(2)),norm(norm_id(1):norm_id(2)),&
             &J(:,:,norm_id(1):norm_id(2)),&
-            &E_pot(:,:,norm_id(1):norm_id(2),:),E_pot_int)
+            &E_pot(:,:,norm_id(1):norm_id(2),:),E_pot_int(1:6))
         CHCKERR('')
+        
+        ! add vacuum energy if last process and first equilibrium job
+        E_pot_int(7) = 0._dp
+        if (rank.eq.n_procs-1 .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
+            do jd = 1,sol%n_mod
+                do kd = 1,sol%n_mod
+                    E_pot_int(7) = E_pot_int(7) + &
+                        &conjg(sol%vec(kd,grid_sol%loc_n_r,X_id)) * &
+                        &vac%res(kd,jd) * sol%vec(jd,grid_sol%loc_n_r,X_id)
+                end do
+            end do
+        end if
         
         ! bundle all processes
         do kd = 1,2
@@ -1316,18 +1352,12 @@ contains
             E_kin_int(kd) = sum(E_int_tot)
             deallocate(E_int_tot)
         end do
-        do kd = 1,6
+        do kd = 1,7
             ierr = get_ser_var([E_pot_int(kd)],E_int_tot,scatter=.true.)
             CHCKERR('')
             E_pot_int(kd) = sum(E_int_tot)
             deallocate(E_int_tot)
         end do
-        
-        ! normalize energies
-        E_kin = E_kin
-        E_pot = E_pot
-        E_kin_int = E_kin_int
-        E_pot_int = E_pot_int
         
         ! deallocate variables
         call grid_sol_trim%dealloc()
