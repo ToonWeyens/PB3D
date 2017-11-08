@@ -1071,7 +1071,7 @@ contains
             CHCKERR('')
         end if
         
-        call writo('Start calculation of vacuum')
+        call writo('Start calculation of vacuum quantities')
         
         call lvl_ud(1)
         
@@ -1089,7 +1089,7 @@ contains
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! user output
-            call writo('Launch STRUMPack',persistent=rank_o)
+            call writo('Use STRUMPack to solve system',persistent=rank_o)
             call lvl_ud(1)
             
             ! set secondary mode numbers
@@ -1251,6 +1251,15 @@ contains
             !end do subcols2
 #endif
             
+            ! destroy Strumpack object
+            call SDP_F90_double_destroy(SDP_loc)
+            
+            call lvl_ud(-1)
+            
+            ! user output
+            call writo('Combine results into vacuum response',persistent=rank_o)
+            call lvl_ud(1)
+            
             ! convert EP into IEP where I contains the integration rule:
             !         (θ_{i+1}-θ_{i-1})/2   for i = 2..n-1
             !   I_i = (θ_2-θ_1}/2           for i = 1
@@ -1365,8 +1374,8 @@ contains
                 end if
 #endif
             end if
-#if ldebug
             
+#if ldebug
             ! calculate the Eigenvalues of the original real res2
             if (debug_calc_vac) then
                 ! get size of work matrix required for pdgehrd
@@ -1408,6 +1417,8 @@ contains
                 call writo('They should all be positive',persistent=rank_o)
             end if
 #endif
+            
+            call lvl_ud(-1)
         end if
         
         call lvl_ud(-1)

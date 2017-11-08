@@ -1759,8 +1759,9 @@ contains
     !! Furthermore, if \c i is 1 or 2, the corresponding <tt>i</tt>'th (angular)
     !! variable is the only variable that  is assumed to vary in that dimension.
     !! The other angular variable as well  as the normal variable are assumed to
-    !! be constant like the function itself. However,  if \c i is 3, an error is
-    !! displayed as this does not represent a physical situation.
+    !! be constant like the function itself,  resulting in a factor \f$2 \pi\f$.
+    !! However, if \c i is 3, an error is displayed as this does not represent a
+    !! physical situation.
     !!
     !! A common case  through which to understand this is  the axisymmetric case
     !! where the first angular variable  \f$\theta\f$ varies in the dimensions 1
@@ -1876,9 +1877,7 @@ contains
         dims = shape(ang_1)
         
         ! set up dim_1
-        dim_1 = .false.
-        if (size(ang_1,1).eq.1) dim_1(1) = .true.
-        if (size(ang_2,2).eq.1) dim_1(2) = .true.
+        dim_1 = dims(1:2).eq.1
         
         ! set up Jf and transf_J
         allocate(Jf(max(dims(1)-1,1),max(dims(2)-1,1),dims(3)-1,nn_mod))
@@ -1907,8 +1906,8 @@ contains
             end if
             do jd = 1,2
                 if (dim_1(2)) then
-                        i_a(2) = 1
-                        i_b(2) = dims(2)
+                    i_a(2) = 1
+                    i_b(2) = dims(2)
                 else
                     if (jd.eq.1) then
                         i_a(2) = 1
@@ -1920,8 +1919,8 @@ contains
                 end if
                 do id = 1,2
                     if (dim_1(1)) then
-                            i_a(1) = 1
-                            i_b(1) = dims(1)
+                        i_a(1) = 1
+                        i_b(1) = dims(1)
                     else
                         if (id.eq.1) then
                             i_a(1) = 1
@@ -1939,7 +1938,7 @@ contains
                     end do
                     if (dim_1(1)) then
                         ! transf_J(1): ang_1_x
-                        transf_J(:,:,:,1) = 1._dp
+                        transf_J(:,:,:,1) = 2*pi
                         ! transf_J(4): ang_2_x
                         transf_J(:,:,:,4) = 0._dp
                     else
@@ -1958,7 +1957,7 @@ contains
                     end if
                     if (dim_1(2)) then
                         ! transf_J(2): ang_2_y
-                        transf_J(:,:,:,2) = 1._dp
+                        transf_J(:,:,:,2) = 2*pi
                         ! transf_J(3): ang_1_y
                         transf_J(:,:,:,3) = 0._dp
                     else

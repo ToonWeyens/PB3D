@@ -671,8 +671,6 @@ contains
             ! print real amplitude of harmonics of eigenvector at midplane
             call print_ex_2D(plot_title,file_name,&
                 &rp(transpose(sol_vec_ser_tot)),x=x_plot,draw=.false.)
-            
-            ! plot in file
             call draw_ex(plot_title,file_name,n_mod_tot,1,&
                 &.false.,draw_ops=['with lines'],ex_plot_style=1)
             call draw_ex(plot_title,file_name,n_mod_tot,1,&
@@ -1184,7 +1182,7 @@ contains
             D2p(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
                 &eq_1%pres_FD(i_lo,1)
             D2p(:,:,kd) = D2p(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_1%pres_FD(i_hi,2)
+                &eq_1%pres_FD(i_hi,1)
             rho(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
                 &eq_1%rho(i_lo)
             rho(:,:,kd) = rho(:,:,kd) + (loc_r_eq-i_lo)*&

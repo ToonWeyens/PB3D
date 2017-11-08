@@ -1099,3 +1099,12 @@ ITER Organization
 * Added test on 'calc_vac' that looks at whether the vacuum response is positive definite through the eigenvalues.
 * Improved output on the EV on the midplane, taking correct mode number now and using less HDF5 files.
 * 'calc_res_surf' now outputs the real mode number, not the index.
+
+## 2.02:
+* Fixed an important bug in energy reconstruction where the pressure gradient was wrongly interpolated.
+* The resonance plot now also outputs at least the safety factor or rotational transform when there is no resonance found.
+* Increased the maximum size for an external plot.
+* Fixed an bug in 'Weyl_fac', where a factor pi was left out.
+* Fixed an inconsistency in 'calc_int_vol' where 2pi was left out.
+* The energy reconstruction of the normal terms as well as the vacuum terms are now more correct for HELENA.
+* Relaxed the test on admissible modes, displaying just warnings now.

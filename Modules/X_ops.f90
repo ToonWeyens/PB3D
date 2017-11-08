@@ -994,6 +994,7 @@ contains
             real(dp), allocatable :: temp_var(:)                                ! temporary variable
             character(len=max_str_ln) :: jq_name                                ! either safety factor or rotational transform
             character(len=1) :: mode_name                                       ! either n or m
+            logical :: all_modes_fine                                           ! all modes are fine
             
             ! initialize ierr
             ierr = 0
@@ -1020,7 +1021,7 @@ contains
             
             ! output if master
             if (rank.eq.0) then
-                ! set up jq name
+                ! set up jq name and all_modes_fine
                 if (use_pol_flux_F) then
                     jq_name = 'safety factor'
                     mode_name = 'm'
@@ -1028,6 +1029,7 @@ contains
                     jq_name = 'rotational transform'
                     mode_name = 'n'
                 end if
+                all_modes_fine = .true.
                 
                 ! set up plus minus one, according to the sign of jq
                 if (min_jq.lt.0 .and. max_jq.lt.0) then
@@ -1054,11 +1056,8 @@ contains
                             call writo('for (n,m) = ('//trim(i2str(prim_X))//&
                                 &','//trim(i2str(min_sec_X+id-1))//&
                                 &'), there is no range in the plasma where the &
-                                &ratio |n q - m| << |n|,|m| is met')
-                            ierr = 1
-                            err_msg = 'Choose n and m so that |n q - m| << &
-                                &|n|,|m|'
-                            CHCKERR(err_msg)
+                                &ratio |n q - m| << |n|,|m| is met',alert=.true.)
+                            all_modes_fine = .false.
                         end if
                     else
                         if ((min_sec_X+id-1._dp)/prim_X.lt.lim_lo .or. &
@@ -1067,19 +1066,24 @@ contains
                                 &trim(i2str(min_sec_X+id-1))//','//&
                                 &trim(i2str(prim_X))//'), there is no range in &
                                 &the plasma where the ratio |n - iota m| << &
-                                &|m|,|n| is met')
-                            ierr = 1
-                            err_msg = 'Choose n and m so that |n - iota m| << &
-                                &|n|,|m|'
-                            CHCKERR(err_msg)
+                                &|m|,|n| is met',alert=.true.)
+                            all_modes_fine = .false.
                         end if
                     end if
                 end do
                 
                 ! output message
-                call writo('The modes are all within the allowed range of '//&
-                    &trim(i2str(ceiling(prim_X*lim_lo)))//' < '//mode_name//&
-                    &' < '//trim(i2str(floor(prim_X*lim_hi)))//'...')
+                if (all_modes_fine) then
+                    call writo('The modes are all within the allowed range &
+                        &of '//trim(i2str(ceiling(prim_X*lim_lo)))//' < '//&
+                        &mode_name//' < '//trim(i2str(floor(prim_X*lim_hi)))//&
+                        &'...')
+                else
+                    call writo('Not all modes are within the allowed range &
+                        &of '//trim(i2str(ceiling(prim_X*lim_lo)))//' < '//&
+                        &mode_name//' < '//trim(i2str(floor(prim_X*lim_hi)))//&
+                        &'...')
+                end if
             end if
         end function check_X_modes_1
         
@@ -1479,45 +1483,10 @@ contains
         
         call lvl_ud(-1)
         
-        ! only master and only if resonant surfaces
-        if (rank.eq.0 .and. size(res_surf,1).gt.0) then
+        ! only master
+        if (rank.eq.0) then
             ! set local n_mod
             n_mod_loc = size(res_surf,1)
-            
-            ! initialize x_plot_loc and y_plot_loc
-            allocate(x_plot_loc(n_r,n_mod_loc+1)); x_plot_loc = 0
-            allocate(y_plot_loc(n_r,n_mod_loc+1)); y_plot_loc = 0
-            
-            ! set x_plot_loc and y_plot_loc for first column
-            x_plot_loc(:,1) = grid_trim%r_F
-            y_plot_loc(:,1) = jq(:)
-            
-            ! set x_plot_loc and y_plot_loc for other columns
-            do ld = 1,n_mod_loc
-                x_plot_loc(:,ld+1) = res_surf(ld,2)
-                y_plot_loc(n_r,ld+1) = res_surf(ld,3)
-            end do
-            
-            ! user message
-            call writo('Plot results using HDF5')
-            
-            call lvl_ud(1)
-            
-            ! set up pol. and tor. angle for plot
-            allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
-            allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
-            ierr = calc_eqd_grid(theta_plot,min_theta_plot*pi,&
-                &max_theta_plot*pi,1)
-            CHCKERR('')
-            ierr = calc_eqd_grid(zeta_plot,min_zeta_plot*pi,&
-                &max_zeta_plot*pi,2)
-            CHCKERR('')
-            
-            ! set up vars
-            allocate(vars(n_theta_plot,n_zeta_plot,1,n_mod_loc))
-            do ld = 1,n_mod_loc
-                vars(:,:,:,ld) = y_plot_loc(n_r,ld+1)
-            end do
             
             ! set up plot titles
             allocate(plot_titles(n_mod_loc))
@@ -1535,98 +1504,139 @@ contains
                 end do
             end if
             
-            ! set dimensions for single flux surface
-            plot_dim = [n_theta_plot,n_zeta_plot,1,n_mod_loc]
+            ! initialize x_plot_loc and y_plot_loc
+            allocate(x_plot_loc(n_r,n_mod_loc+1)); x_plot_loc = 0
+            allocate(y_plot_loc(n_r,n_mod_loc+1)); y_plot_loc = 0
             
-            ! calculate normal vars in Equilibrium coords.
-            allocate(r_plot_E(n_mod_loc))
-            ierr = coord_F2E(grid,x_plot_loc(n_r,2:n_mod_loc+1),r_plot_E,&
-                &r_F_array=grid%r_F,r_E_array=grid%r_E)
-            CHCKERR('')
+            ! set x_plot_loc and y_plot_loc for first column
+            x_plot_loc(:,1) = grid_trim%r_F
+            y_plot_loc(:,1) = jq(:)
             
-            ! create plot grid for single flux surface
-            ierr = grid_plot%init(plot_dim(1:3))
-            CHCKERR('')
-            grid_plot%theta_E = theta_plot
-            grid_plot%zeta_E = zeta_plot
-            
-            ! if VMEC, calculate trigonometric factors of plot grid
-            if (eq_style.eq.1) then
-                ierr = calc_trigon_factors(grid_plot%theta_E,grid_plot%zeta_E,&
-                    &grid_plot%trigon_factors)
-                CHCKERR('')
-            end if
-            
-            ! set up plot X, Y and Z
-            allocate(X_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
-            allocate(Y_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
-            allocate(Z_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
-            
-            ! loop over all resonant surfaces to calculate X, Y and Z values
+            ! set x_plot_loc and y_plot_loc for other columns
             do ld = 1,n_mod_loc
-                ! set loc_r_E of plot grid
-                grid_plot%loc_r_E = r_plot_E(ld)
-                
-                ! calculate X, Y and Z
-                ierr = calc_XYZ_grid(grid,grid_plot,X_plot(:,:,:,ld),&
-                    &Y_plot(:,:,:,ld),Z_plot(:,:,:,ld))
-                CHCKERR('')
+                x_plot_loc(:,ld+1) = res_surf(ld,2)
+                y_plot_loc(n_r,ld+1) = res_surf(ld,3)
             end do
             
-            ! print using HDF5
-            call plot_HDF5(plot_titles,file_name,vars,X=X_plot,Y=Y_plot,&
-                &Z=Z_plot,col=1,descr='resonant surfaces')
+            ! only if resonant surfaces
+            if (size(res_surf,1).gt.0) then
+                ! user message
+                call writo('Plot resonant flux surfaces using HDF5')
+                
+                call lvl_ud(1)
+                
+                ! set up pol. and tor. angle for plot
+                allocate(theta_plot(n_theta_plot,n_zeta_plot,1))
+                allocate(zeta_plot(n_theta_plot,n_zeta_plot,1))
+                ierr = calc_eqd_grid(theta_plot,min_theta_plot*pi,&
+                    &max_theta_plot*pi,1)
+                CHCKERR('')
+                ierr = calc_eqd_grid(zeta_plot,min_zeta_plot*pi,&
+                    &max_zeta_plot*pi,2)
+                CHCKERR('')
+                
+                ! set up vars
+                allocate(vars(n_theta_plot,n_zeta_plot,1,n_mod_loc))
+                do ld = 1,n_mod_loc
+                    vars(:,:,:,ld) = y_plot_loc(n_r,ld+1)
+                end do
+                
+                ! set dimensions for single flux surface
+                plot_dim = [n_theta_plot,n_zeta_plot,1,n_mod_loc]
+                
+                ! calculate normal vars in Equilibrium coords.
+                allocate(r_plot_E(n_mod_loc))
+                ierr = coord_F2E(grid,x_plot_loc(n_r,2:n_mod_loc+1),r_plot_E,&
+                    &r_F_array=grid%r_F,r_E_array=grid%r_E)
+                CHCKERR('')
+                
+                ! create plot grid for single flux surface
+                ierr = grid_plot%init(plot_dim(1:3))
+                CHCKERR('')
+                grid_plot%theta_E = theta_plot
+                grid_plot%zeta_E = zeta_plot
+                
+                ! if VMEC, calculate trigonometric factors of plot grid
+                if (eq_style.eq.1) then
+                    ierr = calc_trigon_factors(grid_plot%theta_E,&
+                        &grid_plot%zeta_E,grid_plot%trigon_factors)
+                    CHCKERR('')
+                end if
+                
+                ! set up plot X, Y and Z
+                allocate(X_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
+                allocate(Y_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
+                allocate(Z_plot(n_theta_plot,n_zeta_plot,1,n_mod_loc))
+                
+                ! loop over all resonant surfaces to calculate X, Y and Z values
+                do ld = 1,n_mod_loc
+                    ! set loc_r_E of plot grid
+                    grid_plot%loc_r_E = r_plot_E(ld)
+                    
+                    ! calculate X, Y and Z
+                    ierr = calc_XYZ_grid(grid,grid_plot,X_plot(:,:,:,ld),&
+                        &Y_plot(:,:,:,ld),Z_plot(:,:,:,ld))
+                    CHCKERR('')
+                end do
+                
+                ! plot using HDF5
+                call plot_HDF5(plot_titles,file_name,vars,X=X_plot,Y=Y_plot,&
+                    &Z=Z_plot,col=1,descr='resonant surfaces')
+                
+                ! deallocate local variables
+                deallocate(vars)
+                deallocate(theta_plot,zeta_plot,r_plot_E)
+                deallocate(X_plot,Y_plot,Z_plot)
+                call grid_plot%dealloc()
+                
+                call lvl_ud(-1)
+            end if
             
-            ! deallocate local variables
-            deallocate(vars)
-            deallocate(theta_plot,zeta_plot,r_plot_E)
-            deallocate(X_plot,Y_plot,Z_plot)
-            
-            call lvl_ud(-1)
-            
-            call writo('Plot results')
+            call writo('Plot safety factor with resonant flux surfaces using &
+                &external program')
             
             call lvl_ud(1)
             
             ! rescale x_plot_loc by max_flux_F/2*pi
             x_plot_loc = x_plot_loc*2*pi/max_flux_F
             
-            ! print to file
+            ! plot using external program
             call print_ex_2D([plot_title,plot_titles],file_name,y_plot_loc,&
                 &x=x_plot_loc,draw=.false.)
-            
-            ! plot using external program
             call draw_ex([plot_title,plot_titles],file_name,n_mod_loc+1,1,&
                 &.false.)
             
             call lvl_ud(-1)
             
-            call writo('Plot 2D results using HDF5')
-            
-            call lvl_ud(1)
-            
-            ! initialize plot dimensions
-            plot_dim = [1,n_mod_loc,1,0]
-            
-            ! set up X, Y and Z
-            allocate(X_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
-            allocate(Y_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
-            allocate(Z_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
-            
-            do ld = 1,n_mod_loc
-                X_plot(1,ld,1,1) = x_plot_loc(1,ld+1)
-                Y_plot(1,ld,1,1) = res_surf(ld,1)
-                Z_plot(1,ld,1,1) = 1._dp
-            end do
-            
-            ! plot 2D (to be used with plots of harmonics in sol_ops)
-            call plot_HDF5('resonating surfaces','res_surf',&
-                &Z_plot(:,:,:,1),x=X_plot(:,:,:,1),y=Y_plot(:,:,:,1))
-            
-            call lvl_ud(-1)
-            
-            ! clean up
-            call grid_plot%dealloc()
+            ! only if resonant surfaces
+            if (size(res_surf,1).gt.0) then
+                call writo('Plot 2D map of resonances using HDF5')
+                
+                call lvl_ud(1)
+                
+                ! initialize plot dimensions
+                plot_dim = [1,n_mod_loc,1,0]
+                
+                ! set up X, Y and Z
+                allocate(X_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
+                allocate(Y_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
+                allocate(Z_plot(plot_dim(1),plot_dim(2),plot_dim(3),1))
+                
+                do ld = 1,n_mod_loc
+                    X_plot(1,ld,1,1) = x_plot_loc(1,ld+1)
+                    Y_plot(1,ld,1,1) = res_surf(ld,1)
+                    Z_plot(1,ld,1,1) = 1._dp
+                end do
+                
+                ! plot 2D (to be used with plots of harmonics in sol_ops)
+                call plot_HDF5('resonating surfaces','res_surf',&
+                    &Z_plot(:,:,:,1),x=X_plot(:,:,:,1),y=Y_plot(:,:,:,1))
+                
+                ! deallocate local variables
+                deallocate(X_plot,Y_plot,Z_plot)
+                
+                call lvl_ud(-1)
+            end if
         end if
         
         ! clean up
@@ -2682,7 +2692,7 @@ contains
         end if
         
         ! set up Weyl's integration factor
-        Weyl_fac = (2*pi)**2/(max_par_X-min_par_X)
+        Weyl_fac = (2*pi)**2/((max_par_X-min_par_X)*pi)
         
         ! set up integration variables
         

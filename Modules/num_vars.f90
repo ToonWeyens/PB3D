@@ -53,7 +53,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.01_dp                               !< version number
+    real(dp), parameter :: prog_version = 2.02_dp                               !< version number
     real(dp), parameter :: min_PB3D_version = 2.00_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
@@ -129,7 +129,7 @@ module num_vars
     real(dp) :: tol_norm                                                        !< tolerance for normal range (normalized to 0..1)
 
     ! concerning input / output
-    integer, parameter :: ex_max_size = 300                                     !< maximum size of matrices for external plot
+    integer, parameter :: ex_max_size = 10000                                   !< maximum size of matrices for external plot
     character(len=max_str_ln) :: eq_name                                        !< name of equilibrium file from VMEC or HELENA
     character(len=max_str_ln) :: PB3D_name                                      !< name of PB3D output file
     logical :: no_plots = .false.                                               !< no plots made

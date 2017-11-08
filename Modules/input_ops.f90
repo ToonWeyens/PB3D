@@ -669,6 +669,16 @@ contains
                             &min_sec_X in absolute value'
                         CHCKERR(err_msg)
                     end if
+                    if (max_sec_X.ge.huge(1)) then
+                        ierr = 1
+                        err_msg = 'max_sec_X not set'
+                        CHCKERR(err_msg)
+                    end if
+                    if (min_sec_X.ge.huge(1)) then
+                        ierr = 1
+                        err_msg = 'min_sec_X not set'
+                        CHCKERR(err_msg)
+                    end if
                     
                     ! set n_mod_X
                     n_mod_X = abs(max_sec_X)-(min_sec_X)+1

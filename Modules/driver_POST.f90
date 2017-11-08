@@ -72,7 +72,8 @@ contains
         use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
-            &compare_tor_pos
+            &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -104,6 +105,29 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! user output
+        select case (POST_style)
+            case (1)                                                            ! extended grid
+                call writo('The post-processing will be done in an extended &
+                    &grid')
+                call lvl_ud(1)
+                call writo('range in r: '//trim(r2strt(min_r_plot))//' .. '//&
+                    &trim(r2strt(max_r_plot)))
+                call writo('range in θ: '//trim(r2strt(min_theta_plot))//&
+                    &' .. '//trim(r2strt(max_theta_plot))//', '//&
+                    &trim(i2str(n_theta_plot))//' points')
+                call writo('range in ζ: '//trim(r2strt(min_zeta_plot))//&
+                    &' .. '//trim(r2strt(max_zeta_plot))//', '//&
+                    &trim(i2str(n_zeta_plot))//' points')
+                call lvl_ud(-1)
+            case (2)                                                            ! field-aligned grid
+                call writo('The post-processing will be done in the PB3D grid')
+                call lvl_ud(1)
+                call writo('range in r: '//trim(r2strt(min_r_plot))//' .. '//&
+                    &trim(r2strt(max_r_plot)))
+                call lvl_ud(-1)
+        end select
         
         ! user output
         call writo('Setting up preliminary variables')
