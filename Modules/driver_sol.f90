@@ -45,7 +45,7 @@ contains
         use sol_ops, only: print_output_sol
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
-        use vac_ops, only: calc_vac, print_output_vac
+        use vac_ops, only: calc_vac_res, print_output_vac
         !!use num_utilities, only: calc_aux_utilities
 #if ldebug
         use num_vars, only: iu, use_pol_flux_F
@@ -91,7 +91,7 @@ contains
         !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
         
         ! calculate vacuum
-        ierr = calc_vac(vac)
+        ierr = calc_vac_res(vac)
         
         call writo('Write to output file')
         call lvl_ud(1)

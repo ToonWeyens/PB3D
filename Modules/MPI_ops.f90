@@ -242,12 +242,14 @@ contains
             &prog_style, POST_style, jump_to_sol, export_HEL, compare_tor_pos, &
             &plot_VMEC_modes, EV_guess, ex_plot_style, solver_SLEPC_style, &
             &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
-            &tol_norm, max_it_slepc, &
-            &max_tot_mem, max_X_mem, plot_size, &
+            &tol_norm, max_it_slepc, plot_vac_pot, plot_size, &
+            &max_tot_mem, max_X_mem, &
             &do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
             &PB3D_name, &
-            &RZ_0
+            &RZ_0, &
+            &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
+            &n_vac_plot
         use grid_vars, only: min_par_X, max_par_X
         use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
@@ -321,8 +323,6 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(n_zeta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
-            call MPI_Bcast(plot_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
             call MPI_Bcast(max_it_rich,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(max_it_zero,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
@@ -330,10 +330,12 @@ contains
             call MPI_Bcast(max_nr_backtracks_HH,1,MPI_INTEGER,0,MPI_Comm_world,&
                 &ierr)
             CHCKERR(err_msg)
+            call MPI_Bcast(ex_plot_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(plot_size,2,MPI_INTEGER,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
             call MPI_Bcast(PB3D_name,len(PB3D_name),MPI_CHARACTER,0,&
                 &MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(ex_plot_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             
             ! select according to program style
@@ -405,6 +407,9 @@ contains
                     call MPI_Bcast(plot_sol_Q,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(plot_vac_pot,1,MPI_LOGICAL,0,MPI_Comm_world,&
+                        &ierr)
+                    CHCKERR(err_msg)
                     call MPI_Bcast(plot_E_rec,1,MPI_LOGICAL,0,MPI_Comm_world,&
                         &ierr)
                     CHCKERR(err_msg)
@@ -413,6 +418,9 @@ contains
                     CHCKERR(err_msg)
                     call MPI_Bcast(POST_output_sol,1,MPI_LOGICAL,0,&
                         &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(n_vac_plot,2,MPI_INTEGER,0,MPI_Comm_world,&
+                        &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(plot_grid_style,1,MPI_INTEGER,0,&
                         &MPI_Comm_world,ierr)
@@ -429,6 +437,18 @@ contains
                         &MPI_DOUBLE_PRECISION,0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(RZ_0,2,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_Rvac_plot,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_Rvac_plot,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_Zvac_plot,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_Zvac_plot,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                 case default

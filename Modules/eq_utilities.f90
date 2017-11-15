@@ -924,7 +924,7 @@ contains
         ! convert B to MB
         mem_size = mem_size*1.E-6_dp
         
-        ! apply 50%percent safety factor (empirical)
+        ! apply 50% safety factor (empirical)
         mem_size = mem_size*1.5_dp
         
         ! test overflow

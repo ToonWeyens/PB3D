@@ -1108,3 +1108,8 @@ ITER Organization
 * Fixed an inconsistency in 'calc_int_vol' where 2pi was left out.
 * The energy reconstruction of the normal terms as well as the vacuum terms are now more correct for HELENA.
 * Relaxed the test on admissible modes, displaying just warnings now.
+
+## 2.03:
+* Fixed a bug where the plot size was not correctly set in the external output routines.
+* Implemented 'vac_pot_plot', which can be called through 'plot_vac_pot' to plot the vacuum potential.
+* This procedure only works for 2-D vacua and is still experimental and untested.

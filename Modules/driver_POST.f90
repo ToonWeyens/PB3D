@@ -73,12 +73,13 @@ contains
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, reconstruct_PB3D_vac, &
             &get_PB3D_grid_size
+        use vac_ops, only: vac_pot_plot
         use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
         use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
@@ -340,6 +341,21 @@ contains
                     call lvl_ud(-1)
                     call writo('Mode '//trim(i2str(id))//'/'//&
                         &trim(i2str(size(sol%val)))//' finished')
+                    
+                    ! vacuum plots if requested
+                    if (plot_vac_pot) then
+                        ! user output
+                        call writo('Start vacuum plot for this solution')
+                        call lvl_ud(1)
+                        
+                        ! plot vacuum potential
+                        ierr = vac_pot_plot(grid_sol,vac,sol,id)
+                        CHCKERR('')
+                        
+                        ! user output
+                        call lvl_ud(-1)
+                        call writo('Done with vacuum plot')
+                    end if
                 end do
                 
                 call lvl_ud(-1)
@@ -766,7 +782,10 @@ contains
         use input_utilities, only: dealloc_in
         
         call dealloc_in()
-        if (POST_output_sol) call sol%dealloc()
+        if (POST_output_sol) then
+            call sol%dealloc()
+            call vac%dealloc()
+        end if
         if (POST_output_full .and. eq_style.eq.2) then
             call grid_eq_HEL%dealloc()
             call grid_X_HEL%dealloc()

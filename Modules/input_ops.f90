@@ -35,7 +35,9 @@ contains
             &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
             &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
-            &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style
+            &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
+            &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
+            &max_Zvac_plot, n_vac_plot
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -76,7 +78,8 @@ contains
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
             &plot_grid_style, max_tot_mem, ex_plot_style, &
-            &pert_mult_factor_POST
+            &pert_mult_factor_POST, min_Rvac_plot, max_Rvac_plot, &
+            &min_Zvac_plot, max_Zvac_plot, n_vac_plot
         
         ! initialize ierr
         ierr = 0
@@ -325,8 +328,15 @@ contains
             plot_sol_xi = .true.                                                ! plot plasma perturbation of solution
             plot_sol_Q = .true.                                                 ! plot magnetic perturbation of solution
             plot_E_rec = .true.                                                 ! plot energy reconstruction
+            plot_vac_pot = .true.                                               ! plot vacuum potential
             norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             POST_style = 1                                                      ! process on extended plot grid
+            write(*,*) '!!!!!! min and max need to take into account normalization'
+            min_Rvac_plot = 0.1*R_0                                             ! minimum R of vacuum plot
+            max_Rvac_plot = 2*R_0                                               ! maximum R of vacuum plot
+            min_Zvac_plot = -R_0                                                ! minimum R of vacuum plot
+            max_Zvac_plot = R_0                                                 ! maximum R of vacuum plot
+            n_vac_plot = [100,100]                                              ! number of points in R and Z of vacuum plot
             
             ! variables concerning input / output
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
@@ -472,7 +482,7 @@ contains
             ! set POST_output_full and POST_output_sol
             POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec
             POST_output_full = POST_output_sol .or. plot_B .or. plot_J .or. &
-                &plot_kappa
+                &plot_kappa .or. plot_vac_pot
         end function adapt_inoutput_POST
         
         ! Checks whether the variables concerning output are chosen correctly:
@@ -605,6 +615,21 @@ contains
                         &abs(max_theta_plot-2).gt.tol_zero) then
                         ierr = 1
                         err_msg = 'theta limits of plot need to be 0..2pi'
+                        CHCKERR(err_msg)
+                    end if
+                    if (min_Rvac_plot.lt.0) then
+                        call writo('The minimum value for Rvac_plot has to be &
+                            &greater than zero',warning=.true.)
+                        call lvl_ud(1)
+                            min_Rvac_plot = 0.1*R_0
+                            call writo('It has been set to '//&
+                                &trim(r2str(min_Rvac_plot)))
+                        call lvl_ud(-1)
+                    end if
+                    if (max_Rvac_plot.lt.min_Rvac_plot) then
+                        ierr = 1
+                        err_msg = 'The maximum value for Rvac_plot has to be &
+                            &greater than the minimum value'
                         CHCKERR(err_msg)
                     end if
                 end if

@@ -212,7 +212,6 @@ contains
     !! \see See vec_dis2loc() for exaplanation.
     integer function mat_dis2loc(ctxt,mat_dis,lims_r,lims_c,mat_loc,proc) &
         &result(ierr)
-        use num_vars, only: n_procs, rank
         
         character(*), parameter :: rout_name = 'mat_dis2loc'
         

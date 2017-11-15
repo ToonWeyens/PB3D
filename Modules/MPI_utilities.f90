@@ -92,6 +92,8 @@ module MPI_utilities
         !> \public
         module procedure broadcast_var_log
         !> \public
+        module procedure broadcast_var_complex_arr
+        !> \public
         module procedure broadcast_var_real_arr
         !> \public
         module procedure broadcast_var_int_arr
@@ -652,6 +654,27 @@ contains
         call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
         CHCKERR('MPI broadcast failed')
     end function broadcast_var_log
+    !> \private complex array version
+    integer function broadcast_var_complex_arr(var,source) result(ierr)
+        character(*), parameter :: rout_name = 'broadcast_var_complex_arr'
+        
+        ! input / output
+        complex(dp), intent(in) :: var(:)                                       !< variable to be broadcast
+        integer, intent(in), optional :: source                                 !< process that sends
+        
+        ! local variables
+        integer :: source_loc = 0                                               ! local value for source
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set local source if given
+        if (present(source)) source_loc = source
+        
+        call MPI_Bcast(var,size(var),MPI_DOUBLE_COMPLEX,source_loc,&
+            &MPI_COMM_WORLD,ierr)
+        CHCKERR('MPI broadcast failed')
+    end function broadcast_var_complex_arr
     !> \private real array version
     integer function broadcast_var_real_arr(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_real_arr'

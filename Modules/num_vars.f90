@@ -16,10 +16,10 @@ module num_vars
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, matrix_SLEPC_style, plot_resonance, plot_magn_grid, plot_B, &
         &plot_J, plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
-        &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
-        &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, EV_guess, &
-        &norm_disc_prec_X, norm_disc_prec_sol, norm_disc_style_sol, &
-        &POST_style, magn_int_style, solver_SLEPC_style, &
+        &plot_vac_pot, ltest, use_pol_flux_E, use_pol_flux_F, &
+        &use_normalization, EV_BC, tol_SLEPC, max_it_slepc, norm_disc_prec_eq, &
+        &K_style, EV_guess, norm_disc_prec_X, norm_disc_prec_sol, &
+        &norm_disc_style_sol, POST_style, magn_int_style, solver_SLEPC_style, &
         &max_it_rich, tol_rich, &
         &max_it_zero, max_nr_backtracks_HH, relax_fac_HH, tol_zero, &
         &tol_norm, def_relax_fac_HH, &
@@ -31,6 +31,8 @@ module num_vars
         &print_mem_usage, input_name, plot_grid_style, swap_angles, &
         &rich_restart_lvl, plot_size, jump_to_sol, compare_tor_pos, &
         &export_HEL, plot_VMEC_modes, ex_plot_style, pert_mult_factor_POST, &
+        &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
+        &n_vac_plot, &
         &RZ_0, &
         &POST_output_full, POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
@@ -53,7 +55,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.02_dp                               !< version number
+    real(dp), parameter :: prog_version = 2.03_dp                               !< version number
     real(dp), parameter :: min_PB3D_version = 2.00_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
@@ -102,6 +104,7 @@ module num_vars
     logical :: plot_kappa                                                       !< whether to plot curvature
     logical :: plot_sol_xi                                                      !< whether to plot plasma perturbation of solution in POST
     logical :: plot_sol_Q                                                       !< whether to plot magnetic perturbation of solution in POST
+    logical :: plot_vac_pot                                                     !< whether to plot vacuum potential in POST
     logical :: plot_E_rec                                                       !< whether to plot energy reconstruction in POST
     logical :: ltest                                                            !< whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   !< whether poloidal flux is used in E coords.
@@ -149,12 +152,17 @@ module num_vars
     character(len=4) :: data_dir = 'Data'                                       !< directory where to save data for plots
     integer :: n_theta_plot                                                     !< nr. of poloidal points in plot
     integer :: n_zeta_plot                                                      !< nr. of toroidal points in plot
+    integer :: n_vac_plot(2)                                                    !< nr. of points  in R and Z in vacuum
     real(dp) :: min_theta_plot                                                  !< min. of \c theta_plot
     real(dp) :: max_theta_plot                                                  !< max. of \c theta_plot
     real(dp) :: min_zeta_plot                                                   !< min. of \c zeta_plot
     real(dp) :: max_zeta_plot                                                   !< max. of \c zeta_plot
     real(dp) :: min_r_plot                                                      !< min. of \c r_plot
     real(dp) :: max_r_plot                                                      !< max. of \c r_plot
+    real(dp) :: min_Rvac_plot                                                   !< min. of \c R in which to plot vacuum
+    real(dp) :: max_Rvac_plot                                                   !< max. of \c R in which to plot vacuum
+    real(dp) :: min_Zvac_plot                                                   !< min. of \c Z in which to plot vacuum
+    real(dp) :: max_Zvac_plot                                                   !< max. of \c Z in which to plot vacuum
     integer :: plot_grid_style                                                  !< style for POST plot grid (0: 3-D plots, 1: slab plots, 2: slab plots with folding, 3: straight cylinder))
     integer :: n_sol_requested                                                  !< how many solutions requested
     integer :: n_sol_plotted(4)                                                 !< how many solutions to be plot (first unstable, last unstable, first stable, last stable)
