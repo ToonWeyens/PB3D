@@ -12,7 +12,7 @@ module vac_vars
     implicit none
     
     private
-    public copy_vac, set_loc_lims
+    public copy_vac, set_loc_lims, in_context
 #if ldebug
     public n_alloc_vacs
 #endif
@@ -289,9 +289,8 @@ contains
         end if
 #endif
         
-        ! stop blacs
-        call blacs_gridexit(vac%ctxt_HG)
-        call blacs_exit(0)
+        ! free grid
+        if (in_context(vac%ctxt_HG)) call blacs_gridexit(vac%ctxt_HG)
         
         ! deallocate allocatable variables
         call dealloc_vac_final(vac)
@@ -320,8 +319,10 @@ contains
     end subroutine dealloc_vac
     
     !> Copy a vacuum type.
+    !!
+    !! \note The copy should be unallocated.
     integer function copy_vac(vac,vac_copy) result(ierr)
-        use num_vars, only: rank
+        use num_vars, only: rank, n_procs
         
         ! input / output
         class(vac_type), intent(in) :: vac                                      !< vac to be copied
@@ -333,20 +334,33 @@ contains
         ierr = 0
         
         ! reallocate
-        call vac_copy%dealloc
         ierr = vac_copy%init(vac%style,vac%n_bnd,vac%prim_X,shape(vac%ang),&
             &vac%jq)
         CHCKERR('')
         
         ! copy Jacobian and position vector
         vac_copy%norm = vac%norm
+        if (vac%style.eq.2) vac_copy%dnorm = vac%dnorm
         vac_copy%x_vec = vac%x_vec
         
         ! copy vacuum response
-        if (rank.eq.0) vac_copy%res = vac%res
+        if (rank.eq.n_procs-1) vac_copy%res = vac%res
         
         ! copy H and G
         vac_copy%H = vac%H
         vac_copy%G = vac%G
     end function copy_vac
+    
+    !> Indicates whether current process is in the context.
+    logical function in_context(ctxt) result(res)
+        ! input / output
+        integer, intent(in) :: ctxt                                             !< context for vector
+        
+        ! local variables
+        integer :: n_p(2)                                                       ! nr. of processes in grid
+        integer :: ind_p(2)                                                     ! index of local process in grid
+        
+        call blacs_gridinfo(ctxt,n_p(1),n_p(2),ind_p(1),ind_p(2)) 
+        res = ind_p(1).ge.0
+    end function in_context
 end module vac_vars

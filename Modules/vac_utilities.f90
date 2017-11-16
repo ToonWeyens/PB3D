@@ -14,7 +14,7 @@ module vac_utilities
 
     implicit none
     private
-    public calc_GH_int_2, vec_dis2loc, mat_dis2loc, in_context
+    public calc_GH_int_2, vec_dis2loc, mat_dis2loc
     
 contains
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
@@ -160,6 +160,7 @@ contains
     !! the results is not received by the process.
     integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,proc) result(ierr)
         use num_vars, only: n_procs
+        use vac_vars, only: in_context
         
         character(*), parameter :: rout_name = 'vec_dis2loc'
         
@@ -212,6 +213,8 @@ contains
     !! \see See vec_dis2loc() for exaplanation.
     integer function mat_dis2loc(ctxt,mat_dis,lims_r,lims_c,mat_loc,proc) &
         &result(ierr)
+        use num_vars, only: n_procs
+        use vac_vars, only: in_context
         
         character(*), parameter :: rout_name = 'mat_dis2loc'
         
@@ -269,17 +272,4 @@ contains
         call dgsum2d(ctxt,'all',' ',size(mat_loc,1),size(mat_loc,2),mat_loc,&
             &size(mat_loc,1),proc_dest(1),proc_dest(2))
     end function mat_dis2loc
-    
-    !> Indicates whether current process is in the context.
-    logical function in_context(ctxt) result(res)
-        ! input / output
-        integer, intent(in) :: ctxt                                             !< context for vector
-        
-        ! local variables
-        integer :: n_p(2)                                                       ! nr. of processes in grid
-        integer :: ind_p(2)                                                     ! index of local process in grid
-        
-        call blacs_gridinfo(ctxt,n_p(1),n_p(2),ind_p(1),ind_p(2)) 
-        res = ind_p(1).ge.0
-    end function in_context
 end module vac_utilities

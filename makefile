@@ -8,10 +8,6 @@
 ##############################################################################
 #   Directories
 ##############################################################################
-# BLAS/LAPACK
-BLASLAPACK_DIR=''# 1. XPS 9360
-#BLASLAPACK_DIR=$(COMPILE_DIR)# 2. ITER
-
 # LIBSTELL (Note that by default, unlogically, everything is in bin!)
 LIBSTELL_DIR=/opt/stellinstall/bin# 1. XPS 9360
 #LIBSTELL_DIR=$(COMPILE_DIR)/bin# 2. ITER
@@ -28,7 +24,7 @@ NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
 # PETSC
 #PETSC_ARCH = debug-complex
 PETSC_ARCH = complex# 1. XPS 93600
-#PETSC_ARCH = arch-linux2-c-opt# 2. ITER
+#PETSC_ARCH = complex# 2. ITER
 PETSC_DIR = /opt/petsc-3.7.6# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
 
@@ -38,15 +34,18 @@ SLEPC_DIR=/opt/slepc-3.7.4# 1. XPS 9360
 
 # PB3D
 PB3D_DIR=/opt/PB3D# 1. XPS 9360
-#PB3D_DIR=$(HOME)/Programs_MVAPICH2/PB3D# 2. ITER
+#PB3D_DIR=$(HOME)/Programs_MPICH3.1.3/PB3D# 2. ITER
 
 # STRUMPACK
 STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
 #STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
 
 # SCALAPACK
-SCALAPACK_DIR=/opt/scalapack-2.0.2/INSTALL# 1. XPS 9360
-#SCALAPACK_DIR=$(COMPILE_DIR)# 2. ITER
+SCALAPACK_LIB='-L/opt/scalapack-2.0.2/INSTALL/lib -lscalapack -llapack -lblas'# 1. XPS 9360
+#SCALAPACK_LIB=' ${MKLROOT}/lib/intel64/libmkl_blas95_lp64.a ${MKLROOT}/lib/intel64/libmkl_lapack95_lp64.a -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blacs_intelmpi_lp64 -liomp5 -lpthread -lm -ldl'# 2. ITER
+
+SCALAPACK_INC=''#1. XPS 9360
+#SCALAPACK_INC='-I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include'#2. ITER
 
 LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
 
@@ -75,7 +74,8 @@ INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   #$(PETSC_FC_INCLUDES) \
   #$(SLEPC_INCLUDE) \
   #-I$(STRUMPACK_DIR)/include \
-  #-I$(PB3D_DIR)/include#2. ITER
+  #-I$(PB3D_DIR)/include \
+  #-I$(SCALAPACK_INC)#2. ITER
 
 
 ##############################################################################
@@ -89,20 +89,19 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   -L$(NETCDFF_DIR)/lib -lnetcdff \
   -Wl,-R$(NETCDFF_DIR)/lib \
   -L$(STRUMPACK_DIR)/lib -lstrumpack \
-  -L$(SCALAPACK_DIR)/lib -lscalapack -llapack -lblas \
+  $(SCALAPACK_LIB) \
   -Wl,-rpath,/opt/scalapack-2.0.2/INSTALL/lib \
   -lm -lstdc++ -lmpi_cxx# 1. XPS 9360
 
-####!!!!!!!!!!! NEEDS TO BE ADAPTED FROM ABOVE CASE !!!!!!!!!!!
-#LINK = -L$(BLASLAPACK_DIR)/lib -lblas -llapack \
-  #$(LIBSTELL_DIR)/libstell.a \
-  #-L$(NETCDFF_DIR)/lib -lnetcdff -lnetcdf \
-  #-L$(HDF5_DIR)/lib -lhdf5_hl -lhdf5 -lhdf5_fortran -ldl -lm -lz \
+#LINK = $(LIBSTELL_DIR)/libstell.a \
   #$(PETSC_LIB) \
   #$(SLEPC_LIB) \
+  #-L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
+  #-L$(NETCDFF_DIR)/lib -lnetcdff \
+  #-Wl,-R$(NETCDFF_DIR)/lib \
   #-L$(STRUMPACK_DIR)/lib -lstrumpack \
-  #libdfftpack.a libfoul.a# 2. ITER
-####!!!!!!!!!!! NEEDS TO BE ADAPTED FROM ABOVE CASE !!!!!!!!!!!
+  #$(SCALAPACK_LIB)#2. ITER
+  ##-lm -lstdc++ -lmpi_cxx# 2. ITER
 
 LINK := $(LIB_INTERNAL) $(LINK)
 
@@ -131,8 +130,8 @@ LINKER=mpifort
 #   note: INTEL warning 6536 is suppressed, which informs about extra "USE".
 #   note: INTEL warning 6843 is suppressed, which informs about empty intent(out) variables
 ##############################################################################
-COMP_FLAGS = -finit-real=snan -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
-#COMP_FLAGS = -O3 -fbacktrace -g -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
+#COMP_FLAGS = -finit-real=snan -g -Og -Wall -Wextra -pedantic -fimplicit-none -fbacktrace -fno-omit-frame-pointer -fcheck=all -cpp -Dldebug# debug, profiling with gprof2dot, GCC
+COMP_FLAGS = -O3 -fbacktrace -g -fimplicit-none -fno-omit-frame-pointer -cpp# optimized, GCC
 
 #COMP_FLAGS = -O0 -DlIB -Dldebug -g -heap-arrays 100 -recursive -ftrapuv -check bounds -check uninit -traceback -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# debug, profiling with gprof2dot, INTEL
 #COMP_FLAGS = -O3 -DlIB -traceback -g -heap-arrays 100 -recursive -implicitnone -fno-omit-frame-pointer -cpp -Dlwith_intel -diag-disable 6536 -diag-disable 6843# optimized, INTEL
@@ -145,8 +144,8 @@ COMP_FLAGS_F= -O2 -funroll-loops -fexpensive-optimizations
 ##############################################################################
 #   Link flags
 ##############################################################################
-LINK_FLAGS = -fPIC -finit-real=snan# debug
-#LINK_FLAGS = -fPIC# optimized
+#LINK_FLAGS = -fPIC -finit-real=snan# debug
+LINK_FLAGS = -fPIC# optimized
 
 
 ##############################################################################

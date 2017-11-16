@@ -203,6 +203,7 @@ contains
         CHCKERR('')
         
         ! finalize
+        call blacs_exit(1)
         call MPI_finalize(ierr)
         CHCKERR('MPI stop failed')
     end function stop_MPI

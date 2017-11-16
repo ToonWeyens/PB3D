@@ -380,7 +380,8 @@ contains
     !! \return ierr
     integer function calc_GH(vac) result(ierr)
         use num_vars, only: rank
-        use vac_utilities, only: vec_dis2loc, in_context
+        use vac_vars, only: in_context
+        use vac_utilities, only: vec_dis2loc
         use MPI_utilities, only: wait_MPI
 #if ldebug
         use num_vars, only: n_procs
@@ -1089,8 +1090,8 @@ contains
             &use_pol_flux_F, rank, n_procs
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X, n_X, m_X
-        use vac_vars, only: set_loc_lims
-        use vac_utilities, only: in_context, mat_dis2loc
+        use vac_vars, only: set_loc_lims, in_context
+        use vac_utilities, only: mat_dis2loc
         use MPI_utilities, only: wait_MPI
         use eq_vars, only: vac_perm
         use num_utilities, only: LCM
@@ -1137,8 +1138,9 @@ contains
         
         ! test
         if (vac%style.ne.2) then
-            ierr = 1
-            CHCKERR('Currently only works for style 2')
+            call writo('SETTING VACUUM TO ZERO')
+            if (rank.eq.n_procs-1) vac%res = 0._dp
+            return
         end if
         
         ! decide whether to append Richardson level to name
@@ -1492,7 +1494,8 @@ contains
         use sol_vars, only: sol_type
         use MPI_utilities, only: broadcast_var
         use ISO_C_BINDING
-        use vac_utilities, only: in_context, mat_dis2loc
+        use vac_vars, only: in_context
+        use vac_utilities, only: mat_dis2loc
         use X_vars, only: prim_X, n_mod_X
         use vac_vars, only: set_loc_lims
         
@@ -1526,10 +1529,10 @@ contains
         real(dp), allocatable :: Phi_ser(:,:)                                   ! serial version of Phi
         real(dp), allocatable :: Phi_2D(:,:)                                    ! 2-D serial version of Phi
         complex(dp), allocatable :: sol_vec(:)                                  ! solution vector at edge
+        complex(dp) :: RHS_complex                                              ! complex local RHS
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         real(dp), allocatable :: RHS_loc(:,:)                                   ! local version of RHS
-        complex(dp) :: RHS_complex                                              ! complex local RHS
         character(len=max_str_ln) :: plot_title                                 ! plot title
         character(len=max_str_ln) :: plot_name                                  ! plot name
 #endif
@@ -1792,7 +1795,7 @@ contains
     integer function solve_Phi_BEM(vac,R,Phi,n_RPhi,n_loc_RPhi,lims_c_RPhi,&
         &desc_RPhi) result(ierr)
         
-        use vac_utilities, only: in_context
+        use vac_vars, only: in_context
         
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
         
@@ -2021,16 +2024,18 @@ contains
         vac_1D_loc%p = reshape(vac%norm,[size(vac%norm)])
         
         ! dnorm
-        vac_1D_loc => vac_1D(id); id = id+1
-        vac_1D_loc%var_name = 'dnorm'
-        allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
-        allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
-        vac_1D_loc%tot_i_min = [1,1]
-        vac_1D_loc%tot_i_max = shape(vac%dnorm)
-        vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
-        vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
-        allocate(vac_1D_loc%p(size(vac%dnorm)))
-        vac_1D_loc%p = reshape(vac%dnorm,[size(vac%dnorm)])
+        if (vac%style.eq.2) then
+            vac_1D_loc => vac_1D(id); id = id+1
+            vac_1D_loc%var_name = 'dnorm'
+            allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
+            allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
+            vac_1D_loc%tot_i_min = [1,1]
+            vac_1D_loc%tot_i_max = shape(vac%dnorm)
+            vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
+            vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
+            allocate(vac_1D_loc%p(size(vac%dnorm)))
+            vac_1D_loc%p = reshape(vac%dnorm,[size(vac%dnorm)])
+        end if
         
         ! x_vec
         vac_1D_loc => vac_1D(id); id = id+1

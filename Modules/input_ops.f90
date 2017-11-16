@@ -617,21 +617,26 @@ contains
                         err_msg = 'theta limits of plot need to be 0..2pi'
                         CHCKERR(err_msg)
                     end if
-                    if (min_Rvac_plot.lt.0) then
-                        call writo('The minimum value for Rvac_plot has to be &
-                            &greater than zero',warning=.true.)
-                        call lvl_ud(1)
-                            min_Rvac_plot = 0.1*R_0
-                            call writo('It has been set to '//&
-                                &trim(r2str(min_Rvac_plot)))
-                        call lvl_ud(-1)
-                    end if
-                    if (max_Rvac_plot.lt.min_Rvac_plot) then
-                        ierr = 1
-                        err_msg = 'The maximum value for Rvac_plot has to be &
-                            &greater than the minimum value'
-                        CHCKERR(err_msg)
-                    end if
+                end if
+                if (min_Rvac_plot.lt.0) then
+                    call writo('The minimum value for Rvac_plot has to be &
+                        &greater than zero',warning=.true.)
+                    call lvl_ud(1)
+                        min_Rvac_plot = 0.1*R_0
+                        call writo('It has been set to '//&
+                            &trim(r2str(min_Rvac_plot)))
+                    call lvl_ud(-1)
+                end if
+                if (max_Rvac_plot.lt.min_Rvac_plot) then
+                    ierr = 1
+                    err_msg = 'The maximum value for Rvac_plot has to be &
+                        &greater than the minimum value'
+                    CHCKERR(err_msg)
+                end if
+                if (eq_style.eq.1 .and. plot_vac_pot) then
+                    plot_vac_pot = .false.
+                    call writo('Not plotting vacuum for VMEC yet',&
+                        &warning=.true.)
                 end if
             end if
         end function adapt_plot

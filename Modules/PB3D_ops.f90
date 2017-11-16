@@ -1237,7 +1237,8 @@ contains
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
         ! misc_vac
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'misc_vac')
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'misc_vac',&
+            &rich_lvl=rich_lvl_loc)
         CHCKERR('')
         call conv_1D2ND(var_1D,dum_1D)
         style = nint(dum_1D(1))
@@ -1272,12 +1273,14 @@ contains
         call dealloc_var_1D(var_1D)
         
         ! dnorm
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'dnorm',rich_lvl=rich_lvl_loc)
-        CHCKERR('')
-        call conv_1D2ND(var_1D,dum_2D)
-        vac%dnorm = dum_2D
-        call dealloc_var_1D(var_1D)
+        if (vac%style.eq.2) then
+            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                &'dnorm',rich_lvl=rich_lvl_loc)
+            CHCKERR('')
+            call conv_1D2ND(var_1D,dum_2D)
+            vac%dnorm = dum_2D
+            call dealloc_var_1D(var_1D)
+        end if
         
         ! x_vec
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
