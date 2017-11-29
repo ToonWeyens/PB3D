@@ -54,10 +54,6 @@ contains
     !! The solutions closest to a target indicated by \c EV_guess are obtained.
     !! \see read_input_opts()
     !!
-    !! Optionally the geodesic  index of the perturbation variables  at which to
-    !! perform the calculations can be changed from its default value of 1 using
-    !! the variable \c i_geo.
-    !!
     !! \note  The  perturbation grid  needs  to  be  the  same as  the  solution
     !! grid,  if not,  this module  has  to be  adapted to  interpolate them.  A
     !! deprecated technique, using get_norm_interp_data()  and interp_V() can be
@@ -65,7 +61,7 @@ contains
     !! setup_interp_data() followed by grid_utilities.apply_disc().
     !!
     !! \return ierr
-    integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol,i_geo) &
+    integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol) &
         &result(ierr)
         
         use num_vars, only: matrix_SLEPC_style
@@ -83,14 +79,12 @@ contains
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
         type(sol_type), intent(inout) :: sol                                    !< solution variables
-        integer, intent(in), optional :: i_geo                                  !< geodesic index at which to perform the calculations
         
         ! local variables
         Mat, target :: A                                                        ! matrix A in EV problem A X = lambda B X
         Mat, target :: B                                                        ! matrix B in EV problem A X = lambda B X
         EPS :: solver                                                           ! EV solver
         PetscInt :: max_n_EV                                                    ! how many solutions saved
-        PetscInt :: i_geo_loc                                                   ! local copy of i_geo
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -98,10 +92,6 @@ contains
         
         ! initialization
         call writo('Initialize generalized Eigenvalue problem')
-        
-        ! set up local i_geo
-        i_geo_loc = 1
-        if (present(i_geo)) i_geo_loc = i_geo
         
         ! start SLEPC
         ierr = start_SLEPC(grid_sol%n(3))
@@ -114,7 +104,7 @@ contains
         ! set up the matrix
         call writo('Set up matrices')
         call lvl_ud(1)
-        ierr = setup_mats(grid_X,grid_sol,X,A,B,i_geo_loc)
+        ierr = setup_mats(grid_X,grid_sol,X,A,B)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -140,7 +130,7 @@ contains
         
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
-                ierr = set_BC(grid_X,X,vac,A,B,i_geo_loc,grid_sol%n(3))
+                ierr = set_BC(grid_X,X,vac,A,B,grid_sol%n(3))
                 CHCKERR('')
 #if ldebug
                 if (debug_set_BC) then
@@ -410,18 +400,13 @@ contains
     !! \f$\overline{\text{B}}\f$  in  the  EV  problem  \f$  \overline{\text{A}}
     !! \vec{X} = \lambda \overline{\text{B}} \vec{X}. \f$
     !!
-    !! The  geodesical index  at which  to perform  the calculations  has to  be
-    !! provided as well in \c i_geo.
-    !!
     !! The matrices are set up in the solution grid, so some processes might not
     !! have any  part in the storage  thereof (if \c sol_n_procs  < \c n_procs),
     !! but each process sets  up the part of the grid  that corresponds to their
     !! own normal range in the perturbation grid.
     !!
-    !! \note For normal usage, \c i_geo should be 1, or not present.
-    !!
     !! \return ierr
-    integer function setup_mats(grid_X,grid_sol,X,A,B,i_geo) result(ierr)
+    integer function setup_mats(grid_X,grid_sol,X,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
             &rank, sol_n_procs, BC_style, norm_disc_style_sol
         use grid_utilities, only: trim_grid
@@ -442,7 +427,6 @@ contains
         type(X_2_type), intent(in), target :: X                                 !< field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A                                                 !< matrix A
         Mat, intent(inout) :: B                                                 !< matrix B
-        integer, intent(in) :: i_geo                                            !< at which geodesic index to perform the calculations
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
@@ -553,9 +537,9 @@ contains
                 deallocate(d_nz,o_nz)
                 
                 ! fill the matrix A
-                ierr = fill_mat(X%PV_0(1,i_geo,norm_id(1):norm_id(2),:),&
-                    &X%PV_1(1,i_geo,norm_id(1):norm_id(2),:),&
-                    &X%PV_2(1,i_geo,norm_id(1):norm_id(2),:),bulk_i_lim,A)
+                ierr = fill_mat(X%PV_0(1,:,norm_id(1):norm_id(2),:),&
+                    &X%PV_1(1,:,norm_id(1):norm_id(2),:),&
+                    &X%PV_2(1,:,norm_id(1):norm_id(2),:),bulk_i_lim,A)
                 CHCKERR('')
                 
                 call writo('matrix A set up:')
@@ -567,9 +551,9 @@ contains
                 CHCKERR('failed to duplicate A into B')
                 
                 ! fill the matrix B
-                ierr = fill_mat(X%KV_0(1,i_geo,norm_id(1):norm_id(2),:),&
-                    &X%KV_1(1,i_geo,norm_id(1):norm_id(2),:),&
-                    &X%KV_2(1,i_geo,norm_id(1):norm_id(2),:),bulk_i_lim,B)
+                ierr = fill_mat(X%KV_0(1,:,norm_id(1):norm_id(2),:),&
+                    &X%KV_1(1,:,norm_id(1):norm_id(2),:),&
+                    &X%KV_2(1,:,norm_id(1):norm_id(2),:),bulk_i_lim,B)
                 CHCKERR('')
                 
                 call writo('matrix B set up:')
@@ -655,9 +639,9 @@ contains
             character(*), parameter :: rout_name = 'fill_mat'
             
             ! input / output
-            PetscScalar, intent(in) :: V_0(:,:)                                 ! either PV_int_0 or KV_int_0 in equilibrium normal grid
-            PetscScalar, intent(in) :: V_1(:,:)                                 ! either PV_int_1 or KV_int_1 in equilibrium normal grid
-            PetscScalar, intent(in) :: V_2(:,:)                                 ! either PV_int_2 or KV_int_2 in equilibrium normal grid
+            PetscScalar, intent(in) :: V_0(:,:,:)                               ! either PV_int_0 or KV_int_0 in equilibrium normal grid
+            PetscScalar, intent(in) :: V_1(:,:,:)                               ! either PV_int_1 or KV_int_1 in equilibrium normal grid
+            PetscScalar, intent(in) :: V_2(:,:,:)                               ! either PV_int_2 or KV_int_2 in equilibrium normal grid
             PetscInt, intent(in) :: bulk_i_lim(2)                               ! absolute limits of bulk matrix (excluding the BC's)
             Mat, intent(inout) :: mat                                           ! either A or B
             
@@ -739,7 +723,7 @@ contains
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
                         loc_block(k,m) = &
-                            &con(V_0(kd_loc,c_tot(k,m,1)),&
+                            &con(sum(V_0(:,kd_loc,c_tot(k,m,1))),&
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
@@ -763,7 +747,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
-                        loc_block(k,m) = V_1(kd_loc,c_tot(k,m,2))               ! asymetric matrices don't need con()
+                        loc_block(k,m) = sum(V_1(:,kd_loc,c_tot(k,m,2)))        ! asymetric matrices don't need con()
                     end do
                 end do
                 loc_block = loc_block*step_size                                 ! include step size of normal integral
@@ -783,7 +767,7 @@ contains
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
                         loc_block(k,m) = &
-                            &con(V_2(kd_loc,c_tot(k,m,1)),[k,m],.true.)         ! symmetric matrices need con()
+                            &con(sum(V_2(:,kd_loc,c_tot(k,m,1))),[k,m],.true.)  ! symmetric matrices need con()
                     end do
                 end do
                 loc_block = loc_block*step_size                                 ! include step size of normal integral
@@ -956,7 +940,7 @@ contains
     !! -This is done using left finite differences.
     !!
     !! \return ierr
-    integer function set_BC(grid_X,X,vac,A,B,i_geo,n_r) result(ierr)
+    integer function set_BC(grid_X,X,vac,A,B,n_r) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
             &norm_disc_style_sol
         use X_vars, only: n_mod_X
@@ -972,7 +956,6 @@ contains
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
         Mat, intent(inout) :: A                                                 !< Matrix A from A X = lambda B X
         Mat, intent(inout) :: B                                                 !< Matrix B from A X = lambda B X
-        integer, intent(in) :: i_geo                                            !< at which geodesic index to perform the calculations
         integer, intent(in) :: n_r                                              !< number of grid points of solution grid
         
         ! local variables
@@ -1085,13 +1068,13 @@ contains
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
                         CHCKERR('')
                     case (2)
-                        ierr = set_BC_2(kd-1,X,A)                               ! indices start at 0
+                        ierr = set_BC_2(kd-1,A)                                 ! indices start at 0
                         CHCKERR('')
                     case (3)
-                        ierr = set_BC_3(kd-1,X,A)                               ! indices start at 0
+                        ierr = set_BC_3(kd-1,A)                                 ! indices start at 0
                         CHCKERR('')
                     case (4)
-                        ierr = set_BC_4(kd-1,kd-grid_X%i_min+1,X,A,B,i_geo,&
+                        ierr = set_BC_4(kd-1,kd-grid_X%i_min+1,X,A,B,&
                             &grid_X%n(3))                                       ! indices start at 0
                         CHCKERR('')
                     case default
@@ -1190,12 +1173,11 @@ contains
         ! set BC style 2:
         ! Minimization of surface energy through asymmetric fin. differences
         !> \private
-        integer function set_BC_2(r_id,X,A) result(ierr)
+        integer function set_BC_2(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
             
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
-            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
             
             ! initialize ierr
@@ -1218,12 +1200,11 @@ contains
         ! set BC style 3:
         ! Minimization of surface energy through extension of grid
         !> \private
-        integer function set_BC_3(r_id,X,A) result(ierr)
+        integer function set_BC_3(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_3'
             
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
-            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
             
             ! initialize ierr
@@ -1247,7 +1228,7 @@ contains
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
         !> \private
-        integer function set_BC_4(r_id,r_id_loc,X,A,B,i_geo,n_r) result(ierr)
+        integer function set_BC_4(r_id,r_id_loc,X,A,B,n_r) result(ierr)
             use num_vars, only: norm_disc_style_sol
             use num_utilities, only: calc_coeff_fin_diff
             
@@ -1258,7 +1239,6 @@ contains
             integer, intent(in) :: r_id_loc                                     ! local index in perturbation tables
             type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
             Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
-            integer, intent(in) :: i_geo                                        ! at which geodesic index to perform the calculations
             integer, intent(in) :: n_r                                          ! number of grid points of solution grid
             
             ! local variables
@@ -1296,10 +1276,10 @@ contains
             ! fill local blocks for A and B
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
-                    loc_block(k,m,1) = conjg(&
-                        &X%PV_1(1,i_geo,r_id_loc,c([m,k],.false.,n_mod_X)))     ! asymetric matrices don't need con()
-                    loc_block(k,m,2) = conjg(&
-                        &X%KV_1(1,i_geo,r_id_loc,c([m,k],.false.,n_mod_X)))     ! asymetric matrices don't need con()
+                    loc_block(k,m,1) = conjg(sum(&
+                        &X%PV_1(1,:,r_id_loc,c([m,k],.false.,n_mod_X))))        ! asymetric matrices don't need con()
+                    loc_block(k,m,2) = conjg(sum(&
+                        &X%KV_1(1,:,r_id_loc,c([m,k],.false.,n_mod_X))))        ! asymetric matrices don't need con()
                 end do
             end do
             loc_block(:,:,1) = loc_block(:,:,1) + vac%res
@@ -1320,10 +1300,10 @@ contains
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
                     loc_block(k,m,1) = &
-                        &con(X%PV_2(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &con(sum(X%PV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                     loc_block(k,m,2) = &
-                        &con(X%KV_2(1,i_geo,r_id_loc,c([k,m],.true.,n_mod_X)),&
+                        &con(sum(X%KV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do

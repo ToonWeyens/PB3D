@@ -2600,23 +2600,25 @@ contains
     !!  the rest is ignored.
     !!  -# Simpson's 3/8  rule converges faster than the  trapezoidal rule, but
     !!  normally needs a better starting point (i.e. higher \c min_n_par_X)
-    !!  -# Weyl's  lemma is  used to  convert the surface  integral into  a line
-    !!  integral  along  the  magnetic  field. This  means  that  the  resulting
-    !!  line  integral still  needs  to be  multiplied by  \f$\frac{2\pi}{M}\f$,
-    !!  where \f$M\f$  is the  number of  times the  poloidal or  toroidal angle
-    !!  completes a full  \f$2\pi\f$ tour, depending on  \c use_pol_flux_F \cite
-    !!  Helander2014.
+    !!  -#  For alpha  style 1,  Weyl's  lemma is  used to  convert the  surface
+    !!  integral  into a  line integral  along  the magnetic  field. This  means
+    !!  that  the  resulting line  integral  still  needs  to be  multiplied  by
+    !!  \f$\frac{2\pi}{M}\f$, where \f$M\f$ is the  number of times the poloidal
+    !!  or  toroidal angle  completes a  full \f$2\pi\f$  tour, depending  on \c
+    !!  use_pol_flux_F \cite Helander2014.
+    !!  -# For alpha style 2, this factor is just the step size in alpha.
     !!
     !! \see See x_vars.x_2_type.
     !!
     !! \return ierr
     integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_int,prev_style,&
         &lim_sec_X) result(ierr)
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style, &
+            &alpha_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
-        use grid_vars, only: min_par_X, max_par_X, &
+        use grid_vars, only: min_par_X, max_par_X, n_alpha, &
             &disc_type
         use grid_utilities, only: setup_interp_data, apply_disc
         use rich_vars, only: rich_lvl
@@ -2639,9 +2641,9 @@ contains
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: c_tot(2)                                                     ! total c for symmetric and asymmetric variables
         integer :: prev_style_loc                                               ! local prev_style
-        real(dp) :: Weyl_fac                                                    ! factor due to Weyl's lemma
+        real(dp) :: alpha_fac                                                   ! factor for alpha (style 1: Weyl factor, style 2: step size)
         real(dp) :: prev_mult_fac                                               ! multiplicative factor for previous style
-        real(dp), allocatable :: step_size(:)                                   ! step size for every normal point
+        real(dp), allocatable :: step_size(:,:)                                 ! step size for every field line and normal point
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         complex(dp), allocatable :: V_int_work(:,:)                             ! work V_int
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
@@ -2691,8 +2693,13 @@ contains
             ang_par_F => grid_X%zeta_F
         end if
         
-        ! set up Weyl's integration factor
-        Weyl_fac = (2*pi)**2/((max_par_X-min_par_X)*pi)
+        ! set up alpha factor
+        select case (alpha_style)
+            case (1)                                                            ! single field line, multiple turns
+                alpha_fac = (2*pi)**2/((max_par_X-min_par_X)*pi)                ! Weyl factor
+            case (2)                                                            ! multiple field lines, single turns
+                alpha_fac = (2*pi)/n_alpha                                      ! grid size
+        end select
         
         ! set up integration variables
         
@@ -2755,8 +2762,8 @@ contains
         end select
         
         ! set up step size
-        allocate(step_size(grid_X%loc_n_r))
-        step_size = ang_par_F(2,1,:)-ang_par_F(1,1,:)
+        allocate(step_size(grid_X%n(2),grid_X%loc_n_r))
+        step_size = ang_par_F(2,:,:)-ang_par_F(1,:,:)
         if (rich_lvl.gt.1) step_size = step_size*0.5_dp                         ! only half of points present: step size is actually half
         
         ! initialize local V_int
@@ -2796,9 +2803,9 @@ contains
                         &prev_mult_fac*X_int%PV_0(1,:,:,c_tot(1))
                     X_int%KV_0(1,:,:,c_tot(1)) = &
                         &prev_mult_fac*X_int%KV_0(1,:,:,c_tot(1))
-                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1))*Weyl_fac,&
+                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1))*alpha_fac,&
                         &X_int%PV_0(1,:,:,c_tot(1)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1))*Weyl_fac,&
+                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1))*alpha_fac,&
                         &X_int%KV_0(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
                 
@@ -2808,9 +2815,9 @@ contains
                         &prev_mult_fac*X_int%PV_1(1,:,:,c_tot(2))
                     X_int%KV_1(1,:,:,c_tot(2)) = &
                         &prev_mult_fac*X_int%KV_1(1,:,:,c_tot(2))
-                    call calc_magn_int_loc(X%PV_1(:,:,:,c_loc(2))*Weyl_fac,&
+                    call calc_magn_int_loc(X%PV_1(:,:,:,c_loc(2))*alpha_fac,&
                         &X_int%PV_1(1,:,:,c_tot(2)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_1(:,:,:,c_loc(2))*Weyl_fac,&
+                    call calc_magn_int_loc(X%KV_1(:,:,:,c_loc(2))*alpha_fac,&
                         &X_int%KV_1(1,:,:,c_tot(2)),V_int_work,step_size)
                 end if
                 
@@ -2820,9 +2827,9 @@ contains
                         &prev_mult_fac*X_int%PV_2(1,:,:,c_tot(1))
                     X_int%KV_2(1,:,:,c_tot(1)) = &
                         &prev_mult_fac*X_int%KV_2(1,:,:,c_tot(1))
-                    call calc_magn_int_loc(X%PV_2(:,:,:,c_loc(1))*Weyl_fac,&
+                    call calc_magn_int_loc(X%PV_2(:,:,:,c_loc(1))*alpha_fac,&
                         &X_int%PV_2(1,:,:,c_tot(1)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1))*Weyl_fac,&
+                    call calc_magn_int_loc(X%KV_2(:,:,:,c_loc(1))*alpha_fac,&
                         &X_int%KV_2(1,:,:,c_tot(1)),V_int_work,step_size)
                 end if
             end do
@@ -2843,7 +2850,7 @@ contains
             complex(dp), intent(in) :: V(:,:,:)                                 ! V
             complex(dp), intent(inout) :: V_int(:,:)                            ! integrated V
             complex(dp), intent(inout) :: V_int_work(:,:)                       ! workint variable
-            real(dp) :: step_size(:)                                            ! step size for every normal point
+            real(dp) :: step_size(:,:)                                          ! step size for every normal point
             
             ! local variables
             integer :: id, kd, ld                                               ! counters
@@ -2854,10 +2861,10 @@ contains
                 V_int_work = 0
                 
                 ! integrate
-                do kd = 1,size(step_size)
+                do kd = 1,size(step_size,2)
                     do id = int_dims(ld,1),int_dims(ld,2),int_dims(ld,3)
                         V_int_work(:,kd) = V_int_work(:,kd) + &
-                            &J_exp_ang(id,:,kd)*V(id,:,kd)*step_size(kd)
+                            &J_exp_ang(id,:,kd)*V(id,:,kd)*step_size(:,kd)
                     end do
                 end do
                 

@@ -29,7 +29,7 @@ contains
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
             &norm_disc_prec_eq, norm_disc_prec_sol, norm_disc_style_sol, &
             &BC_style, tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
-            &pi, plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
+            &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
@@ -37,14 +37,14 @@ contains
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
             &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
-            &max_Zvac_plot, n_vac_plot
+            &max_Zvac_plot, n_vac_plot, alpha_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
         use rich_vars, only: rich_lvl, min_n_par_X, req_min_n_par_X
         use rich_ops, only: find_max_rich_lvl
-        use grid_vars, only: n_r_sol, min_par_X, max_par_X
-        use sol_vars, only: alpha
+        use grid_vars, only: n_r_sol, min_par_X, max_par_X, n_alpha, &
+            &min_alpha, max_alpha
         
         character(*), parameter :: rout_name = 'read_input_opts'
         
@@ -52,6 +52,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    !< error message
         integer :: PB3D_rich_lvl                                                !< Richardson level to post-process (for POST)
         integer, parameter :: max_size_tol_SLEPC = 100                          !< maximum size of tol_SLEPC
+        real(dp) :: alpha                                                       !< field line label (for alpha_style 1)
         real(dp) :: tol_SLEPC(max_size_tol_SLEPC)                               !< tol_SLEPC
         real(dp), parameter :: min_tol = 1.E-12_dp                              !< minimum general tolerance
         real(dp), parameter :: max_tol = 1.E-3_dp                               !< maximum general tolerance
@@ -68,8 +69,8 @@ contains
             &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &max_nr_backtracks_HH, magn_int_style, ex_plot_style, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, alpha_style, &
+            &max_nr_backtracks_HH, magn_int_style, ex_plot_style, n_alpha, &
             &solver_SLEPC_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
@@ -161,6 +162,10 @@ contains
                         ! adapt min_n_par_X if needed
                         call adapt_min_n_par_X
                         
+                        ! adapt alpha if needed
+                        ierr = adapt_alpha()
+                        CHCKERR('')
+                        
                         ! adapt solution grid
                         ierr = adapt_sol_grid(min_r_sol,max_r_sol,'sol')
                         CHCKERR('')
@@ -189,9 +194,6 @@ contains
                             &//trim(input_name)//'"'
                         CHCKERR(err_msg)
                     end if
-                    
-                    ! multiply alpha by pi
-                    alpha = alpha*pi
                 case(2)                                                         ! POST
                     read(UNIT=input_i,NML=inputdata_POST,iostat=ierr)           ! read input data
                     
@@ -251,11 +253,20 @@ contains
             
             ! concerning field line
             alpha = 0._dp                                                       ! field line based in outboard
+            alpha_style = 2                                                     ! multiple field-lines, single turns
+            min_alpha = 0.0_dp                                                  ! minimum field-line label [pi]
+            max_alpha = 2.0_dp                                                  ! maximum field-line label [pi]
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    n_alpha = 1
+                case (2)                                                        ! HELENA
+                    n_alpha = 10
+            end select
             
             ! concerning perturbation
             min_n_par_X = req_min_n_par_X                                       ! nonsensible value to check for user overwriting
-            min_par_X = -4.0_dp                                                 ! minimum parallel angle [pi]
-            max_par_X = 4.0_dp                                                  ! maximum parallel angle [pi]
+            min_par_X = 0.0_dp                                                  ! minimum parallel angle [pi]
+            max_par_X = 2.0_dp                                                  ! maximum parallel angle [pi]
             prim_X = 20                                                         ! main mode number of perturbation
             min_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
             max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
@@ -759,6 +770,80 @@ contains
             end if
         end subroutine adapt_min_n_par_X
         
+        ! Checks whether variables related to alpha are chosen correctly :
+        !   alpha_style has to be either 0 or 1
+        !   for 1, n_alpha = 1 and min/max_alpha = alpha
+        !   for 2, max_par_X - min_par_X = 2
+        ! Also sets the alpha array variable.
+        !> \private
+        integer function adapt_alpha() result(ierr)
+            use grid_utilities, only: calc_eqd_grid
+            use grid_vars, only: alpha_arr => alpha
+            use num_vars, only: pi
+            
+            character(*), parameter :: rout_name = 'adapt_alpha'
+            
+            ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! check alpha style
+            if (alpha_style.lt.1 .or. alpha_style.gt.2) then
+                ierr = 1
+                err_msg = 'Alpha style needs to be 1 or 2 [def]'
+                CHCKERR(err_msg)
+            end if
+            
+            ! adapt variables pertaining to particular alpha style
+            select case (alpha_style)
+                case (1)                                                        ! single field line, multiple turns
+                    if (n_alpha.ne.1) then
+                        call writo('For alpha style 1, n_alpha can only be 1',&
+                            &warning=.true.)
+                        n_alpha = 1
+                    end if
+                    min_alpha = alpha
+                    max_alpha = alpha
+                case (2)                                                        ! multiple field lines, single turns
+                    if (n_alpha.lt.1) then
+                        ierr = 1
+                        err_msg = 'For alpha style 2, n_alpha needs to be &
+                            &positive'
+                        CHCKERR(err_msg)
+                    end if
+                    if (abs(max_par_X - min_par_X - 2) .gt. tol_zero) then
+                        min_par_X = 0._dp
+                        max_par_X = 2._dp
+                        call writo('min/max_par_X has been set to ['//&
+                            &trim(r2strt(min_par_X))//':'//&
+                            &trim(r2strt(max_par_X))//']',warning=.true.)
+                    end if
+            end select
+            
+            ! for HELENA, warn about axisymmetry
+            if (eq_style.eq.2) then
+                if (abs(max_par_X - min_par_X - 2) .gt. tol_zero) then
+                    call writo('HELENA equilibria are axisymmetric, so only &
+                        &max - min_par_X = 2 needed',warning=.true.)
+                end if
+                if (n_alpha .gt. 1) then
+                    call writo('HELENA equilibria are axisymmetric, so only &
+                        &n_alpha = 1 needed',warning=.true.)
+                end if
+            end if
+            
+            ! multiply by pi
+            min_alpha = min_alpha * pi
+            max_alpha = max_alpha * pi
+            
+            ! set up alpha
+            allocate(alpha_arr(n_alpha))
+            ierr = calc_eqd_grid(alpha_arr,min_alpha,max_alpha,excl_last=.true.)
+            CHCKERR('')
+        end function adapt_alpha
+        
         ! Checks  whether variables  concerning the  solution grid  are correct:
         !   min_r should be greater than 0
         !   max_r should be lesser than 1
@@ -1021,6 +1106,7 @@ contains
     !!  - \c L_V_s
     !!  - \c B_V_sub: \c B_V_sub_c, \c B_V_sub_s
     !!  - \c B_V: \c B_V_c, \c B_V_s
+    !!  - \c J_V_sup_int
     !!  - \c jac_V: \c jac_V_c, \c jac_V_s
     !!  - \c misc_in_H: \c ias, \c nchi
     !!  - \c RZ_H: \c R_H, \c Z_H
@@ -1033,25 +1119,25 @@ contains
     !!  - \c flux_t_H
     !!  -  \c  misc_X:  \c  prim_X,  \c n_mod_X,  \c  min_sec_X,  \c  max_sec_X,
     !!  \c  norm_disc_prec_X,   \c  norm_style,  \c  U_style,   \c  X_style,  \c
-    !!  matrix_SLEPC_style, \c K_style
-    !!  -   \c   misc_sol:   \c   min_r_sol,  \c   max_r_sol,   \c   alpha,   \c
+    !!  matrix_SLEPC_style, \c K_style, \c alpha_style
+    !!  -   \c  misc_sol:   \c   min_r_sol,  \c   max_r_sol,   \c  n_alpha,   \c
     !!  norm_disc_prec_sol, \c BC_style, \c EV_BC, \c EV_BC
+    !!  -   \c alpha
     !!
     !! \return ierr
     integer function print_output_in(data_name) result(ierr)
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
-            &norm_disc_prec_X, norm_style, U_style, X_style, &
+            &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
             &norm_disc_style_sol
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, alpha, n_alpha
         use grid_ops, only: calc_norm_range
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
-        use sol_vars, only: alpha
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
             &max_dim_var_1D
@@ -1063,7 +1149,7 @@ contains
             &flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, J_V_sup_int
 #endif
         
         character(*), parameter :: rout_name = 'print_output_in'
@@ -1322,6 +1408,20 @@ contains
                 allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
                 in_1D_loc%p = reshape([B_V_c(:,in_limits(1):in_limits(2)),&
                     &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
+                
+                ! J_V_sup_int
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'J_V_sup_int'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,1]
+                in_1D_loc%loc_i_max = [n_r_eq,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(2*n_r_eq))
+                in_1D_loc%p = reshape(J_V_sup_int(in_limits(1):in_limits(2),:),&
+                    &[2*n_r_eq])
+                
 #endif
             case (2)                                                            ! HELENA
                 ! misc_in_H
@@ -1464,14 +1564,14 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [11]
+        in_1D_loc%loc_i_max = [12]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(11))
+        allocate(in_1D_loc%p(12))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
-            &magn_int_style*1._dp,K_style*1._dp]
+            &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1
@@ -1483,9 +1583,21 @@ contains
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
         allocate(in_1D_loc%p(9))
-        in_1D_loc%p = [min_r_sol,max_r_sol,alpha,norm_disc_prec_sol*1._dp,&
-            &norm_disc_style_sol*1._dp,BC_style(1)*1._dp,BC_style(2)*1._dp,&
-            &EV_style*1._dp,EV_BC]
+        in_1D_loc%p = [min_r_sol,max_r_sol,n_alpha*1._dp,&
+            &norm_disc_prec_sol*1._dp,norm_disc_style_sol*1._dp,&
+            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
+        
+        ! alpha
+        in_1D_loc => in_1D(id); id = id+1
+        in_1D_loc%var_name = 'alpha'
+        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
+        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
+        in_1D_loc%loc_i_min = [1]
+        in_1D_loc%loc_i_max = [n_alpha]
+        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+        allocate(in_1D_loc%p(n_alpha))
+        in_1D_loc%p = alpha
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))

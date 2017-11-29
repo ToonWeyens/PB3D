@@ -42,15 +42,15 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &norm_disc_style_sol, EV_BC, magn_int_style, K_style, debug_version
+            &norm_disc_style_sol, EV_BC, magn_int_style, K_style, &
+            &alpha_style, debug_version
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, alpha
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
-        use sol_vars, only: alpha
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
@@ -58,7 +58,7 @@ contains
             &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s
+        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, J_V_sup_int
 #endif
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
@@ -268,6 +268,15 @@ contains
                 B_V_c = dum_3D(:,:,1)
                 B_V_s = dum_3D(:,:,2)
                 call dealloc_var_1D(var_1D)
+                
+                ! J_V_sup_int
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'J_V_sup_int')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(J_V_sup_int(n_r_eq,1:2))
+                J_V_sup_int = dum_2D
+                call dealloc_var_1D(var_1D)
 #endif
             case (2)                                                            ! HELENA
                 ! misc_in_H
@@ -380,6 +389,7 @@ contains
                 magn_int_style = 1                                              ! integration is done in volume, currently only with trapezoidal rule
         end select
         K_style = nint(dum_1D(11))
+        alpha_style = nint(dum_1D(12))
         call dealloc_var_1D(var_1D)
         
         ! misc_sol
@@ -388,13 +398,21 @@ contains
         call conv_1D2ND(var_1D,dum_1D)
         min_r_sol = dum_1D(1)
         max_r_sol = dum_1D(2)
-        alpha = dum_1D(3)
+        n_alpha = nint(dum_1D(3))
         norm_disc_prec_sol = nint(dum_1D(4))
         norm_disc_style_sol = nint(dum_1D(5))
         BC_style(1) = nint(dum_1D(6))
         BC_style(2) = nint(dum_1D(7))
         EV_style = nint(dum_1D(8))
         EV_BC = dum_1D(9)
+        call dealloc_var_1D(var_1D)
+        
+        ! alpha
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'alpha')
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_1D)
+        allocate(alpha(n_alpha))
+        alpha = dum_1D
         call dealloc_var_1D(var_1D)
         
         ! user output

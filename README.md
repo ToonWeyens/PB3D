@@ -1119,3 +1119,11 @@ ITER Organization
 * Fixed bugs concerning the vacuum.
 * Improved makefile for ITER.
 * vacuum is now skipped for VMEC, without causing an error.
+
+## 2.05:
+* Implemented multiple field lines.
+* Implemented new input variable 'alpha_style' that indicates whether to use a single field line with many turns, or multiple field lines with a single turn.
+* In the latter case, 'min/max_par_X' is set to be a period of 2[pi], and 'n_alpha' is used to indicate the number of field lines.
+* 'alpha' is now an array and situated in grid_vars.
+* Updated 'magn_grid_plot' to handle multiple field lines.
+* For VMEC, the current profiles can now be checked using 'J_plot' in POST.

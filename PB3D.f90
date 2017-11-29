@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.04
+!>  \version    2.05
 !!  \date       2012-2017
 !!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
@@ -226,6 +226,7 @@ program PB3D
         &eq_2=eq_2,&
         &X_1=X_1,&
         &X_2=X_2,&
+        &vac=vac,&
         &sol=sol)
     CHCKERR
     call close_output

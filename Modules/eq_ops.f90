@@ -4377,6 +4377,11 @@ contains
         use num_vars, only: eq_style, norm_disc_prec_eq, use_normalization
         use num_utilities, only: c
         use eq_vars, only: B_0, R_0, pres_0
+#if ldebug
+        use eq_vars, only: max_flux_F
+        use VMEC_vars, only: J_V_sup_int
+        use num_utilities, only: calc_int
+#endif
         
         character(*), parameter :: rout_name = 'J_plot'
         
@@ -4395,6 +4400,11 @@ contains
         character(len=10) :: base_name                                          ! base name
         real(dp), allocatable, save :: J_flux_tor(:,:), J_flux_pol(:,:)         ! fluxes
         logical :: plot_fluxes_loc                                              ! local plot_fluxes
+        character(len=max_str_ln) :: plot_name                                  ! name of plot
+        character(len=max_str_ln) :: plot_titles(2)                             ! titles of plot
+#if ldebug
+        real(dp), allocatable :: J_V_sup_int2(:,:)                              ! integrated J_V_sup_int
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -4473,6 +4483,35 @@ contains
                 &norm_disc_prec_eq,v_mag=J_mag,base_name=base_name,XYZ=XYZ)
             CHCKERR('')
         end if
+        
+#if ldebug
+        if (eq_style.eq.1) then
+            ! transform back to unnormalized quantity
+            if (use_normalization) J_V_sup_int = J_V_sup_int * pres_0/(R_0*B_0)
+            
+            ! plot the fluxes from VMEC
+            plot_name = 'J_V_sup_int'
+            plot_titles = ['J^theta_V','J^phi_V  ']
+            call print_ex_2D(plot_titles,plot_name,J_V_sup_int,&
+                &x=reshape(grid_eq%r_F*2*pi/max_flux_F,&
+                &[size(grid_eq%r_F),1]),draw=.false.)
+            call draw_ex(plot_titles,plot_name,2,1,.false.)
+            
+            ! integrate
+            allocate(J_V_sup_int2(size(J_V_sup_int,1),2))
+            do id = 1,2
+                ierr = calc_int(J_V_sup_int(:,id),grid_eq%r_E,&
+                    &J_V_sup_int2(:,id))
+                CHCKERR('')
+            end do
+            plot_name = 'J_V_sup_int2'
+            plot_titles = ['J^theta_V','J^phi_V  ']
+            call print_ex_2D(plot_titles,plot_name,J_V_sup_int2,&
+                &x=reshape(grid_eq%r_F*2*pi/max_flux_F,&
+                &[size(grid_eq%r_F),1]),draw=.false.)
+            call draw_ex(plot_titles,plot_name,2,1,.false.)
+        end if
+#endif
     end function J_plot
     
     !> Plots the curvature.
@@ -4480,8 +4519,8 @@ contains
     !! If multiple equilibrium parallel jobs, every  job does its piece, and the
     !! results are joined automatically by plot_HDF5.
     !!
-    !! The outputs are  given in  contra- and covariant  components and  magnitude in
-    !! multiple coordinate systems, as indicated in calc_vec_comp().
+    !! The outputs are  given in contra- and covariant  components and magnitude
+    !! in multiple coordinate systems, as indicated in calc_vec_comp().
     !! 
     !! The starting point is the curvature, given by
     !!  \f[\vec{\kappa} =

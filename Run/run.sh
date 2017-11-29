@@ -74,15 +74,15 @@ main() {
         case $machine_ID in
             1)  # XPS-L501X
                 nr_procs=$2                                                     # take nr_procs from input
-                out_full=$base/$out                                             # use subdirectory
+                out_full=$base/${out#/}                                         # use subdirectory
             ;;
             2)  # ITER
                 ##########
                 # select your queue here: compute, testqueue, ib or ib_gen8
                 # + additional node name: batch,   testqueue, ib or ib_gen8
                 ##########
-                queue="ib_gen8"
-                queue_name="ib_gen8"
+                queue="ib"
+                queue_name="ib"
                 n_nodes=1                                                       # use one node
                 node_list=$(./gen_node_list.sh -m $n_nodes $queue $(cat broken_nodes.txt 2> /dev/null))
                 n_cores=${node_list#*=}
@@ -103,11 +103,17 @@ main() {
                     ;;
                 esac
                 mem_unit='mb'                                                   # MB
-                out_full=/tmp/$out                                              # use temporary directory in local node
+                out_full=/tmp/${out#/}                                          # use temporary directory in local node
             ;;
         esac
         
-        out_full_loc=$base/$out                                                 # afterwards copy to this directory
+        # set directory to which to copy afterwards
+        if [[ $out == '/'* ]] ; then
+            out_full_loc=$out                                                   # absolute directory
+            out=${out#/}                                                        # remove possible leading slash from out
+        else
+            out_full_loc=$base/$out                                             # relative directory
+        fi
         
         # save other options
         other_opts=${@:3}
@@ -362,6 +368,27 @@ display_usage() {
             echo -e "               501 circular_ped2.0"
             echo -e "               502 circular_ped2.0_HELENA"
             echo -e "               601 test_ripple_M0_0.05"
+            echo -e ""
+            echo -e "               1001 case1_sim1"
+            echo -e "               1002 case1_sim2"
+            echo -e "               1003 case1_sim3"
+            echo -e "               1004 case1_sim4"
+            echo -e "               1005 case1_sim5"
+            echo -e "               1006 case1_sim6"
+            echo -e "               1007 case1_sim7"
+            echo -e "               1008 case1_sim8"
+            echo -e ""
+            echo -e "               1011 case1_sim3_1.00"
+            echo -e "               1012 case1_sim3_1.05"
+            echo -e "               1013 case1_sim3_1.10"
+            echo -e "               1014 case1_sim3_1.15"
+            echo -e "               1015 case1_sim3_1.20"
+            echo -e "               1016 case1_sim3_1.25"
+            echo -e "               1017 case1_sim3_1.30"
+            echo -e "               1018 case1_sim3_1.35"
+            echo -e "               1019 case1_sim3_1.40"
+            echo -e "               1020 case1_sim3_1.45"
+            echo -e "               1021 case1_sim3_1.50"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -487,7 +514,7 @@ set_input() {
                 31)
                     input_name=qps
                 ;;
-                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2])
+                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2]|100[1-8]|101[1-9]|102[0-1])
                     input_name=Hmode
                 ;;
                 13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|20[1-5]|30[2-7]|20[1-9]|21[1-9]|22[1-9]|23[1-9]|24[1-9]|25[1-9]|26[1-9]|401|601)
@@ -719,6 +746,63 @@ set_input() {
                 601)
                     eq_name=wout_test_ripple_M0_0.05.nc
                 ;;
+                1001)
+                    eq_name=wout_case1_sim1.nc
+                ;;
+                1002)
+                    eq_name=wout_case1_sim2.nc
+                ;;
+                1003)
+                    eq_name=wout_case1_sim3.nc
+                ;;
+                1004)
+                    eq_name=wout_case1_sim4.nc
+                ;;
+                1005)
+                    eq_name=wout_case1_sim5.nc
+                ;;
+                1006)
+                    eq_name=wout_case1_sim6.nc
+                ;;
+                1007)
+                    eq_name=wout_case1_sim7.nc
+                ;;
+                1008)
+                    eq_name=wout_case1_sim8.nc
+                ;;
+                1011)
+                    eq_name=wout_case1_sim3_1.00.nc
+                ;;
+                1012)
+                    eq_name=wout_case1_sim3_1.05.nc
+                ;;
+                1013)
+                    eq_name=wout_case1_sim3_1.10.nc
+                ;;
+                1014)
+                    eq_name=wout_case1_sim3_1.15.nc
+                ;;
+                1015)
+                    eq_name=wout_case1_sim3_1.20.nc
+                ;;
+                1016)
+                    eq_name=wout_case1_sim3_1.25.nc
+                ;;
+                1017)
+                    eq_name=wout_case1_sim3_1.30.nc
+                ;;
+                1018)
+                    eq_name=wout_case1_sim3_1.35.nc
+                ;;
+                1019)
+                    eq_name=wout_case1_sim3_1.40.nc
+                ;;
+                1020)
+                    eq_name=wout_case1_sim3_1.45.nc
+                ;;
+                1021)
+                    eq_name=wout_case1_sim3_1.50.nc
+                ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
                     echo -e ""
@@ -870,7 +954,11 @@ aux_copy_inputs() {
             echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
         ;;
         2)  # POST
-            echo "ln -sf $base/$PB3D_out_full $out_full/ 2> /dev/null"
+            if [[ $PB3D_out_full == '/'* ]] ; then
+                echo "ln -sf $PB3D_out_full $out_full/ 2> /dev/null"
+            else
+                echo "ln -sf $base/$PB3D_out_full $out_full/ 2> /dev/null"
+            fi
         ;;
     esac
 }

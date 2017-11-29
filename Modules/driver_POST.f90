@@ -543,9 +543,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        !!! calculate auxiliary quantities for utilities
-        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
         ! user output
         call writo('Parallel range for this job:')
         call lvl_ud(1)
@@ -1268,10 +1265,10 @@ contains
         !> \private
         integer function calc_XYZ_of_output_grid(grid,XYZ) result(ierr)
             use grid_utilities, only: calc_XYZ_grid
-            use sol_vars, only: alpha
             use num_vars, only: eq_style, plot_grid_style, swap_angles, &
                 &use_pol_flux_F
             use eq_vars, only: max_flux_F
+            use grid_vars, only: alpha, n_alpha
             use VMEC_utilities, onLy: calc_trigon_factors
             use MPI_utilities, only: wait_MPI
             
@@ -1284,7 +1281,7 @@ contains
             ! local variables
             real(dp), allocatable :: R(:,:,:)                                   ! R on output grid
             character(len=max_str_ln) :: err_msg                                ! error message
-            integer :: kd                                                       ! counter
+            integer :: jd, kd                                                   ! counters
             
             ! initialize ierr
             ierr = 0
@@ -1366,7 +1363,9 @@ contains
                                     XYZ(:,:,:,1) = grid%zeta_F/pi
                                 end if
                             end if
-                            XYZ(:,:,:,2) = alpha
+                            do jd = 1,n_alpha
+                                XYZ(:,jd,:,2) = alpha(jd)
+                            end do
                     end select
                     
                     ! set normal coordinate

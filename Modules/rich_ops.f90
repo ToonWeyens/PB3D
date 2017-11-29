@@ -301,12 +301,12 @@ contains
     !> Start a Richardson level.
     !!
     !! Calculates \c n_par_X for this level.  Then uses this to divide the jobs.
-    !! equilibrium Finally, the limits are set up for these                jobs.
+    !! equilibrium Finally, the limits are set up for these jobs.
     !!
     !! \return ierr
     integer function start_rich_lvl() result(ierr)
         use grid_utilities, only: calc_n_par_X_rich
-        use grid_vars, only: n_r_eq, n_r_sol
+        use grid_vars, only: n_r_eq, n_r_sol, n_alpha
         use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
         use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl
@@ -343,13 +343,14 @@ contains
             n_div = 1
         else
             ! Get local  n_par_X to divide  the equilibrium jobs. Note  that the
-            ! average  size of  eq_2  varaibles for  all  processes together  is
-            ! n_r_eq,  times the  size due  to the  dimensions corresponding  to
-            ! the  derivatives,  and the  number  of  variables (see  subroutine
-            ! "calc_memory" inside  "divide_eq_jobs"), while  it is  n_r_sol for
-            ! the X_1 variables.
+            ! average  size of  eq_2  variables for  all  processes together  is
+            ! n_r_eq,  times the  number of  field lines,  the size  due to  the
+            ! dimensions  corresponding to  the derivatives,  and the  number of
+            ! variables (see  subroutine 'calc_memory_eq'  and 'calc_memory_X'),
+            ! while it is n_r_sol for the X_1 variables.
             var_size_without_par(1) = n_r_eq
             var_size_without_par(2) = n_r_sol
+            var_size_without_par = var_size_without_par * n_alpha
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs
@@ -359,9 +360,9 @@ contains
                 case (2)                                                        ! HELENA
                     ! divide equilibrium jobs
                     ! Note: calculations  for first Richardson level  have to be
-                    ! done without  a single  jobs, as  this is  the calculation
-                    ! where the  variables are calculated that  are interpolated
-                    ! in all levels.
+                    ! done with a  single job, as this is  the calculation where
+                    ! the variables are calculated  that are interpolated in all
+                    ! levels.
                     ierr = divide_eq_jobs(nchi,var_size_without_par,n_div,&
                         &n_div_max=1,range_name='poloidal points in the &
                         &axisymmetric HELENA cross-section')                    ! everything is tabulated on nchi poloidal points

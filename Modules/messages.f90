@@ -58,7 +58,8 @@ contains
     
     !> Prints first message.
     subroutine print_hello()
-        use num_vars, only: rank, prog_name, prog_version, n_procs
+        use num_vars, only: rank, prog_name, prog_version, n_procs, &
+            &debug_version
         
         ! local variables
         integer :: istat                                                        ! status
@@ -68,6 +69,11 @@ contains
                 &//get_clock(),'italic')
             call write_formatted(' '//prog_name//' version: '//&
                 &trim(r2strt(prog_version)),'italic')
+            if (debug_version) then
+                call write_formatted(' debug version','italic')
+            else
+                call write_formatted(' release version','italic')
+            end if
             if (n_procs.eq.1) then
                 call write_formatted(' 1 MPI process','italic')
             else

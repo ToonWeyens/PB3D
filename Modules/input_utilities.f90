@@ -268,6 +268,10 @@ contains
         use num_vars, only: eq_style
         use VMEC_vars, only: dealloc_VMEC
         use HELENA_vars, only: dealloc_HEL
+        use grid_vars, only: alpha
+        
+        ! deallocate common input variables
+        deallocate(alpha)
         
         ! deallocate depending on equilibrium style
         select case (eq_style)

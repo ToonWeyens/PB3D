@@ -46,15 +46,15 @@ contains
         
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
-            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest
+            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest, alpha_style
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
             &redistribute_output_eq, B_plot, J_plot, kappa_plot
-        use sol_vars, only: alpha
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
             &calc_norm_range, setup_grid_eq, calc_ang_grid_eq_B, &
             &magn_grid_plot, redistribute_output_grid
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_1, &
             &reconstruct_PB3D_eq_2
+        use grid_vars, only: min_par_X, max_par_X, n_alpha, alpha
         use num_utilities, only: derivs
         use MPI_utilities, only: wait_MPI
         use rich_vars, only: rich_lvl
@@ -137,19 +137,27 @@ contains
 #endif
         if (plot_B .or. plot_J .or. plot_kappa) dealloc_vars = .false.          ! need transformation matrices
         
-        !!! calculate auxiliary quantities for utilities
-        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
         ! user output
         call writo('The equilibrium variables are processed')
         call lvl_ud(1)
         
+        select case (alpha_style)
+            case (1)                                                            ! single field line, multiple turns
+                call writo('With a single field-line')
+                call lvl_ud(1)
+                call writo('with label alpha = '//&
+                    &trim(r2strt(alpha(1))))
+                call writo('with parallel range '//trim(r2strt(min_par_X))//&
+                    &'..'//trim(r2strt(max_par_X)))
+                call lvl_ud(-1)
+            case (2)                                                            ! multiple field lines, single turns
+                call writo('With '//trim(i2str(n_alpha))//' field-lines')
+        end select
         if (use_pol_flux_F) then
             flux_name = 'poloidal'
         else
             flux_name = 'toroidal'
         end if
-        call writo('for alpha = '//trim(r2strt(alpha)))
         call writo('using the '//trim(flux_name)//' flux as the normal &
             &variable')
         

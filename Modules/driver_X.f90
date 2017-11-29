@@ -83,9 +83,6 @@ contains
         ! initialize ierr
         ierr = 0
         
-        !!! calculate auxiliary quantities for utilities
-        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
         ! set up whether Richardson level has to be appended to the name
         select case (eq_style) 
             case (1)                                                            ! VMEC

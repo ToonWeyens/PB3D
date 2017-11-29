@@ -16,6 +16,7 @@ module VMEC_ops
         &iotaf, &                                                               ! rot. transf. (tor. flux) or saf. fac. (pol. flux) (FM)
         &presf, &                                                               ! pressure (FM)
         &bsubumns, bsubumnc, bsubvmns, bsubvmnc, bsubsmns, bsubsmnc, &          ! B_theta (HM), B_zeta (HM), B_r (FM)
+        &jcuru, jcurv, &                                                        ! poloidal (FM) and toroidal (FM) current
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
         &gmnc, gmns                                                             ! Jacobian in VMEC coordinates
@@ -243,6 +244,7 @@ contains
         allocate(B_V_sub_s(mnmax_V,n_r_in,3))
         allocate(B_V_c(mnmax_V,n_r_in))
         allocate(B_V_s(mnmax_V,n_r_in))
+        allocate(J_V_sup_int(n_r_in,2))
         
         do id = 1,mnmax_V
             do kd = 2,3
@@ -262,6 +264,8 @@ contains
                 &B_V_s_H(id,2:n_r_in),r_V,ynew=B_V_s(id,:),extrap=.true.)
             CHCKERR('')
         end do
+        J_V_sup_int(:,1) = jcuru
+        J_V_sup_int(:,2) = jcurv
 #endif
         
         ! deallocate repacked variables
@@ -298,6 +302,7 @@ contains
         B_V_sub_c = B_V_sub_c/(R_0*B_0)
         B_V_c = B_V_c/B_0
         B_V_s = B_V_s/B_0
+        J_V_sup_int = J_V_sup_int*psi_0/pres_0
 #endif
     end subroutine normalize_VMEC
 end module VMEC_ops

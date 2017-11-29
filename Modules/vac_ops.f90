@@ -237,6 +237,7 @@ contains
             ! local variables
             integer :: n_theta                                                  ! total number of points, including overlap
             real(dp), allocatable :: x_vec_F(:,:)                               ! Fourier components of x_vec
+            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
@@ -248,8 +249,16 @@ contains
             
             ! if  restarting  a  Richardson  level, reconstruct.  If  not,  only
             ! calculate for the first level
-            ! HELENA should only have 1 equilibrium job for Richardson level 1
-            if (eq_job_nr.eq.1 .and. rich_lvl.eq.rich_restart_lvl) then
+            if (rich_lvl.eq.rich_restart_lvl) then
+                ! test
+                if (eq_job_nr.ne.1) then
+                    ierr = 1
+                    err_msg = 'HELENA should only have 1 equilibrium job for &
+                        &Richardson level 1'
+                    CHCKERR(err_msg)
+                end if
+                
+                ! check for start from zero versus restart
                 if (rich_restart_lvl.eq.1) then                                 ! starting from zero
                     if (ias.eq.0) then                                          ! top-bottom symmmetric
                         n_theta = 2*(nchi-1)+1
@@ -335,24 +344,24 @@ contains
                         end do
                         vac%dnorm(n_theta,:) = vac%dnorm(1,:)
                     end if
+                    
+                    ! broadcast to other processes
+                    do id = 1,2
+                        ierr = broadcast_var(vac%x_vec(:,id),n_procs-1)
+                        CHCKERR('')
+                        ierr = broadcast_var(vac%norm(:,id),n_procs-1)
+                        CHCKERR('')
+                        ierr = broadcast_var(vac%dnorm(:,id),n_procs-1)
+                        CHCKERR('')
+                    end do
+                    ierr = broadcast_var(vac%ang(:,1),n_procs-1)
+                    CHCKERR('')
                 else                                                            ! restarting
                     ! reconstruct old vacuum
                     ierr = reconstruct_PB3D_vac(vac,'vac')
                     CHCKERR('')
                 end if
             end if
-            
-            ! broadcast to other processes
-            do id = 1,2
-                ierr = broadcast_var(vac%x_vec(:,id),n_procs-1)
-                CHCKERR('')
-                ierr = broadcast_var(vac%norm(:,id),n_procs-1)
-                CHCKERR('')
-                ierr = broadcast_var(vac%dnorm(:,id),n_procs-1)
-                CHCKERR('')
-            end do
-            ierr = broadcast_var(vac%ang(:,1),n_procs-1)
-            CHCKERR('')
             
             call lvl_ud(-1)
             
@@ -1176,7 +1185,7 @@ contains
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! user output
-            call writo('Use STRUMPack to solve system')
+            call writo('Use STRUMPack to solve system',persistent=rank_o)
             call lvl_ud(1)
             
             ! set secondary mode numbers

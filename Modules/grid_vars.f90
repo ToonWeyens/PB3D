@@ -9,7 +9,8 @@ module grid_vars
 
     implicit none
     private
-    public n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X
+    public n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X, n_alpha, min_alpha, &
+        &max_alpha, alpha
 #if ldebug
     public n_alloc_grids, n_alloc_discs
 #endif
@@ -18,8 +19,12 @@ module grid_vars
     integer :: n_r_in                                                           !< nr. of normal points in input grid
     integer :: n_r_eq                                                           !< nr. of normal points in equilibrium (and perturbation) grid
     integer :: n_r_sol                                                          !< nr. of normal points in solution grid
+    integer :: n_alpha                                                          !< nr. of field-lines
     real(dp) :: min_par_X                                                       !< min. of parallel coordinate [\f$\pi\f$] in field-aligned grid
     real(dp) :: max_par_X                                                       !< max. of parallel coordinate [\f$\pi\f$] in field-aligned grid
+    real(dp) :: min_alpha                                                       !< min. of field-line label [\f$\alpha\f$] in field-aligned grid
+    real(dp) :: max_alpha                                                       !< max. of field-line label [\f$\alpha\f$] in field-aligned grid
+    real(dp), allocatable :: alpha(:)                                           !< field line label alpha
 #if ldebug
     integer :: n_alloc_grids                                                    !< nr. of allocated grids \ldebug
     integer :: n_alloc_discs                                                    !< nr. of allocated discretizations \ldebug

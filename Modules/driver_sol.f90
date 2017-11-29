@@ -37,7 +37,8 @@ contains
     !! \return ierr
     integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,vac,sol) &
         &result(ierr)
-        use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, n_procs
+        use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, &
+            &n_procs, eq_job_nr
         use grid_vars, only: n_r_sol
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
@@ -67,6 +68,7 @@ contains
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
+        logical :: do_vac_ops                                                   ! whether specific calculations for vacuum are necessary
 #if ldebug
         real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle theta_F or zeta_F
         complex(dp), allocatable :: X_norm(:,:,:)                               ! |X|^2 or other results to be plotted
@@ -79,28 +81,35 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! set up whether Richardson level has to be appended to the name
+        ! set up  whether Richardson level  has to be  appended to the  name and
+        ! whether to do vacuum operations
         select case (eq_style) 
             case (1)                                                            ! VMEC
                 rich_lvl_name = rich_lvl                                        ! append richardson level
+                do_vac_ops = .true.
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append name
+                if (rich_lvl.eq.rich_restart_lvl) then
+                    do_vac_ops = .true.
+                else
+                    do_vac_ops = .false.
+                end if
         end select
         
-        !!! calculate auxiliary quantities for utilities
-        !!call calc_aux_utilities                                                 ! calculate auxiliary quantities for utilities
-        
-        ! calculate vacuum
-        ierr = calc_vac_res(vac)
-        
-        call writo('Write to output file')
-        call lvl_ud(1)
-        CHCKERR('')
-        if (rank.eq.n_procs-1) then
-            ierr = print_output_vac(vac,'vac',rich_lvl=rich_lvl_name)
+        if (do_vac_ops) then
+            ! calculate vacuum
+            ierr = calc_vac_res(vac)
             CHCKERR('')
+            
+            call writo('Write to output file')
+            call lvl_ud(1)
+            CHCKERR('')
+            if (rank.eq.n_procs-1) then
+                ierr = print_output_vac(vac,'vac',rich_lvl=rich_lvl_name)
+                CHCKERR('')
+            end if
+            call lvl_ud(-1)
         end if
-        call lvl_ud(-1)
         
         ! set up solution grid if first level
         if (rich_lvl.eq.rich_restart_lvl) then

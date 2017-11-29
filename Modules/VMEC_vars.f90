@@ -25,7 +25,7 @@ module VMEC_vars
         &flux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, &
         &rmax_surf, aspr_V, beta_V
 #if ldebug
-    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s
+    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, J_V_sup_int
 #endif
     
     ! global variables
@@ -49,6 +49,7 @@ module VMEC_vars
     real(dp), allocatable :: B_V_sub_s(:,:,:)                                   !< Coeff. of B_i in cosine series (r,theta,phi) (FM) \ldebug
     real(dp), allocatable :: B_V_c(:,:)                                         !< Coeff. of magnitude of B in sine series (HM and FM) \ldebug
     real(dp), allocatable :: B_V_s(:,:)                                         !< Coeff. of magnitude of B in cosine series (HM and FM) \ldebug
+    real(dp), allocatable :: J_V_sup_int(:,:)                                   !< Integrated poloidal and toroidal current (FM) \ldebug
 #endif
 contains
     !> Deallocates VMEC quantities that are not used anymore.
@@ -83,6 +84,7 @@ contains
         deallocate(B_V_sub_s)
         deallocate(B_V_c)
         deallocate(B_V_s)
+        deallocate(J_V_sup_int)
         
         ! memory usage difference after deallocation
         if (print_mem_usage) then

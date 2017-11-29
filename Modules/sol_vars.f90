@@ -12,13 +12,11 @@ module sol_vars
     implicit none
     
     private
-    public alpha
 #if ldebug
     public n_alloc_sols
 #endif
     
     ! global variables
-    real(dp) :: alpha                                                           !< field line label alpha \ldebug
 #if ldebug
     integer :: n_alloc_sols                                                     !< nr. of allocated grids \ldebug
 #endif

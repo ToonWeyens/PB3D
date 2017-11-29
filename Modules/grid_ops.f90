@@ -408,7 +408,7 @@ contains
     !! \return ierr
     integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
-        use grid_vars, only: n_r_eq
+        use grid_vars, only: n_r_eq, n_alpha
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
         
@@ -436,7 +436,7 @@ contains
                 
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq%init([eq_jobs_lims(2,eq_job_nr)-&
-                    &eq_jobs_lims(1,eq_job_nr)+1,1,n_r_eq],eq_limits)           ! only one field line
+                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,n_r_eq],eq_limits)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
@@ -480,6 +480,7 @@ contains
     integer function setup_grid_eq_B(grid_eq,grid_eq_B,eq,only_half_grid) &
         &result(ierr)
         use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
+        use grid_vars, only: n_alpha
         
         character(*), parameter :: rout_name = 'setup_grid_eq_B'
         
@@ -507,7 +508,7 @@ contains
             case (2)                                                            ! HELENA
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq_B%init([eq_jobs_lims(2,eq_job_nr)-&
-                    &eq_jobs_lims(1,eq_job_nr)+1,1,grid_eq%n(3)],&
+                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,grid_eq%n(3)],&
                     &[grid_eq%i_min,grid_eq%i_max])                             ! only one field line
                 CHCKERR('')
                 
@@ -761,8 +762,7 @@ contains
     integer function calc_ang_grid_eq_B(grid_eq,eq,only_half_grid) result(ierr)
         use num_vars, only: use_pol_flux_F, use_pol_flux_E, &
             &eq_style, tol_zero, eq_job_nr, eq_jobs_lims
-        use grid_vars, only: min_par_X, max_par_X
-        use sol_vars, only: alpha
+        use grid_vars, only: min_par_X, max_par_X, alpha, n_alpha
         use eq_vars, only: max_flux_E
         use grid_utilities, only: coord_F2E, calc_eqd_grid, calc_n_par_X_rich
         use eq_utilities, only: print_info_eq
@@ -786,7 +786,7 @@ contains
         real(dp), pointer :: flux_E(:) => null()                                ! flux that the E uses as normal coord.
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
         integer :: pmone                                                        ! plus or minus one
-        integer :: id, kd                                                       ! counters
+        integer :: id, jd, kd                                                   ! counters
         integer :: n_par_X_loc                                                  ! local n_par_X
         logical :: only_half_grid_loc                                           ! local only_half_grid
         real(dp), allocatable :: theta_F_loc(:,:,:)                             ! local theta_F
@@ -851,8 +851,8 @@ contains
         
         ! set up parallel angle in  Flux coordinates on equidistant grid        
         ! and use this to calculate the other angle as well
-        allocate(theta_F_loc(n_par_X,1,grid_eq%loc_n_r))
-        allocate(zeta_F_loc(n_par_X,1,grid_eq%loc_n_r))
+        allocate(theta_F_loc(n_par_X,n_alpha,grid_eq%loc_n_r))
+        allocate(zeta_F_loc(n_par_X,n_alpha,grid_eq%loc_n_r))
         if (use_pol_flux_F) then                                                ! parallel angle theta
             ierr = calc_eqd_grid(theta_F_loc,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
@@ -861,7 +861,9 @@ contains
                 zeta_F_loc(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
                     &theta_F_loc(:,:,kd)
             end do
-            zeta_F_loc = zeta_F_loc + alpha
+            do jd = 1,n_alpha
+                zeta_F_loc(:,jd,:) = zeta_F_loc(:,jd,:) + alpha(jd)
+            end do
         else                                                                    ! parallel angle zeta
             ierr = calc_eqd_grid(zeta_F_loc,min_par_X*pi,&
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
@@ -870,7 +872,9 @@ contains
                 theta_F_loc(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
                     &zeta_F_loc(:,:,kd)
             end do
-            theta_F_loc = theta_F_loc - alpha
+            do jd = 1,n_alpha
+                theta_F_loc(:,jd,:) = theta_F_loc(:,jd,:) - alpha(jd)
+            end do
         end if
         
         ! set up grid_eq angular F coordinates
@@ -1159,6 +1163,7 @@ contains
             use HDF5_vars, only: dealloc_XML_str, &
                 & XML_str_type, HDF5_file_type
             use rich_vars, only: rich_lvl
+            use grid_vars, only: n_alpha
             
             character(*), parameter :: rout_name = 'magn_grid_plot_HDF5'
           
@@ -1170,9 +1175,9 @@ contains
             ! local variables
             character(len=max_str_ln) :: plot_title(2)                          ! plot title for flux surface and for field lines
             character(len=max_str_ln) :: file_name                              ! name of file
-            integer :: id                                                       ! counter
+            integer :: id, jd                                                   ! counter
             type(HDF5_file_type) :: file_info                                   ! file info
-            type(XML_str_type) :: grids(2)                                      ! grid in spatial collection (flux surface, field line)
+            type(XML_str_type), allocatable :: grids(:)                         ! grid in spatial collection (flux surface, field line)
             type(XML_str_type), allocatable :: space_col_grids(:)               ! grid with space collection at different times
             type(XML_str_type) :: time_col_grid                                 ! grid with time collection
             type(XML_str_type) :: top                                           ! topology
@@ -1192,7 +1197,7 @@ contains
                 
                 ! set up loc_dim and n_r
                 loc_dim(:,1) = [size(X_1,1),size(X_1,2),1]
-                loc_dim(:,2) = [size(X_2,1),size(X_2,2),1]
+                loc_dim(:,2) = [size(X_2,1),1,1]
                 n_r = size(X_1,3) - 1                                           ! should be same for all other X_i, Y_i and Z_i
                 
                 ! set up plot titles and file name
@@ -1206,7 +1211,9 @@ contains
                     &descr=anim_name,ind_plot=.true.)
                 CHCKERR('')
                 
-                ! create grid for time collection
+                ! create grid  for flux surface and all field  lines and one for
+                ! time collection
+                allocate(grids(1+n_alpha))
                 allocate(space_col_grids(n_r))
                 
                 ! loop over all normal points
@@ -1241,31 +1248,36 @@ contains
                     
                     ! B. end with magnetic field
                     
-                    ! print topology
-                    call print_HDF5_top(top,2,loc_dim(:,2))
-                    
-                    ! print data item for X
-                    ierr = print_HDF5_3D_data_item(XYZ(1),file_info,'X_field_'&
-                        &//trim(i2str(id)),X_2(:,:,id+1:id+1),loc_dim(:,2))
-                    CHCKERR('')
-                    
-                    ! print data item for Y
-                    ierr = print_HDF5_3D_data_item(XYZ(2),file_info,'Y_field_'&
-                        &//trim(i2str(id)),Y_2(:,:,id+1:id+1),loc_dim(:,2))
-                    CHCKERR('')
-                    
-                    ! print data item for Z
-                    ierr = print_HDF5_3D_data_item(XYZ(3),file_info,'Z_field_'&
-                        &//trim(i2str(id)),Z_2(:,:,id+1:id+1),loc_dim(:,2))
-                    CHCKERR('')
-                    
-                    ! print geometry with X, Y and Z data item
-                    call print_HDF5_geom(geom,2,XYZ,.true.)
-                    
-                    ! create a grid with the topology and the geometry
-                    ierr = print_HDF5_grid(grids(2),plot_title(2),1,&
-                        &grid_top=top,grid_geom=geom,reset=.true.)
-                    CHCKERR('')
+                    do jd = 1,n_alpha                                           ! iterate over all field lines
+                        ! print topology
+                        call print_HDF5_top(top,2,loc_dim(:,2))
+                        
+                        ! print data item for X of this field line
+                        ierr = print_HDF5_3D_data_item(XYZ(1),file_info,&
+                            &'X_field_'//trim(i2str(id))//'_'//trim(i2str(jd)),&
+                            &X_2(:,jd:jd,id+1:id+1),loc_dim(:,2))
+                        CHCKERR('')
+                        
+                        ! print data item for Y of this field line
+                        ierr = print_HDF5_3D_data_item(XYZ(2),file_info,&
+                            &'Y_field_'//trim(i2str(id))//'_'//trim(i2str(jd)),&
+                            &Y_2(:,jd:jd,id+1:id+1),loc_dim(:,2))
+                        CHCKERR('')
+                        
+                        ! print data item for Z of this field line
+                        ierr = print_HDF5_3D_data_item(XYZ(3),file_info,&
+                            &'Z_field_'//trim(i2str(id))//'_'//trim(i2str(jd)),&
+                            &Z_2(:,jd:jd,id+1:id+1),loc_dim(:,2))
+                        CHCKERR('')
+                        
+                        ! print geometry with X, Y and Z data item
+                        call print_HDF5_geom(geom,2,XYZ,.true.)
+                        
+                        ! create a grid with the topology and the geometry
+                        ierr = print_HDF5_grid(grids(jd+1),plot_title(2),1,&
+                            &grid_top=top,grid_geom=geom,reset=.true.)
+                        CHCKERR('')
+                    end do
                     
                     ! C.  merge flux  surface and magnetic  field in  to spatial
                     ! collection

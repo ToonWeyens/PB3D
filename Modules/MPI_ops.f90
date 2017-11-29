@@ -77,13 +77,14 @@ contains
     !!
     !! \return ierr
     integer function stop_MPI(grid_eq,grid_eq_B,grid_X,grid_X_B,grid_sol,eq_1,&
-        &eq_2,X_1,X_2,sol) result(ierr)
+        &eq_2,X_1,X_2,vac,sol) result(ierr)
         
         use MPI_vars, only: dealloc_lock, &
             &HDF5_lock
         use grid_vars, only: grid_type
         use eq_vars, only: eq_1_type, eq_2_type
         use X_vars, only: X_1_type, X_2_type
+        use vac_vars, only: vac_type
         use sol_vars, only: sol_type
         use num_vars, only: eq_style
 #if ldebug
@@ -108,6 +109,7 @@ contains
         type(eq_2_type), intent(inout), optional :: eq_2                        !< metric equilibrium variables
         type(X_1_type), intent(inout), optional :: X_1                          !< vectorial perturbation variables
         type(X_2_type), intent(inout), optional :: X_2                          !< integrated tensorial perturbation variables
+        type(vac_type), intent(inout), optional :: vac                          !< vacuum variables
         type(sol_type), intent(inout), optional :: sol                          !< solution variables
         
         ! local variables
@@ -161,6 +163,9 @@ contains
         end if
         if (present(X_2)) then
             if (allocated(X_2%PV_0)) call X_2%dealloc()
+        end if
+        if (present(vac)) then
+            if (allocated(vac%res)) call vac%dealloc()
         end if
         if (present(sol)) then
             if (allocated(sol%val)) call sol%dealloc()
@@ -221,7 +226,7 @@ contains
         CHCKERR('MPI abort failed')
     end function abort_MPI
     
-    !> Broadcasts options (e.g. user-prescribed) that  are not passed through the
+    !> Broadcasts options (e.g. user-prescribed) that are not passed through the
     !! HDF5 output file (i.e. \c ltest, \c no_plots, ...).
     !!
     !! \see read_input_opts()
@@ -251,7 +256,7 @@ contains
             &RZ_0, &
             &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
             &n_vac_plot
-        use grid_vars, only: min_par_X, max_par_X
+        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha
         use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
         character(*), parameter :: rout_name = 'broadcast_input_opts'
@@ -378,12 +383,16 @@ contains
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_par_X,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,&
-                        &ierr)
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,&
-                        &MPI_Comm_world,&
-                        &ierr)
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_X_mem,1,MPI_DOUBLE_PRECISION,&
                         &0,MPI_Comm_world,ierr)

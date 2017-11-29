@@ -1066,7 +1066,7 @@ contains
         use eq_vars, only: vac_perm
         use num_utilities, only: c, con2dis
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
-        use sol_vars, only: alpha
+        use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ
 #if ldebug
@@ -1202,7 +1202,9 @@ contains
             else
                 ang_1 = grid_X%zeta_F
             end if
-            ang_2 = alpha
+            do jd = 1,n_alpha
+                ang_2(:,jd,:) = alpha(jd)
+            end do
         else
             ang_1 = grid_X%theta_F
             ang_2 = grid_X%zeta_F
