@@ -1127,3 +1127,9 @@ ITER Organization
 * 'alpha' is now an array and situated in grid_vars.
 * Updated 'magn_grid_plot' to handle multiple field lines.
 * For VMEC, the current profiles can now be checked using 'J_plot' in POST.
+
+## 2.06:
+* UNUSABLE VERSION FOR VMEC.
+* The old H and G results are now copied to the new vacuum in a next Richardson extrapolation level.
+* Changed the structure of 'store_vac_VMEC'.
+* Implemented new procedure 'interlaced_vac_copy' that performs a copy of vacuum variables G and H from a previous Richardson level in an interlaced way.

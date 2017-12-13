@@ -56,18 +56,55 @@ contains
     !! variables at the  plasma edge, and then this is  broadcasted to the other
     !! processes.
     !!
-    !! For the first  equilibrium job, this routine copies the  results from the
-    !! previous  Richardson level  into  the appropriate  subranges  of the  new
-    !! vacuum variables.
+    !! The workings of this routine  are summarized in the following diagram for
+    !! VMEC:
+    !! @dot
+    !! digraph G {
+    !!  eq_job -> restart [label="yes"]
+    !!  eq_job -> store [label="no"]
+    !!  restart -> jump [label="yes"]
+    !!  restart -> copy [label="no"]
+    !!  jump -> reconstructcur [label="yes"]
+    !!  jump -> restartone [label="no"]
+    !!  reconstructcur -> return
+    !!  restartone -> reconstruct [label="no"]
+    !!  copy -> store
+    !!  reconstruct -> store
+    !!  restartone -> store [label="yes"]
+    !!  store -> return
+    !!  
+    !!  eq_job [shape=diamond,label="eq_job = 1"]
+    !!  store [label="store new vec, res"]
+    !!  restart [shape=diamond,label="restart"]
+    !!  jump [shape=diamond,label="jump"]
+    !!  copy [label="copy previous level"]
+    !!  reconstructcur [label="reconstruct current level"]
+    !!  return [label="return"]
+    !!  restartone [shape=diamond,label="restart = 1"]
+    !!  reconstruct [label="reconstruct previous level"]
+    !! }
+    !! @enddot
     !!
-    !! If the previous \c G and \c  H variables are empty, they are regenerated.
-    !! This indicates that  either a Richardson restart was performed,  or a new
+    !! Before storing the new variables, the procedure checks the following things:
+    !!  - For  the first equilibrium job,  this routine copies the  results from
+    !!  the previous Richardson level into  the appropriate subranges of the new
+    !!  vacuum variables if no restart of Richardson levels was done.
+    !!  - If a  restart was  done and  the level is  greater than  one, there  is a
+    !!  reconstruction of the previous level's variables.
+    !!
+    !! If  there is  a jump  straight to  the solution,  however, the  procedure
+    !! returns after reconstructing the current level's variables.
+    !!
+    !! If the previous \c  G and \c H variables are  empty, they are regenerated
+    !! later,  in  calc_gh(). This  indicates  that  a reconstruction  happened,
+    !! either  because a  Richardson restart  was  performed, or  because a  new
     !! Richardson  level was  started after  a previous  level in  which it  was
     !! jumped straight to the solution.
     !!
-    !! \note For HELENA, there is only 1  equilibrium job, and the vacuum has to
-    !! be calculated only  once. If there is  a jump to solution or  if there is
-    !! Richardson restart, it needs to be reconstructed only.
+    !! For  HELENA, there  is only  1 equilibrium  job at  the first  Richardson
+    !! level, and the vacuum has to be  calculated only once then. If there is a
+    !! jump to solution or  if there is Richardson restart, it  only needs to be
+    !! reconstructed.
     !!
     !! \return ierr
     integer function store_vac(grid,eq_1,eq_2,vac) result(ierr)
@@ -118,8 +155,11 @@ contains
         ! VMEC version
         !> \private
         integer function store_vac_VMEC() result(ierr)
+            use num_vars, only: jump_to_sol
+            use grid_vars, only: n_alpha
             use rich_vars, only: n_par_X
             use eq_utilities, only: calc_inv_met
+            use vac_utilities, only: interlaced_vac_copy
             
             character(*), parameter :: rout_name = 'store_vac_VMEC'
             
@@ -128,6 +168,7 @@ contains
             real(dp), allocatable :: norm_com_C(:,:)                            ! Cylindrical components of norm
             real(dp), allocatable :: T_CV_loc(:,:,:,:,:,:,:)                    ! local T_CV
             type(vac_type) :: vac_old                                           ! old vacuum variables
+            logical :: interlaced_vac_copy_needed                               ! interlaced copy vacuum needed
             
             ! initialize ierr
             ierr = 0
@@ -140,39 +181,48 @@ contains
             ! if start of Richardson level  that is not the first, copy previous
             ! results
             if (eq_job_nr.eq.1) then
-                if (rich_lvl.gt.1) then
-                    if (rich_lvl.eq.rich_restart_lvl) then
-                        ! reconstruct old vacuum
-                        ierr = reconstruct_PB3D_vac(vac_old,'vac',&
-                            &rich_lvl=rich_lvl-1)
-                        CHCKERR('')
-                    else
-                        ! copy old vacuum
-                        ierr = copy_vac(vac,vac_old)
+                if (rich_lvl.eq.rich_restart_lvl) then                          ! restarting
+                    if (jump_to_sol) then                                       ! jumping straight to solution
+                        ! reconstruct vacuum of current level
+                        ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl)
                         CHCKERR('')
                         
-                        ! deallocate
-                        call vac%dealloc()
+                        return
+                    else                                                        ! not jumping to solution
+                        if (rich_restart_lvl.eq.1) then                         ! not actually restarting, just starting
+                            ! nothing extra needed
+                            interlaced_vac_copy_needed = .false.
+                        else                                                    ! restarting
+                            ! reconstruct old vacuum
+                            ierr = reconstruct_PB3D_vac(vac_old,'vac',&
+                                &rich_lvl=rich_lvl-1)
+                            CHCKERR('')
+                            
+                            ! interlaced copy necessary
+                            interlaced_vac_copy_needed = .true.
+                        end if
                     end if
+                else                                                            ! not restarting
+                    ! copy old vacuum temporarily
+                    ierr = copy_vac(vac,vac_old)
+                    CHCKERR('')
                     
-                    if (.not.allocated(vac_old%H)) then
-                        ! recalculate old G and H
-                        ierr = -1
-                        CHCKERR('SET UP OLD G AND H')
-                    end if
+                    ! deallocate
+                    call vac%dealloc()
+                    
+                    ! interlaced copy necessary
+                    interlaced_vac_copy_needed = .true.
                 end if
                 
                 ! allocate
-                ierr = vac%init(eq_style,n_par_X,prim_X,[n_par_X,1],jq)
+                ierr = vac%init(1,n_par_X*n_alpha,prim_X,[n_par_X,n_alpha],jq)
                 CHCKERR('')
                 
-                !! copy previous results back in appropriate, interlaced place
-                !if (rich_lvl.gt.1) then
-                    !vac%norm(1:vac%n_bnd:2,:) = vac_old%norm
-                    !vac%x_vec(1:vac%n_bnd:2,:) = vac_old%x_vec
-                    !ierr = 1
-                    !CHCKERR('DO THIS WITH PDGEMR2D')
-                !end if
+                ! interlaced copy if needed
+                if (interlaced_vac_copy_needed) then
+                    ierr = interlaced_vac_copy(vac_old,vac)
+                    CHCKERR('')
+                end if
             end if
             
             ! add results from current equilibrium job to the variables
@@ -250,16 +300,16 @@ contains
             ! if  restarting  a  Richardson  level, reconstruct.  If  not,  only
             ! calculate for the first level
             if (rich_lvl.eq.rich_restart_lvl) then
-                ! test
-                if (eq_job_nr.ne.1) then
-                    ierr = 1
-                    err_msg = 'HELENA should only have 1 equilibrium job for &
-                        &Richardson level 1'
-                    CHCKERR(err_msg)
-                end if
-                
                 ! check for start from zero versus restart
                 if (rich_restart_lvl.eq.1) then                                 ! starting from zero
+                    ! test
+                    if (eq_job_nr.ne.1) then
+                        ierr = 1
+                        err_msg = 'HELENA should only have 1 equilibrium job for &
+                            &Richardson level 1'
+                        CHCKERR(err_msg)
+                    end if
+                    
                     if (ias.eq.0) then                                          ! top-bottom symmmetric
                         n_theta = 2*(nchi-1)+1
                     else
@@ -391,7 +441,6 @@ contains
         use num_vars, only: rank
         use vac_vars, only: in_context
         use vac_utilities, only: vec_dis2loc
-        use MPI_utilities, only: wait_MPI
 #if ldebug
         use num_vars, only: n_procs
         use vac_utilities, only: mat_dis2loc
@@ -616,6 +665,7 @@ contains
         
         call writo('Using field-line 3-D Boundary Element Method')
         
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!! ONLY CALCULATE THE ZERO ELEMENTS !!!!!'
     end function calc_GH_1
     
     !> \public Calculates matrices \c G and \c H in axisymmetric configurations.
@@ -1101,7 +1151,6 @@ contains
         use X_vars, only: n_mod_X, n_X, m_X
         use vac_vars, only: set_loc_lims, in_context
         use vac_utilities, only: mat_dis2loc
-        use MPI_utilities, only: wait_MPI
         use eq_vars, only: vac_perm
         use num_utilities, only: LCM
         

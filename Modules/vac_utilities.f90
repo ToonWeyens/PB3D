@@ -6,6 +6,7 @@
 module vac_utilities
 #include <PB3D_macros.h>
 #include <wrappers.h>
+    use StrumpackDensePackage
     use str_utilities
     use messages
     use output_ops
@@ -14,7 +15,7 @@ module vac_utilities
 
     implicit none
     private
-    public calc_GH_int_2, vec_dis2loc, mat_dis2loc
+    public calc_GH_int_2, vec_dis2loc, mat_dis2loc, interlaced_vac_copy
     
 contains
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
@@ -272,4 +273,126 @@ contains
         call dgsum2d(ctxt,'all',' ',size(mat_loc,1),size(mat_loc,2),mat_loc,&
             &size(mat_loc,1),proc_dest(1),proc_dest(2))
     end function mat_dis2loc
+    
+    !> Copies  vacuum  variables  of  a previous  level  into  the  appropriate,
+    !! interlaced place of a next level.
+    !! 
+    !! This is done  by multiplying left by  \f$\overline{\text{T}}\f$ and right
+    !! by \f$\overline{\text{T}}^T\f$ with
+    !! \f[
+    !!  a_{ij} =
+    !!      \left\{\begin{aligned}
+    !!          1 \quad &\text{for}  \left(i,j\right) = \left(2a-1,a\right) \\
+    !!          0 \quad &\text{otherwise} 
+    !!      \end{aligned}\right.
+    !! \f]
+    !! with  the  size  of \f$\overline{\text{T}}\f$  equal  to  \f$n_\text{new}
+    !! \times n_\text{old} \f$ where \f$n\f$ refers to \c n_bnd.
+    integer function interlaced_vac_copy(vac_old,vac) result(ierr)
+#if ldebug
+        use num_vars, only: ltest, n_procs, rank
+        use input_utilities, only: get_log
+#endif
+        
+        character(*), parameter :: rout_name = 'interlaced_vac_copy'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac_old                                   !< old vacuum
+        type(vac_type), intent(inout) :: vac                                    !< vacuum
+        
+        ! local variables
+        integer :: i_cd                                                         ! index of subcol
+        integer :: cd                                                           ! global counter for col
+        integer :: cdl                                                          ! local counter for col
+        real(dp), allocatable :: loc_A(:,:)                                     ! local transformation matrix
+        real(dp), allocatable :: loc_B(:,:)                                     ! local dummy matrix
+        integer :: desc_loc(BLACSCTXTSIZE)                                      ! descriptor for loc_A and loc_B
+        integer :: desc_loc_old(BLACSCTXTSIZE)                                  ! descriptor for loc_A and loc_B in old vacuum context
+#if ldebug
+        logical :: test_redist                                                  ! whether to test the redistribution of H and G
+        real(dp), allocatable :: HG_ser(:,:)                                    ! serial versions of H and G
+        real(dp), allocatable :: HG_ser_old(:,:)                                ! serial versions of H and G in old vacuum
+#endif
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! copy norm and x_vec
+        write(*,*) 'shape vac', shape(vac%norm)
+        write(*,*) 'shape vac_old', shape(vac_old%norm)
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!! NEED TO TAKE THE n_alpha INTO ACCOUNT !!!!'
+        vac%norm(1:vac%n_bnd:2,:) = vac_old%norm
+        vac%x_vec(1:vac%n_bnd:2,:) = vac_old%x_vec
+        
+        ! set up transformation matrix A and dummy matrix B
+        allocate(loc_A(vac%n_loc(1),vac_old%n_loc(2)))
+        allocate(loc_B(vac%n_loc(1),vac_old%n_loc(2)))
+        loc_A = 0._dp
+        loc_B = 0._dp
+        subcols: do i_cd = 1,size(vac_old%lims_c,2)
+            col: do cd = vac_old%lims_c(1,i_cd),&
+                &vac_old%lims_c(2,i_cd)
+                ! set local column index
+                cdl = sum(vac_old%lims_c(2,1:i_cd-1)-&
+                    &vac_old%lims_c(1,1:i_cd-1)+1) + &
+                    &cd-vac_old%lims_c(1,i_cd)+1
+                loc_A(2*cdl-1,cdl) = 1._dp
+            end do col
+        end do subcols
+        call descinit(desc_loc,vac%n_bnd,vac_old%n_bnd,vac%bs,&
+            &vac%bs,0,0,vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+        CHCKERR('descinit failed for loc')
+        call descinit(desc_loc_old,vac%n_bnd,vac_old%n_bnd,vac%bs,&
+            &vac%bs,0,0,vac_old%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+        CHCKERR('descinit failed for loc_old')
+        
+        ! treat H
+        CHCKERR('')
+        call pdgemm('N','N',vac%n_bnd,vac_old%n_bnd,vac_old%n_bnd,&
+            &1._dp,loc_A,1,1,desc_loc_old,vac_old%H,1,1,&
+            &vac_old%desc_H,0._dp,loc_B,1,1,desc_loc_old)
+        call pdgemm('N','T',vac%n_bnd,vac%n_bnd,vac_old%n_bnd,&
+            &1._dp,loc_B,1,1,desc_loc,loc_A,1,1,&
+            &desc_loc,0._dp,vac%H,1,1,vac%desc_H)
+        
+        ! treat G
+        call pdgemm('N','N',vac%n_bnd,vac_old%n_bnd,vac_old%n_bnd,&
+            &1._dp,loc_A,1,1,desc_loc_old,vac_old%G,1,1,&
+            &vac_old%desc_G,0._dp,loc_B,1,1,desc_loc_old)
+        call pdgemm('N','T',vac%n_bnd,vac%n_bnd,vac_old%n_bnd,&
+            &1._dp,loc_B,1,1,desc_loc,loc_A,1,1,&
+            &desc_loc,0._dp,vac%G,1,1,vac%desc_G)
+        
+#if ldebug
+        ! test
+        if (ltest) then
+            call writo('test resdistribution of H?')
+            test_redist = get_log(.false.)
+        else
+            test_redist = .false.
+        end if
+        !!!!!!!!!!!!!!!! THIS NEEDS TO BE TESTED STILL !!!!!!!!!!!!'
+        test_redist = .true.
+        !!!!!!!!!!!!!!!! THIS NEEDS TO BE TESTED STILL !!!!!!!!!!!!'
+        if (test_redist) then
+            allocate(HG_ser(vac%n_bnd,vac%n_bnd))
+            allocate(HG_ser_old(vac_old%n_bnd,vac_old%n_bnd))
+            ierr = mat_dis2loc(vac_old%ctxt_HG,vac_old%H,&
+                &vac_old%lims_r,vac_old%lims_c,HG_ser_old,&
+                &proc=n_procs-1)
+            CHCKERR('')
+            ierr = mat_dis2loc(vac%ctxt_HG,vac%H,&
+                &vac%lims_r,vac%lims_c,HG_ser,&
+                &proc=n_procs-1)
+            CHCKERR('')
+            call writo('old H:',persistent=rank.eq.n_procs-1)
+            call print_ar_2(HG_ser_old)
+            call writo('new H:',persistent=rank.eq.n_procs-1)
+            call print_ar_2(HG_ser)
+        end if
+#endif
+        
+        ! clean up
+        deallocate(loc_A,loc_B)
+    end function interlaced_vac_copy
 end module vac_utilities
