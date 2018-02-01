@@ -98,7 +98,7 @@ contains
         
         if (do_vac_ops) then
             ! calculate vacuum
-            ierr = calc_vac_res(vac)
+            ierr = calc_vac_res(vac,grid_X)
             CHCKERR('')
             
             call writo('Write to output file')

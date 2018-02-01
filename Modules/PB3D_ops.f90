@@ -1274,14 +1274,6 @@ contains
         ! secondary mode numbers
         vac%lim_sec_X = lim_sec_X
         
-        ! ang
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-            &'ang',rich_lvl=rich_lvl_loc)
-        CHCKERR('')
-        call conv_1D2ND(var_1D,dum_2D)
-        vac%ang = dum_2D
-        call dealloc_var_1D(var_1D)
-        
         ! norm
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
             &'norm',rich_lvl=rich_lvl_loc)
@@ -1290,16 +1282,6 @@ contains
         vac%norm = dum_2D
         call dealloc_var_1D(var_1D)
         
-        ! dnorm
-        if (vac%style.eq.2) then
-            ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
-                &'dnorm',rich_lvl=rich_lvl_loc)
-            CHCKERR('')
-            call conv_1D2ND(var_1D,dum_2D)
-            vac%dnorm = dum_2D
-            call dealloc_var_1D(var_1D)
-        end if
-        
         ! x_vec
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
             &'x_vec',rich_lvl=rich_lvl_loc)
@@ -1307,6 +1289,34 @@ contains
         call conv_1D2ND(var_1D,dum_2D)
         vac%x_vec = dum_2D
         call dealloc_var_1D(var_1D)
+        
+        ! copy variables specific to style
+        select case (vac%style)
+            case (1)                                                            ! field-line 3-D
+                ! h_fac
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'h_fac',rich_lvl=rich_lvl_loc)
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                vac%h_fac = dum_2D
+                call dealloc_var_1D(var_1D)
+            case (2)                                                            ! axisymmetric
+                ! ang
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'ang',rich_lvl=rich_lvl_loc)
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                vac%ang = dum_2D
+                call dealloc_var_1D(var_1D)
+                
+                ! dnorm
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'dnorm',rich_lvl=rich_lvl_loc)
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                vac%dnorm = dum_2D
+                call dealloc_var_1D(var_1D)
+        end select
         
         if (rank.eq.n_procs-1) then
             ! RE_res

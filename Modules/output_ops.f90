@@ -560,7 +560,7 @@ contains
                 ! assign pointers
                 call assign_pointers(id)
                 ! check poloidal angle
-                sym_ang = atan(Y_3D/X_3D)
+                sym_ang = atan2(Y_3D,X_3D)
                 if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym .and. &
                     &(maxval(X_3D).ge.0._dp .neqv. &
                     &minval(X_3D).lt.0._dp).and.&                               ! X has to be either positive or negative
@@ -568,7 +568,7 @@ contains
                     &minval(Y_3D).lt.0._dp)) &                                  ! Y has to be either positive or negative
                     &sym_pol = sym_pol+1                                        ! poloidal symmetry for this plot
                 ! check toroidal angle
-                sym_ang = atan(sqrt(Z_3D**2/(X_3D**2+Y_3D**2)))
+                sym_ang = atan2(sqrt(Z_3D**2),sqrt(X_3D**2+Y_3D**2))
                 if (maxval(sym_ang)-minval(sym_ang).lt.tol_sym) &
                     &sym_tor = sym_tor+1                                        ! toroidal symmetry for this plot
             end do
@@ -1861,8 +1861,7 @@ contains
         ! returns relative or absolute difference between inputs A and B
         !> \private
         function diff(A,B,dims,rel) result(C)
-            ! local variables
-            real(dp) :: max_diff = 1.E10                                        ! maximum absolute difference
+            use num_vars, only: tol_zero
             
             ! input / output
             real(dp), intent(in) :: A(:,:,:)                                    ! input A
@@ -1873,7 +1872,7 @@ contains
             
             ! return output
             if (rel) then
-                C = min(max_diff,max(-max_diff,(A-B)/(A+B)))
+                C = 2*(A-B)/max(tol_zero,(abs(A)+abs(B)))
             else
                 C = abs(A-B)
             end if

@@ -29,11 +29,20 @@ module vac_vars
     !!  - \c H, \c G:   <tt>(n_loc,n_loc)</tt>
     !!  - \c res:       <tt>(n_mod_X,n_mod_X)</tt>
     !!
-    !! where \c n_loc is the number of points in the boundary, \c n_bnd.
+    !! where \c n_loc is the number of  points in the boundary, i.e. a subset of
+    !! \c n_bnd.
     !!
-    !! The variable \c  ang is composed of the angles  along the magnetic fields
-    !! (which refers to \c angle_1 in the discussion of grid_vars.grid_type), of
-    !! which there can be multiple, but the total sum must be equal to n_bnd.
+    !! For  vacuum style  1, the  vacuum  is assumed  to be  equidsitant in  the
+    !! coordinate  along the  magnetic field  lines and,  if there  are multiple
+    !! field  lines, also  in  the  field line  label  \f$\alpha\f$. The  limits
+    !! on  the  angles are  assumed  to  be given  by  the  global variables  \c
+    !! grid_vars.min_par_x, \c  grid_vars.max_par_x and  \c grid_vars.min_alpha,
+    !! \c grid_vars.max_alpha.
+    !!
+    !! For vacuum style 2,  there is an additional angle \c  ang. It is composed
+    !! of the  angles along the magnetic  fields (which refers to  \c angle_1 in
+    !! the  discussion  of  \c  grid_vars.grid_type),  of  which  there  can  be
+    !! multiple, but the total sum must be equal to \c n_bnd.
     type, public :: vac_type
         integer :: style                                                        !< style of vacuum (1: field-line 3-D, 2: axisymmetric)
         integer :: prim_X                                                       !< primary mode number
@@ -44,6 +53,7 @@ module vac_vars
         integer :: desc_H(BLACSCTXTSIZE)                                        !< descriptor for H
         integer :: desc_G(BLACSCTXTSIZE)                                        !< descriptor for G
         integer :: n_p(2)                                                       !< nr. of processes in grid
+        integer :: n_ang(2)                                                     !< number of angles (1) and number of field lines (2)
         integer :: ind_p(2)                                                     !< index of local process in grid
         integer :: n_loc(2)                                                     !< local number of rows and columns
         integer :: lim_sec_X(2)                                                 !< limits on secondary mode numbers
@@ -53,6 +63,7 @@ module vac_vars
         real(dp), allocatable :: ang(:,:)                                       !< angle along field line, for each field line
         real(dp), allocatable :: norm(:,:)                                      !< J nabla psi normal vector
         real(dp), allocatable :: dnorm(:,:)                                     !< poloidal derivative of norm (only for style 2)
+        real(dp), allocatable :: h_fac(:,:)                                     !< metric factors (1,1), (1,3) and (3,3) (only for style 1)
         real(dp), allocatable :: x_vec(:,:)                                     !< Cartesian vector of position
         real(dp), allocatable :: H(:,:)                                         !< H coefficient
         real(dp), allocatable :: G(:,:)                                         !< G coefficient
@@ -107,7 +118,6 @@ contains
     !! 
     !! \return ierr
     integer function init_vac(vac,style,n_bnd,prim_X,n_ang,jq) result(ierr)
-        
         use MPI
         use num_vars, only: n_procs, rank
         use X_vars, only: n_mod_X
@@ -148,12 +158,11 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! set block size
+        ! set some variables
         vac%bs = bs
         if (n_procs.eq.1) vac%bs = n_bnd
-        
-        ! set other variables
         vac%jq = jq
+        vac%n_ang = n_ang
         
         ! Initialize the BLACS grid for H and G
         vac%prim_X = prim_X
@@ -208,13 +217,18 @@ contains
                 CHCKERR(err_msg)
         end select
         
-        ! allocate angle
-        allocate(vac%ang(n_ang(1),n_ang(2)))
-        
         ! allocate normal and position vector
         allocate(vac%norm(vac%n_bnd,n_dims))
         allocate(vac%x_vec(vac%n_bnd,n_dims))
-        if (style.eq.2) allocate(vac%dnorm(vac%n_bnd,n_dims))
+        
+        ! allocate variables specific to style
+        select case (vac%style)
+            case (1)                                                            ! field-line 3-D
+                allocate(vac%h_fac(vac%n_bnd,4))
+            case (2)                                                            ! axisymmetric
+                allocate(vac%ang(n_ang(1),n_ang(2)))
+                allocate(vac%dnorm(vac%n_bnd,n_dims))
+        end select
         
         ! allocate vacuum response if last process
         if (rank.eq.n_procs-1) allocate(vac%res(n_mod_X,n_mod_X))
@@ -334,14 +348,22 @@ contains
         ierr = 0
         
         ! reallocate
-        ierr = vac_copy%init(vac%style,vac%n_bnd,vac%prim_X,shape(vac%ang),&
+        ierr = vac_copy%init(vac%style,vac%n_bnd,vac%prim_X,vac%n_ang,&
             &vac%jq)
         CHCKERR('')
         
-        ! copy Jacobian and position vector
+        ! copy normal and position vector
         vac_copy%norm = vac%norm
-        if (vac%style.eq.2) vac_copy%dnorm = vac%dnorm
         vac_copy%x_vec = vac%x_vec
+        
+        ! copy variables specific to style
+        select case (vac%style)
+            case (1)                                                            ! field-line 3-D
+                vac_copy%h_fac = vac%h_fac
+            case (2)                                                            ! axisymmetric
+                vac_copy%dnorm = vac%dnorm
+                vac_copy%ang = vac%ang
+        end select
         
         ! copy vacuum response
         if (rank.eq.n_procs-1) vac_copy%res = vac%res

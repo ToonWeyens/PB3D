@@ -659,7 +659,7 @@ contains
         ! possibly deallocate
         if (dealloc_vars_loc) then
             deallocate(eq_2%g_F,eq_2%h_F,eq_2%jac_F)
-            deallocate(eq_2%T_EF,eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
+            deallocate(eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
         end if
         
         ! Calculate derived metric quantities

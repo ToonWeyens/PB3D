@@ -1027,7 +1027,7 @@ ITER Organization
 * Tuned the parameters in 'coord_F2E_rtz', because the current ones were too aggressive for pointy plasmas.
 * Fixed bug in 'store_vac' where 'calc_vec_comp' was used incorrectly and very redundantly.
 * 'calc_zero_HH' now shows output.
-* eq_ops does not deallocate T_VF and jac_E anymore, as they are needed for vacuum.
+* eq_ops does not deallocate T_VC and jac_E anymore, as they are needed for vacuum.
 
 ## 1.92: 
 * Changed to Doxygen formatting for comments.
@@ -1133,3 +1133,14 @@ ITER Organization
 * The old H and G results are now copied to the new vacuum in a next Richardson extrapolation level.
 * Changed the structure of 'store_vac_VMEC'.
 * Implemented new procedure 'interlaced_vac_copy' that performs a copy of vacuum variables G and H from a previous Richardson level in an interlaced way.
+
+## 2.07:
+* This version should run without error but is not debugged properly yet.
+* 'eq_ops' does not deallocate T_EF anymore, as it is needed for vacuum.
+* 'ang' is only copied for vacuum when using HELENA. For VMEC, the grid needs to be equidistant.
+* The plan to only calculate the nonzero elements of G and H in 3-D vacuums has been abandoned. It is not general enough.
+* Fixed some errors in the 3-D vacuum case.
+* Updated the 'interlaced_vac_copy' to include all variables necessary and tested it as well.
+* It performs its task for G and H as well, but they are later overwritten, as stated in bullet 3.
+* Added trap for NaN to debug version on laptop.
+* Changed definition of relative error due to insistence of Daan.

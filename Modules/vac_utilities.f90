@@ -15,9 +15,69 @@ module vac_utilities
 
     implicit none
     private
-    public calc_GH_int_2, vec_dis2loc, mat_dis2loc, interlaced_vac_copy
+    public calc_GH_int_1, calc_GH_int_2, vec_dis2loc, mat_dis2loc, &
+        &interlaced_vac_copy
     
 contains
+    !> Calculate  G_ij  and   H_ij  on  an  interval  for   field  line  aligned
+    !! configurations.
+    !!
+    !! The indices for the  source variables are <tt>[left:right,dim]</tt> where
+    !! \c dim is the Cartesian dimension. The same holds for \c ql.
+    !!
+    !! For  subintegrals  close  to  the singularity,  the  procedure  uses  the
+    !! analytical approximation.
+    !!
+    !! \note This routine does not calculate the contribution \f$2\beta\f$.
+    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol)
+        ! input / output
+        real(dp), intent(inout) :: G(2)                                         !< G
+        real(dp), intent(inout) :: H(2)                                         !< H
+        real(dp), intent(in) :: x_s(2,3)                                        !< position vector at left and right limit of source interval
+        real(dp), intent(in) :: x_in(3)                                         !< position vector at which to calculate influence
+        real(dp), intent(in) :: norm_s(2,3)                                     !< normal vector at left and right limit of source interval
+        real(dp), intent(in) :: h_fac_in(4)                                     !< metric factors at which to calculate influence
+        real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
+        real(dp), intent(in) :: tol                                             !< tolerance on distance between points
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        real(dp) :: r2(2)                                                       ! distance between source and influence points
+        real(dp) :: E_fac                                                       ! factor E
+        real(dp) :: sineps                                                      ! sin(eps)
+        real(dp) :: dum_fac(2)                                                  ! dummy factors
+        
+        ! initialize
+        G = 0._dp
+        H = 0._dp
+        
+        ! calculate distance between source points
+        do kd = 1,2
+            r2(kd) = sum((x_s(kd,:)-x_in)**2)
+        end do
+        
+        ! check for (near-)singular point
+        if (minval(r2).le.tol) then
+            E_fac = sqrt(h_fac_in(1)/h_fac_in(3))*step_size(2)/step_size(1)     ! |e_alpha|/|e_theta| d_par_X / d_par_X
+            sineps = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
+            dum_fac(1) = sqrt(1+2*E_fac*sineps+E_fac**2)
+            dum_fac(2) = sqrt(1-2*E_fac*sineps+E_fac**2)
+            G = -0.5_dp/sqrt(h_fac_in(1)) * step_size(1) * (&
+                &log(abs((dum_fac(2) + E_fac + sineps)/&
+                &(dum_fac(1) - E_fac + sineps))) &
+                &- E_fac/sineps**2* &
+                &log(abs((dum_fac(2) + E_fac + sineps)/&
+                &(dum_fac(1) - E_fac + sineps))) &
+                &)
+            H = h_fac_in(4)*G
+        else
+            G = -1._dp/sqrt(r2)
+            do kd = 1,2
+                H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**(-3)
+            end do
+        end if
+    end subroutine calc_GH_int_1
+    
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
     !!
     !! The indices for the  source variables are <tt>[left:right,dim]</tt> where
@@ -282,12 +342,15 @@ contains
     !! \f[
     !!  a_{ij} =
     !!      \left\{\begin{aligned}
-    !!          1 \quad &\text{for}  \left(i,j\right) = \left(2a-1,a\right) \\
+    !!          1 \quad &\text{for}  \left(i,j\right) =
+    !!              \left(2j-1+(i-1)n_\text{old},j+(i-1)n_\text{old}\right) \\
     !!          0 \quad &\text{otherwise} 
     !!      \end{aligned}\right.
     !! \f]
-    !! with  the  size  of \f$\overline{\text{T}}\f$  equal  to  \f$n_\text{new}
-    !! \times n_\text{old} \f$ where \f$n\f$ refers to \c n_bnd.
+    !! where \f$i\f$ ranges from \f$1\f$  to \f$n_\text{old}\f$ and \f$j\f$ from
+    !! \f$1\f$ to \f$m_\text{old}\f$, with the size of \f$\overline{\text{T}}\f$
+    !! equal to \f$n_\text{new} \times n_\text{old}  \f$ where \f$n\f$ refers to
+    !! \c n_bnd(1) and \f$m\f$ to \c n_bnd(2).
     integer function interlaced_vac_copy(vac_old,vac) result(ierr)
 #if ldebug
         use num_vars, only: ltest, n_procs, rank
@@ -301,13 +364,20 @@ contains
         type(vac_type), intent(inout) :: vac                                    !< vacuum
         
         ! local variables
+        integer :: id                                                           ! counter
         integer :: i_cd                                                         ! index of subcol
-        integer :: cd                                                           ! global counter for col
-        integer :: cdl                                                          ! local counter for col
+        integer :: i_rd                                                         ! index of subrow
+        integer :: rd, cd                                                       ! global counter for row and col
+        integer :: rdl, cdl                                                     ! local counter for row and col
+        integer :: alpha_id                                                     ! field line on which an index is situated
+        integer :: par_id                                                       ! index point on field line
+        integer :: n_ang(2)                                                     ! number of points in angular directions
+        integer :: n_ang_old(2)                                                 ! number of points in angular directions in old vacuum
         real(dp), allocatable :: loc_A(:,:)                                     ! local transformation matrix
         real(dp), allocatable :: loc_B(:,:)                                     ! local dummy matrix
         integer :: desc_loc(BLACSCTXTSIZE)                                      ! descriptor for loc_A and loc_B
         integer :: desc_loc_old(BLACSCTXTSIZE)                                  ! descriptor for loc_A and loc_B in old vacuum context
+        character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         logical :: test_redist                                                  ! whether to test the redistribution of H and G
         real(dp), allocatable :: HG_ser(:,:)                                    ! serial versions of H and G
@@ -317,12 +387,44 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! copy norm and x_vec
-        write(*,*) 'shape vac', shape(vac%norm)
-        write(*,*) 'shape vac_old', shape(vac_old%norm)
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!! NEED TO TAKE THE n_alpha INTO ACCOUNT !!!!'
-        vac%norm(1:vac%n_bnd:2,:) = vac_old%norm
-        vac%x_vec(1:vac%n_bnd:2,:) = vac_old%x_vec
+        ! initialize
+        n_ang = vac%n_ang
+        n_ang_old = vac_old%n_ang
+        
+        ! test
+        if (n_ang(2).ne.n_ang_old(2)) then
+            ierr = 1
+            err_msg = 'Old and new vacuum need to have an equal number of &
+                &field lines'
+            CHCKERR(err_msg)
+        end if
+        if (n_ang(1).ne.2*n_ang_old(1)-1) then
+            ierr = 1
+            err_msg = 'Old and new vacuum need to have a compatible number of &
+                &points along the field lines'
+            CHCKERR(err_msg)
+        end if
+        
+        ! loop over all field lines
+        do id = 1,n_ang(2)
+            ! copy normal and position vector
+            vac%norm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                &vac_old%norm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            vac%x_vec((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                &vac_old%x_vec((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            
+            ! copy variables specific to style
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    vac%h_fac((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = vac_old%&
+                        &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+                case (2)                                                        ! axisymmetric
+                    vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                        &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+                    vac%ang((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                        &vac_old%ang((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            end select
+        end do
         
         ! set up transformation matrix A and dummy matrix B
         allocate(loc_A(vac%n_loc(1),vac_old%n_loc(2)))
@@ -330,13 +432,28 @@ contains
         loc_A = 0._dp
         loc_B = 0._dp
         subcols: do i_cd = 1,size(vac_old%lims_c,2)
-            col: do cd = vac_old%lims_c(1,i_cd),&
-                &vac_old%lims_c(2,i_cd)
+            col: do cd = vac_old%lims_c(1,i_cd),vac_old%lims_c(2,i_cd)
+                ! set field line index and point index and calculate row
+                alpha_id = (cd-1)/n_ang_old(1)+1
+                par_id = mod(cd-1,n_ang_old(1))+1
+                rd = 2*par_id-1 + (alpha_id-1)*n_ang(1)
+                
                 ! set local column index
                 cdl = sum(vac_old%lims_c(2,1:i_cd-1)-&
                     &vac_old%lims_c(1,1:i_cd-1)+1) + &
                     &cd-vac_old%lims_c(1,i_cd)+1
-                loc_A(2*cdl-1,cdl) = 1._dp
+                
+                subrows: do i_rd = 1,size(vac%lims_r,2)
+                    ! set local row index if in this subrow
+                    if (rd.ge.vac%lims_r(1,i_rd) .and. &
+                        &rd.le.vac%lims_r(2,i_rd)) then
+                        rdl = sum(vac%lims_r(2,1:i_rd-1)-&
+                            &vac%lims_r(1,1:i_rd-1)+1) + &
+                            &rd-vac%lims_r(1,i_rd)+1
+                        
+                        loc_A(rdl,cdl) = 1._dp
+                    end if
+                end do subrows
             end do col
         end do subcols
         call descinit(desc_loc,vac%n_bnd,vac_old%n_bnd,vac%bs,&
@@ -371,9 +488,6 @@ contains
         else
             test_redist = .false.
         end if
-        !!!!!!!!!!!!!!!! THIS NEEDS TO BE TESTED STILL !!!!!!!!!!!!'
-        test_redist = .true.
-        !!!!!!!!!!!!!!!! THIS NEEDS TO BE TESTED STILL !!!!!!!!!!!!'
         if (test_redist) then
             allocate(HG_ser(vac%n_bnd,vac%n_bnd))
             allocate(HG_ser_old(vac_old%n_bnd,vac_old%n_bnd))
@@ -385,10 +499,16 @@ contains
                 &vac%lims_r,vac%lims_c,HG_ser,&
                 &proc=n_procs-1)
             CHCKERR('')
-            call writo('old H:',persistent=rank.eq.n_procs-1)
-            call print_ar_2(HG_ser_old)
-            call writo('new H:',persistent=rank.eq.n_procs-1)
-            call print_ar_2(HG_ser)
+            if (rank.eq.n_procs-1) then
+                call writo('old H:',persistent=rank.eq.n_procs-1)
+                call print_ar_2(HG_ser_old)
+                call writo('new H:',persistent=rank.eq.n_procs-1)
+                call print_ar_2(HG_ser)
+                call plot_HDF5('HG_ser_old','HG_ser_old',&
+                    &reshape(HG_ser_old,[vac_old%n_bnd,vac_old%n_bnd,1]))
+                call plot_HDF5('HG_ser','HG_ser',&
+                    &reshape(HG_ser,[vac%n_bnd,vac%n_bnd,1]))
+            end if
         end if
 #endif
         
