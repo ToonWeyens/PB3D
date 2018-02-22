@@ -135,6 +135,19 @@ module grid_utilities
     !! and solving  it using  the specific  formula's, so  that the  solution is
     !! given  by  row  number  \c  ord,  multiplied  by  <tt>(ord!)</tt>.  Here,
     !! \f$m\f$ = \c n_loc
+    !! 
+    !! Finally,  there is  an option  to consider  the input  data as  periodic,
+    !! through the flag \c lper:
+    !!  * 0: no periodicity [def]
+    !!  * 1: full period periodicity \f$f(x) = f(x+2\pi)\f$, with the last point
+    !!  assumed to lie at the end of the full period,
+    !!  * 2: even half period periodicity  \f$f(x) = f(2\pi-x)\f$, with the last
+    !!  point assumed to lie at the middle of the full period,
+    !!  * 3: odd half period periodicity  \f$f(x) = -f(2\pi-x)\f$, with the last
+    !! point assumed to lie at the middle of the full period,
+    !!
+    !! where a  hypothetical \f$\left[0\ldots 2\pi\right]\f$ period  was assumed
+    !! for the sake of illustration.
     !!
     !! \return ierr
     interface setup_deriv_data
@@ -729,7 +742,7 @@ contains
     end function calc_eqd_grid_1D
     
     !> \private equidistant version
-    integer function setup_deriv_data_eqd(step,n,A,ord,prec) result(ierr)
+    integer function setup_deriv_data_eqd(step,n,A,ord,prec,lper) result(ierr)
         use num_utilities, only: fac, solve_vand
         
         character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
@@ -740,74 +753,27 @@ contains
         type(disc_type), intent(inout) :: A                                     !< derivation data
         integer, intent(in) :: ord                                              !< order of derivative
         integer, intent(in) :: prec                                             !< precision
+        integer, intent(in), optional :: lper                                   !< periodicity flag
         
         ! local variables
-        integer :: id, kd                                                       ! counters
-        integer :: kd_tot                                                       ! kd in total index
-        integer :: n_loc                                                        ! local size of problem to solve
-        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
-        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
-        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: x(:)                                           ! dummy x
         
         ! initialize ierr
         ierr = 0
         
-        ! set n_loc
-        n_loc = prec+ord+1
-        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
-        
-        ! tests
-        if (prec.lt.1) then
-            ierr = 1
-            err_msg = 'precision has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1) then
-            ierr = 1
-            err_msg = 'order has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (n.lt.2*n_loc) then
-            ierr = 1
-            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set variables
-        allocate(mat_loc(n_loc))
-        allocate(rhs_loc(n_loc))
-        allocate(sol_loc(n_loc))
-        ierr = A%init(n,n_loc)
-        CHCKERR('')
-        
-        ! iterate over all x values
+        ! set up dummy x
+        allocate(x(n))
         do id = 1,n
-            ! for bulk of matrix, do calculation only once
-            if (id.le.(n_loc+1)/2 .or. id.gt.n-(n_loc-1)/2) then                ! first, last, or first of bulk
-                ! calculate elements of local matrix
-                do kd = -(n_loc-1)/2,(n_loc-1)/2
-                    kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                    mat_loc(kd+(n_loc+1)/2) = (kd_tot-id)*step
-                end do
-                
-                ! solve Vandermonde system
-                rhs_loc = 0._dp
-                rhs_loc(ord+1) = 1._dp                                          ! looking for derivative of this order
-                call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
-                
-                ! save in A
-                A%dat(id,:) = sol_loc*fac(ord)
-                A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
-            else                                                                ! bulk of matrix
-                ! copy from first bulk element in matrix A
-                A%dat(id,:) = A%dat(id-1,:)
-                A%id_start(id) = A%id_start(id-1)+1
-            end if
+            x(id) = id*step
         end do
+        
+        ! call regular version
+        ierr = setup_deriv_data_reg(x,A,ord,prec,lper)
+        CHCKERR('')
     end function setup_deriv_data_eqd
     !> \private regular version
-    integer function setup_deriv_data_reg(x,A,ord,prec) result(ierr)
+    integer function setup_deriv_data_reg(x,A,ord,prec,lper) result(ierr)
         use num_utilities, only: fac, solve_vand
         use grid_vars, only: disc_type
         
@@ -818,15 +784,20 @@ contains
         type(disc_type), intent(inout) :: A                                     !< discretization mat
         integer, intent(in) :: ord                                              !< order of derivative
         integer, intent(in) :: prec                                             !< precision
+        integer, intent(in), optional :: lper                                   !< periodicity flag
         
         ! local variables
         integer :: n                                                            ! size of x
         integer :: id, kd                                                       ! counters
         integer :: kd_tot                                                       ! kd in total index
         integer :: n_loc                                                        ! local size of problem to solve
+        integer :: lper_loc                                                     ! local lper
+        real(dp) :: delta_x                                                     ! dixplacement due to wrapping in fundamental period
+        real(dp) :: x_loc                                                       ! local x
         real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
         real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
         real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
+        logical, allocatable :: odd_sym(:)                                      ! whether function value is taken from odd symmetric part
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -836,6 +807,10 @@ contains
         n_loc = prec+ord+1
         if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
         n = size(x)
+        
+        ! set local lper
+        lper_loc = 0
+        if (present(lper)) lper_loc = lper
         
         ! tests
         if (prec.lt.1) then
@@ -858,26 +833,84 @@ contains
         allocate(mat_loc(n_loc))
         allocate(rhs_loc(n_loc))
         allocate(sol_loc(n_loc))
+        allocate(odd_sym(n_loc))
         ierr = A%init(n,n_loc)
         CHCKERR('')
         
         ! iterate over all x values
         do id = 1,n
-            ! calculate elements of local matrix
+            ! calculate elements of local matrix and save index
+            odd_sym = .false.
             do kd = -(n_loc-1)/2,(n_loc-1)/2
-                kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
+                delta_x = 0._dp
+                select case (lper_loc)
+                    case (0)                                                    ! no periodicity
+                        kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
+                        mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
+                        A%id(id,kd+(n_loc+1)/2) = &
+                            &max(1,min(id-(n_loc-1)/2,n-n_loc+1)) + &
+                            &kd+(n_loc+1)/2-1
+                    case (1)                                                    ! full period periodicity
+                        kd_tot = calc_kd_tot(id,kd,n)
+                        delta_x = (kd_tot-(kd+id))/(1-n) * (x(n)-x(1))          ! displacement due to kd_tot wrapping
+                        x_loc = x(kd_tot)                                       ! position in fundamental period
+                        mat_loc(kd+(n_loc+1)/2) = x_loc-x(id) + delta_x         ! add wrapping displacement
+                        A%id(id,kd+(n_loc+1)/2) = kd_tot
+                    case (2:3)                                                  ! half period periodicity
+                        kd_tot = calc_kd_tot(id,kd,2*n-1)
+                        delta_x = (kd_tot-(kd+id))/(2-2*n) * 2*(x(n)-x(1))      ! displacement due to kd_tot wrapping
+                        if (kd_tot.le.n) then                                   ! position in fundamental period
+                            x_loc = x(kd_tot)
+                        else                                                    ! half period symmetry
+                            if (lper_loc.eq.3) odd_sym(kd+(n_loc+1)/2) = .true. ! odd
+                            kd_tot = 2*n-kd_tot
+                            x_loc = 2*x(n)-x(kd_tot)
+                        end if
+                        mat_loc(kd+(n_loc+1)/2) = x_loc-x(id) + delta_x
+                        A%id(id,kd+(n_loc+1)/2) = kd_tot
+                    case default
+                        ierr = 1
+                        err_msg = 'No style "'//trim(i2str(lper_loc))//&
+                            &'" for lper'
+                        CHCKERR(err_msg)
+                end select
             end do
             
             ! solve Vandermonde system
             rhs_loc = 0._dp
             rhs_loc(ord+1) = 1._dp                                              ! looking for derivative of this order
             call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
+            where (odd_sym) sol_loc = -sol_loc                                  ! odd symmetry was taken for function value
             
             ! save in total matrix A
             A%dat(id,:) = sol_loc*fac(ord)
-            A%id_start(id) = max(1,min(id-(n_loc-1)/2,n-n_loc+1))
         end do
+    contains
+        !> \private  Calculate  kd in  total  index,  depending on  whether  the
+        !! function is periodic or not:
+        !!
+        !!  - not periodic: limit kd_tot such that 1 < id+kd < n.
+        !!  - periodic: make use of the fact  that points 1 and n correspond, so
+        !!  that kd_tot = modulo(id+kd,n-1) + 1, e.g.:
+        !!       -1 -> n-2
+        !!        0 -> n-1
+        !!        1 -> 1
+        !!          ⋮
+        !!      n-1 -> n-1
+        !!        n -> 1
+        !!      n+1 -> 2
+        !!  A displacement equal  to kd_tot-(id+kd) divided by  1-n is therefore
+        !!  used.
+        !!
+        !! \note  For periodic  functions, the  total size  of the  grid, \c  n,
+        !! comprises the entire  range, i.e. for half periodic  functions, it is
+        !! equal to \f$2n-1\f$ of the main routine.
+        integer function calc_kd_tot(id,kd,n) result(res)
+            ! input / output
+            integer, intent(in) :: id, kd, n
+            
+            res = modulo(kd+id-1,n-1) + 1
+        end function calc_kd_tot
     end function setup_deriv_data_reg
 
     !> \private 2-D version
@@ -1062,7 +1095,7 @@ contains
                     do jd = 1,disc_data%n_loc
                         dvar(id,:,:,:) = dvar(id,:,:,:) + &
                             &disc_data%dat(id,jd)*&
-                            &var(jd+disc_data%id_start(id)-1,:,:,:)
+                            &var(disc_data%id(id,jd),:,:,:)
                     end do
                 end do
             case (2)
@@ -1070,7 +1103,7 @@ contains
                     do jd = 1,disc_data%n_loc
                         dvar(:,id,:,:) = dvar(:,id,:,:) + &
                             &disc_data%dat(id,jd)*&
-                            &var(:,jd+disc_data%id_start(id)-1,:,:)
+                            &var(:,disc_data%id(id,jd),:,:)
                     end do
                 end do
             case (3)
@@ -1078,7 +1111,7 @@ contains
                     do jd = 1,disc_data%n_loc
                         dvar(:,:,id,:) = dvar(:,:,id,:) + &
                             &disc_data%dat(id,jd)*&
-                            &var(:,:,jd+disc_data%id_start(id)-1,:)
+                            &var(:,:,disc_data%id(id,jd),:)
                     end do
                 end do
             case (4)
@@ -1086,7 +1119,7 @@ contains
                     do jd = 1,disc_data%n_loc
                         dvar(:,:,:,id) = dvar(:,:,:,id) + &
                             &disc_data%dat(id,jd)*&
-                            &var(:,:,:,jd+disc_data%id_start(id)-1)
+                            &var(:,:,:,disc_data%id(id,jd))
                     end do
                 end do
             case default
@@ -2109,8 +2142,8 @@ contains
     !> Set up  the factors for  the interpolation calculation  in a matrix  \c A
     !! using a polynomial order \c ord.
     !!
-    !! This  is  done  using  Barycentric Lagrangian  polynomials,  which  are  a
-    !! computationally  more  advantageous  way   of  expressing  the  Lagrangian
+    !! This  is  done using  Barycentric  Lagrangian  polynomials, which  are  a
+    !! computationally  more  advantageous  way  of  expressing  the  Lagrangian
     !! interpolating polynomial:
     !! \f[\begin{aligned}
     !!   L(x) &= \left. \sum_{j=0}^N \frac{w_j f_j}{x-x_j} \right/
@@ -2232,20 +2265,20 @@ contains
             
             ! set up start id
             if (n_loc.lt.size(x)) then
-                A%id_start(id) = ceiling(x_interp_disc-n_loc*0.5_dp)            ! get minimum of bounding indices
-                A%id_start(id) = max(1,min(A%id_start(id),size(x)-n_loc+1))     ! limit to lie within x
+                A%id(id,1) = ceiling(x_interp_disc-n_loc*0.5_dp)            ! get minimum of bounding indices
+                A%id(id,1) = max(1,min(A%id(id,1),size(x)-n_loc+1))         ! limit to lie within x
             else
-                A%id_start(id) = 1                                              ! all values of x are used
+                A%id(id,1) = 1                                              ! all values of x are used
             end if
             
             ! check for (near) exact match
             if (mod(x_interp_disc,1._dp).lt.tol_loc) then
                 ! directly set the correct index to 1
                 A%dat(id,:) = 0._dp
-                A%dat(id,nint(x_interp_disc)-A%id_start(id)+1) = 1._dp
+                A%dat(id,nint(x_interp_disc)-A%id(id,1)+1) = 1._dp
             else
                 ! calculate w_j/(x-x_j)
-                len = (x(A%id_start(id)+n_loc-1) - x(A%id_start(id)))/n_loc
+                len = (x(A%id(id,1)+n_loc-1) - x(A%id(id,1)))/n_loc
                 if (is_trigon_loc) len = sin(len/2)                             ! take sines
                 if (present(norm_len)) len = norm_len
                 
@@ -2257,10 +2290,10 @@ contains
                         if (kd.ne.jd) then                                      ! skip k = j
                             ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
                             weight_loc = &
-                                &x(A%id_start(id)-1+jd)-x(A%id_start(id)-1+kd)
+                                &x(A%id(id,1)-1+jd)-x(A%id(id,1)-1+kd)
                         else
                             ! multiply additionally by (x_interp - x_j)
-                            weight_loc = x_interp(id)-x(A%id_start(id)-1+jd)
+                            weight_loc = x_interp(id)-x(A%id(id,1)-1+jd)
                         end if
                         
                         ! modification of local weight
@@ -2279,18 +2312,23 @@ contains
                 A%dat(id,:) = weight/sum(weight)
             end if
         end do
+        
+        ! complete id
+        do jd = 2,n_loc
+            A%id(:,jd) = A%id(:,1)-1+jd
+        end do
     end function setup_interp_data
     
     !> Trim a grid, removing any overlap between the different regions.
     !! 
-    !! by default, the routine assumes a  symmetric ghost region and cuts as many
-    !! grid points from the end of the  previous process as from the beginning of
-    !! the next process, but if the number of overlapping grid points is odd, the
-    !! next process looses one more point.
+    !! by default, the routine assumes a symmetric ghost region and cuts as many
+    !! grid points from the end of the previous process as from the beginning of
+    !! the next  process, but if the  number of overlapping grid  points is odd,
+    !! the next process looses one more point.
     !!
-    !! optionally, the trimmed indices in the normal direction can be provided in
-    !! \c norm_id, i.e. the indices in the  old, untrimmed grid that correspond to
-    !! the start and end indices of the trimmed grid. E.g. if
+    !! optionally, the trimmed  indices in the normal direction  can be provided
+    !! in  \c  norm_id,  i.e.  the  indices in  the  old,  untrimmed  grid  that
+    !! correspond to the start and end indices of the trimmed grid. E.g. if
     !!  - proc 0:  3 ... 25
     !!  - proc 1: 20 ... 50
     !!
@@ -2302,8 +2340,8 @@ contains
     !!  - proc 0:  1 ... 20
     !!  - proc 1: 21 ... 48
     !!
-    !! in the trimmed grid. The indices of the previous step (3 & 22 and 23 & 50)
-    !! are saved in \c norm_id.
+    !! in the trimmed  grid. The indices of the  previous step (3 & 22  and 23 &
+    !! 50) are saved in \c norm_id.
     !!
     !! \return ierr
     integer function trim_grid(grid_in,grid_out,norm_id) result(ierr)

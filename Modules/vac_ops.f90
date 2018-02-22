@@ -44,7 +44,7 @@ module vac_ops
     ! global variables
 #if ldebug
     logical :: debug_calc_GH = .true.                                          !< plot debug information for calc_GH() \ldebug
-    logical :: debug_calc_vac_res = .false.                                     !< plot debug information for calc_vac_res() \ldebug
+    logical :: debug_calc_vac_res = .true.                                     !< plot debug information for calc_vac_res() \ldebug
     logical :: debug_vac_pot_plot = .true.                                     !< plot debug information for vac_pot_plot() \ldebug
 #endif
 
@@ -813,8 +813,12 @@ contains
         call writo('Using field-line 3-D Boundary Element Method')
         
         ! initialize variables
-        dpar_X = (max_par_X-min_par_X)/(n_par_X-1)
-        dalpha = (max_alpha-min_alpha)/(n_alpha-1)
+        dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
+        if (n_alpha.gt.1) then
+            dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+        else
+            dalpha = 0._dp
+        end if
         
         ! set up local tolerance
         tol_loc = tol_zero*10                                                   ! tolerance for singular interval
@@ -1406,8 +1410,8 @@ contains
     !! Currently, this procedure only works for vacuum style 2 (axisymmetric).
     !!
     !! \return ierr
-    integer function calc_vac_res(vac,grid) result(ierr)
-        use grid_vars, only: min_par_X, max_par_X
+    integer function calc_vac_res(vac) result(ierr)
+        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use MPI
         use rich_vars, only: rich_lvl, n_par_X
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
@@ -1424,7 +1428,6 @@ contains
         
         ! input / output
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
-        type(grid_type), intent(in) :: grid                                     !< grid variables, only used for vacuum style 1
         
         ! local variables
         integer :: jd                                                           ! counter
@@ -1444,8 +1447,10 @@ contains
         integer, target :: desc_res2(BLACSCTXTSIZE)                             ! descriptor for res2
         real(dp) :: arg_loc                                                     ! local argument
         real(dp) :: dpar_X                                                      ! step size in par_X 
+        real(dp) :: dalpha                                                      ! step size in alpha
         real(dp) :: I_loc                                                       ! local integration rule
-        real(dp) :: ang_loc                                                     ! local angle
+        real(dp) :: par_loc                                                     ! local parallel angle
+        real(dp) :: alpha_loc                                                   ! local field line label
         real(dp), allocatable, target :: EP(:,:)                                ! EP
         real(dp), allocatable, target :: GEP(:,:)                               ! GEP
         real(dp), allocatable, target :: Phi(:,:)                               ! intermediate Phi
@@ -1502,6 +1507,16 @@ contains
             call writo('Use STRUMPack to solve system',persistent=rank_o)
             call lvl_ud(1)
             
+            ! set step sizes if 3-D vacuum
+            if (vac%style.eq.1) then
+                dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
+                if (n_alpha.gt.1) then
+                    dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+                else
+                    dalpha = 0._dp
+                end if
+            end if
+            
             ! set secondary mode numbers
             if (use_pol_flux_F) then
                 vac%lim_sec_X(1) = m_X(size(m_X,1),1)
@@ -1547,9 +1562,8 @@ contains
                         &lims_c_loc(1,1:i_cd-1)+1) + &
                         &cd-lims_c_loc(1,i_cd)+1
                     
-                    ! set local secondary mode number and angle
+                    ! set local secondary mode number
                     sec_X_loc = vac%lim_sec_X(1)-1+(mod(cd-1,n_mod_X)+1)
-                    arg_loc = arg(vac%prim_X,sec_X_loc)
                     
                     ! iterate over all subrows of matrix with n_bnd rows
                     subrows: do i_rd = 1,size(vac%lims_r,2)
@@ -1563,28 +1577,47 @@ contains
                             par_id = mod(rd-1,vac%n_ang(1))+1
                             alpha_id = (rd-1)/vac%n_ang(1) + 1
                             
-                            ! set up local angle
+                            ! set up local argument
                             select case (vac%style)
                                 case (1)                                        ! field-line 3-D
-                                    dpar_X = (max_par_X-min_par_X)/(n_par_X-1)
-                                    ang_loc = min_par_X + (par_id-1)*&
-                                        &(max_par_X-min_par_X)/(n_par_X-1)
+                                    par_loc = pi*min_par_X + &
+                                        &(par_id-1)*dpar_X
+                                    alpha_loc = pi*min_alpha + &
+                                        &(alpha_id-1)*dalpha
+                                    if (use_pol_flux_F) then
+                                        arg_loc = vac%prim_X*alpha_loc + &
+                                            &(vac%prim_X*vac%jq-sec_X_loc)*&
+                                            &par_loc
+                                    else
+                                        arg_loc = vac%prim_X*alpha_loc + &
+                                            &(sec_X_loc-vac%prim_X*vac%jq)*&
+                                            &par_loc
+                                    end if
                                 case (2)                                        ! axisymmetric
-                                    ang_loc = vac%ang(par_id,alpha_id)
+                                    arg_loc = -sec_X_loc*&
+                                        &vac%ang(par_id,alpha_id)
                             end select
+                            
+                            ! set up argument
                             
                             ! save EP
                             if (cd.le.n_mod_X) then                             ! real part of rhs
-                                EP(rdl,cdl) = cos(ang_loc*arg_loc)              ! rp(i exp)
+                                EP(rdl,cdl) = cos(arg_loc)                      ! rp(i exp)
                             else
-                                EP(rdl,cdl) = sin(ang_loc*arg_loc)              ! ip(i exp)
+                                EP(rdl,cdl) = sin(arg_loc)                      ! ip(i exp)
                             end if
-                            EP(rdl,cdl) = (vac%prim_X*vac%jq-sec_X_loc)*&
-                                &EP(rdl,cdl)
+                            if (use_pol_flux_F) then
+                                EP(rdl,cdl) = (vac%prim_X*vac%jq-sec_X_loc)*&
+                                    &EP(rdl,cdl)
+                            else
+                                EP(rdl,cdl) = (sec_X_loc-vac%prim_X*vac%jq)*&
+                                    &EP(rdl,cdl)
+                            end if
                         end do row
                     end do subrows
                 end do col
             end do subcols
+            call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
             
             ! solve for Phi
             ierr = solve_Phi_BEM(vac,EP,Phi,[vac%n_bnd,2*n_mod_X],&
@@ -1606,7 +1639,8 @@ contains
             !   I_i = (θ_2-θ_1}/2           for i = 1
             !         (θ_{n}-θ_{n-1}}/2     for i = n
             ! with n = vac%n_bnd.
-            ! For vacua of type 1, the step size is constant.
+            ! For vacua of type 1, the step  size is constant. Also, there is an
+            ! additional step size in the alpha direction.
             subrows3: do i_rd = 1,size(vac%lims_r,2)
                 row3: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                     ! set local row index
@@ -1622,7 +1656,7 @@ contains
                         
                         select case (vac%style)
                             case (1)                                            ! field-line 3-D
-                                I_loc = dpar_X
+                                I_loc = dpar_X*dalpha
                                 if ((rd-1)/vac%n_ang(1).eq.0 .or. &             ! first point on field line
                                     &(rd-1)/vac%n_ang(1).eq.vac%n_ang(1)-1) &   ! last point on field line
                                     &I_loc = I_loc*0.5_dp
@@ -1776,36 +1810,6 @@ contains
         call lvl_ud(-1)
         
         call writo('Done calculating vacuum quantities')
-    contains
-        ! Returns the argument to be used in EP
-        !>  \private
-        real(dp) function arg(n,m)
-            
-            ! input / output
-            integer, intent(in) :: n, m                                         ! toroidal and poloidal mode number
-            
-            ! local variables
-            real(dp) :: fac_n                                                   ! factor to multiply with n
-            real(dp) :: fac_m                                                   ! factor to multiply with m
-            
-            ! set factor for n and m
-            select case (vac%style)
-                case (1)                                                        ! field-line 3-D
-                    if (use_pol_flux_F) then
-                        fac_n = vac%jq
-                        fac_m = 1.0_dp
-                    else
-                        fac_n = 1.0_dp
-                        fac_m = vac%jq
-                    end if
-                case (2)                                                        ! axisymmetric
-                    fac_n = 0._dp
-                    fac_m = 1._dp
-            end select
-            
-            ! set argument
-            arg = n*fac_n - m*fac_m
-        end function arg
     end function calc_vac_res
     
     !> Calculate vacuum potential at some positions that are not resonant.
@@ -2144,6 +2148,10 @@ contains
         &desc_RPhi) result(ierr)
         
         use vac_vars, only: in_context
+#if ldebug
+        use grid_vars, only: min_par_X, max_par_X
+        use rich_vars, only: n_par_X
+#endif
         
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
         
@@ -2165,12 +2173,14 @@ contains
         type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
         type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H Phi = GR
 #if ldebug
-        !integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
-        !integer :: cd                                                           ! global counter for row and col
-        !integer :: cdl                                                          ! local counter for col
-        !integer :: i_rd, i_cd                                                   ! index of subrow and subcol
-        !character(len=max_str_ln) :: plot_title                                 ! plot title
-        !character(len=max_str_ln) :: plot_name                                  ! plot name
+        integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
+        integer :: id                                                           ! counter
+        integer :: cd                                                           ! global counter for row and col
+        integer :: cdl                                                          ! local counter for col
+        integer :: i_rd, i_cd                                                   ! index of subrow and subcol
+        character(len=max_str_ln) :: plot_title                                 ! plot title
+        character(len=max_str_ln) :: plot_name                                  ! plot name
+        real(dp), allocatable :: ang(:)                                         ! angle
 #endif
         
         ! initialize ierr
@@ -2238,36 +2248,54 @@ contains
             ! statistics
             call SDP_F90_double_print_statistics(SDP_loc)
             
-            !! user output
-            !subcols: do i_cd = 1,size(lims_c_RPhi,2)
-                !col: do cd = lims_c_RPhi(1,i_cd),lims_c_RPhi(2,i_cd)
-                    !! set local column index
-                    !cdl = sum(lims_c_RPhi(2,1:i_cd-1)-&
-                        !&lims_c_RPhi(1,1:i_cd-1)+1) + &
-                        !&cd-lims_c_RPhi(1,i_cd)+1
+            ! user output
+            subcols: do i_cd = 1,size(lims_c_RPhi,2)
+                col: do cd = lims_c_RPhi(1,i_cd),lims_c_RPhi(2,i_cd)
+                    ! set local column index
+                    cdl = sum(lims_c_RPhi(2,1:i_cd-1)-&
+                        &lims_c_RPhi(1,1:i_cd-1)+1) + &
+                        &cd-lims_c_RPhi(1,i_cd)+1
                     
-                    !subrows2: do i_rd = 1,size(vac%lims_r,2)
-                        !! set local row limits
-                        !lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
-                            !&vac%lims_r(1,1:i_rd-1)+1) + &
-                            !&vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
+                    subrows2: do i_rd = 1,size(vac%lims_r,2)
+                        ! set local row limits
+                        lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
+                            &vac%lims_r(1,1:i_rd-1)+1) + &
+                            &vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
                         
-                        !! output
-                        !plot_title = 'for column '//trim(i2str(cd))//&
-                            !&' and starting row '//&
-                            !&trim(i2str(vac%lims_r(1,i_rd)))
-                        !plot_name = '_'//trim(i2str(cd))//'_'//&
-                            !&trim(i2str(vac%lims_r(1,i_rd)))
-                        !call print_ex_2D('Phi '//trim(plot_title),&
-                            !&'Phi'//trim(plot_name),&
-                            !&Phi(lims_rl(1):lims_rl(2),cdl),&
-                            !&x=vac%ang(vac%lims_r(1,i_rd):&
-                            !&vac%lims_r(2,i_rd),1),draw=.false.)
-                        !call draw_ex(['Phi '//trim(plot_title)],&
-                            !&'Phi'//trim(plot_name),1,1,.false.)
-                    !end do subrows2
-                !end do col
-            !end do subcols
+                        ! set angle
+                        allocate(ang(vac%lims_r(2,i_rd)-vac%lims_r(1,i_rd)+1))
+                        select case (vac%style)
+                            case (1)                                            ! field-line 3-D
+                                do id = 1,vac%n_ang(1)
+                                    ang(id:&
+                                        &id+vac%n_ang(1)*(vac%n_ang(2)-1):&
+                                        &vac%n_ang(1)) = &
+                                        &pi * (min_par_X + (id-1)*&
+                                        &(max_par_X-min_par_X)/(n_par_X-1))
+                                end do
+                            case (2)                                            ! axisymmetric
+                                ang = reshape(vac%ang,[vac%n_bnd])
+                        end select
+                        
+                        ! output
+                        plot_title = 'for column '//trim(i2str(cd))//&
+                            &' and starting row '//&
+                            &trim(i2str(vac%lims_r(1,i_rd)))
+                        plot_name = '_'//trim(i2str(cd))//'_'//&
+                            &trim(i2str(vac%lims_r(1,i_rd)))
+                        call print_ex_2D('Phi '//trim(plot_title),&
+                            &'Phi'//trim(plot_name),&
+                            &Phi(lims_rl(1):lims_rl(2),cdl),&
+                            &x=ang(vac%lims_r(1,i_rd):vac%lims_r(2,i_rd)),&
+                            &draw=.false.)
+                        call draw_ex(['Phi '//trim(plot_title)],&
+                            &'Phi'//trim(plot_name),1,1,.false.)
+                        
+                        ! clean up
+                        deallocate(ang)
+                    end do subrows2
+                end do col
+            end do subcols
 #endif
             
             ! destroy Strumpack object

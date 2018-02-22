@@ -22,8 +22,8 @@ module grid_vars
     integer :: n_alpha                                                          !< nr. of field-lines
     real(dp) :: min_par_X                                                       !< min. of parallel coordinate [\f$\pi\f$] in field-aligned grid
     real(dp) :: max_par_X                                                       !< max. of parallel coordinate [\f$\pi\f$] in field-aligned grid
-    real(dp) :: min_alpha                                                       !< min. of field-line label [\f$\alpha\f$] in field-aligned grid
-    real(dp) :: max_alpha                                                       !< max. of field-line label [\f$\alpha\f$] in field-aligned grid
+    real(dp) :: min_alpha                                                       !< min. of field-line label [\f$\pi\f$] in field-aligned grid
+    real(dp) :: max_alpha                                                       !< max. of field-line label [\f$\pi\f$] in field-aligned grid
     real(dp), allocatable :: alpha(:)                                           !< field line label alpha
 #if ldebug
     integer :: n_alloc_grids                                                    !< nr. of allocated grids \ldebug
@@ -93,7 +93,7 @@ module grid_vars
         integer :: n                                                            !< total size of discretization variables
         integer :: n_loc                                                        !< local size of discretization variables
         real(dp), allocatable :: dat(:,:)                                       !< nonzero elements of matrix corresponding to discretization
-        integer, allocatable :: id_start(:)                                     !< start index of data in \c dat
+        integer, allocatable :: id(:,:)                                         !< indices data in \c dat
     contains
         !> initialize
         procedure :: init => init_disc
@@ -314,11 +314,11 @@ contains
         
         ! (re)allocate
         if (allocated(disc%dat)) deallocate(disc%dat)
-        if (allocated(disc%id_start)) deallocate(disc%id_start)
+        if (allocated(disc%id)) deallocate(disc%id)
         allocate(disc%dat(n,n_loc))
-        allocate(disc%id_start(n))
+        allocate(disc%id(n,n_loc))
         disc%dat = 0._dp
-        disc%id_start = 0
+        disc%id = 0
         
         ! set n, n_loc
         disc%n = n

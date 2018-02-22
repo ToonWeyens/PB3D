@@ -526,14 +526,14 @@ contains
         real(dp) :: start_step
         real(dp), allocatable :: varin(:)
         real(dp), allocatable :: var_an(:,:), var_nm(:,:)
-        logical :: ind_plots, eqd_plots
+        logical :: ind_plots, eqd_plots, per_plots
         real(dp), allocatable :: step_size(:)
         real(dp), allocatable :: max_error(:,:)
         real(dp), allocatable :: mean_error(:,:)
         real(dp), allocatable :: plot_y(:,:)
         real(dp), allocatable :: plot_x(:,:)
         type(disc_type) :: deriv_data
-        integer :: input_type
+        integer :: input_type, per_type
         integer :: prec
         real(dp), allocatable :: x(:)                                           ! abscissa
         integer :: max_deriv = 4
@@ -571,7 +571,7 @@ contains
         call writo('individual plots?')
         ind_plots = get_log(.false.)
         
-        call writo('which function?')
+        call writo('which function on [0..1]?')
         call lvl_ud(1)
         call writo('1: sin(pi*x) + 0.25*cos(2*pi*x)')
         call writo('2: 0.5+x-2*x^3+x^4')
@@ -579,8 +579,32 @@ contains
         call writo('4: x^6')
         call writo('5: x^5')
         call writo('6: x^4')
+        call writo('7: sin(2*pi*x)')
+        call writo('8: sin(pi*x)-0.25*sin(3*pi*x)')
+        call writo('9: cos(pi*x)-0.25*cos(3*pi*x)')
         call lvl_ud(-1)
-        input_type = get_int(lim_lo=1,lim_hi=6)
+        input_type = get_int(lim_lo=1,lim_hi=9)
+        
+        call writo('periodic plot?')
+        per_plots = get_log(.false.)
+        
+        per_type = 0
+        if (per_plots) then
+            select case (input_type)
+                case (7:9)
+                    ! nothing
+                case default
+                    call writo('Periodicity assumption is weird',warning=.true.)
+            end select
+            call writo('which kind of periodicity?')
+            call lvl_ud(1)
+            call writo('0: no periodicity')
+            call writo('1: full period')
+            call writo('2: even half period')
+            call writo('3: odd half period')
+            call lvl_ud(-1)
+            per_type = get_int(lim_lo=0,lim_hi=3)
+        end if
         
         ! only do the tests by the master
         if (rank.eq.0) then
@@ -611,7 +635,8 @@ contains
                             x = [(((kd-1._dp)*step_size(id))**2,kd=1,loc_max)]
                         case default
                             ierr = 1
-                            err_msg = 'grid_type has to be 1 or 2'
+                            err_msg = 'grid_type cannot be '//&
+                                &trim(i2str(grid_type))
                             CHCKERR(err_msg)
                     end select
                 end if
@@ -676,6 +701,37 @@ contains
                         var_an(:,3) = 2*3*4*x**1
                         var_an(:,4) = 1*2*3*4._dp
                         var_an(:,5) = 0._dp
+                    case (7)
+                        varin = sin(2*pi*x)
+                        var_an(:,1) = (2*pi)**1*cos(2*pi*x)
+                        var_an(:,2) = -(2*pi)**2*sin(2*pi*x)
+                        var_an(:,3) = -(2*pi)**3*cos(2*pi*x)
+                        var_an(:,4) = (2*pi)**4*sin(2*pi*x)
+                        var_an(:,5) = (2*pi)**5*cos(2*pi*x)
+                    case (8)
+                        varin = sin(pi*x)-0.25*sin(3*pi*x)
+                        var_an(:,1) = &
+                            &(pi)**1*cos(pi*x)-0.25*(3*pi)**1*cos(3*pi*x)
+                        var_an(:,2) = &
+                            &-(pi)**2*sin(pi*x)+0.25*(3*pi)**2*sin(3*pi*x)
+                        var_an(:,3) = &
+                            &-(pi)**3*cos(pi*x)+0.25*(3*pi)**3*cos(3*pi*x)
+                        var_an(:,4) = &
+                            &(pi)**4*sin(pi*x)-0.25*(3*pi)**4*sin(3*pi*x)
+                        var_an(:,5) = &
+                            &(pi)**5*cos(pi*x)-0.25*(3*pi)**5*cos(3*pi*x)
+                    case (9)
+                        varin = cos(pi*x)-0.25*cos(3*pi*x)
+                        var_an(:,1) = &
+                            &-(pi)**1*sin(pi*x)+0.25*(3*pi)**1*sin(3*pi*x)
+                        var_an(:,2) = &
+                            &-(pi)**2*cos(pi*x)+0.25*(3*pi)**2*cos(3*pi*x)
+                        var_an(:,3) = &
+                            &(pi)**3*sin(pi*x)-0.25*(3*pi)**3*sin(3*pi*x)
+                        var_an(:,4) = &
+                            &(pi)**4*cos(pi*x)-0.25*(3*pi)**4*cos(3*pi*x)
+                        var_an(:,5) = &
+                            &-(pi)**5*sin(pi*x)+0.25*(3*pi)**5*sin(3*pi*x)
                     case default
                         ierr = 1
                         err_msg = 'Input type has to be between 1 and 6'
@@ -686,14 +742,15 @@ contains
                 if (eqd_plots) then
                     do kd = 1,max_deriv
                         ierr = setup_deriv_data(step_size(id),loc_max,&
-                            &deriv_data,kd,prec)
+                            &deriv_data,kd,prec,lper=per_type)
                         CHCKERR('')
                         ierr = apply_disc(varin,deriv_data,var_nm(:,kd))
                         CHCKERR('')
                     end do
                 else
                     do kd = 1,max_deriv
-                        ierr = setup_deriv_data(x,deriv_data,kd,prec)
+                        ierr = setup_deriv_data(x,deriv_data,kd,prec,&
+                            &lper=per_type)
                         CHCKERR('')
                         ierr = apply_disc(varin,deriv_data,var_nm(:,kd))
                         CHCKERR('')

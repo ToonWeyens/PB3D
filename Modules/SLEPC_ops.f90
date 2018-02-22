@@ -1192,9 +1192,10 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
+            write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            !!!ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
+                !!!&ind_insert=.true.)
+            !!!CHCKERR('')
         end function set_BC_2
         
         ! set BC style 3:

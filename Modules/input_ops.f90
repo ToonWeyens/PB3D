@@ -78,7 +78,7 @@ contains
             &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
-            &plot_grid_style, max_tot_mem, ex_plot_style, &
+            &plot_grid_style, max_tot_mem, ex_plot_style, plot_vac_pot, &
             &pert_mult_factor_POST, min_Rvac_plot, max_Rvac_plot, &
             &min_Zvac_plot, max_Zvac_plot, n_vac_plot
         
@@ -448,6 +448,8 @@ contains
         !   POST_output_sol is true if solution quantities are plot
         !> \private
         integer function adapt_inoutput_POST() result(ierr)
+            use num_vars, only: compare_tor_pos
+            
             character(*), parameter :: rout_name = 'adapt_inoutput_POST'
             
             ! local variables
@@ -493,7 +495,7 @@ contains
             ! set POST_output_full and POST_output_sol
             POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec
             POST_output_full = POST_output_sol .or. plot_B .or. plot_J .or. &
-                &plot_kappa .or. plot_vac_pot
+                &plot_kappa .or. plot_vac_pot .or. compare_tor_pos
         end function adapt_inoutput_POST
         
         ! Checks whether the variables concerning output are chosen correctly:
@@ -804,7 +806,6 @@ contains
                             &warning=.true.)
                         n_alpha = 1
                     end if
-                    min_alpha = alpha
                     max_alpha = alpha
                 case (2)                                                        ! multiple field lines, single turns
                     if (n_alpha.lt.1) then
@@ -834,13 +835,10 @@ contains
                 end if
             end if
             
-            ! multiply by pi
-            min_alpha = min_alpha * pi
-            max_alpha = max_alpha * pi
-            
             ! set up alpha
             allocate(alpha_arr(n_alpha))
-            ierr = calc_eqd_grid(alpha_arr,min_alpha,max_alpha,excl_last=.true.)
+            ierr = calc_eqd_grid(alpha_arr,min_alpha*pi,max_alpha*pi,&
+                &excl_last=.true.)
             CHCKERR('')
         end function adapt_alpha
         

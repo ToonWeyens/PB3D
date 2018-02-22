@@ -731,7 +731,7 @@ contains
         use X_vars, only: min_r_sol, max_r_sol
         use input_utilities, only: pause_prog, get_log, get_int, get_real
         use num_utilities, only: GCD, bubble_sort, order_per_fun, &
-            &shift_F, spline3, calc_int
+            &shift_F, calc_int
         use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
             &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original, &
             &use_normalization
@@ -2876,7 +2876,8 @@ contains
     !> \private individual version
     integer function calc_jac_H_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
-        use HELENA_vars, only:  h_H_33, RBphi_H
+        use num_utilities, only: spline3
+        use HELENA_vars, only: ias, h_H_33, RBphi_H
         use grid_utilities, only: setup_deriv_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
@@ -2889,6 +2890,7 @@ contains
         
         ! local variables
         integer :: jd, kd                                                       ! counters
+        integer :: lper                                                         ! periodicity flag for derivation
         character(len=max_str_ln) :: err_msg                                    ! error message
         type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
         type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
@@ -2899,6 +2901,13 @@ contains
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_J_H')
         CHCKERR('')
+        
+        ! set up periodicity flag
+        if (ias.eq.0) then                                                      ! top-bottom symmetric
+            lper = 2                                                            ! even half periodic
+        else
+            lper = 1                                                            ! full periodic
+        end if
         
         ! calculate determinant
         if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
@@ -2931,7 +2940,7 @@ contains
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                        &ang_deriv_data,1,norm_disc_prec_eq+1,lper)             ! use extra precision to later calculate mixed derivatives
                     CHCKERR('')
                     ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
                         &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,1,0))
@@ -2943,7 +2952,7 @@ contains
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq)
+                        &ang_deriv_data,2,norm_disc_prec_eq,lper)
                     CHCKERR('')
                     ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
                         &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,2,0))
@@ -3730,13 +3739,12 @@ contains
     !!  - parallel current \c sigma
     !!
     !! This is done using the formula's from \cite Weyens3D
-    !!
-    !! \return ierr
     subroutine calc_derived_q(grid_eq,eq_1,eq_2)
         use num_utilities, only: c, spline3
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq
 #if ldebug
+        use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_vars, only: use_pol_flux_F
         use num_utilities, only: calc_int
 #endif
@@ -3772,6 +3780,10 @@ contains
         real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
         real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
 #if ldebug
+        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
+        real(dp), allocatable :: X_plot(:,:,:)                                  ! x values of total plot
+        real(dp), allocatable :: Y_plot(:,:,:)                                  ! y values of total plot
+        real(dp), allocatable :: Z_plot(:,:,:)                                  ! z values of total plot
         real(dp), pointer :: D13J(:,:,:) => null()                              ! D_alpha,theta jac
         real(dp), pointer :: D23J(:,:,:) => null()                              ! D_psi,theta jac
         real(dp), pointer :: D23g13(:,:,:) => null()                            ! D_psi,theta g_alpha,theta
@@ -3782,6 +3794,7 @@ contains
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
         integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
 #endif
         
         ! user output
@@ -3853,10 +3866,21 @@ contains
             call writo('Testing whether -2 p'' J kappa_g = D3sigma')
             call lvl_ud(1)
             
+            ! trim equilibrium grid
+            istat = trim_grid(grid_eq,grid_trim,norm_id)
+            CHCKSTT
+            
             ! allocate variables
             allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
             allocate(D3sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
             allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(X_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+            allocate(Y_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+            allocate(Z_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
+            
+            ! calculate grid
+            istat = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
+            CHCKSTT
             
             ! point parallel angle
             if (use_pol_flux_F) then
@@ -3913,17 +3937,36 @@ contains
                 &[0,0,grid_eq%i_min-1],descr='To test whether &
                 &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
             
+            ! plot sigma
+            call plot_HDF5('sigma','TEST_sigma',&
+                &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            call plot_HDF5('sigma_1','TEST_sigma_1',-1._dp/vac_perm*(D2g13)/J,&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            call plot_HDF5('sigma_2','TEST_sigma_2',-1._dp/vac_perm*&
+                &(g13*D2J/J)/J,&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            
             ! plot shear
-            call plot_HDF5('shear','TEST_shear',eq_2%S,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            call plot_HDF5('shear','TEST_shear',&
+                &eq_2%S(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_n
-            call plot_HDF5('kappa_n','TEST_kappa_n',eq_2%kappa_n,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            call plot_HDF5('kappa_n','TEST_kappa_n',&
+                &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_g
-            call plot_HDF5('kappa_g','TEST_kappa_g',eq_2%kappa_g,&
-                &tot_dim=grid_eq%n,loc_offset=[0,0,grid_eq%i_min-1])
+            call plot_HDF5('kappa_g','TEST_kappa_g',&
+                &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! clean up
             nullify(ang_par_F)
@@ -4743,10 +4786,11 @@ contains
         &result(ierr)
         
         use grid_utilities, only: calc_vec_comp, calc_XYZ_grid, trim_grid, &
-            &calc_tor_diff
+            &calc_tor_diff, nufft
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_style, norm_disc_prec_eq, eq_job_nr, RZ_0, &
-            &use_normalization, rank, ex_plot_style, n_procs, prop_B_tor_i
+            &use_normalization, rank, ex_plot_style, n_procs, prop_B_tor_i, &
+            &tol_zero
         use eq_vars, only: B_0
         use num_utilities, only: c, calc_int, order_per_fun
         use MPI_utilities, only: get_ser_var
@@ -4764,6 +4808,7 @@ contains
         integer :: id, kd                                                       ! counters
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: r_lim_2D(2)                                                  ! limits of r to plot in 2-D
+        integer :: max_m                                                        ! maximum mode number
         real(dp), allocatable :: XYZ_loc(:,:,:,:)                               ! X, Y and Z of surface in trimmed grid
         real(dp), allocatable :: B_com(:,:,:,:,:)                               ! covariant and contravariant components of B (dim1,dim2,dim3,3,2)
         real(dp), allocatable :: delta_B_tor(:,:,:)                             ! delta_B/B
@@ -4775,6 +4820,7 @@ contains
         real(dp), allocatable :: theta_geo(:,:,:)                               ! geometrical poloidal angle for proportionality factor output
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius for proportionality factor output
         real(dp), allocatable :: prop_B_tor_plot(:,:)                           ! prop_B_tor and angle at last normal position for plotting
+        real(dp), allocatable :: delta_r_F(:,:)                                 ! Fourier components of delta_r at last normal position
         logical :: new_file_found                                               ! name for new file found
         character(len=25) :: base_name                                          ! base name
         character(len=25) :: plot_name                                          ! plot name
@@ -4858,6 +4904,57 @@ contains
             &cont_plot=eq_job_nr.gt.1,&
             &descr='plasma position displacement')
         
+        ! calculate NUFFT for last point
+        if (rank.eq.n_procs-1) then
+            ! plot delta_r at last normal position
+            call print_ex_2D(trim(plot_name),trim(base_name),&
+                &delta_r(1:grid_eq%n(1)-1,1,grid_eq%loc_n_r),&
+                &x=theta_geo(1:grid_eq%n(1)-1,2,grid_eq%loc_n_r),&
+                &draw=.false.)
+            call draw_ex([trim(plot_name)],trim(base_name),1,1,.false.)
+            
+            ! calculate and plot Fourier modes
+            ierr = nufft(theta_geo(1:grid_eq%n(1)-1,2,grid_eq%loc_n_r),&
+                &delta_r(1:grid_eq%n(1)-1,1,grid_eq%loc_n_r),delta_r_F)
+            CHCKERR('')
+            base_name = trim(base_name)//'_F'
+            call print_ex_2D(['delta_r cos','delta_r sin'],trim(base_name),&
+                &delta_r_F,draw=.false.)
+            call draw_ex(['delta_r cos','delta_r sin'],trim(base_name),2,1,&
+                &.false.)
+            
+            ! mode outputs, (p)recycle "prop_B_tor_file_*"
+            new_file_found = .false.
+            prop_B_tor_file_name = base_name
+            kd = 1
+            do while (.not.new_file_found)
+                open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name)//'_'//&
+                    &trim(i2str(kd))//'.dat',IOSTAT=ierr,STATUS='old')
+                if (ierr.eq.0) then
+                    kd = kd + 1
+                else
+                    prop_B_tor_file_name = trim(prop_B_tor_file_name)//&
+                        &'_'//trim(i2str(kd))//'.dat'
+                    new_file_found = .true.
+                    open(prop_B_tor_i,FILE=trim(prop_B_tor_file_name),&
+                        &IOSTAT=ierr,STATUS='new')
+                    CHCKERR('Failed to open file')
+                end if
+            end do
+            
+            ! write to output file
+            max_m = 20
+            write(prop_B_tor_i,'("# ",2(A5," "),2(A23," "))') &
+                &'N', 'M', 'delta_c', 'delta_s'
+            do id = 1,min(size(delta_r_F,1),max_m+1)
+                write(prop_B_tor_i,'("  ",2(I5," "),2(ES23.16," "))') &
+                    &18, id-1, delta_r_F(id,:)
+            end do
+            
+            ! close
+            close(prop_B_tor_i)
+        end if
+        
         call lvl_ud(-1)
         
         call writo('Calculate magnetic field ripple')
@@ -4909,7 +5006,7 @@ contains
         
         allocate(prop_B_tor(grid_eq%n(1),1,grid_eq%loc_n_r))
         prop_B_tor = 0.0_dp
-        where (delta_B_tor.gt.0._dp) prop_B_tor = delta_r / delta_B_tor
+        where (abs(delta_B_tor).gt.tol_zero) prop_B_tor = delta_r / delta_B_tor
         
         ! set plot variables for prop_B_tor
         base_name = 'prop_B_tor'

@@ -95,10 +95,12 @@ contains
                     do_vac_ops = .false.
                 end if
         end select
+        write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+        do_vac_ops = .false.
         
         if (do_vac_ops) then
             ! calculate vacuum
-            ierr = calc_vac_res(vac,grid_X)
+            ierr = calc_vac_res(vac)
             CHCKERR('')
             
             call writo('Write to output file')

@@ -52,11 +52,12 @@ main() {
 
     # loop over all inputs
     # (from http://www.cyberciti.biz/faq/unix-linux-iterate-over-a-variable-range-of-numbers-in-bash/)
+    current_date=$(date +"%Y-%m-%d-%H-%M-%S")
     for (( input_i=1; input_i<=$n_inputs; input_i++ )); do
         # setup output name
         case $prog_ID in
             1)  # PB3D
-                set_output $(date +"%Y-%m-%d-%H-%M-%S")
+                set_output $current_date
             ;;
             2)  # POST
                 set_output ${1%/}
@@ -64,7 +65,7 @@ main() {
         esac
         
         # set variables
-        # Note  about difference  between out_full  and out_full_loc:  The input
+        # Note  about difference  between out_full  and out:  The input
         # file  is potentially  modified before  use. This  happens in  the base
         # folder. Afterwards, the run directory  is created on the local system,
         # and this  modified input file is  copied there. On a  normal computer,
@@ -81,8 +82,8 @@ main() {
                 # select your queue here: compute, testqueue, ib or ib_gen8
                 # + additional node name: batch,   testqueue, ib or ib_gen8
                 ##########
-                queue="ib"
-                queue_name="ib"
+                queue="ib_gen8"
+                queue_name="ib_gen8"
                 n_nodes=1                                                       # use one node
                 node_list=$(./gen_node_list.sh -m $n_nodes $queue $(cat broken_nodes.txt 2> /dev/null))
                 n_cores=${node_list#*=}
@@ -107,14 +108,6 @@ main() {
             ;;
         esac
         
-        # set directory to which to copy afterwards
-        if [[ $out == '/'* ]] ; then
-            out_full_loc=$out                                                   # absolute directory
-            out=${out#/}                                                        # remove possible leading slash from out
-        else
-            out_full_loc=$base/$out                                             # relative directory
-        fi
-        
         # save other options
         other_opts=${@:3}
         
@@ -123,24 +116,24 @@ main() {
         echo -e ""
         
         # create local directory
-        mkdir -p $out_full_loc || {
+        mkdir -p $out || {
             # failure
-            echo "ERROR: unable to create directory $out_full_loc/"
+            echo "ERROR: unable to create directory $out/"
             echo "Do you have the correct permissions?"
             echo ""
             exit 1
         }
         
         # possibly modify copy of input file
-        cp $input_name $out_full_loc/$input_name
-        modify_input_file $out_full_loc/$input_name
+        cp $input_name $out/$input_name
+        modify_input_file $out/$input_name
         
         # set up local simulation script
         create_loc_script
         
         if [[ $on_cluster = true ]]; then
             # user output
-            echo -e "The output will be copied to '$out_full_loc' afterwards"
+            echo -e "The output will be copied to '$out' afterwards"
             echo -e ""
             
             # user output
@@ -162,7 +155,7 @@ main() {
             setup_pbs_script_2
             
             # mv pbs script to output
-            mv $prog_name".pbs" $out_full_loc/
+            mv $prog_name".pbs" $out/
             
             # user output
             echo -e ""
@@ -170,10 +163,10 @@ main() {
             echo -e ""
             
             # submit
-            qsub $out_full_loc/$prog_name."pbs"
+            qsub $out/$prog_name."pbs"
             
             # write detailed job information
-            qstat -f $(qselect -u weyenst | tail -n 1) > $out_full_loc/qstat
+            qstat -f $(qselect -u weyenst | tail -n 1) > $out/qstat
         else
             # user output
             echo -e "Running the script"
@@ -188,7 +181,7 @@ main() {
     done
     
     # possibly copy input modification array to base
-    [[ $use_input_mods = true ]] && cp $base/$input_mod_file $base/$out_base/array_input
+    [[ $use_input_mods = true ]] && cp $base/$input_mod_file $out_base/array_input
     
     # finish
     echo -e ""
@@ -338,57 +331,37 @@ display_usage() {
             echo -e "               85 Hmode_JET_HELENA_2.0"
             echo -e "               86 Hmode_JET_HELENA_2.0_HELENA"
             echo -e ""
-            for ((i=131; i <= 180 ; i++)); do
-                echo -e "              $i Hmode_ped0.$((($i-101)/10))_ripple16_0.$(printf "%03d\n" $((($i-101)%10+1)))"
-                (( $((($i-101)%10+1)) == 10 )) && echo -e ""
-            done
-            declare -a names=("0.3" "0.4" "0.5" "0.6" "0.7" "0.8" "0.9" "1.0" "1.5")
-            declare -a ripples=("0.0" "1.0" "2.0" "3.0" "4.0" "5.0" "6.0")
-            i_ripple=1
-            for ripple in "${ripples[@]}"
+            echo -e "               91 sim3"
+            echo -e "               92 sim4"
+            echo -e "               93 sim4_16"
+            echo -e "               94 sim10b"
+            echo -e ""
+            #for ((i=101; i <= 270 ; i++)); do
+                #echo -e "              $i EPS_2018_ped$(((30+$i-101)/100)).$(((3+($i-101)/10)%10))_ripple$(printf "%02d\n" $((($i-101)%10+1))).0"
+                #(( $((($i-101)%10+1)) == 10 )) && echo -e ""
+            #done
+            declare -a names=("0.3" "0.5" "0.7" "0.9" "1.1" "1.3" "1.5" "1.7" "1.9")
+            i_name=1
+            for name in "${names[@]}"
             do
-                i_name=1
-                for name in "${names[@]}"
+                echo -e "               $((100+i_name)) EPS_2018_ripple0.0_ped${name}"
+                ((i_name++))
+            done
+            echo -e ""
+            declare -a names=("0.3" "0.5" "0.7" "0.9" "1.1" "1.3" "1.5" "1.7" "1.9")
+            declare -a ripples=("1.0" "2.0" "3.0" "4.0" "5.0" "6.0" "7.0" "8.0" "9.0" "10.0")
+            i_name=1
+            for name in "${names[@]}"
+            do
+                i_ripple=1
+                for ripple in "${ripples[@]}"
                 do
-                    echo -e "               $((200+(i_ripple-1)*10+i_name)) Hmode_PHD_ripple${ripple}_ped${name}"
+                    echo -e "               $((110+(i_ripple-1)*10+i_name)) EPS_2018_ripple${ripple}_ped${name}"
                     ((i_name++))
                 done
                 echo -e ""
                 ((i_ripple++))
             done
-            echo -e ""
-            echo -e "               301 circular"
-            echo -e "               302 circular_ripple1"
-            echo -e "               303 circular_ripple16_0.005"
-            echo -e "               304 circular_ripple16_0.001"
-            echo -e "               305 circular_ripple16_0.0001"
-            echo -e "               306 circular_ripple6_0.001"
-            echo -e "               307 circular_ripple1_0.001"
-            echo -e "               401 Hmode_ped2.0_ripple16"
-            echo -e "               501 circular_ped2.0"
-            echo -e "               502 circular_ped2.0_HELENA"
-            echo -e "               601 test_ripple_M0_0.05"
-            echo -e ""
-            echo -e "               1001 case1_sim1"
-            echo -e "               1002 case1_sim2"
-            echo -e "               1003 case1_sim3"
-            echo -e "               1004 case1_sim4"
-            echo -e "               1005 case1_sim5"
-            echo -e "               1006 case1_sim6"
-            echo -e "               1007 case1_sim7"
-            echo -e "               1008 case1_sim8"
-            echo -e ""
-            echo -e "               1011 case1_sim3_1.00"
-            echo -e "               1012 case1_sim3_1.05"
-            echo -e "               1013 case1_sim3_1.10"
-            echo -e "               1014 case1_sim3_1.15"
-            echo -e "               1015 case1_sim3_1.20"
-            echo -e "               1016 case1_sim3_1.25"
-            echo -e "               1017 case1_sim3_1.30"
-            echo -e "               1018 case1_sim3_1.35"
-            echo -e "               1019 case1_sim3_1.40"
-            echo -e "               1020 case1_sim3_1.45"
-            echo -e "               1021 case1_sim3_1.50"
         ;;
         2)  # POST
             echo -e "    PB3D_DIR:  PB3D directory"
@@ -514,11 +487,14 @@ set_input() {
                 31)
                     input_name=qps
                 ;;
-                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2]|100[1-8]|101[1-9]|102[0-1])
+                4[1-9]|5[0-9]|6[0-9]|7[0-8]|8[1-6]|301|50[1-2]|100[1-8]|101[1-8]|102[1-6]|103[1-8])
                     input_name=Hmode
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180|20[1-5]|30[2-7]|20[1-9]|21[1-9]|22[1-9]|23[1-9]|24[1-9]|25[1-9]|26[1-9]|401|601)
-                    input_name=Hmode_ripple
+                10[1-9])
+                    input_name=PB3D_EPS_2018
+                ;;
+                11[0-9]|12[0-9]|13[0-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|18[0-9]|19[0-9])
+                    input_name=PB3D_EPS_2018_ripple
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -703,105 +679,31 @@ set_input() {
                 86)
                     eq_name=Hmode_JET_2.0
                 ;;
-                13[1-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|180)
-                    eq_name=wout_Hmode_ped0.$((($1-101)/10))_ripple16_0.$(printf "%03d\n" $((($1-101)%10+1))).nc
+                91)
+                    eq_name=wout_EPS2018_sim3.nc
                 ;;
-                20[1-9]|22[0-9]|23[0-9]|24[0-9]|25[0-9]|26[0-9])
-                    declare -a names=("0.3" "0.4" "0.5" "0.6" "0.7" "0.8" "0.9" "1.0" "1.5")
-                    declare -a ripples=("0.0" "1.0" "2.0" "3.0" "4.0" "5.0" "6.0")
-                    i_ripple=$((($1-201)/10))
-                    i_name=$(($1-201-i_ripple*10))
-                    eq_name=wout_Hmode_PHD_ripple${ripples[i_ripple]}_ped${names[i_name]}.nc
+                92)
+                    eq_name=wout_EPS2018_sim4.nc
                 ;;
-                301)
-                    eq_name=wout_circular.nc
+                93)
+                    eq_name=wout_EPS2018_sim4_16.nc
                 ;;
-                302)
-                    eq_name=wout_circular_ripple1.nc
+                94)
+                    eq_name=wout_EPS2018_sim10b.nc
                 ;;
-                303)
-                    eq_name=wout_circular_ripple16_0.005.nc
+                10[1-9])
+                    declare -a names=("0.3" "0.5" "0.7" "0.9" "1.1" "1.3" "1.5" "1.7" "1.9")
+                    declare -a ripples=("0.0")
+                    i_ripple=$((($1-101)/10))
+                    i_name=$(($1-101-i_ripple*10))
+                    eq_name=wout_EPS_2018_ripple${ripples[i_ripple]}_ped${names[i_name]}.nc
                 ;;
-                304)
-                    eq_name=wout_circular_ripple16_0.001.nc
-                ;;
-                305)
-                    eq_name=wout_circular_ripple16_0.0001.nc
-                ;;
-                306)
-                    eq_name=wout_circular_ripple6_0.001.nc
-                ;;
-                307)
-                    eq_name=wout_circular_ripple1_0.001.nc
-                ;;
-                401)
-                    eq_name=wout_Hmode_ped2.0_ripple16.nc
-                ;;
-                501)
-                    eq_name=wout_circular_ped2.0.nc
-                ;;
-                502)
-                    eq_name=circular_ped2.0
-                ;;
-                601)
-                    eq_name=wout_test_ripple_M0_0.05.nc
-                ;;
-                1001)
-                    eq_name=wout_case1_sim1.nc
-                ;;
-                1002)
-                    eq_name=wout_case1_sim2.nc
-                ;;
-                1003)
-                    eq_name=wout_case1_sim3.nc
-                ;;
-                1004)
-                    eq_name=wout_case1_sim4.nc
-                ;;
-                1005)
-                    eq_name=wout_case1_sim5.nc
-                ;;
-                1006)
-                    eq_name=wout_case1_sim6.nc
-                ;;
-                1007)
-                    eq_name=wout_case1_sim7.nc
-                ;;
-                1008)
-                    eq_name=wout_case1_sim8.nc
-                ;;
-                1011)
-                    eq_name=wout_case1_sim3_1.00.nc
-                ;;
-                1012)
-                    eq_name=wout_case1_sim3_1.05.nc
-                ;;
-                1013)
-                    eq_name=wout_case1_sim3_1.10.nc
-                ;;
-                1014)
-                    eq_name=wout_case1_sim3_1.15.nc
-                ;;
-                1015)
-                    eq_name=wout_case1_sim3_1.20.nc
-                ;;
-                1016)
-                    eq_name=wout_case1_sim3_1.25.nc
-                ;;
-                1017)
-                    eq_name=wout_case1_sim3_1.30.nc
-                ;;
-                1018)
-                    eq_name=wout_case1_sim3_1.35.nc
-                ;;
-                1019)
-                    eq_name=wout_case1_sim3_1.40.nc
-                ;;
-                1020)
-                    eq_name=wout_case1_sim3_1.45.nc
-                ;;
-                1021)
-                    eq_name=wout_case1_sim3_1.50.nc
+                11[0-9]|12[0-9]|13[0-9]|14[0-9]|15[0-9]|16[0-9]|17[0-9]|18[0-9]|19[0-9])
+                    declare -a names=("0.3" "0.5" "0.7" "0.9" "1.1" "1.3" "1.5" "1.7" "1.9")
+                    declare -a ripples=("1.0" "2.0" "3.0" "4.0" "5.0" "6.0" "7.0" "8.0" "9.0" "10.0")
+                    i_ripple=$((($1-111)/10))
+                    i_name=$(($1-111-i_ripple*10))
+                    eq_name=wout_EPS_2018_ripple${ripples[i_ripple]}_ped${names[i_name]}.nc
                 ;;
                 *)
                     echo -e "ERROR: Case $1 not found"
@@ -842,18 +744,35 @@ set_input() {
 # input: default directory of output
 # sets: out_base
 #       out
+#       out_name
 # Note: if the -i option is used, subfolder are created for every line of the input modification file.
 set_output() {
     [[ $# -ne 1 ]] && err_arg 1
+    # set local output
     if [[ $use_out_loc = true ]]; then
         out_base=$out_loc
     else
         out_base=$1
     fi
+    
+    # possibly convert to absolute directory if not yet so
+    if [[ $out_base == '/'* ]] ; then
+        out_base=/${out_base#/}                                             # remove possible leading slash from out_base, then add it
+    else
+        out_base=${base}/$out_base                                          # relative directory
+    fi
+    
+    # set out
     if [[ $use_input_mods = true ]]; then
         out=$out_base/$input_i
     else
         out=$out_base
+    fi
+    
+    # set out name
+    out_name=$(echo $out | rev | cut -d/ -f1 | rev)
+    if [[ $use_input_mods = true ]]; then
+        out_name=$(echo $out | rev | cut -d/ -f2 | rev)_${out_name}
     fi
 }
 
@@ -911,15 +830,15 @@ create_loc_script() {
         base=$base
         mkdir -p \$out_full \$out_full/Plots \$out_full/Data \$out_full/Scripts || {
             # failure
-            echo "ERROR: unable to create directory $out_full/ and subdirectories"
+            echo "ERROR: unable to create directory \$out_full/ and subdirectories"
             echo "Do you have the correct permissions?"
             echo ""
             exit 1
         }
         
         # copy inputs and the program
-        rsync --progress -zvhL $out_full_loc/$input_name \$out_full/ 2> /dev/null
-        rsync --progress -zvhL $out_full_loc/${prog_name}_out.txt \$out_full/ 2> /dev/null
+        rsync --progress -zvhL $out/$input_name \$out_full/ 2> /dev/null
+        rsync --progress -zvhL $out/${prog_name}_out.txt \$out_full/ 2> /dev/null
         $(aux_copy_inputs)
         rsync --progress -zvhL $prog_dir/$prog_name \$out_full/
         chmod +x \$out_full/$prog_name
@@ -950,7 +869,7 @@ END
 aux_copy_inputs() {
     case $prog_ID in
         1)  # PB3D
-            echo "rsync --progress -vhL --compress-level=9 $out_full_loc/PB3D_out.h5 \$out_full/ 2> /dev/null"
+            echo "rsync --progress -vhL --compress-level=9 $out/PB3D_out.h5 \$out_full/ 2> /dev/null"
             echo "rsync --progress -zvhL \$base/$eq_name \$out_full/"
         ;;
         2)  # POST
@@ -986,10 +905,10 @@ setup_pbs_script_1() {
     # print into script
     cat <<- END > $prog_name.pbs
         #!/bin/sh
-        #PBS -N $(echo $out | tr '/' '_')
+        #PBS -N $out_name
         #PBS -k oe
-        #PBS -o $out_full_loc/$prog_name.out
-        #PBS -e $out_full_loc/$prog_name.err
+        #PBS -o $out/$prog_name.out
+        #PBS -e $out/$prog_name.err
         #PBS -l nodes=$n_nodes:ppn=$n_cores
         #PBS -q $queue_name
         #PBS -l vmem=$max_tot_mem$mem_unit
@@ -1023,10 +942,10 @@ setup_pbs_script_1() {
         ulimit -l unlimited
         
         # set local output and error and create symbolic links
-        loc_out=\$PBS_O_HOME/$(echo $out | tr '/' '_').o\$(echo \$PBS_JOBID | cut -d'.' -f 1)
-        loc_err=\$PBS_O_HOME/$(echo $out | tr '/' '_').e\$(echo \$PBS_JOBID | cut -d'.' -f 1)
-        ln -sf \$loc_out $out_full_loc/$prog_name.out
-        ln -sf \$loc_err $out_full_loc/$prog_name.err
+        loc_out=\$PBS_O_HOME/${out_name}.o\$(echo \$PBS_JOBID | cut -d'.' -f 1)
+        loc_err=\$PBS_O_HOME/${out_name}.e\$(echo \$PBS_JOBID | cut -d'.' -f 1)
+        ln -sf \$loc_out $out/$prog_name.out
+        ln -sf \$loc_err $out/$prog_name.err
 END
     # cut leading whitespaces and make executable
     sed -i 's/^[ \t]*//' $prog_name".pbs"
@@ -1042,7 +961,7 @@ setup_pbs_script_2() {
     echo "# Done, copy files back with rsync" >> $prog_name".pbs"
     echo "echo '# Copy results with rsync'" >> $prog_name".pbs"
     echo "find $out_full/ -name '*temp.h5' | xargs rm -f" >> $prog_name".pbs"
-    echo "cd $out_full_loc" >> $prog_name".pbs"
+    echo "cd $out" >> $prog_name".pbs"
     echo "rsync --remove-source-files --progress --exclude='PB3D_out.h5' -zvhr $out_full/* ." >> $prog_name".pbs"
     if (( prog_ID == 1 )); then
         echo "rsync --remove-source-files --progress -zvhr $out_full/* ." >> $prog_name".pbs"

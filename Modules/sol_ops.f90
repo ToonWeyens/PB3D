@@ -1335,7 +1335,8 @@ contains
         
         ! add vacuum energy if last process and first equilibrium job
         E_pot_int(7) = 0._dp
-        if (rank.eq.n_procs-1 .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
+        write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+        if (1.eq.2 .and. rank.eq.n_procs-1 .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
             do jd = 1,sol%n_mod
                 do kd = 1,sol%n_mod
                     E_pot_int(7) = E_pot_int(7) + &

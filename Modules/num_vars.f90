@@ -55,8 +55,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.07_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.07_dp                           !< minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 2.08_dp                               !< version number
+    real(dp), parameter :: min_PB3D_version = 2.08_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else

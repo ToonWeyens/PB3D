@@ -1144,3 +1144,21 @@ ITER Organization
 * It performs its task for G and H as well, but they are later overwritten, as stated in bullet 3.
 * Added trap for NaN to debug version on laptop.
 * Changed definition of relative error due to insistence of Daan.
+
+## 2.08:
+* Vacuum not yet working for VMEC and numerical problems for top-bottom asymmetric equilibria. It is not sure whether these occur for HELENA as well as VMEC.
+* Vacuum potential plot is now an input variable.
+* 'calc_vac_res' does no need the grid any more.
+* Added the forgotten step size in alpha to the vacuum response in 3-D.
+* 'min_alpha' and 'max_alpha' are now saved without the factor pi for consistency with the parallel angle.
+* Added tolerance to 'read_HEL' to prevent infinity at axis.
+* There is an uncertainty about what to do with 'n_alpha' when there is only 1 field line. This should be accurate for axisymmetric cases but it is probably impossible.
+* Fixed small bug where proportionality factor for ripple was set to zero for negative values.
+* Added possibility to plot toroidal dependency of ripple, but quite rudimentary.
+* Added output of ripple map in delta_r.
+* Improved 'run.sh' so that it also works fine with absolute paths and gives more reasonable job names.
+* Temporarily set vacuum calculation to zero for VMEC equilibria.
+* Slighly changed 'test_metrics_H'.
+* 'debug_calc_derived_q' now plots curvatures and shear in equilibrium grid. For VMEC this might not make sense.
+* 'setup_deriv_data' now also can take an optional flag that indicates whether the signal is periodic. The test has been adapted appropriately. This option is now used in HELENA.
+* The equidistant version of 'setup_deriv_data' now just calls the regular version with a dummy x.

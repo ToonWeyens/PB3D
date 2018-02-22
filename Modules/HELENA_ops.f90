@@ -83,7 +83,8 @@ contains
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv
+        use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv, &
+            &tol_zero
         use grid_utilities, only: setup_deriv_data, apply_disc
         use num_utilities, only: calc_int, spline3
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
@@ -167,7 +168,7 @@ contains
             &(h_H_11(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (gem11)
         CHCKERR(err_msg)
-        h_H_11(:,1) = 0._dp                                                     ! first normal point is not given, so set to zero
+        h_H_11(:,1) = tol_zero                                                  ! first normal point is not given, so set to almost zero
         if (ias.ne.0) h_H_11(nchi,:) = h_H_11(1,:)
         
         allocate(h_H_12(nchi,n_r_in))                                           ! upper metric factor 1,2
@@ -1288,13 +1289,13 @@ contains
             CHCKERR('')
             
             ! calculate Jacobian
-            jac = Zchi*Rpsi - Zpsi*Rchi 
+            do kd = 1,n_r_eq
+                jac(:,kd) = q_saf_H(kd,0)/(h_H_33(:,kd)*RBphi_H(kd))
+            end do
             
             ! calculate Jacobian differently
             allocate(jac_alt(nchi,n_r_eq))
-            do kd = 1,n_r_eq
-                jac_alt(:,kd) = q_saf_H(kd,0)/(h_H_33(:,kd)*RBphi_H(kd))
-            end do
+            jac_alt = R_H*(Zchi*Rpsi - Zpsi*Rchi)
             
             ! output jacobian
             ! set some variables
@@ -1303,7 +1304,7 @@ contains
             
             ! plot difference
             call plot_diff_HDF5(&
-                &reshape(R_H(:,r_min:n_r_eq)*jac(:,r_min:n_r_eq),&
+                &reshape(jac(:,r_min:n_r_eq),&
                 &[nchi,1,n_r_eq-r_min+1]),reshape(jac_alt(:,r_min:n_r_eq),&
                 &[nchi,1,n_r_eq-r_min+1]),file_name,descr=description,&
                 &output_message=.true.)
@@ -1313,8 +1314,8 @@ contains
             allocate(h_H_12_alt(nchi,1,n_r_eq))
             allocate(h_H_33_alt(nchi,1,n_r_eq))
             
-            h_H_11_alt(:,1,:) = 1._dp/(jac**2) * (Zchi**2 + Rchi**2)
-            h_H_12_alt(:,1,:) = -1._dp/(jac**2) * (Zchi*Zpsi + Rchi*Rpsi)
+            h_H_11_alt(:,1,:) = (R_H/jac)**2 * (Zchi**2 + Rchi**2)
+            h_H_12_alt(:,1,:) = -(R_H/jac)**2 * (Zchi*Zpsi + Rchi*Rpsi)
             h_H_33_alt(:,1,:) = 1._dp/(R_H**2)
             
             ! output h_H_11

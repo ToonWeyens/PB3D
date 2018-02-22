@@ -35,6 +35,9 @@ module driver_POST
     type(X_1_type) :: X_HEL                                                     !< vectorial perturbation variables for HELENA tables
     complex(dp), allocatable :: E_pot_int(:,:)                                  !< \f$\int E_{\text{pot}} \text{d}V\f$ for requested solutions
     complex(dp), allocatable :: E_kin_int(:,:)                                  !< \f$\int E_{\text{kin}} \text{d}V\f$ for requested solutions
+#if ldebug
+    logical :: debug_tor_dep_ripple = .false.                                   !< plot debug information for toroidal dependency of ripple \ldebug
+#endif
 
 contains
     !> Initializes the POST driver.
@@ -242,8 +245,9 @@ contains
         if (POST_output_sol) then
             ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
             CHCKERR('')
-            ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
-            CHCKERR('')
+            write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            !!!ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
+            !!!CHCKERR('')
         end if
         
         ! user output
@@ -1133,6 +1137,8 @@ contains
             &eq_job_nr, eq_jobs_lims
         use grid_utilities, only: extend_grid_F, copy_grid
         use PB3D_ops, only: reconstruct_PB3D_grid
+        use num_vars, only: rank, n_procs
+        use grid_utilities, only: nufft
         
         character(*), parameter :: rout_name = 'setup_out_grids'
         
@@ -1147,6 +1153,11 @@ contains
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
         integer :: n_theta                                                      ! nr. of points in theta for extended grid
+        integer :: id                                                           ! counter
+        real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
+        real(dp), allocatable :: xy(:,:,:)                                      ! x and y
+        real(dp), allocatable :: f(:,:,:)                                       ! Fourier components
+        real(dp), allocatable :: f_loc(:,:)                                     ! local f
         
         ! initialize ierr
         ierr = 0
@@ -1249,6 +1260,46 @@ contains
         CHCKERR('')
         call lvl_ud(-1)
         
+#if ldebug
+        ! Plot toroidal dependency of ripple.
+        ! Note: Hard-code NFP.
+        if (debug_tor_dep_ripple .and. rank.eq.n_procs-1) then
+            call plot_HDF5(['X','Y','Z'],'XYZ',XYZ_eq)
+            allocate(r_geo(grids_out(1)%n(1),grids_out(1)%n(2),&
+                &grids_out(1)%loc_n_r))
+            r_geo = sqrt((XYZ_eq(:,:,:,3)-0.56710)**2 + &
+                &(XYZ_eq(:,:,:,1)-6.4297)**2)
+            call plot_HDF5('r_geo','r_geo_TEMP',r_geo,X=XYZ_eq(:,:,:,1),&
+                &Y=XYZ_eq(:,:,:,2),Z=XYZ_eq(:,:,:,3))
+            allocate(xy(grids_out(1)%n(2),grids_out(1)%n(1),2))
+            do id = 1,grids_out(1)%n(1)
+                xy(:,id,1) = XYZ_eq(id,:,grids_out(1)%loc_n_r,2)*18
+                xy(:,id,2) = r_geo(id,:,grids_out(1)%loc_n_r) &
+                    &* grids_out(1)%n(2) / sum(r_geo(id,:,grids_out(1)%loc_n_r))
+            end do
+            call print_ex_2D(['r_geo'],'r_geo',xy(:,:,2),x=xy(:,:,1),&
+                &draw=.false.)
+            call draw_ex(['r_geo'],'r_geo',grids_out(1)%n(1),1,.false.,&
+                &ex_plot_style=1)
+            do id = 1,grids_out(1)%n(1)
+                ierr = nufft(xy(1:size(xy,1)-1,id,1),xy(1:size(xy,1)-1,id,2),&
+                    &f_loc)
+                CHCKERR('')
+                if (id.eq.1) &
+                    &allocate(f(size(f_loc,1),size(f_loc,2),grids_out(1)%n(1)))
+                f(:,:,id) = f_loc
+            end do
+            call print_ex_2D(['r_geo_cos'],'r_geo_cos',f(:,1,:),&
+                &draw=.false.)
+            call draw_ex(['r_geo_cos'],'r_geo_cos',grids_out(1)%n(1),1,.false.,&
+                &ex_plot_style=1)
+            call print_ex_2D(['r_geo_sin'],'r_geo_sin',f(:,2,:),&
+                &draw=.false.)
+            call draw_ex(['r_geo_sin'],'r_geo_sin',grids_out(1)%n(1),1,.false.,&
+                &ex_plot_style=1)
+        end if
+#endif
+        
         call writo('Calculate X, Y and Z of perturbation grid')
         call lvl_ud(1)
         ierr = calc_XYZ_of_output_grid(grids_out(2),XYZ_X)
@@ -1316,6 +1367,7 @@ contains
                 case (3)                                                        ! 3-D geometry with straightened toroidal coordinate
                     ! user output
                     call writo('Plots are done in an unwrapped torus')
+                    call lvl_ud(1)
                     
                     allocate(R(grid%n(1),grid%n(2),grid%loc_n_r))
                     ierr = calc_XYZ_grid(grid_eq_XYZ,grid,&
