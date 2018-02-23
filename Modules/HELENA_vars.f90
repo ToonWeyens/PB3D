@@ -27,9 +27,9 @@ module HELENA_vars
     real(dp), allocatable :: q_saf_H(:,:)                                       !< safety factor
     real(dp), allocatable :: rot_t_H(:,:)                                       !< rotational transform
     real(dp), allocatable :: RBphi_H(:)                                         !< \f$R B_\phi (= F) \f$
-    real(dp), allocatable :: h_H_11(:,:)                                        !< adapted upper metric factor \f$h^{11}\f$ (\c gem11)
-    real(dp), allocatable :: h_H_12(:,:)                                        !< adapted upper metric factor \f$h^{12}\f$ (\c gem12)
-    real(dp), allocatable :: h_H_33(:,:)                                        !< adapted upper metric factor \f$h^{33}\f$ (1 / \c gem33)
+    real(dp), allocatable :: h_H_11(:,:)                                        !< upper metric factor \f$h_{11}\f$ (\c gem11)
+    real(dp), allocatable :: h_H_12(:,:)                                        !< upper metric factor \f$h_{12}\f$ (\c gem12)
+    real(dp), allocatable :: h_H_33(:,:)                                        !< upper metric factor \f$h_{32}\f$ (1 / \c gem12)
     real(dp), allocatable :: R_H(:,:)                                           !< major radius \f$R\f$ (xout)
     real(dp), allocatable :: Z_H(:,:)                                           !< height \f$Z\f$ (yout)
     integer :: nchi                                                             !< nr. of poloidal points

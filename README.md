@@ -1162,3 +1162,8 @@ ITER Organization
 * 'debug_calc_derived_q' now plots curvatures and shear in equilibrium grid. For VMEC this might not make sense.
 * 'setup_deriv_data' now also can take an optional flag that indicates whether the signal is periodic. The test has been adapted appropriately. This option is now used in HELENA.
 * The equidistant version of 'setup_deriv_data' now just calls the regular version with a dummy x.
+
+## 2.09:
+* The pressure derivative calculation for HELENA now checks whether it deviates much from HELENA output on first and last point.
+* HELENA equilibrium calculations now calculate g_E before h_E.
+* The HELENA equilibrium profiles are now much more accurate, especially at the plasma edge.

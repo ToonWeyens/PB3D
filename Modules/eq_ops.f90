@@ -158,22 +158,17 @@ module eq_ops
         module procedure calc_g_V_arr
     end interface
     
-    !> \public  Calculate  the  upper  metric coefficients  in  the  equilibrium
+    !> \public  Calculate  the  lower  metric coefficients  in  the  equilibrium
     !! H(ELENA) coordinate system.
     !!
     !! This is done using the HELENA output
     !!
-    !! \todo The derivatives are done using finite differences, which means that
-    !! the first and  last points of the  normal grid have a  higher error. This
-    !! could be remedied by choosing the interval larger. Currently, this is not
-    !! done automatically.
-    !!
     !! \return ierr
-    interface calc_h_H
+    interface calc_g_H
         !> \public
-        module procedure calc_h_H_ind
+        module procedure calc_g_H_ind
         !> \public
-        module procedure calc_h_H_arr
+        module procedure calc_g_H_arr
     end interface
     
     !> \public  Calculate  the  metric  coefficients in  the  F(lux)  coordinate
@@ -549,9 +544,9 @@ contains
                 end do
                 
                 ! calculate the metric factors in the HELENA coordinate system
-                call writo('Calculate h_H')
+                call writo('Calculate g_H')
                 do id = 0,max_deriv
-                    ierr = calc_h_H(grid_eq,eq_2,derivs(id))
+                    ierr = calc_g_H(grid_eq,eq_2,derivs(id))
                     CHCKERR('')
                 end do
                 
@@ -566,10 +561,10 @@ contains
                 end if
 #endif
                 
-                ! calculate the inverse g_H of the metric factors h_H
-                call writo('Calculate g_H')
+                ! calculate the inverse h_H of the metric factors g_H
+                call writo('Calculate h_H')
                 do id = 0,max_deriv
-                    ierr = calc_inv_met(eq_2%g_E,eq_2%h_E,derivs(id))
+                    ierr = calc_inv_met(eq_2%h_E,eq_2%g_E,derivs(id))
                     CHCKERR('')
                 end do
                 
@@ -663,7 +658,8 @@ contains
         end if
         
         ! Calculate derived metric quantities
-        call calc_derived_q(grid_eq,eq_1,eq_2)
+        ierr = calc_derived_q(grid_eq,eq_1,eq_2)
+        CHCKERR('')
         
 #if ldebug
         if (ltest) then
@@ -2660,13 +2656,13 @@ contains
     end function calc_g_V_arr
     
     !> \private individual version
-    integer function calc_h_H_ind(grid_eq,eq,deriv) result(ierr)
+    integer function calc_g_H_ind(grid_eq,eq,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
-        use HELENA_vars, only: h_H_11, h_H_12, h_H_33
+        use HELENA_vars, only: ias, nchi, R_H, Z_H, chi_H, h_H_33
         use num_utilities, only: c
         use grid_utilities, only: setup_deriv_data, apply_disc
         
-        character(*), parameter :: rout_name = 'calc_h_H_ind'
+        character(*), parameter :: rout_name = 'calc_g_H_ind'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
@@ -2676,6 +2672,9 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: jd, kd                                                       ! counters
+        integer :: lper                                                         ! periodicity flag for derivation
+        real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
+        real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
         type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
         
@@ -2683,52 +2682,81 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_h_H')
+        ierr = check_deriv(deriv,max_deriv,'calc_g_H')
         CHCKERR('')
         
+        ! set up periodicity flag
+        if (ias.eq.0) then                                                      ! top-bottom symmetric
+            lper = 2                                                            ! even half periodic
+        else
+            lper = 1                                                            ! full periodic
+        end if
+        
         ! initialize
-        eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
+        eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
         
         if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
-            !eq%h_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+            !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (sum(deriv).eq.0) then                                          ! no derivatives
+            ! calculate derivatives
+            allocate(Rchi(nchi,grid_eq%loc_n_r),Rpsi(nchi,grid_eq%loc_n_r))
+            allocate(Zchi(nchi,grid_eq%loc_n_r),Zpsi(nchi,grid_eq%loc_n_r))
+            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
+                &norm_disc_prec_eq+2)
+            CHCKERR('')
+            ierr = apply_disc(R_H(:,grid_eq%i_min:grid_eq%i_max),&
+                &norm_deriv_data,Rpsi,2)
+            CHCKERR('')
+            ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
+                &norm_deriv_data,Zpsi,2)
+            CHCKERR('')
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+2,&
+                &lper)
+            CHCKERR('')
+            ierr = apply_disc(R_H(:,grid_eq%i_min:grid_eq%i_max),&
+                &ang_deriv_data,Rchi,1)
+            CHCKERR('')
+            ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
+                &ang_deriv_data,Zchi,1)
+            CHCKERR('')
+            
+            ! set up g_H
             do jd = 1,grid_eq%n(2)
-                eq%h_E(:,jd,:,c([1,1],.true.),0,0,0) = &
-                    &h_H_11(:,grid_eq%i_min:grid_eq%i_max)
-                eq%h_E(:,jd,:,c([1,2],.true.),0,0,0) = &
-                    &h_H_12(:,grid_eq%i_min:grid_eq%i_max)
-                eq%h_E(:,jd,:,c([3,3],.true.),0,0,0) = &
-                    &h_H_33(:,grid_eq%i_min:grid_eq%i_max)
-                eq%h_E(:,jd,:,c([2,2],.true.),0,0,0) = &
-                    &1._dp/h_H_11(:,grid_eq%i_min:grid_eq%i_max) * &
-                    &(1._dp/(eq%jac_E(:,jd,:,0,0,0)**2*&
-                    &h_H_33(:,grid_eq%i_min:grid_eq%i_max)) + &
-                    &h_H_12(:,grid_eq%i_min:grid_eq%i_max)**2)
+                eq%g_E(:,jd,:,c([1,1],.true.),0,0,0) = Rpsi*Rpsi+Zpsi*Zpsi
+                eq%g_E(:,jd,:,c([1,2],.true.),0,0,0) = Rpsi*Rchi+Zpsi*Zchi
+                eq%g_E(:,jd,:,c([2,2],.true.),0,0,0) = Rpsi*Rchi+Zpsi*Zchi
+                eq%g_E(:,jd,:,c([2,2],.true.),0,0,0) = Rchi*Rchi+Zchi*Zchi
+                eq%g_E(:,jd,:,c([3,3],.true.),0,0,0) = 1._dp/h_H_33
             end do
+            
+            ! clean up
+            deallocate(Zchi,Rchi,Zpsi,Rpsi)
+            call norm_deriv_data%dealloc()
+            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
             CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,1,0,0),3)
+            ierr = apply_disc(eq%g_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &eq%g_E(:,:,:,:,1,0,0),3)
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
                 &norm_disc_prec_eq)
             CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,2,0,0),3)
+            ierr = apply_disc(eq%g_E(:,:,:,:,0,0,0),norm_deriv_data,&
+                &eq%g_E(:,:,:,:,2,0,0),3)
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1)                  ! use extra precision to later calculate mixed derivatives
+                        &ang_deriv_data,1,norm_disc_prec_eq+1,lper)             ! use extra precision to later calculate mixed derivatives
                     CHCKERR('')
-                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,1,0),1)
+                    ierr = apply_disc(eq%g_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,eq%g_E(:,jd,kd,:,0,1,0),1)
                     CHCKERR('')
                 end do
             end do
@@ -2737,10 +2765,10 @@ contains
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq)
+                        &ang_deriv_data,2,norm_disc_prec_eq,lper)
                     CHCKERR('')
-                    ierr = apply_disc(eq%h_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%h_E(:,jd,kd,:,0,2,0),1)
+                    ierr = apply_disc(eq%g_E(:,jd,kd,:,0,0,0),&
+                        &ang_deriv_data,eq%g_E(:,jd,kd,:,0,2,0),1)
                     CHCKERR('')
                 end do
             end do
@@ -2749,8 +2777,8 @@ contains
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
             CHCKERR('')
-            ierr = apply_disc(eq%h_E(:,:,:,:,0,1,0),norm_deriv_data,&
-                &eq%h_E(:,:,:,:,1,1,0),3) 
+            ierr = apply_disc(eq%g_E(:,:,:,:,0,1,0),norm_deriv_data,&
+                &eq%g_E(:,:,:,:,1,1,0),3) 
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else
@@ -2760,10 +2788,10 @@ contains
                 &) not supported'
             CHCKERR(err_msg)
         end if
-    end function calc_h_H_ind
+    end function calc_g_H_ind
     !> \private array version
-    integer function calc_h_H_arr(grid_eq,eq,deriv) result(ierr)
-        character(*), parameter :: rout_name = 'calc_h_H_arr'
+    integer function calc_g_H_arr(grid_eq,eq,deriv) result(ierr)
+        character(*), parameter :: rout_name = 'calc_g_H_arr'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibirum grid
@@ -2777,10 +2805,10 @@ contains
         ierr = 0
         
         do id = 1, size(deriv,2)
-            ierr = calc_h_H_ind(grid_eq,eq,deriv(:,id))
+            ierr = calc_g_H_ind(grid_eq,eq,deriv(:,id))
             CHCKERR('')
         end do
-    end function calc_h_H_arr
+    end function calc_g_H_arr
 
     !> \private individual version
     integer function calc_g_F_ind(eq,deriv) result(ierr)
@@ -3739,15 +3767,18 @@ contains
     !!  - parallel current \c sigma
     !!
     !! This is done using the formula's from \cite Weyens3D
-    subroutine calc_derived_q(grid_eq,eq_1,eq_2)
+    integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c, spline3
         use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq
+        use num_vars, only: norm_disc_prec_eq, eq_style
+        use HELENA_vars, only: RBphi_H
 #if ldebug
         use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_vars, only: use_pol_flux_F
         use num_utilities, only: calc_int
 #endif
+        
+        character(*), parameter :: rout_name = 'calc_derived_q'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
@@ -3796,6 +3827,9 @@ contains
         integer :: jd                                                           ! counter
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
 #endif
+        
+        ! initialize ierr
+        ierr = 0
         
         ! user output
         call writo('Set up derived quantities in flux coordinates')
@@ -3853,8 +3887,19 @@ contains
             &g13/g33*(0.5*D3g33/g33 - D3J/J)
         
         ! Calculate the parallel current sigma
-        eq_2%sigma = 1._dp/vac_perm*&
-            &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                eq_2%sigma = 1._dp/vac_perm*&
+                    &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
+            case (2)                                                            ! HELENA
+                ierr = spline3(norm_disc_prec_eq,grid_eq%loc_r_E,&
+                    &RBphi_H(grid_eq%i_min:grid_eq%i_max),&
+                    &grid_eq%loc_r_E,dynew=eq_2%sigma(1,1,:))
+                CHCKERR('')
+                do kd = 1,grid_eq%loc_n_r
+                    eq_2%sigma(:,:,kd) = -eq_2%sigma(1,1,kd)
+                end do
+        end select
         do kd = 1,grid_eq%loc_n_r
             eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) - &
                 &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
@@ -3898,17 +3943,6 @@ contains
                     CHCKSTT
                 end do
             end do
-            !!D3sigma_ALT = -1._dp/vac_perm*&
-                !!&(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J**2*D3J + &
-                !!&1._dp/vac_perm*&
-                !!&(D13g23 - D23g13 - (D3g23*D1J + g23*D13J - &
-                !!&D3g13*D2J - g13*D23J)/J + (g23*D1J - g13*D2J)/J**2*D3J)/J
-            !!do kd = 1,grid_eq%loc_n_r
-                !!D3sigma_ALT(:,:,kd) = D3sigma_ALT(:,:,kd) - &
-                    !!&eq_1%pres_FD(kd,1)*(D3J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd) + &
-                    !!&J(:,:,kd)*D3g13(:,:,kd)/g33(:,:,kd) - &
-                    !!&J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)**2*D3g33(:,:,kd))
-            !!end do 
             
             ! calculate alternatively derived sigma
             do kd = 1,grid_eq%loc_n_r
@@ -3929,24 +3963,17 @@ contains
             end do
             
             ! plot output
-            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_D3sigma',&
+            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_diff_D3sigma',&
                 &grid_eq%n,[0,0,grid_eq%i_min-1],&
                 &descr='To test whether -2 p'' J kappa_g = D3sigma',&
                 &output_message=.true.)
-            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_sigma',grid_eq%n,&
-                &[0,0,grid_eq%i_min-1],descr='To test whether &
+            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
                 &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
             
             ! plot sigma
             call plot_HDF5('sigma','TEST_sigma',&
                 &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
-            call plot_HDF5('sigma_1','TEST_sigma_1',-1._dp/vac_perm*(D2g13)/J,&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
-            call plot_HDF5('sigma_2','TEST_sigma_2',-1._dp/vac_perm*&
-                &(g13*D2J/J)/J,&
                 &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
                 &X=X_plot,Y=Y_plot,Z=Z_plot)
             
@@ -3986,7 +4013,7 @@ contains
         nullify(h23)
         
         call lvl_ud(-1)
-    end subroutine calc_derived_q
+    end function calc_derived_q
     
     !> Sets up normalization constants.
     !!

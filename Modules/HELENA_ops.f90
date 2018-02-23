@@ -99,11 +99,15 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counters
+        integer :: lper                                                         ! periodicity flag for derivation
         integer :: nchi_loc                                                     ! local nchi
         integer :: max_loc_Z(2)                                                 ! location of maximum Z
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
+        real(dp) :: Dp0, Dpe                                                    ! derivative of pressure on axis and surface
+        real(dp) :: diff_Dp                                                     ! Dp difference
+        real(dp) :: tol_diff_Dp                                                 ! tolerance on diff_Dp
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
         real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
         real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t.  magnetic axis (i.e. R_m)
@@ -186,21 +190,21 @@ contains
         read(eq_i,*,IOSTAT=ierr) cpsurf, radius                                 ! poloidal flux on surface, minor radius
         CHCKERR(err_msg)
         
-        allocate(h_H_33(nchi,n_r_in))                                           ! upper metric factor 3,3
+        allocate(h_H_33(nchi,n_r_in))                                           ! lower metric factor 3,3
         read(eq_i,*,IOSTAT=ierr) &
             &(h_H_33(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),id=&
             &nchi_loc+1,n_r_in*nchi_loc)                                        ! (gem33)
         
         read(eq_i,*,IOSTAT=ierr) raxis, B0                                      ! major radius
         CHCKERR(err_msg)
-        h_H_33(:,:) = 1._dp/h_H_33(:,:)                                         ! HELENA gives R^2, but need 1/R^2
         h_H_33(:,1) = raxis**2                                                  ! first normal point is degenerate, major radius
         if (ias.ne.0) h_H_33(nchi,:) = h_H_33(1,:)
+        h_H_33 = 1._dp/h_H_33                                                   ! inverse is given
         
         allocate(pres_H(n_r_in,0:max_deriv+1))                                  ! pressure profile
         read(eq_i,*,IOSTAT=ierr) (pres_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
-        read(eq_i,*,IOSTAT=ierr) pres_H(1,1),pres_H(n_r_in,1)                   ! first point, last point
+        read(eq_i,*,IOSTAT=ierr) Dp0, Dpe                                       ! first point, last point
         CHCKERR(err_msg)
         
         allocate(RBphi_H(n_r_in))                                               ! R B_phi (= F)
@@ -232,6 +236,13 @@ contains
         read(eq_i,*,IOSTAT=ierr) (Z_H(mod(id-1,nchi_loc)+1,(id-1)/nchi_loc+1),&
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (yout)
         CHCKERR(err_msg)
+        
+        ! set up periodicity flag
+        if (ias.eq.0) then                                                      ! top-bottom symmetric
+            lper = 2                                                            ! even half periodic
+        else
+            lper = 1                                                            ! full periodic
+        end if
         
         ! transform to MISHKA normalization
         allocate(flux_p_H(n_r_in,0:max_deriv+1))
@@ -292,6 +303,23 @@ contains
             ierr = apply_disc(q_saf_H(:,0),norm_deriv_data(kd),q_saf_H(:,kd))
             CHCKERR('')
         end do
+        
+        ! check for consistency
+        tol_diff_Dp = abs(pres_H(1,0)-pres_H(n_r_in,0))/n_r_in
+        diff_Dp = s_H(1)*flux_p_H(n_r_in,0)/pi*pres_H(1,1)-Dp0
+        if (abs(diff_Dp).gt.tol_diff_Dp) then
+            call writo('Difference between pressure derivative on axis is &
+                &large ('//trim(r2str(diff_Dp))//')')
+            call writo('Maybe increase precision or number of normal points',&
+                &warning=.true.)
+        end if
+        diff_Dp = s_H(n_r_in)*flux_p_H(n_r_in,0)/pi*pres_H(n_r_in,1)-Dpe
+        if (abs(diff_Dp).gt.tol_diff_Dp) then
+            call writo('Difference between pressure derivative at edge is &
+                &large ('//trim(r2str(diff_Dp))//')')
+            call writo('Maybe increase precision or number of normal points',&
+                &warning=.true.)
+        end if
         
         !!! To plot the cross-section
         !!call print_ex_2D(['cross_section'],'cross_section',Z_H,x=R_H,&
@@ -1245,6 +1273,7 @@ contains
         
         ! local variables
         integer :: id, kd                                                       ! counters
+        integer :: lper                                                         ! periodicity flag for derivation
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         real(dp), allocatable :: jac(:,:)                                       ! jac as defined above
@@ -1273,6 +1302,13 @@ contains
             allocate(Zchi(nchi,n_r_eq),Zpsi(nchi,n_r_eq))
             allocate(jac(nchi,n_r_eq))
             
+            ! set up periodicity flag
+            if (ias.eq.0) then                                                  ! top-bottom symmetric
+                lper = 2                                                        ! even half periodic
+            else
+                lper = 1                                                        ! full periodic
+            end if
+            
             ! calculate derivatives
             ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)
@@ -1281,7 +1317,8 @@ contains
             CHCKERR('')
             ierr = apply_disc(Z_H,norm_deriv_data,Zpsi,2)
             CHCKERR('')
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1)
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
+                &lper)
             CHCKERR('')
             ierr = apply_disc(R_H,ang_deriv_data,Rchi,1)
             CHCKERR('')

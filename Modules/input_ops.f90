@@ -1546,7 +1546,7 @@ contains
                 allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
                 allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
                 in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [nchi,n_r_eq,3]
+                in_1D_loc%loc_i_max = [nchi,n_r_eq,4]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
                 allocate(in_1D_loc%p(3*nchi*n_r_eq))
