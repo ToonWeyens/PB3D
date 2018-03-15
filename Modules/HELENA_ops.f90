@@ -17,7 +17,7 @@ module HELENA_ops
     private
     public read_HEL, interp_HEL_on_grid
 #if ldebug
-    public test_metrics_H
+    public test_metrics_H, test_harm_cont_H
 #endif
 
 contains
@@ -45,8 +45,6 @@ contains
     !! MISHKA simple. This is done using the factors:
     !!  - <tt> radius[] = a[m] / R_m[m] </tt>,
     !!  - <tt> eps[] = a[m] / R_vac[m] </tt>,
-    !! which can be used to de
-    !!
     !! so that the expressions become:
     !!  - <tt> R[m]          = radius[] (1/eps[] + X[])           R_m[m]</tt>,
     !!  - <tt> Z[m]          = radius[] Y[]                       R_m[m]</tt>,
@@ -1445,5 +1443,92 @@ contains
             call writo('Test complete')
         end if
     end function test_metrics_H
+    
+    !> Investaige harmonic content of the HELENA variables.
+    !!
+    !! \note Run with one process.
+    integer function test_harm_cont_H() result(ierr)
+        use grid_vars, only: n_r_eq
+        use grid_utilities, only: nufft
+        use HELENA_vars, only: nchi, chi_H, ias, R_H, Z_H
+        
+        character(*), parameter :: rout_name = 'test_metrics_H'
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        integer :: nchi_full                                                    ! nr. of pol. points in full grid, without doubling
+        real(dp), allocatable :: f_loc(:,:)                                     ! local Fourier modes
+        real(dp), allocatable :: chi_full(:)                                    ! chi_H in full poloidal grid
+        real(dp), allocatable :: R_H_full(:,:)                                  ! R_H in full poloidal grid
+        real(dp), allocatable :: Z_H_full(:,:)                                  ! Z_H in full poloidal grid
+        real(dp), allocatable :: R_H_F(:,:,:,:)                                 ! Fourier modes of R_H
+        real(dp), allocatable :: Z_H_F(:,:,:,:)                                 ! Fourier modes of Z_H
+        character(len=max_str_ln) :: plot_name                                  ! name of plot
+        character(len=2) :: loc_str(2)                                          ! local string
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! set up full R and Z
+        if (ias.eq.0) then
+            nchi_full = 2*(nchi-1)
+            allocate(chi_full(nchi_full))
+            allocate(R_H_full(nchi_full,n_r_eq))
+            allocate(Z_H_full(nchi_full,n_r_eq))
+            chi_full(1:nchi-1) =              chi_H(1:nchi-1)
+            chi_full(2*(nchi-1):nchi:-1) =    2*pi - chi_H(2:nchi)
+            R_H_full(1:nchi-1,:) =            R_H(1:nchi-1,:)
+            R_H_full(2*(nchi-1):nchi:-1,:) =  R_H(2:nchi,:)
+            Z_H_full(1:nchi-1,:) =            Z_H(1:nchi-1,:)
+            Z_H_full(2*(nchi-1):nchi:-1,:) = -Z_H(2:nchi,:)
+        else
+            nchi_full = nchi-1
+            allocate(chi_full(nchi_full))
+            allocate(R_H_full(nchi_full,n_r_eq))
+            allocate(Z_H_full(nchi_full,n_r_eq))
+            chi_full(1:nchi_full)   = chi_H(1:nchi_full)
+            R_H_full(1:nchi_full,:) = R_H(1:nchi_full,:)
+            Z_H_full(1:nchi_full,:) = Z_H(1:nchi_full,:)
+        end if
+        
+        ! calculate NUFFT
+        do kd = 1,n_r_eq
+            ierr = nufft(chi_full,R_H_full(:,kd),f_loc)
+            CHCKERR('')
+            if (kd.eq.1) allocate(R_H_F(size(f_loc,1),1,n_r_eq,size(f_loc,2)))
+            R_H_F(:,1,kd,:) = f_loc
+            ierr = nufft(chi_full,Z_H_full(:,kd),f_loc)
+            CHCKERR('')
+            if (kd.eq.1) allocate(Z_H_F(size(f_loc,1),1,n_r_eq,size(f_loc,2)))
+            Z_H_F(:,1,kd,:) = f_loc
+        end do
+        
+        ! plot
+        loc_str(1) = 'Re'
+        loc_str(2) = 'Im'
+        do kd = 1,2
+            plot_name = loc_str(kd)//'_R_H_F'
+            call print_ex_2D(['1'],plot_name,R_H_F(:,1,:,1),draw=.false.)
+            call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
+            plot_name = loc_str(kd)//'_Z_H_F'
+            call print_ex_2D(['1'],plot_name,Z_H_F(:,1,:,1),draw=.false.)
+            call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
+            
+            plot_name = loc_str(kd)//'_R_H_F_log'
+            call print_ex_2D(['1'],plot_name,&
+                &log10(max(1.E-10_dp,abs(R_H_F(:,1,:,1)))),&
+                &draw=.false.)
+            call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
+            plot_name = loc_str(kd)//'_Z_H_F_log'
+            call print_ex_2D(['1'],plot_name,&
+                &log10(max(1.E-10_dp,abs(Z_H_F(:,1,:,1)))),&
+                &draw=.false.)
+            call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
+        end do
+        call plot_HDF5(['real','imag'],'R_H_F',R_H_F)
+        call plot_HDF5(['real','imag'],'R_H_F_log',log10(max(1.E-10_dp,abs(R_H_F))))
+        call plot_HDF5(['real','imag'],'Z_H_F',Z_H_F)
+        call plot_HDF5(['real','imag'],'Z_H_F_log',log10(max(1.E-10_dp,abs(Z_H_F))))
+    end function
 #endif
 end module HELENA_ops

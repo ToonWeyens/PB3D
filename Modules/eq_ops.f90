@@ -25,7 +25,7 @@ module eq_ops
     logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
+    logical :: debug_calc_derived_q = .true.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
     logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
@@ -407,7 +407,7 @@ contains
 #if ldebug
         use num_vars, only: ltest
         use input_utilities, only: get_log, pause_prog
-        use HELENA_ops, only: test_metrics_H
+        use HELENA_ops, only: test_metrics_H, test_harm_cont_H
 #endif
         
         character(*), parameter :: rout_name = 'calc_eq_2'
@@ -530,6 +530,13 @@ contains
                     call writo('Test consistency of metric factors?')
                     if(get_log(.false.,ind=.true.)) then
                         ierr = test_metrics_H()
+                        CHCKERR('')
+                        call pause_prog(ind=.true.)
+                    end if
+                    
+                    call writo('Test harmonic content of HELENA output?')
+                    if(get_log(.false.,ind=.true.)) then
+                        ierr = test_harm_cont_H()
                         CHCKERR('')
                         call pause_prog(ind=.true.)
                     end if
@@ -2671,8 +2678,8 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: jd, kd                                                       ! counters
-        integer :: lper                                                         ! periodicity flag for derivation
+        integer :: jd                                                           ! counter
+        integer :: lper(2)                                                      ! periodicity flag for derivation
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
@@ -2687,9 +2694,9 @@ contains
         
         ! set up periodicity flag
         if (ias.eq.0) then                                                      ! top-bottom symmetric
-            lper = 2                                                            ! even half periodic
+            lper = [2,3]                                                        ! even half periodic (even - odd)
         else
-            lper = 1                                                            ! full periodic
+            lper = [1,1]                                                        ! full periodic
         end if
         
         ! initialize
@@ -2698,9 +2705,11 @@ contains
         if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
             !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (sum(deriv).eq.0) then                                          ! no derivatives
-            ! calculate derivatives
+            ! initialize variables
             allocate(Rchi(nchi,grid_eq%loc_n_r),Rpsi(nchi,grid_eq%loc_n_r))
             allocate(Zchi(nchi,grid_eq%loc_n_r),Zpsi(nchi,grid_eq%loc_n_r))
+            
+            ! normal derivatives
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+2)
             CHCKERR('')
@@ -2710,15 +2719,24 @@ contains
             ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
                 &norm_deriv_data,Zpsi,2)
             CHCKERR('')
+            
+            ! poloidal derivatives for full / even functions
             ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+2,&
-                &lper)
+                &lper(1))
             CHCKERR('')
             ierr = apply_disc(R_H(:,grid_eq%i_min:grid_eq%i_max),&
                 &ang_deriv_data,Rchi,1)
             CHCKERR('')
+            call ang_deriv_data%dealloc()
+            
+            ! poloidal derivatives for full / odd functions
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+2,&
+                &lper(2))
+            CHCKERR('')
             ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
                 &ang_deriv_data,Zchi,1)
             CHCKERR('')
+            call ang_deriv_data%dealloc()
             
             ! set up g_H
             do jd = 1,grid_eq%n(2)
@@ -2726,14 +2744,15 @@ contains
                 eq%g_E(:,jd,:,c([1,2],.true.),0,0,0) = Rpsi*Rchi+Zpsi*Zchi
                 eq%g_E(:,jd,:,c([2,2],.true.),0,0,0) = Rpsi*Rchi+Zpsi*Zchi
                 eq%g_E(:,jd,:,c([2,2],.true.),0,0,0) = Rchi*Rchi+Zchi*Zchi
-                eq%g_E(:,jd,:,c([3,3],.true.),0,0,0) = 1._dp/h_H_33
+                eq%g_E(:,jd,:,c([3,3],.true.),0,0,0) = &
+                    &1._dp/h_H_33(:,grid_eq%i_min:grid_eq%i_max)
             end do
             
             ! clean up
             deallocate(Zchi,Rchi,Zpsi,Rpsi)
             call norm_deriv_data%dealloc()
-            call ang_deriv_data%dealloc()
         else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
+            ! normal derivatives
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
                 &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
             CHCKERR('')
@@ -2742,6 +2761,7 @@ contains
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
+            ! normal derivatives
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
                 &norm_disc_prec_eq)
             CHCKERR('')
@@ -2750,35 +2770,60 @@ contains
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1,lper)             ! use extra precision to later calculate mixed derivatives
-                    CHCKERR('')
-                    ierr = apply_disc(eq%g_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%g_E(:,jd,kd,:,0,1,0),1)
-                    CHCKERR('')
-                end do
-            end do
+            ! poloidal derivatives for full / even functions
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
+                &lper(1))
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,1,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,1,0,1,0),1)
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,4,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,4,0,1,0),1)
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,6,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,6,0,1,0),1)
+            CHCKERR('')
+            call ang_deriv_data%dealloc()
+            
+            ! poloidal derivatives for full / odd functions
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
+                &lper(2))
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,2,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,2,0,1,0),1)
+            CHCKERR('')
             call ang_deriv_data%dealloc()
         else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq,lper)
-                    CHCKERR('')
-                    ierr = apply_disc(eq%g_E(:,jd,kd,:,0,0,0),&
-                        &ang_deriv_data,eq%g_E(:,jd,kd,:,0,2,0),1)
-                    CHCKERR('')
-                end do
-            end do
+            ! poloidal derivatives for full / even functions
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,2,norm_disc_prec_eq,&
+                &lper(1))
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,1,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,1,0,2,0),1)
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,4,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,4,0,2,0),1)
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,6,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,6,0,2,0),1)
+            CHCKERR('')
+            call ang_deriv_data%dealloc()
+            
+            ! poloidal derivatives for full / odd functions
+            ierr = setup_deriv_data(chi_H,ang_deriv_data,2,norm_disc_prec_eq,&
+                &lper(2))
+            CHCKERR('')
+            ierr = apply_disc(eq%g_E(:,:,:,2,0,0,0),ang_deriv_data,&
+                &eq%g_E(:,:,:,2,0,2,0),1)
+            CHCKERR('')
             call ang_deriv_data%dealloc()
         else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
+            ! normal derivatives
             ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+                &norm_disc_prec_eq)
             CHCKERR('')
             ierr = apply_disc(eq%g_E(:,:,:,:,0,1,0),norm_deriv_data,&
-                &eq%g_E(:,:,:,:,1,1,0),3) 
+                &eq%g_E(:,:,:,:,1,1,0),3)
             CHCKERR('')
             call norm_deriv_data%dealloc()
         else
@@ -2927,7 +2972,7 @@ contains
         ierr = 0
         
         ! check the derivatives requested
-        ierr = check_deriv(deriv,max_deriv,'calc_J_H')
+        ierr = check_deriv(deriv,max_deriv,'calc_jac_H')
         CHCKERR('')
         
         ! set up periodicity flag

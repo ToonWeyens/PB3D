@@ -1167,3 +1167,8 @@ ITER Organization
 * The pressure derivative calculation for HELENA now checks whether it deviates much from HELENA output on first and last point.
 * HELENA equilibrium calculations now calculate g_E before h_E.
 * The HELENA equilibrium profiles are now much more accurate, especially at the plasma edge.
+
+## 2.10:
+* Alpha variables are now not stored in HDF5 but broadcasted with MPI.
+* Implemented 'test_harm_cont_H' to plot Harmonic content in R_H and Z_H.
+* 'debug_run_driver_X_2' now plots the full integrated coefficients PV and KV.

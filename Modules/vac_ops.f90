@@ -338,6 +338,9 @@ contains
             ! initialize ierr
             ierr = 0
             
+            write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            return
+            
             ! user output
             call writo('Start storing vacuum quantities')
             
@@ -351,8 +354,8 @@ contains
                     ! test
                     if (eq_job_nr.ne.1) then
                         ierr = 1
-                        err_msg = 'HELENA should only have 1 equilibrium job for &
-                            &Richardson level 1'
+                        err_msg = 'HELENA should only have 1 equilibrium job &
+                            &for Richardson level 1'
                         CHCKERR(err_msg)
                     end if
                     

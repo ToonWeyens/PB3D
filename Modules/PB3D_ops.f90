@@ -48,7 +48,7 @@ contains
         use PB3D_utilities, only: conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, alpha
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
@@ -398,21 +398,12 @@ contains
         call conv_1D2ND(var_1D,dum_1D)
         min_r_sol = dum_1D(1)
         max_r_sol = dum_1D(2)
-        n_alpha = nint(dum_1D(3))
-        norm_disc_prec_sol = nint(dum_1D(4))
-        norm_disc_style_sol = nint(dum_1D(5))
-        BC_style(1) = nint(dum_1D(6))
-        BC_style(2) = nint(dum_1D(7))
-        EV_style = nint(dum_1D(8))
-        EV_BC = dum_1D(9)
-        call dealloc_var_1D(var_1D)
-        
-        ! alpha
-        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'alpha')
-        CHCKERR('')
-        call conv_1D2ND(var_1D,dum_1D)
-        allocate(alpha(n_alpha))
-        alpha = dum_1D
+        norm_disc_prec_sol = nint(dum_1D(3))
+        norm_disc_style_sol = nint(dum_1D(4))
+        BC_style(1) = nint(dum_1D(5))
+        BC_style(2) = nint(dum_1D(6))
+        EV_style = nint(dum_1D(7))
+        EV_BC = dum_1D(8)
         call dealloc_var_1D(var_1D)
         
         ! user output

@@ -133,7 +133,8 @@ contains
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    read(UNIT=input_i,NML=inputdata_PB3D,iostat=ierr)           ! read input data
+                    read(UNIT=input_i,NML=inputdata_PB3D,iostat=ierr,&
+                        &iomsg=err_msg)                                         ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read
@@ -190,12 +191,17 @@ contains
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
                         ierr = 1
-                        err_msg = 'Cannot read user-provided file "'&
-                            &//trim(input_name)//'"'
-                        CHCKERR(err_msg)
+                        call writo('Cannot read user-provided file "'&
+                            &//trim(input_name)//'", error message:',&
+                            &error=.true.)
+                        call lvl_ud(1)
+                        call writo('"'//trim(err_msg)//'"')
+                        call lvl_ud(-1)
+                        CHCKERR("")
                     end if
                 case(2)                                                         ! POST
-                    read(UNIT=input_i,NML=inputdata_POST,iostat=ierr)           ! read input data
+                    read(UNIT=input_i,NML=inputdata_POST,iostat=ierr,&
+                        &iomsg=err_msg)                                         ! read input data
                     
                     ! check input if successful read
                     if (ierr.eq.0) then                                         ! input file succesfully read
@@ -225,9 +231,13 @@ contains
                         call lvl_ud(-1)
                     else                                                        ! cannot read input data
                         ierr = 1
-                        err_msg = 'Cannot read user-provided file "'&
-                            &//trim(input_name)//'"'
-                        CHCKERR(err_msg)
+                        call writo('Cannot read user-provided file "'&
+                            &//trim(input_name)//'", error message:',&
+                            &error=.true.)
+                        call lvl_ud(1)
+                        call writo('"'//trim(err_msg)//'"')
+                        call lvl_ud(-1)
+                        CHCKERR("")
                     end if
             end select
             
@@ -253,14 +263,14 @@ contains
             
             ! concerning field line
             alpha = 0._dp                                                       ! field line based in outboard
-            alpha_style = 2                                                     ! multiple field-lines, single turns
             min_alpha = 0.0_dp                                                  ! minimum field-line label [pi]
             max_alpha = 2.0_dp                                                  ! maximum field-line label [pi]
             select case (eq_style)
                 case (1)                                                        ! VMEC
-                    n_alpha = 1
-                case (2)                                                        ! HELENA
+                    alpha_style = 2                                             ! multiple field-lines, single turns
                     n_alpha = 10
+                case (2)                                                        ! HELENA
+                    alpha_style = 1                                             ! single field-line, multiple turns
             end select
             
             ! concerning perturbation
@@ -1118,9 +1128,8 @@ contains
     !!  -  \c  misc_X:  \c  prim_X,  \c n_mod_X,  \c  min_sec_X,  \c  max_sec_X,
     !!  \c  norm_disc_prec_X,   \c  norm_style,  \c  U_style,   \c  X_style,  \c
     !!  matrix_SLEPC_style, \c K_style, \c alpha_style
-    !!  -   \c  misc_sol:   \c   min_r_sol,  \c   max_r_sol,   \c  n_alpha,   \c
-    !!  norm_disc_prec_sol, \c BC_style, \c EV_BC, \c EV_BC
-    !!  -   \c alpha
+    !!  - \c  misc_sol: \c  min_r_sol, \c  max_r_sol, \c  norm_disc_prec_sol, \c
+    !!  BC_style, \c EV_BC, \c EV_BC
     !!
     !! \return ierr
     integer function print_output_in(data_name) result(ierr)
@@ -1132,7 +1141,7 @@ contains
             &norm_disc_style_sol
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, alpha, n_alpha
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
         use grid_ops, only: calc_norm_range
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
@@ -1577,25 +1586,13 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [9]
+        in_1D_loc%loc_i_max = [8]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(9))
-        in_1D_loc%p = [min_r_sol,max_r_sol,n_alpha*1._dp,&
-            &norm_disc_prec_sol*1._dp,norm_disc_style_sol*1._dp,&
-            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
-        
-        ! alpha
-        in_1D_loc => in_1D(id); id = id+1
-        in_1D_loc%var_name = 'alpha'
-        allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-        allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-        in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [n_alpha]
-        in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
-        in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(n_alpha))
-        in_1D_loc%p = alpha
+        allocate(in_1D_loc%p(8))
+        in_1D_loc%p = [min_r_sol,max_r_sol,norm_disc_prec_sol*1._dp,&
+            &norm_disc_style_sol*1._dp,BC_style(1)*1._dp,BC_style(2)*1._dp,&
+            &EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))

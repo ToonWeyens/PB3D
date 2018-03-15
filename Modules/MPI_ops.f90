@@ -256,7 +256,8 @@ contains
             &RZ_0, &
             &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
             &n_vac_plot
-        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha
+        use grid_vars, only: min_par_X, max_par_X, n_alpha, min_alpha, &
+            &max_alpha, alpha
         use rich_vars, only: no_guess, rich_lvl, min_n_par_X
         
         character(*), parameter :: rout_name = 'broadcast_input_opts'
@@ -388,11 +389,17 @@ contains
                     call MPI_Bcast(max_par_X,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
+                    call MPI_Bcast(n_alpha,1,MPI_DOUBLE_PRECISION,0,&
+                        &MPI_Comm_world,ierr)
                     call MPI_Bcast(min_alpha,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_alpha,1,MPI_DOUBLE_PRECISION,0,&
                         &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    if (rank.ne.0) allocate(alpha(n_alpha))
+                    call MPI_Bcast(alpha,n_alpha,MPI_DOUBLE_PRECISION,&
+                        &0,MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(max_X_mem,1,MPI_DOUBLE_PRECISION,&
                         &0,MPI_Comm_world,ierr)
