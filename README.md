@@ -1077,9 +1077,9 @@ ITER Organization
 * Fixed bug in the JOREK export. There is a good match now.
 
 ## 1.99:
-* New module "vac_utilities" to house the utilities that are split off from "vac_ops".
-* "vac_vars" now include the angles along the magnetic field lines.
-* Implemented "calc_GH_2".
+* New module 'vac_utilities' to house the utilities that are split off from 'vac_ops'.
+* 'vac_vars' now include the angles along the magnetic field lines.
+* Implemented 'calc_GH_2'.
 * Implemented test on G and H, making use of test potential (R e^zeta)^n. Results are positive.
 * Implemented second test, making use of a spherical potential of dubious validity, as also indicated by negative results.
 
@@ -1172,3 +1172,19 @@ ITER Organization
 * Alpha variables are now not stored in HDF5 but broadcasted with MPI.
 * Implemented 'test_harm_cont_H' to plot Harmonic content in R_H and Z_H.
 * 'debug_run_driver_X_2' now plots the full integrated coefficients PV and KV.
+
+## 2.11:
+* THIS VERSION DOES NOT WORK. FOR PB3D, NO INSTABILITIES ARE FOUND AND FOR POST, MORE DEVELOPMENT IS NEEDED.
+* Implemented flag 'X_grid_style' that lets the user choose how to determine the normal component of the perturbation grid.
+* For X_grid_style 1, the equilibrium normal grid is used, which corresponds to what, at the time of writing, seems like the best solution to avoid numerical problems when choosing a finer solution grid.
+* For X_grid_style 2, the solution normal grid is used, which corresponds to the situation before version 2.11.
+* 'calc_norm_range' now does not have a version for X any more, as this is taken by either the eq or the sol version, depending on 'X_grid_style'.
+* Grids, equilibria and perturbations now have a copy procedure for deep copy.
+* Unified 'setup_grid_X' and 'setup_grid_sol', which have complementary functions, depending on 'X_grid_style'.
+* 'debug_X_norm' has been removed from solution driver.
+* Simplified the SLEPC solution routines so that they only use the solution grid.
+* The solution grid now is not just purely a normal grid, but has 1 parallel point and a number of geodesic points equal to the number of field lines, n_alpha.
+* 'setup_nm_X' now also sets up a variable 'r_X' that indicates at which normal coordinate the n_X, m_X and sec_X_ind variables are set up.
+* These variables can be interpolated on the new grid in 'interpolate_nm_x', and later restored in 'restore_nm_X'.
+* 'debug_run_driver_X_2' now multiplies (hard-coded) the Z-axis by 100 to have easier plots.
+* Fixed bugs in 'debug_run_driver_X_2' where multiple X jobs gave a wrong result. It is now all done after all the X jobs are done.

@@ -17,11 +17,6 @@ module driver_sol
     private
     public run_driver_sol
     
-    ! global variables
-#if ldebug
-    logical :: debug_X_norm = .false.                                           !< plot debug information \c X_norm \ldebug
-#endif
-    
 contains
     !> Main driver of PB3D solution part.
     !!
@@ -35,48 +30,50 @@ contains
     !!      * sol before setting up (but after guess)
     !!
     !! \return ierr
-    integer function run_driver_sol(grid_X,grid_X_B,grid_sol,X,vac,sol) &
-        &result(ierr)
+    integer function run_driver_sol(grid_X,grid_sol,X,vac,sol) result(ierr)
         use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, &
-            &n_procs, eq_job_nr
+            &n_procs, X_grid_style
         use grid_vars, only: n_r_sol
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
-        use grid_ops, only: calc_norm_range, setup_grid_sol, print_output_grid
+        use grid_ops, only: calc_norm_range, setup_grid_sol, &
+            &print_output_grid
         use sol_ops, only: print_output_sol
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
         use vac_ops, only: calc_vac_res, print_output_vac
-        !!use num_utilities, only: calc_aux_utilities
-#if ldebug
-        use num_vars, only: iu, use_pol_flux_F
-        use num_utilities, only: c, con
-#endif
+        use MPI_utilities, only: get_ser_var
+        use grid_utilities, only: trim_grid
+        use X_ops, only: interpolate_nm_x, restore_nm_X
         
         character(*), parameter :: rout_name = 'run_driver_sol'
         
         ! input / output
         type(grid_type), intent(in), target :: grid_X                           !< perturbation grid
-        type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              !< solution grid
         type(X_2_type), intent(in) :: X                                         !< integrated tensorial perturbation variables
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         type(sol_type), intent(inout) :: sol                                    !< solution variables
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
+        type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
+        type(grid_type) :: grid_X_ser                                           ! serial perturbation grid
+        type(X_2_type) :: X_ser                                                 ! serial X
+        type(X_2_type) :: X_sol                                                 ! interpolated X
+        integer :: ld                                                           ! counter
+        integer :: n_X(3)                                                       ! n of grid_X_trim
+        integer :: n_X_loc                                                      ! local size in grid_X_trim
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed solution grid
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
+        integer, allocatable :: n_X_old(:,:)                                    ! old value of n_X
+        integer, allocatable :: m_X_old(:,:)                                    ! old value of m_X
+        integer, allocatable :: sec_X_ind_old(:,:)                              ! old value of sec_X_ind
+        real(dp), allocatable :: r_X_old(:)                                     ! old value of r_X
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
+        complex(dp), allocatable :: ser_var_loc(:)                              ! local serial variable
         logical :: do_vac_ops                                                   ! whether specific calculations for vacuum are necessary
-#if ldebug
-        real(dp), pointer :: ang_par_F(:,:,:)                                   ! parallel angle theta_F or zeta_F
-        complex(dp), allocatable :: X_norm(:,:,:)                               ! |X|^2 or other results to be plotted
-        integer :: m, k                                                         ! counters
-        integer :: kd                                                           ! counter
-        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variable to be plot
-        character(len=max_str_ln) :: file_name                                  ! file name
-#endif
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -127,7 +124,7 @@ contains
                 
                 call writo('Calculate the grid')
                 call lvl_ud(1)
-                ierr = setup_grid_sol(grid_X,grid_sol,sol_limits)
+                ierr = setup_grid_sol(grid_X,grid_sol,r_F_sol,sol_limits)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -151,13 +148,131 @@ contains
             deallocate(r_F_sol)
         end if
         
+        ! set output variables
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                call writo('Interpolate the perturbation variables to &
+                    &solution grid')
+            case (2)                                                            ! solution
+                call writo('Copy the perturbation variables to solution grid')
+        end select
+        call lvl_ud(1)
+        
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! set up trimmed grid
+                ierr = trim_grid(grid_X,grid_X_trim,norm_id)
+                CHCKERR('')
+                
+                ! set up undivided grid
+                n_X = grid_X_trim%n
+                n_X(1) = 1                                                      ! field-aligned
+                n_X_loc = grid_X_trim%n(2)*grid_X_trim%loc_n_r
+                ierr = grid_X_ser%init(n_X)
+                CHCKERR('')
+                grid_X_ser%r_F = grid_X_trim%r_F
+                call X_ser%init(grid_X_ser,is_field_averaged=.true.)
+                
+                allocate(ser_var_loc(product(n_X)))
+                if (grid_X_trim%divided) then
+                    do ld = 1,size(X%PV_0,4)
+                        ! PV_0
+                        ierr = get_ser_var(reshape(&
+                            &X%PV_0(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%PV_0(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                        
+                        ! PV_2
+                        ierr = get_ser_var(reshape(&
+                            &X%PV_2(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%PV_2(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                        
+                        ! KV_0
+                        ierr = get_ser_var(reshape(&
+                            &X%KV_0(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%KV_0(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                        
+                        ! KV_2
+                        ierr = get_ser_var(reshape(&
+                            &X%KV_2(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%KV_2(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                    end do
+                    
+                    do ld = 1,size(X%PV_1,4)
+                        ! PV_1
+                        ierr = get_ser_var(reshape(&
+                            &X%PV_1(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%PV_1(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                        
+                        ! KV_1
+                        ierr = get_ser_var(reshape(&
+                            &X%KV_1(:,:,norm_id(1):norm_id(2),ld),&
+                            &[n_X_loc]),ser_var_loc,scatter=.true.)
+                        CHCKERR('')
+                        X_ser%KV_1(:,:,:,ld) = reshape(ser_var_loc,n_X)
+                    end do
+                else
+                   X_ser%PV_0 = X%PV_0
+                   X_ser%PV_1 = X%PV_1
+                   X_ser%PV_2 = X%PV_2
+                   X_ser%KV_0 = X%KV_0
+                   X_ser%KV_1 = X%KV_1
+                   X_ser%KV_2 = X%KV_2
+                end if
+                
+                ! overwrite n_X, m_X and sec_X_ind by interpolated quantities
+                ierr = interpolate_nm_x(grid_sol,r_X_old,n_X_old,m_X_old,&
+                    &sec_X_ind_old)
+                CHCKERR('')
+                
+                ! interpolate
+                call X_sol%init(grid_sol,is_field_averaged=.true.)
+                ierr = interp_V(X_ser%PV_0,grid_X_ser%r_F,&
+                    &X_sol%PV_0,grid_sol%loc_r_F)
+                CHCKERR('')
+                ierr = interp_V(X_ser%PV_1,grid_X_ser%r_F,&
+                    &X_sol%PV_1,grid_sol%loc_r_F)
+                CHCKERR('')
+                ierr = interp_V(X_ser%PV_2,grid_X_ser%r_F,&
+                    &X_sol%PV_2,grid_sol%loc_r_F)
+                CHCKERR('')
+                ierr = interp_V(X_ser%KV_0,grid_X_ser%r_F,&
+                    &X_sol%KV_0,grid_sol%loc_r_F)
+                CHCKERR('')
+                ierr = interp_V(X_ser%KV_1,grid_X_ser%r_F,&
+                    &X_sol%KV_1,grid_sol%loc_r_F)
+                CHCKERR('')
+                ierr = interp_V(X_ser%KV_2,grid_X_ser%r_F,&
+                    &X_sol%KV_2,grid_sol%loc_r_F)
+                CHCKERR('')
+                
+                ! clean up
+                call grid_X_trim%dealloc()
+                call grid_X_ser%dealloc()
+                call X_ser%dealloc()
+            case (2)                                                            ! solution
+                ! copy
+                call X%copy(grid_sol,X_sol)
+        end select
+        
+        call lvl_ud(-1)
+        
         ! solve the system
         call writo('Solving the system')
         call lvl_ud(1)
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol)
+                ierr = solve_EV_system_SLEPC(grid_sol,X_sol,vac,sol)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -168,55 +283,80 @@ contains
         call lvl_ud(-1)
         call writo('System solved')
         
-#if ldebug
-        ! calculate |X|^2 directly from solution vector
-        if (debug_X_norm) then
-            call writo('Calculating |X|^2 directly from solution')
-            call lvl_ud(1)
-            
-            ! allocate variables
-            allocate(X_norm(grid_X_B%n(1),grid_X_B%n(2),grid_X_B%loc_n_r))
-            allocate(var_names(6))
-            
-            ! set pointers
-            if (use_pol_flux_F) then
-                ang_par_F => grid_X_B%theta_F
-            else
-                ang_par_F => grid_X_B%zeta_F
-            end if
-            
-            ! calculate |X|^2
-            var_names = 'X_norm'
-            X_norm = 0._dp
-            do kd = 1,grid_sol%loc_n_r
-                do m = 1,sol%n_mod
-                    do k = 1,sol%n_mod
-                        X_norm(:,:,kd) = X_norm(:,:,kd) + &
-                            &conjg(sol%vec(k,kd,1))*sol%vec(m,kd,1)* &
-                            &exp(iu*(X%m_1(kd,k)-X%m_2(kd,m))*ang_par_F(:,:,kd))
-                    end do
-                end do
-            end do
-            
-            ! plot |X|^2
-            file_name = 'TEST_X_norm_PB3D'
-            call plot_HDF5(var_names(1),file_name,rp(X_norm),&
-                &tot_dim=grid_X_B%n,loc_offset=[0,0,grid_X%i_min-1])
-            
-            ! clean up
-            nullify(ang_par_F)
-            
-            call writo('The output should be compared with the POST-output')
-            
-            call lvl_ud(-1)
-        end if
-#endif
-        
         ! write solution variables to output
         ierr = print_output_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary
         call calc_rich_ex(sol%val)
+        
+        ! restore old X values
+        if (X_grid_style.eq.1) &
+            &call restore_nm_X(r_X_old,n_X_old,m_X_old,sec_X_ind_old)
+        
+        ! clean up
+        call X_sol%dealloc()
     end function run_driver_sol
+    
+    !> \public  Interpolate  tensorial  perturbation  quantities  in  the  third
+    !! dimension.
+    !!
+    !! The input grid should not be divided, whereas the output grid can be.
+    !!
+    !! \note The size  of \c r_i has  to be equal to  the size of \c  V_i in the
+    !! third dimension,  and similarly for \c  r_o and \c V_o.  Also, the fourth
+    !! dimension of \c V_i and \c K_i has to match. This is not checked.
+    integer function interp_V(V_i,r_i,V_o,r_o) result(ierr)
+        use num_vars, only: norm_disc_prec_sol, iu
+        use bspline_sub_module, only: db1ink, db1val, get_status_message
+        
+        character(*), parameter :: rout_name = 'interp_V'
+        
+        ! input / output
+        complex(dp), intent(in) :: V_i(:,:,:,:)                                 !< tensorial perturbation variable on input grid
+        real(dp), intent(in) :: r_i(:)                                          !< points at which \c V_i is tabulated
+        complex(dp), intent(inout) :: V_o(:,:,:,:)                              !< interpolated tensorial perturbation variable
+        real(dp), intent(in) :: r_o(:)                                          !< points at which \c V_i is interpolated
+        
+        ! local variables
+        integer :: id, jd, kd, ld, md                                           ! counters
+        integer :: spline_init(2)                                               ! spline initialization parameter
+        integer :: n(3)                                                         ! size of variables
+        real(dp) :: V_loc(2)                                                    ! local PV or KV value
+        real(dp), allocatable :: spline_knots(:,:)                              ! knots of spline
+        real(dp), allocatable :: spline_coeff(:,:)                              ! coefficients of spline
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize
+        n = shape(V_i(:,:,:,1))
+        allocate(spline_coeff(n(3),2))
+        allocate(spline_knots(n(3)+norm_disc_prec_sol,2))
+        do ld = 1,size(V_i,4)
+            do jd = 1,n(2)
+                do id = 1,n(1)
+                    call db1ink(r_i,n(3),rp(V_i(id,jd,:,ld)),&
+                        &norm_disc_prec_sol,0,spline_knots(:,1),&
+                        &spline_coeff(:,1),ierr)
+                    err_msg = get_status_message(ierr)
+                    CHCKERR(err_msg)
+                    call db1ink(r_i,n(3),ip(V_i(id,jd,:,ld)),&
+                        &norm_disc_prec_sol,0,spline_knots(:,2),&
+                        &spline_coeff(:,2),ierr)
+                    err_msg = get_status_message(ierr)
+                    CHCKERR(err_msg)
+                    spline_init = 1
+                    do kd = 1,size(r_o)
+                        do md = 1,2
+                            call db1val(r_o(kd),0,spline_knots(:,md),n(3),&
+                                &norm_disc_prec_sol,spline_coeff(:,md),&
+                                &V_loc(md),ierr,spline_init(md))
+                            err_msg = get_status_message(ierr)
+                            CHCKERR(err_msg)
+                        end do
+                        V_o(id,jd,:,ld) = V_loc(1) + iu*V_loc(2)
+                    end do
+                end do
+            end do
+        end do
+    end function interp_V
 end module driver_sol

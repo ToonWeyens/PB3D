@@ -2366,7 +2366,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
         type(grid_type), intent(in) :: grid_out                                 !< redistributed equilibrium grid variables
-        type(eq_1_type), intent(inout) :: eq                                    !< flux equilibrium variables
+        type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium variables
         type(eq_1_type), intent(inout) :: eq_out                                !< flux equilibrium variables in redistributed grid
         
         ! local variables
@@ -2378,6 +2378,12 @@ contains
         ! user output
         call writo('Redistribute flux equilibrium variables')
         call lvl_ud(1)
+        
+        ! test
+        if (grid%n(1).ne.grid_out%n(1) .or. grid%n(2).ne.grid_out%n(2)) then
+            ierr = 1
+            CHCKERR('grid and grid_out are not compatible')
+        end if
         
         ! create redistributed flux equilibrium variables
         call eq_out%init(grid_out,setup_E=.false.,setup_F=.true.)
@@ -2428,7 +2434,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
         type(grid_type), intent(in) :: grid_out                                 !< redistributed equilibrium grid variables
-        type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium variables
+        type(eq_2_type), intent(in) :: eq                                       !< metric equilibrium variables
         type(eq_2_type), intent(inout) :: eq_out                                !< metric equilibrium variables in redistributed grid
         
         ! local variables
@@ -2443,6 +2449,12 @@ contains
         ! user output
         call writo('Redistribute metric equilibrium variables')
         call lvl_ud(1)
+        
+        ! test
+        if (grid%n(1).ne.grid_out%n(1) .or. grid%n(2).ne.grid_out%n(2)) then
+            ierr = 1
+            CHCKERR('grid and grid_out are not compatible')
+        end if
         
         ! create redistributed metric equilibrium variables
         call eq_out%init(grid_out,setup_E=.false.,setup_F=.true.)

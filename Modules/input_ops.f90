@@ -37,7 +37,7 @@ contains
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
             &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
-            &max_Zvac_plot, n_vac_plot, alpha_style
+            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -71,7 +71,7 @@ contains
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, alpha_style, &
             &max_nr_backtracks_HH, magn_int_style, ex_plot_style, n_alpha, &
-            &solver_SLEPC_style
+            &solver_SLEPC_style, X_grid_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
@@ -106,13 +106,13 @@ contains
                 case (1)                                                        ! VMEC
                     n_theta_plot = 201                                          ! nr. poloidal points in plot
                     n_zeta_plot = 51                                            ! nr. toroidal points in plot
-                    min_zeta_plot = 0
-                    max_zeta_plot = 2
+                    min_zeta_plot = 0                                           ! min. toroidal plot angle [pi]
+                    max_zeta_plot = 2                                           ! max. toroidal plot angle [pi]
                 case (2)                                                        ! HELENA
                     n_theta_plot = 501                                          ! nr. poloidal points in plot
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
-                    min_zeta_plot = 0
-                    max_zeta_plot = min_zeta_plot
+                    min_zeta_plot = 0                                           ! min. toroidal plot angle [pi]
+                    max_zeta_plot = min_zeta_plot                               ! max. toroidal plot angle [pi]
             end select
             plot_grid_style = 0                                                 ! normal plots on 3D geometry
             relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
@@ -330,6 +330,7 @@ contains
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
+            X_grid_style = 1                                                    ! use equilibrium normal grid for perturbation grid as well
         end subroutine default_input_PB3D
         
         ! POST version
@@ -391,6 +392,7 @@ contains
         !   matrix_SLEPC_style has to be 0 or 1,
         !   max_it_SLEPC has to be at least 1,
         !   magnetic integral style has to be 1..2,
+        !   perturbation grid style has to be 1..2,
         !   for HELENA (eq_style 1), only poloidal flux can be used.
         !> \private
         integer function adapt_run_PB3D() result(ierr)
@@ -425,6 +427,12 @@ contains
                 ierr = 1
                 err_msg = 'magn_int_style has to be 1 (trapezoidal) or 2 &
                     &(Simpson 3/8 rule)'
+                CHCKERR(err_msg)
+            end if
+            if (X_grid_style.lt.1 .or. X_grid_style.gt.2) then
+                ierr = 1
+                err_msg = 'X_grid_style has to be 1 (equilibrium) or 2 &
+                    &(solution)'
                 CHCKERR(err_msg)
             end if
             if (eq_style.eq.2 .and. .not.use_pol_flux_F) then
@@ -1138,7 +1146,7 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol
+            &norm_disc_style_sol, X_grid_style
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
@@ -1571,14 +1579,15 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [12]
+        in_1D_loc%loc_i_max = [13]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(12))
+        allocate(in_1D_loc%p(13))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
-            &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp]
+            &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp,&
+            &X_grid_style*1._dp]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1

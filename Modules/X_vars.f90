@@ -12,8 +12,8 @@ module X_vars
     
     private
     public set_nm_X, set_nn_mod, &
-        &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
-        &min_m_X, max_m_X, min_r_sol, max_r_sol, n_X, m_X, sec_X_ind
+        &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, r_X, min_n_X, &
+        &max_n_X, min_m_X, max_m_X, min_r_sol, max_r_sol, n_X, m_X, sec_X_ind
 #if ldebug
     public n_alloc_X_1s, n_alloc_X_2s
 #endif
@@ -24,6 +24,7 @@ module X_vars
     integer :: max_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for\ c X style 1)
     integer :: n_mod_X                                                          !< size of \c m_X (pol. flux) or \c n_X (tor. flux)
     integer :: min_nm_X = 5                                                     !< minimum for the high-n theory (debable)
+    real(dp), allocatable :: r_X(:)                                             !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
     integer, allocatable :: min_n_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
     integer, allocatable :: max_n_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
     integer, allocatable :: min_m_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
@@ -46,6 +47,7 @@ module X_vars
     !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     type, public :: X_1_type
         integer :: n_mod                                                        !< size of \f$n\f$ and \f$m\f$ (nr. of modes)
+        integer :: lim_sec_X(2)                                                 !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         integer, allocatable :: n(:,:)                                          !< vector of poloidal mode numbers
         integer, allocatable :: m(:,:)                                          !< vector of poloidal mode numbers
         complex(dp), allocatable :: U_0(:,:,:,:)                                !< \f$U_m^0\f$
@@ -58,6 +60,8 @@ module X_vars
     contains
         !> initialize
         procedure :: init => init_X_1
+        !> copy
+        procedure :: copy => copy_X_1
         !> deallocate
         procedure :: dealloc => dealloc_X_1
     end type
@@ -73,6 +77,7 @@ module X_vars
     !! variables, with \c angle_1 of size 1.
     type, public :: X_2_type
         integer :: n_mod(2)                                                     !< size of \f$n\f$ and \f$m\f$ (nr. of modes)
+        integer :: lim_sec_X(2,2)                                               !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         integer, allocatable :: n_1(:,:)                                        !< vector of toroidal mode numbers of dimension 1
         integer, allocatable :: n_2(:,:)                                        !< vector of toroidal mode numbers of dimension 2
         integer, allocatable :: m_1(:,:)                                        !< vector of poloidal mode numbers of dimension 1
@@ -89,6 +94,8 @@ module X_vars
     contains
         !> initialize
         procedure :: init => init_X_2
+        !> copy
+        procedure :: copy => copy_X_2
         !> deallocate
         procedure :: dealloc => dealloc_X_2
     end type
@@ -112,45 +119,47 @@ module X_vars
     
 contains
     !> \private vectorial version
-    subroutine set_nm_X_1(grid_X,n_X_loc,m_X_loc,lim_sec_X)
+    subroutine set_nm_X_1(grid_X,lim_sec_X_o,n_X_loc,m_X_loc,lim_sec_X_i)
+        
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(inout) :: lim_sec_X_o(2)                                !< limits on secondary mode numbers
         integer, intent(inout), allocatable :: n_X_loc(:,:)                     !< toroidal mode numbers
         integer, intent(inout), allocatable :: m_X_loc(:,:)                     !< poloidal mode numbers
-        integer, intent(in), optional :: lim_sec_X(2)                           !< optional limits on secondary mode numbers
+        integer, intent(in), optional :: lim_sec_X_i(2)                         !< optional limits on secondary mode numbers
         
-        ! local variables
-        integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
-        
-        ! set local lim_sec_X
-        lim_sec_X_loc = [1,n_mod_X]
-        if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
+        ! set output lim_sec_X
+        lim_sec_X_o = [1,n_mod_X]
+        if (present(lim_sec_X_i)) lim_sec_X_o = lim_sec_X_i
         
         ! set n and m
-        allocate(n_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
-        allocate(m_X_loc(grid_X%loc_n_r,lim_sec_X_loc(2)-lim_sec_X_loc(1)+1))
+        allocate(n_X_loc(grid_X%loc_n_r,lim_sec_X_o(2)-lim_sec_X_o(1)+1))
+        allocate(m_X_loc(grid_X%loc_n_r,lim_sec_X_o(2)-lim_sec_X_o(1)+1))
         n_X_loc = n_X(grid_X%i_min:grid_X%i_max,&
-            &lim_sec_X_loc(1):lim_sec_X_loc(2))
+            &lim_sec_X_o(1):lim_sec_X_o(2))
         m_X_loc = m_X(grid_X%i_min:grid_X%i_max,&
-            &lim_sec_X_loc(1):lim_sec_X_loc(2))
+            &lim_sec_X_o(1):lim_sec_X_o(2))
     end subroutine set_nm_X_1
     !> \private tensorial version
-    subroutine set_nm_X_2(grid_X,n_X_1,m_X_1,n_X_2,m_X_2,lim_sec_X)
+    subroutine set_nm_X_2(grid_X,lim_sec_X_o,n_X_1,m_X_1,n_X_2,m_X_2,&
+        &lim_sec_X_i)
+        
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        integer, intent(inout) :: lim_sec_X_o(2,2)                              !< limits on secondary mode numbers
         integer, intent(inout), allocatable :: n_X_1(:,:)                       !< toroidal mode numbers for dimension 1
         integer, intent(inout), allocatable :: m_X_1(:,:)                       !< poloidal mode numbers for dimension 1
         integer, intent(inout), allocatable :: n_X_2(:,:)                       !< toroidal mode numbers for dimension 2
         integer, intent(inout), allocatable :: m_X_2(:,:)                       !< poloidal mode numbers for dimension 2
-        integer, intent(in), optional :: lim_sec_X(2,2)                         !< optional limits on secondary mode numbers
+        integer, intent(in), optional :: lim_sec_X_i(2,2)                       !< optional limits on secondary mode numbers
         
         ! call vectorial version
-        if (present(lim_sec_X)) then
-            call set_nm_X(grid_X,n_X_1,m_X_1,lim_sec_X(:,1))
-            call set_nm_X(grid_X,n_X_2,m_X_2,lim_sec_X(:,2))
+        if (present(lim_sec_X_i)) then
+            call set_nm_X(grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1,lim_sec_X_i(:,1))
+            call set_nm_X(grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2,lim_sec_X_i(:,2))
         else
-            call set_nm_X(grid_X,n_X_1,m_X_1)
-            call set_nm_X(grid_X,n_X_2,m_X_2)
+            call set_nm_X(grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1)
+            call set_nm_X(grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2)
         end if
     end subroutine set_nm_X_2
     
@@ -190,7 +199,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_X,X%n,X%m,lim_sec_X)
+        call set_nm_X(grid_X,X%lim_sec_X,X%n,X%m,lim_sec_X)
         
         ! set n_mod
         X%n_mod = size(X%n,2)
@@ -227,7 +236,10 @@ contains
     !!
     !! \note The tensorial perturbation type  can also be used for field-aligned
     !! variables, in which  case the first index is assumed  to have dimension 1
-    !! only. This can be triggered using \c is_field_averaged.
+    !! only.  This can  be triggered  using  \c is_field_averaged.  There is  no
+    !! difference  between a  tensorial  perturbation type  with  size of  first
+    !! dimension  set to  one through  the use  of this  flag, or  through other
+    !! means.
     subroutine init_X_2(X,grid_X,lim_sec_X,is_field_averaged)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
@@ -258,7 +270,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
+        call set_nm_X(grid_X,X%lim_sec_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
         
         ! set n_mod
         X%n_mod(1) = size(X%n_1,2)
@@ -292,6 +304,49 @@ contains
             &trim(r2strt(X%estim_mem_usage*weight_dp*2))//' kB]',alert=.true.)
 #endif
     end subroutine init_X_2
+    
+    !> \public Deep copy of vectorial perturbation variables.
+    subroutine copy_X_1(X_i,grid_i,X_o)
+        use grid_vars, only: grid_type
+        
+        ! input / output
+        class(X_1_type), intent(in) :: X_i                                      !< X_1 to be copied
+        type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
+        type(X_1_type), intent(inout) :: X_o                                    !< copied X_1
+        
+        call X_o%init(grid_i,lim_sec_X=X_i%lim_sec_X)
+        
+        ! U_i
+        X_o%U_0 = X_i%U_0
+        X_o%U_1 = X_i%U_1
+        
+        ! DU_i
+        X_o%DU_0 = X_i%DU_0
+        X_o%DU_1 = X_i%DU_1
+    end subroutine copy_X_1
+    
+    !> \public Deep copy of tensorial perturbation variables.
+    subroutine copy_X_2(X_i,grid_i,X_o)
+        use grid_vars, only: grid_type
+        
+        ! input / output
+        class(X_2_type), intent(in) :: X_i                                      !< X_2 to be copied
+        type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
+        type(X_2_type), intent(inout) :: X_o                                    !< copied X_1
+        
+        call X_o%init(grid_i,lim_sec_X=X_i%lim_sec_X,&
+            &is_field_averaged=size(X_i%PV_0,1).eq.1)
+        
+        ! PV_i
+        X_o%PV_0 = X_i%PV_0
+        X_o%PV_1 = X_i%PV_1
+        X_o%PV_2 = X_i%PV_2
+        
+        ! KV_i
+        X_o%KV_0 = X_i%KV_0
+        X_o%KV_1 = X_i%KV_1
+        X_o%KV_2 = X_i%KV_2
+    end subroutine copy_X_2
     
     !> Sets number of entries for tensorial perturbation variables.
     integer function set_nn_mod(sym,lim_sec_X) result(nn_mod)

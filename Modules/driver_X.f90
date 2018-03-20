@@ -24,7 +24,7 @@ module driver_X
     integer :: rich_lvl_name                                                    !< either the Richardson level or zero
 #if ldebug
     logical :: debug_run_driver_X_1 = .false.                                   !< debug information for run_driver_X_1 \ldebug
-    logical :: debug_run_driver_X_2 = .false.                                   !< debug information for run_driver_X_2 \ldebug
+    logical :: debug_run_driver_X_2 = .true.                                   !< debug information for run_driver_X_2 \ldebug
     logical :: plot_info= .false.                                               !< plot information for comparison with HELENA \ldebug
 #endif
     
@@ -48,18 +48,22 @@ contains
     !!
     !!  ([x] indicates driver x)
     !!
+    !! \note  \c eq_2  needs  to be  intent(inout) because  interp_HEL_on_grid()
+    !! requires  this for  generality.  The  variable is  not  modified in  this
+    !! driver, though.
+    !!
     !! \return ierr
     integer function run_driver_X(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,eq_2,&
         &X_1,X_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
-            &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr
+            &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr, X_grid_style
         use rich_vars, only: n_par_X, rich_lvl
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_X_1, &
             &reconstruct_PB3D_X_2
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
             &n_mod_X
         use grid_ops, only: calc_norm_range
-        use grid_vars, only: n_r_sol, min_par_X, max_par_X
+        use grid_vars, only: min_par_X, max_par_X, n_r_sol, n_r_eq
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &setup_nm_X
         use files_utilities, only: delete_file
@@ -68,8 +72,8 @@ contains
         character(*), parameter :: rout_name = 'run_driver_X'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq                       !< equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
-        type(grid_type), intent(inout), pointer :: grid_eq_B                    !< field-aligned equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
+        type(grid_type), intent(in), target :: grid_eq                          !< equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
+        type(grid_type), intent(in), pointer :: grid_eq_B                       !< field-aligned equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
         type(grid_type), intent(inout), target :: grid_X                        !< perturbation grid
         type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
@@ -94,9 +98,17 @@ contains
         ! Divide perturbation grid under group processes, calculating the limits
         ! and the normal coordinate.
         if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
-            allocate(r_F_X(n_r_sol))
-            ierr = calc_norm_range(X_limits=X_limits,r_F_X=r_F_X)
-            CHCKERR('')
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    allocate(r_F_X(n_r_eq))
+                    ierr = calc_norm_range(eq_limits=X_limits)
+                    CHCKERR('')
+                    r_F_X = grid_eq%r_F
+                case (2)                                                        ! solution
+                    allocate(r_F_X(n_r_sol))
+                    ierr = calc_norm_range(sol_limits=X_limits,r_F_sol=r_F_X)
+                    CHCKERR('')
+            end select
         end if
         
         ! jump to solution if requested
@@ -124,8 +136,8 @@ contains
             ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.false.)
             CHCKERR('')
             
-            ! X_2
-            if (eq_style.eq.2) then
+            ! X_1
+            if (eq_style.eq.2) then                                             ! HELENA
                 ierr = reconstruct_PB3D_X_1(grid_X,X_1,'X_1')
                 CHCKERR('')
             end if
@@ -144,8 +156,15 @@ contains
         call writo('Perturbations are analyzed')
         call lvl_ud(1)
         
-        call writo('for '//trim(i2str(n_r_sol))//' values on normal range '//&
-            &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol)))
+        call writo('for '//trim(i2str(size(r_F_X)))//&
+            &' values on normal range '//trim(r2strt(min_r_sol))//'..'//&
+            &trim(r2strt(max_r_sol)))
+        if (X_grid_style.eq.1) then
+            call lvl_ud(1)
+            call writo('interpolation to the solution grid with '//&
+                &trim(i2str(n_r_sol))//' will happen in the solution driver')
+            call lvl_ud(-1)
+        end if
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
             &range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))
@@ -562,9 +581,10 @@ contains
 #if ldebug
         use num_vars, only: use_pol_flux_F
         use num_utilities, only: c, con
-        use X_vars, only: sec_X_ind, min_m_X, min_n_X, n_mod_X
+        use X_vars, only: sec_X_ind, min_m_X, min_n_X, n_mod_X, n_x, m_X
         use grid_vars, only: alpha, n_alpha
         use grid_utilities, only: trim_grid
+        use eq_vars, only: max_flux_F
 #endif
         
         character(*), parameter :: rout_name = 'run_driver_X_2'
@@ -589,14 +609,14 @@ contains
 #if ldebug
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
+        integer :: k, m                                                         ! local row and column index in flux surface
         integer :: ld, kd, rd, cd                                               ! counters
-        integer :: rd_loc, cd_loc                                               ! local row and column
         integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
         integer :: n_mod_tot                                                    ! local number of modes
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
-        integer :: c_loc(2)                                                     ! local index for symmetric and asymmetric quantities
+        integer :: c_tot(2)                                                     ! total index for symmetric and asymmetric quantities
         complex(dp), allocatable :: PV_int(:,:,:,:,:)                           ! integrated PV_i for all mode combinations
         complex(dp), allocatable :: KV_int(:,:,:,:,:)                           ! integrated KV_i for all mode combinations
         real(dp), allocatable :: X_plot(:,:,:,:)                                ! X of plot
@@ -647,47 +667,6 @@ contains
         
         call lvl_ud(-1)
         call writo('Tensorial perturbation jobs set up')
-        
-#if ldebug
-        ! Prepare debug output plot
-        if (debug_run_driver_X_2) then
-            ! trim grid
-            ierr = trim_grid(grid_X,grid_trim,norm_id=norm_id)
-            CHCKERR('')
-            
-            ! set local n_mod and allocate integrated quantities
-            n_mod_tot = size(sec_X_ind,2)
-            allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
-                &grid_trim%n(2),0:2))
-            allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
-                &grid_trim%n(2),0:2))
-            allocate(X_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            allocate(Y_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            allocate(Z_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            PV_int = 0._dp
-            KV_int = 0._dp
-            
-            ! minimal index in sec_X_ind modes
-            if (use_pol_flux_F) then
-                min_nm_X = minval(min_m_X)
-            else
-                min_nm_X = minval(min_n_X)
-            end if
-            
-            ! setup X, Y and Z of plot
-            ! loop over all normal grid points
-            do kd = 1,grid_trim%loc_n_r
-                Z_plot(:,:,kd,1) = grid_trim%loc_r_F(kd)/maxval(grid_X%r_F)
-                ! loop over all possible mode combinations
-                do cd = 1,n_mod_tot
-                    do rd = 1,n_mod_tot
-                        Y_plot(rd,cd,kd,1) = min_nm_X+cd-1
-                        X_plot(rd,cd,kd,1) = min_nm_X+rd-1
-                    end do
-                end do
-            end do
-        end if
-#endif
         
         ! main loop over tensorial jobs
         X_job_nr = 0
@@ -854,50 +833,6 @@ contains
                 &prev_style,lim_sec_X=lims_loc)
             CHCKERR('')
             
-#if ldebug
-            ! write  integrated field-aligned tensorial  perturbation quantities
-            ! to output
-            if (debug_run_driver_X_2) then
-                ! loop over all normal grid points
-                do kd = 1,grid_trim%loc_n_r
-                    ! loop over all possible mode combinations
-                    do cd = 1,n_mod_tot
-                        do rd = 1,n_mod_tot
-                            ! save results in total index
-                            if (sec_X_ind(grid_trim%i_min-1+kd,rd).gt.0 .and. &
-                                &sec_X_ind(grid_trim%i_min-1+kd,cd).gt.0) then
-                                rd_loc = sec_X_ind(grid_trim%i_min-1+kd,rd)
-                                cd_loc = sec_X_ind(grid_trim%i_min-1+kd,cd)
-                                
-                                c_loc(1) = c([rd_loc,cd_loc],.true.,n_mod_X,&
-                                    &lims_loc)
-                                c_loc(2) = c([rd_loc,cd_loc],.false.,n_mod_X,&
-                                    &lims_loc)
-                                
-                                PV_int(rd,cd,kd,:,0) = con(X_2_int%&
-                                    &PV_0(1,:,norm_id(1)-1+kd,c_loc(1)),&
-                                    &[rd_loc,cd_loc],.true.,[n_alpha])
-                                PV_int(rd,cd,kd,:,1) = X_2_int%&
-                                    &PV_1(1,:,norm_id(1)-1+kd,c_loc(2))
-                                PV_int(rd,cd,kd,:,2) = con(X_2_int%&
-                                    &PV_2(1,:,norm_id(1)-1+kd,c_loc(1)),&
-                                    &[rd_loc,cd_loc],.true.,[n_alpha])
-                                
-                                KV_int(rd,cd,kd,:,0) = con(X_2_int%&
-                                    &KV_0(1,:,norm_id(1)-1+kd,c_loc(1)),&
-                                    &[rd_loc,cd_loc],.true.,[n_alpha])
-                                KV_int(rd,cd,kd,:,1) = X_2_int%&
-                                    &KV_1(1,:,norm_id(1)-1+kd,c_loc(2))
-                                KV_int(rd,cd,kd,:,2) = con(X_2_int%&
-                                    &KV_2(1,:,norm_id(1)-1+kd,c_loc(1)),&
-                                    &[rd_loc,cd_loc],.true.,[n_alpha])
-                            end if
-                        end do
-                    end do
-                end do
-            end if
-#endif
-            
             ! clean up
             do id = 1,2
                 call X_1_loc(id)%dealloc()
@@ -910,8 +845,94 @@ contains
         end do X_jobs
         
 #if ldebug
-        ! print debug plot and clean up
+        ! write  integrated field-aligned  tensorial perturbation  quantities to
+        ! output and plot
         if (debug_run_driver_X_2) then
+            ! trim grid
+            ierr = trim_grid(grid_X,grid_trim,norm_id=norm_id)
+            CHCKERR('')
+            
+            ! set local n_mod and allocate integrated quantities
+            n_mod_tot = size(sec_X_ind,2)
+            allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
+                &grid_trim%n(2),0:2))
+            allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
+                &grid_trim%n(2),0:2))
+            allocate(X_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+            allocate(Y_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+            allocate(Z_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+            PV_int = 0._dp
+            KV_int = 0._dp
+            
+            ! minimal index in sec_X_ind modes
+            if (use_pol_flux_F) then
+                min_nm_X = minval(min_m_X)
+            else
+                min_nm_X = minval(min_n_X)
+            end if
+            
+            ! setup X, Y and Z of plot
+            ! loop over all normal grid points
+            do kd = 1,grid_trim%loc_n_r
+                Z_plot(:,:,kd,1) = 100*grid_trim%loc_r_F(kd)/max_flux_F*2*pi
+                ! loop over all possible mode combinations
+                do cd = 1,n_mod_tot
+                    do rd = 1,n_mod_tot
+                        Y_plot(rd,cd,kd,1) = min_nm_X+cd-1
+                        X_plot(rd,cd,kd,1) = min_nm_X+rd-1
+                    end do
+                end do
+            end do
+            
+            ! loop over all normal grid points
+            do kd = 1,grid_trim%loc_n_r
+                ! loop over all mode combinations of this X job
+                do m = 1,n_mod_X
+                    do k = 1,n_mod_X
+                        ! index in tables
+                        c_tot(1) = c([k,m],.true.,n_mod_X)
+                        c_tot(2) = c([k,m],.false.,n_mod_X)
+                        
+                        ! total mode combinations indices
+                        if (use_pol_flux_F) then
+                            rd = m_X(grid_trim%i_min-1+kd,k)
+                            cd = m_X(grid_trim%i_min-1+kd,m)
+                        else
+                            rd = n_X(grid_trim%i_min-1+kd,k)
+                            cd = n_X(grid_trim%i_min-1+kd,m)
+                        end if
+                        cd = cd-min_nm_X+1
+                        rd = rd-min_nm_X+1
+                        
+                        ! symmetric quantities
+                        if (k.ge.m) then
+                            PV_int(rd,cd,kd,:,0) = con(X_2_int%&
+                                &PV_0(1,:,norm_id(1)-1+kd,c_tot(1)),&
+                                &[rd,cd],.true.,[n_alpha])
+                            PV_int(rd,cd,kd,:,2) = con(X_2_int%&
+                                &PV_2(1,:,norm_id(1)-1+kd,c_tot(1)),&
+                                &[rd,cd],.true.,[n_alpha])
+                            KV_int(rd,cd,kd,:,0) = con(X_2_int%&
+                                &KV_0(1,:,norm_id(1)-1+kd,c_tot(1)),&
+                                &[rd,cd],.true.,[n_alpha])
+                            KV_int(rd,cd,kd,:,2) = con(X_2_int%&
+                                &KV_2(1,:,norm_id(1)-1+kd,c_tot(1)),&
+                                &[rd,cd],.true.,[n_alpha])
+                            PV_int(cd,rd,kd,:,0) = PV_int(rd,cd,kd,:,0)
+                            PV_int(cd,rd,kd,:,2) = PV_int(rd,cd,kd,:,2)
+                            KV_int(cd,rd,kd,:,0) = KV_int(rd,cd,kd,:,0)
+                            KV_int(cd,rd,kd,:,2) = KV_int(rd,cd,kd,:,2)
+                        end if
+                        
+                        ! asymmetric quantities
+                        PV_int(rd,cd,kd,:,1) = &
+                            &X_2_int%PV_1(1,:,norm_id(1)-1+kd,c_tot(2))
+                        KV_int(rd,cd,kd,:,1) = &
+                            &X_2_int%KV_1(1,:,norm_id(1)-1+kd,c_tot(2))
+                    end do
+                end do
+            end do
+            
             ! plot
             allocate(var_names(n_alpha))
             do ld = 1,size(var_names)

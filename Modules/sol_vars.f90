@@ -28,6 +28,7 @@ module sol_vars
     !!  - \c vec: <tt>(1:n_mod,1:loc_n_r,1:n_EV)</tt>
     type, public :: sol_type
         integer :: n_mod                                                        !< size of n and m (nr. of modes)
+        integer :: lim_sec_X(2)                                                 !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         integer, allocatable :: n(:,:)                                          !< vector of toroidal mode numbers
         integer, allocatable :: m(:,:)                                          !< vector of poloidal mode numbers
         complex(dp), allocatable :: vec(:,:,:)                                  !< Eigenvector solution
@@ -72,7 +73,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_sol,sol%n,sol%m,lim_sec_X)
+        call set_nm_X(grid_sol,sol%lim_sec_X,sol%n,sol%m,lim_sec_X)
         
         ! set n_mod
         sol%n_mod = size(sol%n,2)

@@ -76,6 +76,8 @@ module grid_vars
     contains
         !> initialize
         procedure :: init => init_grid
+        !> copy
+        procedure :: copy => copy_grid
         !> deallocate
         procedure :: dealloc => dealloc_grid
     end type
@@ -275,6 +277,34 @@ contains
             type(grid_type), intent(out) :: grid                                ! grid to be deallocated
         end subroutine dealloc_grid_final
     end subroutine dealloc_grid
+    
+    !> \public Deep copy of a grid.
+    !!
+    !! \note Does not copy possible trigoniometric factors.
+    !!
+    !! \return ierr
+    integer function copy_grid(grid_i,grid_o) result(ierr)
+        character(*), parameter :: rout_name = 'copy_grid'
+        
+        ! input / output
+        class(grid_type), intent(in) :: grid_i                                  !< grid to be copied
+        type(grid_type), intent(inout) :: grid_o                                !< copied grid
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ierr = init_grid(grid_o,grid_i%n,i_lim=[grid_i%i_min,grid_i%i_max],&
+            &divided=grid_i%divided)
+        CHCKERR('')
+        grid_o%r_E = grid_i%r_E
+        grid_o%r_F = grid_i%r_F
+        grid_o%loc_r_E = grid_i%loc_r_E
+        grid_o%loc_r_F = grid_i%loc_r_F
+        if (associated(grid_i%theta_E)) grid_o%theta_E = grid_i%theta_E
+        if (associated(grid_i%theta_F)) grid_o%theta_F = grid_i%theta_F
+        if (associated(grid_i%zeta_E)) grid_o%zeta_E = grid_i%zeta_E
+        if (associated(grid_i%zeta_F)) grid_o%zeta_F = grid_i%zeta_F
+    end function copy_grid
     
     !> \public Initialize discretization variable, possibly overwriting.
     !!

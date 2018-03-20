@@ -23,22 +23,25 @@ module driver_eq
 contains
     !> Main driver of PB3D equilibrium part.
     !!
-    !! sets up ([out] means redistributed for output):
-    !!  - \c grid_eq [out] (for HELENA, only first Richardson level)
-    !!  - \c grid_eq_B [out] (for VMEC, equal to grid_eq_out)
-    !!  - \c eq_1 [out] (only first Richardson level)
-    !!  - \c eq_2 [out] (for HELENA, only first Richardson level)
+    !!  - sets up ([out] means for output):
+    !!      * \c grid_eq [out] (for HELENA, only first Richardson level)
+    !!      * \c grid_eq_B [out] (for VMEC, equal to grid_eq_out)
+    !!      * \c eq_1 [out] (only first Richardson level)
+    !!      * \c eq_2 [out] (for HELENA, only first Richardson level)
+    !!  where output means
+    !!      * on the equilibrium grid if \c X_grid style is 1 (no change).
+    !!      * on a redistributed grid if \c X_grid_style is 2
     !!
-    !! writes to HDF5:
-    !!  - \c grid_eq (for HELENA, only first Richardson level)
-    !!  - \c grid_eq_B (for VMEC, equal to grid_eq)
-    !!  - \c eq_1 (only first Richardson level)
-    !!  - \c eq_2 (only for HELENA)
+    !!  - writes to HDF5:
+    !!      * \c grid_eq (for HELENA, only first Richardson level)
+    !!      * \c grid_eq_B (for VMEC, equal to grid_eq)
+    !!      * \c eq_1 (only first Richardson level)
+    !!      * \c eq_2 (only for HELENA)
     !!
-    !! deallocates:
-    !!  - \c grid_eq [out] before setting up
-    !!  - \c grid_B_eq [out] before setting up
-    !!  - \c eq_2 [out] before setting up
+    !!  - deallocates:
+    !!      * \c grid_eq [out] before setting up
+    !!      * \c grid_B_eq [out] before setting up
+    !!      * \c eq_2 [out] before setting up
     !!
     !! \return ierr
     integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
@@ -46,7 +49,8 @@ contains
         
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
-            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest, alpha_style
+            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest, alpha_style, &
+            &X_grid_style
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
             &redistribute_output_eq, B_plot, J_plot, kappa_plot
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
@@ -65,16 +69,15 @@ contains
         character(*), parameter :: rout_name = 'run_driver_eq'
         
         ! input / output
-        type(grid_type), intent(inout), target :: grid_eq_out                   !< redistributed equilibrium grid
-        type(grid_type), intent(inout), pointer :: grid_eq_B_out                !< redistributed field-aligned equilibrium grid
-        type(eq_1_type), intent(inout) :: eq_1_out                              !< flux equilibrium variables in redistributed grid
-        type(eq_2_type), intent(inout) :: eq_2_out                              !< metric equilibrium variables in redistributed grid
+        type(grid_type), intent(inout), target :: grid_eq_out                   !< output equilibrium grid
+        type(grid_type), intent(inout), pointer :: grid_eq_B_out                !< output field-aligned equilibrium grid
+        type(eq_1_type), intent(inout) :: eq_1_out                              !< flux equilibrium variables in output grid
+        type(eq_2_type), intent(inout) :: eq_2_out                              !< metric equilibrium variables in output grid
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
-        character(len=8) :: flux_name                                           ! toroidal or poloidal
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_eq_B                                            ! field-aligned equilibrium grid
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid of this process
@@ -83,6 +86,7 @@ contains
         logical :: do_eq_2_ops                                                  ! whether specific calculations for eq_2 are necessary
         logical :: only_half_grid                                               ! calculate only half grid
         logical :: dealloc_vars                                                 ! whether to deallocate variables to save memory
+        character(len=8) :: flux_name                                           ! toroidal or poloidal
         character(len=max_str_ln) :: grid_eq_B_name                             ! name of grid_eq_B
         
         ! initialize ierr
@@ -107,12 +111,23 @@ contains
             call lvl_ud(1)
             
             ! grid_eq_out
-            ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
-                &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
-            CHCKERR('')
-            ierr = redistribute_output_grid(grid_eq,grid_eq_out)
-            CHCKERR('')
-            call grid_eq%dealloc()
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    ! perturbation  quantities  are  calculated  on  equilibrium
+                    ! normal grid
+                    ierr = reconstruct_PB3D_grid(grid_eq_out,'eq',&
+                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
+                    CHCKERR('')
+                case (2)                                                        ! solution
+                    ! start from equilibrium grid in equilibrium limits and then
+                    ! redistribute it
+                    ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
+                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
+                    CHCKERR('')
+                    ierr = redistribute_output_grid(grid_eq,grid_eq_out)
+                    CHCKERR('')
+                    call grid_eq%dealloc()
+            end select
             
             ! eq_1_out
             ierr = reconstruct_PB3D_eq_1(grid_eq_out,eq_1_out,'eq_1')
@@ -270,79 +285,54 @@ contains
             CHCKERR('')
         end if
         
-        ! plot magnetic field if requested
-        ! (done in parts, for every parallel job)
-        if (plot_B) then
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ierr = B_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
-                    CHCKERR('')
-                case (2)                                                        ! HELENA
-                    if (rich_lvl.eq.1) then
-                        ierr = B_plot(grid_eq,eq_1,eq_2)
-                        CHCKERR('')
-                    end if
-            end select
-        else
-            if (eq_job_nr.eq.1) call writo('Magnetic field plot not requested')
-        end if
-        
-        ! plot current if requested
-        ! (done in parts, for every parallel job)
-        if (plot_J) then
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ierr = J_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
-                    CHCKERR('')
-                case (2)                                                        ! HELENA
-                    if (rich_lvl.eq.1) then
-                        ierr = J_plot(grid_eq,eq_1,eq_2)
-                        CHCKERR('')
-                    end if
-            end select
-        else
-            if (eq_job_nr.eq.1) call writo('Current plot not requested')
-        end if
-        
-        ! plot curvature if requested
-        ! (done in parts, for every parallel job)
-        if (plot_kappa) then
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ierr = kappa_plot(grid_eq,eq_1,eq_2,rich_lvl=rich_lvl)
-                    CHCKERR('')
-                case (2)                                                        ! HELENA
-                    if (rich_lvl.eq.1) then
-                        ierr = kappa_plot(grid_eq,eq_1,eq_2)
-                        CHCKERR('')
-                    end if
-            end select
-        else
-            if (eq_job_nr.eq.1) call writo('Curvature plot not requested')
-        end if
-        
-        ! redistribute equilibrium grid and variables and clean up
-        call writo('Redistribute the equilibrium grids and variables')
+        ! set output variables
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                call writo('Copy the equilibrium grids and variables to &
+                    &output grid')
+            case (2)                                                            ! solution
+                call writo('Redistribute the equilibrium grids and variables &
+                    &to output grid')
+        end select
         call lvl_ud(1)
         
         ! grid_eq_out
         if (do_eq_2_ops) then
             if (associated(grid_eq_out%r_F)) call grid_eq_out%dealloc()         ! deallocate if necessary
-            ierr = redistribute_output_grid(grid_eq,grid_eq_out)
-            CHCKERR('')
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    ierr = grid_eq%copy(grid_eq_out)
+                    CHCKERR('')
+                case (2)                                                        ! solution
+                    ierr = redistribute_output_grid(grid_eq,grid_eq_out)
+                    CHCKERR('')
+            end select
         end if
         
         ! eq_1_out
         if (do_eq_1_ops) then
-            ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_1,eq_1_out)
-            CHCKERR('')
+            if (allocated(eq_1_out%pres_FD)) call eq_1_out%dealloc()            ! deallocate if necessary
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    call eq_1%copy(grid_eq,eq_1_out)
+                case (2)                                                        ! solution
+                    ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_1,&
+                        &eq_1_out)
+                    CHCKERR('')
+            end select
         end if
         
         ! eq_2_out
         if (do_eq_2_ops) then
             if (allocated(eq_2_out%jac_FD)) call eq_2_out%dealloc()             ! deallocate if necessary
-            ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_2,eq_2_out)
-            CHCKERR('')
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    call eq_2%copy(grid_eq,eq_2_out)
+                case (2)                                                        ! solution
+                    ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_2,&
+                        &eq_2_out)
+                    CHCKERR('')
+            end select
         end if
         
         ! grid_eq_B_out
@@ -356,19 +346,81 @@ contains
                     nullify(grid_eq_B_out)
                 end if
                 allocate(grid_eq_B_out)
-                ierr = redistribute_output_grid(grid_eq_B,grid_eq_B_out)
-                CHCKERR('')
-                call grid_eq_B%dealloc()
+                select case (X_grid_style)
+                    case (1)                                                    ! equilibrium
+                        ierr = grid_eq_B%copy(grid_eq_B_out)
+                        CHCKERR('')
+                    case (2)                                                    ! solution
+                        ierr = redistribute_output_grid(grid_eq_B,grid_eq_B_out)
+                        CHCKERR('')
+                end select
         end select
         
         ! clean up
-        call eq_1%dealloc()
+        call grid_eq%dealloc()
+        call eq_1%dealloc()                                                     ! eq_1 is always calculated because there are some quantities that are not present in eq_1_out
         if (do_eq_2_ops) then
-            call grid_eq%dealloc()
             call eq_2%dealloc()
+        end if
+        if (eq_style.eq.2) then
+            call grid_eq_B%dealloc()
         end if
         
         call lvl_ud(-1)
+        
+        ! plot magnetic field if requested
+        ! (done in parts, for every parallel job)
+        if (plot_B) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = B_plot(grid_eq_out,eq_1_out,eq_2_out,&
+                        &rich_lvl=rich_lvl)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    if (rich_lvl.eq.1) then
+                        ierr = B_plot(grid_eq_out,eq_1_out,eq_2_out)
+                        CHCKERR('')
+                    end if
+            end select
+        else
+            if (eq_job_nr.eq.1) call writo('Magnetic field plot not requested')
+        end if
+        
+        ! plot current if requested
+        ! (done in parts, for every parallel job)
+        if (plot_J) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = J_plot(grid_eq_out,eq_1_out,eq_2_out,&
+                        &rich_lvl=rich_lvl)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    if (rich_lvl.eq.1) then
+                        ierr = J_plot(grid_eq_out,eq_1_out,eq_2_out)
+                        CHCKERR('')
+                    end if
+            end select
+        else
+            if (eq_job_nr.eq.1) call writo('Current plot not requested')
+        end if
+        
+        ! plot curvature if requested
+        ! (done in parts, for every parallel job)
+        if (plot_kappa) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = kappa_plot(grid_eq_out,eq_1_out,eq_2_out,&
+                        &rich_lvl=rich_lvl)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    if (rich_lvl.eq.1) then
+                        ierr = kappa_plot(grid_eq_out,eq_1_out,eq_2_out)
+                        CHCKERR('')
+                    end if
+            end select
+        else
+            if (eq_job_nr.eq.1) call writo('Curvature plot not requested')
+        end if
         
         ! plot full field-aligned grid if requested
         ! Note: As  this needs a total  grid, it cannot be  easiliy created like

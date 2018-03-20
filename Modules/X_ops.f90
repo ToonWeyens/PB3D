@@ -15,7 +15,8 @@ module X_ops
     implicit none
     private
     public calc_X, calc_magn_ints, print_output_X, resonance_plot, &
-        &calc_res_surf, check_X_modes, setup_nm_X, divide_X_jobs
+        &calc_res_surf, check_X_modes, setup_nm_X, divide_X_jobs, &
+        &redistribute_output_X, interpolate_nm_X, restore_nm_X
 #if ldebug
     public debug_check_X_modes_2
 #endif
@@ -39,6 +40,18 @@ module X_ops
         module procedure calc_X_1
         !> \public
         module procedure calc_X_2
+    end interface
+    
+    !> \public Redistribute the perturbation variables.
+    !!
+    !! \see redistribute_output_grid()
+    !!
+    !! \return ierr
+    interface redistribute_output_X
+        !> \public
+        module procedure redistribute_output_X_1
+        !> \public
+        module procedure redistribute_output_X_2
     end interface
     
     !> \public Print either vectorial or  tensorial perturbation quantities of a
@@ -155,6 +168,217 @@ contains
         ! user output
         call lvl_ud(-1)
     end function calc_X_2
+    
+    !> \private flux version
+    integer function redistribute_output_X_1(grid,grid_out,X,X_out) &
+        &result(ierr)
+        use MPI_utilities, only: redistribute_var
+        
+        character(*), parameter :: rout_name = 'redistribute_output_X_1'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     !< perturbation grid variables
+        type(grid_type), intent(in) :: grid_out                                 !< redistributed perturbation grid variables
+        type(X_1_type), intent(in) :: X                                         !< vectorial perturbation variables
+        type(X_1_type), intent(inout) :: X_out                                  !< vectorial perturbation variables in redistributed grid
+        
+        ! local variables
+        integer :: ld                                                           ! counter
+        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
+        integer :: siz(3), siz_dis(3)                                           ! size for geometric part of variable
+        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Redistribute vectorial perturbation variables')
+        call lvl_ud(1)
+        
+        ! test
+        if (grid%n(1).ne.grid_out%n(1) .or. grid%n(2).ne.grid_out%n(2)) then
+            ierr = 1
+            CHCKERR('grid and grid_out are not compatible')
+        end if
+        
+        ! create redistributed vectorial perturbation variables
+        call X_out%init(grid_out,lim_sec_X=X%lim_sec_X)
+        
+        ! set up limits taking into account angular extent and temporary var
+        lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
+        lims(2) = product(grid%n(1:2))*grid%i_max
+        lims_dis(1) = product(grid%n(1:2))*(grid_out%i_min-1)+1
+        lims_dis(2) = product(grid%n(1:2))*grid_out%i_max
+        siz = [grid%n(1:2),grid%loc_n_r]
+        siz_dis = [grid%n(1:2),grid_out%loc_n_r]
+        allocate(temp_var(2*product(siz_dis)))                                  ! factor 2 because complex variable
+        
+        ! for all mode numbers
+        do ld = 1,size(X%U_0,4)
+            ! U_0
+            ierr = redistribute_var(reshape(&
+                &[rp(X%U_0(:,:,:,ld)),ip(X%U_0(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%U_0(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! U_1
+            ierr = redistribute_var(reshape(&
+                &[rp(X%U_1(:,:,:,ld)),ip(X%U_1(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%U_1(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! DU_0
+            ierr = redistribute_var(reshape(&
+                &[rp(X%DU_0(:,:,:,ld)),ip(X%DU_0(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%DU_0(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! DU_1
+            ierr = redistribute_var(reshape(&
+                &[rp(X%DU_1(:,:,:,ld)),ip(X%DU_1(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%DU_1(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+        end do
+        
+        ! user output
+        call lvl_ud(-1)
+    end function redistribute_output_X_1
+    !> \private metric version
+    integer function redistribute_output_X_2(grid,grid_out,X,X_out) &
+        &result(ierr)
+        use MPI_utilities, only: redistribute_var
+        
+        character(*), parameter :: rout_name = 'redistribute_output_X_2'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     !< perturbation grid variables
+        type(grid_type), intent(in) :: grid_out                                 !< redistributed perturbation grid variables
+        type(X_2_type), intent(in) :: X                                         !< tensorial perturbation variables
+        type(X_2_type), intent(inout) :: X_out                                  !< tensorial perturbation variables in redistributed grid
+        
+        ! local variables
+        integer :: ld                                                           ! counters
+        integer :: n_loc(2)                                                     ! local n
+        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
+        integer :: siz(3), siz_dis(3)                                           ! size for geometric part of variable
+        logical :: is_field_averaged                                            ! whether field-averaged, so only one dimension for first index
+        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Redistribute tensorial perturbation variables')
+        call lvl_ud(1)
+        
+        ! test
+        is_field_averaged = size(X%PV_0,1).eq.1
+        if ((grid%n(1).ne.grid_out%n(1) .or. grid%n(2).ne.grid_out%n(2)) .and. &
+            &.not.is_field_averaged) then                                       ! for field-averaged grids, don't do tests
+            ierr = 1
+            CHCKERR('grid and grid_out are not compatible')
+        end if
+        
+        ! create redistributed tensorial perturbation variables
+        call X_out%init(grid_out,lim_sec_X=X%lim_sec_X,&
+            &is_field_averaged=is_field_averaged)
+        
+        ! set up limits taking into account angular extent and temporary var
+        n_loc = grid%n(1:2)
+        if (is_field_averaged) n_loc(1) = 1
+        lims(1) = product(n_loc)*(grid%i_min-1)+1
+        lims(2) = product(n_loc)*grid%i_max
+        lims_dis(1) = product(n_loc)*(grid_out%i_min-1)+1
+        lims_dis(2) = product(n_loc)*grid_out%i_max
+        siz = [n_loc,grid%loc_n_r]
+        siz_dis = [n_loc,grid_out%loc_n_r]
+        allocate(temp_var(2*product(siz_dis)))                                  ! factor 2 because complex variable
+        
+        ! for all mode number combinations, symmetric
+        do ld = 1,size(X%PV_0,4)
+            ! PV_0
+            ierr = redistribute_var(reshape(&
+                &[rp(X%PV_0(:,:,:,ld)),ip(X%PV_0(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_0(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! PV_2
+            ierr = redistribute_var(reshape(&
+                &[rp(X%PV_2(:,:,:,ld)),ip(X%PV_2(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_2(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! KV_0
+            ierr = redistribute_var(reshape(&
+                &[rp(X%KV_0(:,:,:,ld)),ip(X%KV_0(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_0(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! KV_2
+            ierr = redistribute_var(reshape(&
+                &[rp(X%KV_2(:,:,:,ld)),ip(X%KV_2(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_2(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+        end do
+        
+        ! for all mode number combinations, asymmetric
+        do ld = 1,size(X%PV_1,4)
+            ! PV_1
+            ierr = redistribute_var(reshape(&
+                &[rp(X%PV_1(:,:,:,ld)),ip(X%PV_1(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_1(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+            
+            ! KV_1
+            ierr = redistribute_var(reshape(&
+                &[rp(X%KV_1(:,:,:,ld)),ip(X%KV_1(:,:,:,ld))],[2*product(siz)]),&
+                &temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_1(:,:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
+                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
+                &siz_dis)
+        end do
+        
+        ! user output
+        call lvl_ud(-1)
+    end function redistribute_output_X_2
     
     !> \private vectorial version.
     integer function print_output_X_1(grid_X,X,data_name,rich_lvl,par_div,&
@@ -659,7 +883,8 @@ contains
     !! in perturbation coordinates and the indices of the secondary modes
     !!   - sec_X_ind,
     !! 
-    !! in perturbation coordinates as well.
+    !! in  perturbation coordinates  as well.  The normal  values of  these last
+    !! variables are saved in \c r_X.
     !!
     !! It  functions depending  on  the \c  X_style used:  1  (prescribed) or  2
     !! (fast). For the fast  style, at every flux surface the  range of modes is
@@ -675,6 +900,12 @@ contains
     !!
     !! Optionally, \c n and \c m can be plot.
     !!
+    !! \note  For  \c  X_grid_style  2,   the  quantities  that  are  calculated
+    !! in  perturbation  coordinates,  \c  n_X,  \c m_X  and  \c  sec_X_ind  are
+    !! interpolated  on the  solution grid  and replaced  by their  interpolated
+    !! values  in   interpolate_nm_x().  They   are  subsequently   restored  in
+    !! restore_nm_x().
+    !!
     !! \note
     !!  -# the limits are  setup in the equilibrium grid but  the values are set
     !!  up in the perturbation grid.
@@ -684,7 +915,7 @@ contains
     integer function setup_nm_X(grid_eq,grid_X,eq,plot_nm) result(ierr)
         use num_vars, only: use_pol_flux_F, X_style, rank, norm_disc_prec_X
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
-            &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind
+            &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind, r_X
         use MPI_utilities, only: get_ser_var
         use grid_vars, only: disc_type
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
@@ -824,6 +1055,10 @@ contains
         ! clean up
         call norm_interp_data%dealloc()
         
+        ! set up normal tabulation values
+        allocate(r_X(grid_X_trim%n(3)))
+        r_X = grid_X_trim%r_F
+        
         ! set n and m
         if (allocated(n_X)) deallocate(n_X)
         if (allocated(m_X)) deallocate(m_X)
@@ -906,6 +1141,132 @@ contains
         call lvl_ud(-1)
         call writo('Perturbation modes set up')
     end function setup_nm_X
+    
+    !> \public   Interpolate  and   overwrite   quantities   tabulated  in   the
+    !! perturbation grid.
+    !!
+    !! \see See setup_nm_X().
+    !!
+    !! \note Recommended usage of this routine  includes storing \c r_X, \c n_X,
+    !! \c m_X and \sec_X_ind in the  calling routine, followed by restoring them
+    !! afterwards. If not,  they have to be recalculated in  the next Richardson
+    !! level.
+    !!
+    !! \note The grid needs to be trimmed.
+    !!
+    !! \return ierr
+    integer function interpolate_nm_X(grid_X,r_X,n_X,m_X,sec_X_ind) result(ierr)
+        use X_vars, only: r_X_new => r_X, n_X_new => n_X, m_X_new => m_X, &
+            &sec_X_ind_new => sec_X_ind, n_mod_X
+        use num_utilities, only: spline3
+        use num_vars, only: norm_disc_prec_X
+        
+        character(*), parameter :: rout_name = 'interpolate_nm_X'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   !< (trimmed) perturbation grid
+        real(dp), intent(inout), allocatable :: r_X(:)                          !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
+        integer, intent(inout), allocatable :: n_X(:,:)                         !< \f$n\f$ for all modes, in total X grid
+        integer, intent(inout), allocatable :: m_X(:,:)                         !< \f$m\f$ for all modes, in total X grid
+        integer, intent(inout), allocatable :: sec_X_ind(:,:)                   !< index of \c m_X or \c n_X for all possible modes, in total X grid
+        
+        ! local variables
+        integer :: ld                                                           ! counter
+        integer :: n_r_new                                                      ! number of normal points new variables
+        integer :: n_mod_tot                                                    ! total number of modes
+        real(dp), allocatable :: temp(:)                                        ! temporary variable
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! save old variables
+        allocate(r_X(size(r_X_new,1)))
+        allocate(n_X(size(n_X_new,1),size(n_X_new,2)))
+        allocate(m_X(size(m_X_new,1),size(m_X_new,2)))
+        allocate(sec_X_ind(size(m_X_new,1),size(m_X_new,2)))
+        r_X = r_X_new
+        n_X = n_X_new
+        m_X = m_X_new
+        sec_X_ind = sec_X_ind_new
+        
+        ! reallocate
+        n_r_new = grid_X%n(3)
+        n_mod_tot = size(sec_X_ind_new,2)
+        deallocate(r_X_new)
+        deallocate(n_X_new)
+        deallocate(m_X_new)
+        deallocate(sec_X_ind_new)
+        allocate(r_X_new(n_r_new))
+        allocate(n_X_new(n_r_new,n_mod_X))
+        allocate(m_X_new(n_r_new,n_mod_X))
+        allocate(sec_X_ind_new(n_r_new,n_mod_tot))
+        allocate(temp(n_r_new))
+        
+        ! r_X_new
+        r_X_new = grid_X%r_F
+        
+        ! n_X and m_X
+        do ld = 1,n_mod_X
+            ierr = spline3(norm_disc_prec_X,r_X,1._dp*n_X(:,ld),r_X_new,temp)
+            CHCKERR('')
+            n_X_new(:,ld) = nint(temp)
+            ierr = spline3(norm_disc_prec_X,r_X,1._dp*m_X(:,ld),r_X_new,temp)
+            CHCKERR('')
+            m_X_new(:,ld) = nint(temp)
+        end do
+        
+        ! sec_X_ind_new
+        do ld = 1,n_mod_tot
+            ierr = spline3(norm_disc_prec_X,r_X,1._dp*sec_X_ind(:,ld),r_X_new,&
+                &temp)
+            CHCKERR('')
+            sec_X_ind_new(:,ld) = nint(temp)
+        end do
+    end function interpolate_nm_X
+    
+    !> \public restore variables interpolated in interpolate_nm_x().
+    !!
+    !! Also deallocates the temporary variables
+    !!
+    !! \see See setup_nm_X() and interpolate_nm_x().
+    subroutine restore_nm_X(r_X,n_X,m_X,sec_X_ind)
+        use X_vars, only: r_X_new => r_X, n_X_new => n_X, m_X_new => m_X, &
+            &sec_X_ind_new => sec_X_ind, n_mod_X
+        
+        ! input / output
+        real(dp), intent(inout), allocatable :: r_X(:)                          !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
+        integer, intent(inout), allocatable :: n_X(:,:)                         !< \f$n\f$ for all modes, in total X grid
+        integer, intent(inout), allocatable :: m_X(:,:)                         !< \f$m\f$ for all modes, in total X grid
+        integer, intent(inout), allocatable :: sec_X_ind(:,:)                   !< index of \c m_X or \c n_X for all possible modes, in total X grid
+        
+        ! local variables
+        integer :: n_r_new                                                      ! number of normal points new variables
+        integer :: n_mod_tot                                                    ! total number of modes
+        
+        ! reallocate
+        n_r_new = size(r_X)
+        n_mod_tot = size(sec_X_ind,2)
+        deallocate(r_X_new)
+        deallocate(n_X_new)
+        deallocate(m_X_new)
+        deallocate(sec_X_ind_new)
+        allocate(r_X_new(n_r_new))
+        allocate(n_X_new(n_r_new,n_mod_X))
+        allocate(m_X_new(n_r_new,n_mod_X))
+        allocate(sec_X_ind_new(n_r_new,n_mod_tot))
+        
+        ! copy
+        r_X_new = r_X
+        n_X_new = n_X
+        m_X_new = m_X
+        sec_X_ind_new = sec_X_ind
+        
+        ! deallocate temporary variables
+        deallocate(r_X)
+        deallocate(n_X)
+        deallocate(m_X)
+        deallocate(sec_X_ind)
+    end subroutine restore_nm_X
     
     !> Checks whether the high-n approximation is valid:
     !!
@@ -1694,7 +2055,8 @@ contains
     !!
     !! \return ierr
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
-        use num_vars, only: use_pol_flux_F, eq_style, U_style, norm_disc_prec_X
+        use num_vars, only: use_pol_flux_F, eq_style, U_style, &
+            &norm_disc_prec_X, X_grid_style
         use num_utilities, only: c
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
@@ -1710,7 +2072,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid variables
-        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_1_type), intent(in), target :: eq_1                             !< flux equilibrium
         type(eq_2_type), intent(in), target :: eq_2                             !< metric equilibrium
         type(X_1_type), intent(inout) :: X                                      !< vectorial perturbation variables
         
@@ -1747,7 +2109,7 @@ contains
         ! helper variables
         real(dp), pointer :: ang_par_F(:,:,:)                                   ! equilibrium parallel angle in flux coordinates
         real(dp), pointer :: ang_geo_F(:,:,:)                                   ! equilibrium geodesical angle in flux coordinates
-        real(dp), allocatable :: q_saf(:), rot_t(:)                             ! safety factor and rotational transform in X grid
+        real(dp), pointer :: q_saf(:), rot_t(:)                                 ! safety factor and rotational transform in X grid
         real(dp), allocatable :: djq(:)                                         ! either q' (pol. flux) or -iota' (tor. flux)
         real(dp), allocatable :: Theta_3(:,:,:), D1Theta_3(:,:,:), &
             &D3Theta_3(:,:,:)                                                   ! Theta^theta and derivatives
@@ -1757,18 +2119,18 @@ contains
         complex(dp), allocatable :: U_corr(:,:,:,:)                             ! correction to U_0 and U_1 for a certain (n,m)
         complex(dp), allocatable :: D3U_corr(:,:,:,:)                           ! D_theta U_corr
         ! U factors
-        real(dp), allocatable :: T1(:,:,:,:)                                    ! B_alpha/B_theta and par. deriv.
-        real(dp), allocatable :: T2(:,:,:,:)                                    ! Theta^alpha + q' theta and par. deriv.
-        real(dp), allocatable :: T3(:,:,:,:)                                    ! B_alpha/B_theta q' + J^2/B_theta mu_0 p' and par. deriv.
-        real(dp), allocatable :: T4(:,:,:,:)                                    ! B_alpha/B_theta q' theta - B_psi/B_theta and par. deriv.
-        real(dp), allocatable :: T5(:,:,:,:)                                    ! B_alpha/B_theta D3Theta^theta - D1Theta^theta and par. deriv.
-        real(dp), allocatable :: T6(:,:,:,:)                                    ! B_alpha/B_theta Theta^theta and par. deriv.
-        real(dp), allocatable :: T1_X(:,:,:,:)                                  ! T1 in X grid and par. deriv.
-        real(dp), allocatable :: T2_X(:,:,:,:)                                  ! T2 in X grid and par. deriv.
-        real(dp), allocatable :: T3_X(:,:,:,:)                                  ! T3 in X grid and par. deriv.
-        real(dp), allocatable :: T4_X(:,:,:,:)                                  ! T4 in X grid and par. deriv.
-        real(dp), allocatable :: T5_X(:,:,:,:)                                  ! T5 in X grid and par. deriv.
-        real(dp), allocatable :: T6_X(:,:,:,:)                                  ! T6 in X grid and par. deriv.
+        real(dp), allocatable, target :: T1(:,:,:,:)                            ! B_alpha/B_theta and par. deriv.
+        real(dp), allocatable, target :: T2(:,:,:,:)                            ! Theta^alpha + q' theta and par. deriv.
+        real(dp), allocatable, target :: T3(:,:,:,:)                            ! B_alpha/B_theta q' + J^2/B_theta mu_0 p' and par. deriv.
+        real(dp), allocatable, target :: T4(:,:,:,:)                            ! B_alpha/B_theta q' theta - B_psi/B_theta and par. deriv.
+        real(dp), allocatable, target :: T5(:,:,:,:)                            ! B_alpha/B_theta D3Theta^theta - D1Theta^theta and par. deriv.
+        real(dp), allocatable, target :: T6(:,:,:,:)                            ! B_alpha/B_theta Theta^theta and par. deriv.
+        real(dp), pointer :: T1_X(:,:,:,:)                                      ! T1 in X grid and par. deriv.
+        real(dp), pointer :: T2_X(:,:,:,:)                                      ! T2 in X grid and par. deriv.
+        real(dp), pointer :: T3_X(:,:,:,:)                                      ! T3 in X grid and par. deriv.
+        real(dp), pointer :: T4_X(:,:,:,:)                                      ! T4 in X grid and par. deriv.
+        real(dp), pointer :: T5_X(:,:,:,:)                                      ! T5 in X grid and par. deriv.
+        real(dp), pointer :: T6_X(:,:,:,:)                                      ! T6 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
@@ -1800,12 +2162,19 @@ contains
         allocate(T4(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
         allocate(T5(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
         allocate(T6(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
-        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
-        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
-        allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
-        allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
-        allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
-        allocate(T6_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                allocate(q_saf(grid_X%loc_n_r))
+                allocate(rot_t(grid_X%loc_n_r))
+                allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+                allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+                allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+                allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+                allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+                allocate(T6_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
+        end select
         
         ! set pointers
         if (use_pol_flux_F) then
@@ -1918,28 +2287,44 @@ contains
             T6(:,:,:,2) = T1(:,:,:,2)*Theta_3 + T1(:,:,:,1)*D3Theta_3
         end if
         
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
-        CHCKERR('')
-        ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
-        CHCKERR('')
-        ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T3,norm_interp_data,T3_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T4,norm_interp_data,T4_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T5,norm_interp_data,T5_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T6,norm_interp_data,T6_X,3)
-        CHCKERR('')
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! point
+                q_saf => eq_1%q_saf_FD(:,0)
+                rot_t => eq_1%rot_t_FD(:,0)
+                T1_X => T1
+                T2_X => T2
+                T3_X => T3
+                T4_X => T4
+                T5_X => T5
+                T6_X => T6
+            case (2)                                                            ! solution
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+                    &norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
+                CHCKERR('')
+                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
+                CHCKERR('')
+                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T3,norm_interp_data,T3_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T4,norm_interp_data,T4_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T5,norm_interp_data,T5_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T6,norm_interp_data,T6_X,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+        end select
         
         ! set up n_frac
         do kd = 1,grid_X%loc_n_r
@@ -1949,9 +2334,6 @@ contains
                 n_frac(kd,:) = -X%m(kd,:)*rot_t(kd) + X%n(kd,:)
             end if
         end do
-        
-        ! clean up
-        call norm_interp_data%dealloc()
         
         ! calculate U_0 and U_1 for all modes
         do ld = 1,X%n_mod
@@ -2085,6 +2467,13 @@ contains
         nullify(h12,D3h12)
         nullify(h22,D1h22,D3h22,D13h22,D33h22)
         nullify(h23,D1h23,D3h23,D13h23,D33h23)
+        select case (X_grid_style) 
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                deallocate(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X,T6_X)
+        end select
+        nullify(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X,T6_X)
 #if ldebug
     contains
         ! Test calculation of DU by deriving U numerically.
@@ -2223,7 +2612,7 @@ contains
     !! \return ierr
     integer function calc_PV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
-        use num_vars, only: use_pol_flux_F, norm_disc_prec_X
+        use num_vars, only: use_pol_flux_F, norm_disc_prec_X, X_grid_style
         use eq_vars, only: vac_perm
         use num_utilities, only: c
         use X_utilities, only: is_necessary_X
@@ -2236,7 +2625,7 @@ contains
         ! use input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
+        type(eq_1_type), intent(in), target :: eq_1                             !< flux equilibrium
         type(eq_2_type), intent(in), target :: eq_2                             !< metric equilibrium
         type(X_1_type), intent(in) :: X_a                                       !< vectorial perturbation variables of dimension 2
         type(X_1_type), intent(in) :: X_b                                       !< vectorial perturbation variables of dimension 2
@@ -2256,19 +2645,19 @@ contains
         ! upper metric factors
         real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
         ! helper variables
-        real(dp), allocatable :: q_saf(:), rot_t(:)                             ! safety factor and rotational transform in X grid
+        real(dp), pointer :: q_saf(:), rot_t(:)                                 ! safety factor and rotational transform in X grid
         real(dp), allocatable :: fac_n(:), fac_m(:)                             ! multiplicative factors for n and m
         ! PV factors
-        real(dp), allocatable :: T1(:,:,:)                                      ! h22/mu_0 g33
-        real(dp), allocatable :: T2(:,:,:)                                      ! JS + mu_0 sigma g33/J h22
-        real(dp), allocatable :: T3(:,:,:)                                      ! sigma/J T2
-        real(dp), allocatable :: T4(:,:,:)                                      ! 1/mu_0 J^2 h22
-        real(dp), allocatable :: T5(:,:,:)                                      ! 2 p' kappa_n
-        real(dp), allocatable :: T1_X(:,:,:)                                    ! T1 in X grid and par. deriv.
-        real(dp), allocatable :: T2_X(:,:,:)                                    ! T2 in X grid and par. deriv.
-        real(dp), allocatable :: T3_X(:,:,:)                                    ! T3 in X grid and par. deriv.
-        real(dp), allocatable :: T4_X(:,:,:)                                    ! T4 in X grid and par. deriv.
-        real(dp), allocatable :: T5_X(:,:,:)                                    ! T5 in X grid and par. deriv.
+        real(dp), allocatable, target :: T1(:,:,:)                              ! h22/mu_0 g33
+        real(dp), allocatable, target :: T2(:,:,:)                              ! JS + mu_0 sigma g33/J h22
+        real(dp), allocatable, target :: T3(:,:,:)                              ! sigma/J T2
+        real(dp), allocatable, target :: T4(:,:,:)                              ! 1/mu_0 J^2 h22
+        real(dp), allocatable, target :: T5(:,:,:)                              ! 2 p' kappa_n
+        real(dp), pointer :: T1_X(:,:,:)                                        ! T1 in X grid and par. deriv.
+        real(dp), pointer :: T2_X(:,:,:)                                        ! T2 in X grid and par. deriv.
+        real(dp), pointer :: T3_X(:,:,:)                                        ! T3 in X grid and par. deriv.
+        real(dp), pointer :: T4_X(:,:,:)                                        ! T4 in X grid and par. deriv.
+        real(dp), pointer :: T5_X(:,:,:)                                        ! T5 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
@@ -2284,11 +2673,18 @@ contains
         allocate(T3(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(T4(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(T5(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                allocate(q_saf(grid_X%loc_n_r))
+                allocate(rot_t(grid_X%loc_n_r))
+                allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(T3_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(T4_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(T5_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        end select
         
         ! set pointers
         J => eq_2%jac_FD(:,:,:,0,0,0)
@@ -2304,30 +2700,41 @@ contains
             T5(:,:,kd) = 2*eq_1%pres_FD(kd,1)*eq_2%kappa_n(:,:,kd)
         end do
         
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
-        CHCKERR('')
-        ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
-        CHCKERR('')
-        ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T3,norm_interp_data,T3_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T4,norm_interp_data,T4_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T5,norm_interp_data,T5_X,3)
-        CHCKERR('')
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! point
+                q_saf => eq_1%q_saf_FD(:,0)
+                rot_t => eq_1%rot_t_FD(:,0)
+                T1_X => T1
+                T2_X => T2
+                T3_X => T3
+                T4_X => T4
+                T5_X => T5
+            case (2)                                                            ! solution
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+                    &norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
+                CHCKERR('')
+                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
+                CHCKERR('')
+                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T3,norm_interp_data,T3_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T4,norm_interp_data,T4_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T5,norm_interp_data,T5_X,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+        end select
         
         ! set up fac_n and fac_m
         if (use_pol_flux_F) then
@@ -2337,9 +2744,6 @@ contains
             fac_n = 1.0_dp
             fac_m = rot_t
         end if
-        
-        ! clean up
-        call norm_interp_data%dealloc()
         
         ! loop over all modes
         do m = 1,X_b%n_mod
@@ -2393,6 +2797,13 @@ contains
         nullify(J)
         nullify(g33)
         nullify(h22)
+        select case (X_grid_style) 
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                deallocate(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X)
+        end select
+        nullify(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X)
     end function calc_PV
     
     !> calculate      \f$\widetilde{KV}_{k,m}^i\f$      (pol.      flux)      or
@@ -2428,7 +2839,7 @@ contains
     !! \return ierr
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
-        use num_vars, only: K_style, norm_disc_prec_X
+        use num_vars, only: K_style, norm_disc_prec_X, X_grid_style
         use num_utilities, only: c
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
@@ -2460,10 +2871,10 @@ contains
         ! upper metric factors
         real(dp), pointer :: h22(:,:,:)                                         ! h^psi,psi
         ! KV factors
-        real(dp), allocatable :: T1(:,:,:)                                      ! h22/mu_0 J g33
-        real(dp), allocatable :: T2(:,:,:)                                      ! JS + mu_0 sigma g33/h22
-        real(dp), allocatable :: T1_X(:,:,:)                                    ! T1 in X grid and par. deriv.
-        real(dp), allocatable :: T2_X(:,:,:)                                    ! T2 in X grid and par. deriv.
+        real(dp), allocatable, target :: T1(:,:,:)                              ! h22/mu_0 J g33
+        real(dp), allocatable, target :: T2(:,:,:)                              ! JS + mu_0 sigma g33/h22
+        real(dp), pointer :: T1_X(:,:,:)                                        ! T1 in X grid and par. deriv.
+        real(dp), pointer :: T2_X(:,:,:)                                        ! T2 in X grid and par. deriv.
         
         ! initialize ierr
         ierr = 0
@@ -2472,8 +2883,13 @@ contains
         ! KV factors
         allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
         allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-        allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        end select
         
         ! set pointers
         J => eq_2%jac_FD(:,:,:,0,0,0)
@@ -2486,19 +2902,26 @@ contains
             T2(:,:,kd) = eq_1%rho(kd)/h22(:,:,kd)
         end do
         
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-        CHCKERR('')
-        ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-        CHCKERR('')
-        
-        ! clean up
-        call norm_interp_data%dealloc()
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! point
+                T1_X => T1
+                T2_X => T2
+            case (2)                                                            ! solution
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+                    &norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
+                CHCKERR('')
+                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+        end select
         
         ! loop over all modes
         do m = 1,X_b%n_mod
@@ -2527,18 +2950,18 @@ contains
                         ! calculate KV_0
                         if (calc_this(1)) then
                             X%KV_0(:,:,:,c_loc(1)) = T2_X + T1_X * &
-                                &X_b%u_0(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
+                                &X_b%U_0(:,:,:,m) * conjg(X_a%U_0(:,:,:,k))
                         end if
                         
                         ! calculate KV_1
                         if (calc_thiS(2)) then
                             X%KV_1(:,:,:,c_loc(2)) = T1_X * &
-                                &X_b%u_1(:,:,:,m) * conjg(X_a%u_0(:,:,:,k))
+                                &X_b%U_1(:,:,:,m) * conjg(X_a%U_0(:,:,:,k))
                         end if
                         
-                        ! calculate kv_2
+                        ! calculate KV_2
                         if (calc_this(1)) then
-                            X%kv_2(:,:,:,c_loc(1)) = T1_X * &
+                            X%KV_2(:,:,:,c_loc(1)) = T1_X * &
                                 &X_b%U_1(:,:,:,m) * conjg(X_a%U_1(:,:,:,k))
                         end if
                     case (2)                                                    ! normalization of only normal component
@@ -2564,6 +2987,13 @@ contains
         nullify(J)
         nullify(g33)
         nullify(h22)
+        select case (X_grid_style) 
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                deallocate(T1_X,T2_X)
+        end select
+        nullify(T1_X,T2_X)
     end function calc_KV
     
     !> Calculate  the magnetic  integrals from  \f$\widetilde{PV}_{k,m}^i\f$ and
@@ -2614,7 +3044,7 @@ contains
     integer function calc_magn_ints(grid_eq,grid_X,eq,X,X_int,prev_style,&
         &lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style, &
-            &alpha_style
+            &alpha_style, X_grid_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
@@ -2628,7 +3058,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
-        type(eq_2_type), intent(in) :: eq                                       !< metric equilibrium
+        type(eq_2_type), intent(in), target :: eq                               !< metric equilibrium
         type(X_2_type), intent(in) :: X                                         !< tensorial perturbation variables
         type(X_2_type), intent(inout) :: X_int                                  !< interpolated tensorial perturbation variables, containing all mode combinations
         integer, intent(in), optional :: prev_style                             !< style to treat X_prev
@@ -2657,7 +3087,7 @@ contains
         ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang
         
         ! jacobian
-        real(dp), allocatable :: J(:,:,:)                                       ! jac
+        real(dp), pointer :: J(:,:,:)                                       ! jac
         
         ! initialize ierr
         ierr = 0
@@ -2671,20 +3101,26 @@ contains
         if (present(prev_style)) prev_style_loc = prev_style
         
         ! allocate variables
-        allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         allocate(J_exp_ang(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-        
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(eq%jac_FD(:,:,:,0,0,0),norm_interp_data,J,3)
-        CHCKERR('')
-        
-        ! clean up
-        call norm_interp_data%dealloc()
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! point
+                J => eq%jac_FD(:,:,:,0,0,0)
+            case (2)                                                            ! solution
+                allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+                
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+                    &norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(eq%jac_FD(:,:,:,0,0,0),norm_interp_data,J,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+        end select
         
         ! set up parallel angle in flux coordinates
         if (use_pol_flux_F) then
@@ -2837,6 +3273,13 @@ contains
         
         ! clean up
         nullify(ang_par_F)
+        select case (X_grid_style) 
+            case (1)                                                            ! equilibrium
+                ! do nothing
+            case (2)                                                            ! solution
+                deallocate(J)
+        end select
+        nullify(J)
         
         ! user output
         call lvl_ud(-1)

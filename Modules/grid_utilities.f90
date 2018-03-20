@@ -2265,10 +2265,10 @@ contains
             
             ! set up start id
             if (n_loc.lt.size(x)) then
-                A%id(id,1) = ceiling(x_interp_disc-n_loc*0.5_dp)            ! get minimum of bounding indices
-                A%id(id,1) = max(1,min(A%id(id,1),size(x)-n_loc+1))         ! limit to lie within x
+                A%id(id,1) = ceiling(x_interp_disc-n_loc*0.5_dp)                ! get minimum of bounding indices
+                A%id(id,1) = max(1,min(A%id(id,1),size(x)-n_loc+1))             ! limit to lie within x
             else
-                A%id(id,1) = 1                                              ! all values of x are used
+                A%id(id,1) = 1                                                  ! all values of x are used
             end if
             
             ! check for (near) exact match

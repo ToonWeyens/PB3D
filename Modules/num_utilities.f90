@@ -1747,7 +1747,8 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! set up local order, which can be higher than ord if we have derivatives
+        ! set  up  local  order,  which  can  be higher  than  ord  if  we  have
+        ! derivatives
         ord_loc = ord
         if (present(d2ynew)) then
             ord_loc = ord_loc + 2
@@ -1761,10 +1762,12 @@ contains
         allocate(spline_knots(n+ord_loc,2))
         
         ! calculate coefficients for real part and complex part
-        call db1ink(x,n,rp(y),ord_loc,0,spline_knots(:,1),spline_coeff(:,1),ierr)
+        call db1ink(x,n,rp(y),ord_loc,0,spline_knots(:,1),spline_coeff(:,1),&
+            &ierr)
         err_msg = get_status_message(ierr)
         CHCKERR(err_msg)
-        call db1ink(x,n,ip(y),ord_loc,0,spline_knots(:,2),spline_coeff(:,2),ierr)
+        call db1ink(x,n,ip(y),ord_loc,0,spline_knots(:,2),spline_coeff(:,2),&
+            &ierr)
         err_msg = get_status_message(ierr)
         CHCKERR(err_msg)
         spline_init = 1
@@ -2288,7 +2291,7 @@ contains
     !! submatrix:
     !!  - left:
     !!      \f[\sum_{i=1}^{m(2)-1} n-i+1 =
-    !!          (m(2)-1) (n+1-\frac{m(2)}{2}) \f]
+    !!          (m(2)-1) \left(n+1-\frac{m(2)}{2}\right) \f]
     !!  - above (if positive):
     !!      \f[\sum_{i=1}^j \left(m(1)-m(2)+1-i\right) =
     !!          j \left(m(1)-m(2)+\frac{1}{2} -

@@ -54,14 +54,8 @@ contains
     !! The solutions closest to a target indicated by \c EV_guess are obtained.
     !! \see read_input_opts()
     !!
-    !! \note  The  perturbation grid  needs  to  be  the  same as  the  solution
-    !! grid,  if not,  this module  has  to be  adapted to  interpolate them.  A
-    !! deprecated technique, using get_norm_interp_data()  and interp_V() can be
-    !! seen  in  versions  previous  to  1.06. These  have  been  superseded  by
-    !! setup_interp_data() followed by grid_utilities.apply_disc().
-    !!
     !! \return ierr
-    integer function solve_EV_system_SLEPC(grid_X,grid_sol,X,vac,sol) &
+    integer function solve_EV_system_SLEPC(grid_sol,X,vac,sol) &
         &result(ierr)
         
         use num_vars, only: matrix_SLEPC_style
@@ -74,7 +68,6 @@ contains
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
@@ -99,12 +92,12 @@ contains
         
         ! set up step size
         step_size = (grid_sol%r_F(grid_sol%n(3))-grid_sol%r_F(1))/&
-            &(grid_sol%n(3)-1)
+            &(grid_sol%n(3)-1)                                                  ! constant
         
         ! set up the matrix
         call writo('Set up matrices')
         call lvl_ud(1)
-        ierr = setup_mats(grid_X,grid_sol,X,A,B)
+        ierr = setup_mats(grid_sol,X,A,B)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -130,7 +123,7 @@ contains
         
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
-                ierr = set_BC(grid_X,X,vac,A,B,grid_sol%n(3))
+                ierr = set_BC(grid_sol,X,vac,A,B)
                 CHCKERR('')
 #if ldebug
                 if (debug_set_BC) then
@@ -403,10 +396,10 @@ contains
     !! The matrices are set up in the solution grid, so some processes might not
     !! have any  part in the storage  thereof (if \c sol_n_procs  < \c n_procs),
     !! but each process sets  up the part of the grid  that corresponds to their
-    !! own normal range in the perturbation grid.
+    !! own normal range in the solution grid.
     !!
     !! \return ierr
-    integer function setup_mats(grid_X,grid_sol,X,A,B) result(ierr)
+    integer function setup_mats(grid_sol,X,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
             &rank, sol_n_procs, BC_style, norm_disc_style_sol
         use grid_utilities, only: trim_grid
@@ -422,7 +415,6 @@ contains
         character(*), parameter :: rout_name = 'setup_mats'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in), target :: X                                 !< field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A                                                 !< matrix A
@@ -430,8 +422,7 @@ contains
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
-        type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed perturbation grid
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed solution grid
         PetscInt :: kd, id                                                      ! counter
         PetscInt :: i_lims(2)                                                   ! lower and upper limit of grid
         PetscInt, allocatable :: d_nz(:)                                        ! nr. of diagonal non-zeros
@@ -493,9 +484,7 @@ contains
         end if
         
         ! trim grids
-        ierr = trim_grid(grid_sol,grid_sol_trim)
-        CHCKERR('')
-        ierr = trim_grid(grid_X,grid_X_trim,norm_id)
+        ierr = trim_grid(grid_sol,grid_sol_trim,norm_id)
         CHCKERR('')
         
         ! set up loc_n_r and n_r
@@ -507,7 +496,7 @@ contains
         n_r = grid_sol_trim%n(3)
         
         ! set up bulk matrix absolute limits
-        ierr = set_bulk_lims(grid_X_trim,bulk_i_lim)
+        ierr = set_bulk_lims(grid_sol_trim,bulk_i_lim)
         CHCKERR('')
         i_lims = [grid_sol_trim%i_min, grid_sol_trim%i_max]
         
@@ -566,17 +555,16 @@ contains
         end select
         
         ! clean up
-        call grid_X_trim%dealloc()
         call grid_sol_trim%dealloc()
     contains
         ! Sets the limits of the indices of the bulk matrix, depending on the BC
         ! style.
         !> \private
-        integer function set_bulk_lims(grid_X,i_lim) result(ierr)
+        integer function set_bulk_lims(grid_sol,i_lim) result(ierr)
             character(*), parameter :: rout_name = 'set_bulk_lims'
             
             ! input / output
-            type(grid_type), intent(in) :: grid_X                               ! perturbation grid
+            type(grid_type), intent(in) :: grid_sol                             ! solution grid
             integer, intent(inout) :: i_lim(2)                                  ! min and max of bulk limits
             
             ! initialize ierr
@@ -585,7 +573,7 @@ contains
             ! set up i_min
             select case (BC_style(1))
                 case (1)
-                    i_lim(1) = max(grid_X%i_min,ndps+1)                         ! first ndps rows write left BC's
+                    i_lim(1) = max(grid_sol%i_min,ndps+1)                       ! first ndps rows write left BC's
                 case (2:4)
                     err_msg = 'Left BC''s cannot have BC type '//&
                         &trim(i2str(BC_style(1)))
@@ -606,9 +594,9 @@ contains
             ! there. This is avoided by using n_r.
             select case (BC_style(2))
                 case (1)
-                    i_lim(2) = min(grid_X%i_max,n_r)                            ! last ndps rows write right BC's, will be overwritten
+                    i_lim(2) = min(grid_sol%i_max,n_r)                          ! last ndps rows write right BC's, will be overwritten
                 case (2:4)
-                    i_lim(2) = min(grid_X%i_max,n_r)                            ! right BC is added later
+                    i_lim(2) = min(grid_sol%i_max,n_r)                          ! right BC is added later
                 case default
                     err_msg = 'No BC style associated with '//&
                         &trim(i2str(BC_style(2)))
@@ -620,18 +608,10 @@ contains
         ! Fills a  matrix according to norm_disc_prec_sol [ADD REF]:
         !   1. first order accuracy for all terms
         !   2. higher order accuracy for internal first order derivatives
-        ! it is used  for both the matrix  A and B, corresponding  to the plasma
-        ! potential energy and the (perpendicular) kinetic energy
-        ! The procedure is as follows:
-        !   1. Tables  are set  up for  (k,m) pairs in the equilibrium grid.
-        !   2. At the first normal point  in the solution grid, belonging to the
-        !   current process, the tables are interpolated as a start.
-        !   3. At  every normal  point in  the solution  grid, belonging  to the
-        !   current process,  the tables are  interpolated at the next  point in
-        !   the  corresponding  perturbation  grid. This  information,  as  well
-        !   as  the interpolated  value  of  the previous  point  allow for  the
-        !   calculation of every quantity.
-        ! Makes use of n_r, grid_X_trim and  grid_sol_trim
+        ! It is used  for both the matrix  A and B, corresponding  to the plasma
+        ! potential energy and the (perpendicular) kinetic energy.
+        !
+        ! Makes use of n_r and  grid_sol_trim
         !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
             use num_utilities, only: con, calc_coeff_fin_diff
@@ -694,7 +674,7 @@ contains
             ! iterate over all rows of this rank
             do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
                 ! set up local kd
-                kd_loc = kd+2-grid_X_trim%i_min
+                kd_loc = kd+2-grid_sol_trim%i_min
                 
                 ! set up ndc
                 select case (norm_disc_style_sol)
@@ -843,7 +823,7 @@ contains
         end function disp_mat_info
         
         ! Sets nonzero elements d_nz and o_nz.
-        ! Makes use of ndps and grid_sol_trim.
+        ! Makes use of ndps.
         !> \private
         subroutine set_nonzeros(i_lims)
             ! input / output
@@ -940,7 +920,7 @@ contains
     !! -This is done using left finite differences.
     !!
     !! \return ierr
-    integer function set_BC(grid_X,X,vac,A,B,n_r) result(ierr)
+    integer function set_BC(grid_sol,X,vac,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
             &norm_disc_style_sol
         use X_vars, only: n_mod_X
@@ -951,14 +931,14 @@ contains
         character(*), parameter :: rout_name = 'set_BC'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
         Mat, intent(inout) :: A                                                 !< Matrix A from A X = lambda B X
         Mat, intent(inout) :: B                                                 !< Matrix B from A X = lambda B X
-        integer, intent(in) :: n_r                                              !< number of grid points of solution grid
         
         ! local variables
+        PetscInt :: n_r                                                         ! number of grid points of solution grid
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1022,7 +1002,7 @@ contains
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
-            if (grid_X%i_min.le.kd .and. grid_X%i_max.ge.kd) then               ! decide which process does the setting
+            if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(1))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
@@ -1061,8 +1041,8 @@ contains
         call lvl_ud(1)
         
         ! iterate over all positions where to set right BC
-        do kd = grid_X%n(3),grid_X%n(3)-n_max+1,-1
-            if (grid_X%i_min.le.kd .and. grid_X%i_max.ge.kd) then               ! decide which process does the setting
+        do kd = grid_sol%n(3),grid_sol%n(3)-n_max+1,-1
+            if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(2))
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
@@ -1074,8 +1054,8 @@ contains
                         ierr = set_BC_3(kd-1,A)                                 ! indices start at 0
                         CHCKERR('')
                     case (4)
-                        ierr = set_BC_4(kd-1,kd-grid_X%i_min+1,X,A,B,&
-                            &grid_X%n(3))                                       ! indices start at 0
+                        ierr = set_BC_4(kd-1,kd-grid_sol%i_min+1,X,A,B,&
+                            &grid_sol%n(3))                                     ! indices start at 0
                         CHCKERR('')
                     case default
                         err_msg = 'No BC style associated with '//&
@@ -1333,7 +1313,6 @@ contains
             &EV_guess, solver_SLEPC_style
         use rich_vars, only: rich_lvl
         use X_vars, only: n_mod_X
-        use grid_vars, only: n_r_sol
         
         character(*), parameter :: rout_name = 'setup_solver'
         
@@ -1431,13 +1410,13 @@ contains
         CHCKERR(err_msg)
         
         ! request n_sol_requested Eigenpairs
-        if (n_sol_requested.gt.n_r_sol*n_mod_X) then
+        if (n_sol_requested.gt.n_r*n_mod_X) then
             call writo('max. nr. of solutions requested capped to problem &
-                &dimension ('//trim(i2str(n_r_sol*n_mod_X))//')',&
+                &dimension ('//trim(i2str(n_r*n_mod_X))//')',&
                 &warning=.true.)
-            call writo('Increase either n_r_sol or number of pol. modes or &
+            call writo('Increase either n_r or number of pol. modes or &
                 &decrease n_sol_requested')
-            n_sol = n_r_sol*n_mod_X
+            n_sol = n_r*n_mod_X
         else
             n_sol = n_sol_requested
         end if

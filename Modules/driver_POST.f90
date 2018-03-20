@@ -197,9 +197,12 @@ contains
         
         ! set eq and X limits, using r_F of the grids
         ierr = calc_norm_range(eq_limits=lims_norm(:,1),&
-            &X_limits=lims_norm(:,2),sol_limits=lims_norm(:,3),&
-            &r_F_eq=grid_eq%r_F,r_F_X=grid_X%r_F,r_F_sol=grid_sol%r_F)
+            &sol_limits=lims_norm(:,3),r_F_eq=grid_eq%r_F,r_F_sol=grid_sol%r_F)
         CHCKERR('')
+        write(*,*) '!!!!! IS THIS TRUE???'
+        lims_norm(:,2) = lims_norm(:,3)
+        grid_X%r_F = grid_sol%r_F
+        write(*,*) '!!!!! UNTIL HERE...'
         call writo('normal grid limits:')
         call lvl_ud(1)
         call writo('proc '//trim(i2str(rank))//' - equilibrium:  '//&

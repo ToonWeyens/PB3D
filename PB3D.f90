@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.10
+!>  \version    2.11
 !!  \date       2012-2017
 !!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
@@ -192,7 +192,7 @@ program PB3D
         call start_time
         call writo('Solution driver'//trim(rich_info()))
         call lvl_ud(1)
-        ierr = run_driver_sol(grid_X,grid_X_B,grid_sol,X_2,vac,sol)             ! solution driver
+        ierr = run_driver_sol(grid_X,grid_sol,X_2,vac,sol)                      ! solution driver
         CHCKERR
         call writo('')
         call passed_time

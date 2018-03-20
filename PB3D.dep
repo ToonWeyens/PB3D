@@ -215,6 +215,8 @@ driver_sol.o : \
     rich_vars.o \
     rich_ops.o \
     input_utilities.o \
+    MPI_utilities.o \
+    bspline_sub_module.o \
 
 driver_POST.o : \
     num_vars.o \

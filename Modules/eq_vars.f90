@@ -78,6 +78,8 @@ module eq_vars
     contains
         !> initialize
         procedure :: init => init_eq_1
+        !> copy
+        procedure :: copy => copy_eq_1
         !> deallocate
         procedure :: dealloc => dealloc_eq_1
     end type
@@ -144,6 +146,8 @@ module eq_vars
     contains
         !> initialize
         procedure :: init => init_eq_2
+        !> copy
+        procedure :: copy => copy_eq_2
         !> deallocate
         procedure :: dealloc => dealloc_eq_2
     end type
@@ -447,6 +451,98 @@ contains
             &alert=.true.)
 #endif
     end subroutine init_eq_2
+    
+    !> \public Deep copy of flux equilibrium variables.
+    subroutine copy_eq_1(eq_i,grid_i,eq_o)
+        use grid_vars, only: grid_type
+        
+        ! input / output
+        class(eq_1_type), intent(in) :: eq_i                                    !< eq_1 to be copied
+        type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
+        type(eq_1_type), intent(inout) :: eq_o                                  !< copied eq_1
+        
+        ! local variables
+        logical :: setup_E
+        logical :: setup_F
+        
+        setup_E = allocated(eq_i%pres_E)
+        setup_F = allocated(eq_i%pres_FD)
+        
+        call eq_o%init(grid_i,setup_E=setup_E,setup_F=setup_F)
+        
+        if (setup_E) then
+            if (allocated(eq_i%pres_E)) eq_o%pres_E = eq_i%pres_E
+            if (allocated(eq_i%q_saf_E)) eq_o%q_saf_E = eq_i%q_saf_E
+            if (allocated(eq_i%rot_t_E)) eq_o%rot_t_E = eq_i%rot_t_E
+            if (allocated(eq_i%flux_p_E)) eq_o%flux_p_E = eq_i%flux_p_E
+            if (allocated(eq_i%flux_t_E)) eq_o%flux_t_E = eq_i%flux_t_E
+        end if
+        
+        if (setup_F) then
+            if (allocated(eq_i%pres_FD)) eq_o%pres_FD = eq_i%pres_FD
+            if (allocated(eq_i%flux_p_FD)) eq_o%flux_p_FD = eq_i%flux_p_FD
+            if (allocated(eq_i%flux_t_FD)) eq_o%flux_t_FD = eq_i%flux_t_FD
+            if (allocated(eq_i%q_saf_FD)) eq_o%q_saf_FD = eq_i%q_saf_FD
+            if (allocated(eq_i%rot_t_FD)) eq_o%rot_t_FD = eq_i%rot_t_FD
+            if (allocated(eq_i%rho)) eq_o%rho = eq_i%rho
+        end if
+    end subroutine copy_eq_1
+    
+    !> \public Deep copy of metric equilibrium variables.
+    !!
+    !! \return ierr
+    subroutine copy_eq_2(eq_i,grid_i,eq_o)
+        use num_vars, only: eq_style
+        use grid_vars, only: grid_type
+        
+        ! input / output
+        class(eq_2_type), intent(in) :: eq_i                                    !< eq_2 to be copied
+        type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
+        type(eq_2_type), intent(inout) :: eq_o                                  !< copied eq_1
+        
+        ! local variables
+        logical :: setup_E
+        logical :: setup_F
+        
+        setup_E = allocated(eq_i%jac_E)
+        setup_F = allocated(eq_i%jac_FD)
+        
+        call eq_o%init(grid_i,setup_E=setup_E,setup_F=setup_F)
+        
+        if (setup_E) then
+            if (allocated(eq_i%g_E)) eq_o%g_E = eq_i%g_E
+            if (allocated(eq_i%h_E)) eq_o%h_E = eq_i%h_E
+            if (allocated(eq_i%g_F)) eq_o%g_F = eq_i%g_F
+            if (allocated(eq_i%h_F)) eq_o%h_F = eq_i%h_F
+            if (allocated(eq_i%jac_E)) eq_o%jac_E = eq_i%jac_E
+            if (allocated(eq_i%jac_F)) eq_o%jac_F = eq_i%jac_F
+            if (allocated(eq_i%T_EF)) eq_o%T_EF = eq_i%T_EF
+            if (allocated(eq_i%T_FE)) eq_o%T_FE = eq_i%T_FE
+            if (allocated(eq_i%det_T_EF)) eq_o%det_T_EF = eq_i%det_T_EF
+            if (allocated(eq_i%det_T_FE)) eq_o%det_T_FE = eq_i%det_T_FE
+            
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    if (allocated(eq_i%g_C)) eq_o%g_C = eq_i%g_C
+                    if (allocated(eq_i%T_VC)) eq_o%T_VC = eq_i%T_VC
+                    if (allocated(eq_i%R_E)) eq_o%R_E = eq_i%R_E
+                    if (allocated(eq_i%Z_E)) eq_o%Z_E = eq_i%Z_E
+                    if (allocated(eq_i%l_E)) eq_o%l_E = eq_i%l_E
+                case (2)                                                        ! HELENA
+                    ! do nothing
+            end select
+        end if
+        
+        if (setup_F) then
+            if (allocated(eq_i%g_FD)) eq_o%g_FD = eq_i%g_FD
+            if (allocated(eq_i%h_FD)) eq_o%h_FD = eq_i%h_FD
+            if (allocated(eq_i%jac_FD)) eq_o%jac_FD = eq_i%jac_FD
+            if (allocated(eq_i%S)) eq_o%S = eq_i%S
+            if (allocated(eq_i%kappa_n)) eq_o%kappa_n = eq_i%kappa_n
+            if (allocated(eq_i%kappa_g)) eq_o%kappa_g = eq_i%kappa_g
+            if (allocated(eq_i%sigma)) eq_o%sigma = eq_i%sigma
+        end if
+    end subroutine copy_eq_2
     
     !> \public Deallocates flux equilibrium quantities.
     subroutine dealloc_eq_1(eq)

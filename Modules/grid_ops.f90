@@ -55,8 +55,9 @@ contains
     !!  to the input variables for \c eq_limits to behave correctly.
     !!
     !! \return ierr
-    integer function calc_norm_range(in_limits,eq_limits,X_limits,sol_limits,&
-        &r_F_eq,r_F_X,r_F_sol) result(ierr)
+    integer function calc_norm_range(in_limits,eq_limits,sol_limits,r_F_eq,&
+        &r_F_sol) result(ierr)
+        
         use num_vars, only: prog_style
         
         character(*), parameter :: rout_name = 'calc_norm_range'
@@ -64,10 +65,8 @@ contains
         ! input / output
         integer, intent(inout), optional :: in_limits(2)                        !< min. and max. index of in grid
         integer, intent(inout), optional :: eq_limits(2)                        !< min. and max. index of eq grid for this process
-        integer, intent(inout), optional :: X_limits(2)                         !< min. and max. index of X grid for this process
         integer, intent(inout), optional :: sol_limits(2)                       !< min. and max. index of sol grid for this process
         real(dp), intent(inout), optional :: r_F_eq(:)                          !< equilibrium r_F
-        real(dp), intent(inout), optional :: r_F_X(:)                           !< perturbation r_F
         real(dp), intent(inout), optional :: r_F_sol(:)                         !< solution r_F
         
         ! initialize ierr
@@ -79,27 +78,24 @@ contains
                 if (present(in_limits)) then
                     ierr = calc_norm_range_PB3D_in(in_limits)
                     CHCKERR('')
-                end if
-                if (present(eq_limits)) then
+                else if (present(eq_limits)) then
                     call calc_norm_range_PB3D_eq(eq_limits)
-                end if
-                if (present(X_limits).and.present(r_F_X)) then
-                    ierr = calc_norm_range_PB3D_X(X_limits,r_F_X)
-                    CHCKERR('')
-                end if
-                if (present(sol_limits).and.present(r_F_sol)) then
+                else if (present(sol_limits).and.present(r_F_sol)) then
                     ierr = calc_norm_range_PB3D_sol(sol_limits,r_F_sol)
                     CHCKERR('')
-                end if
-            case(2)                                                             ! PB3D post-processing
-                if (.not.present(eq_limits) .or. .not.present(X_limits) .or. &
-                    &.not.present(sol_limits) .or. .not.present(r_F_eq) .or. &
-                    &.not. present(r_F_sol)) then
+                else
                     ierr = 1
                     CHCKERR('Incorrect variables provided.')
                 end if
-                call calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
-                    &r_F_sol)
+            case(2)                                                             ! PB3D post-processing
+                if (present(eq_limits) .and. present(sol_limits) .and. &
+                    &present(r_F_eq) .and.  present(r_F_sol)) then
+                    call calc_norm_range_POST(eq_limits,sol_limits,&
+                        &r_F_eq,r_F_sol)
+                else
+                    ierr = 1
+                    CHCKERR('Incorrect variables provided.')
+                end if
         end select
     contains
         ! The normal  range is calculated by  finding the tightest range  of the
@@ -245,24 +241,6 @@ contains
             eq_limits(2) = min(eq_limits(2)+2*norm_disc_prec_eq,n_r_eq)
         end subroutine calc_norm_range_PB3D_eq
         
-        ! The normal range is determined by duplicating the normal range for the
-        ! solution.
-        !> \private
-        integer function calc_norm_range_PB3D_X(X_limits,r_F_X) &
-            &result(ierr)                                                       ! PB3D version for perturbation grid
-            use num_vars, only: n_procs
-            
-            character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
-            
-            ! input / output
-            integer, intent(inout) :: X_limits(2)                               ! min. and max. index of perturbation grid for this process
-            real(dp), intent(inout) :: r_F_X(:)                                 ! perturbation r_F
-            
-            ! call the version for solution range
-            ierr = calc_norm_range_PB3D_sol(X_limits,r_F_X,n_procs=n_procs)
-            CHCKERR('')
-        end function calc_norm_range_PB3D_X
-        
         ! The normal range is determined  by simply dividing the solution range,
         ! a ghost range is required, depending on matrix_SLEPC_style:
         !   - 1  (explicit storage  of SLEPC  matrices): need  1 point  to avoid
@@ -336,15 +314,14 @@ contains
         ! the solution range, indicated by min_r_plot and max_r_sol, including a
         ! ghost range and getting a bounding equilibrium range.
         !> \private
-        subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
-            &r_F_sol)                                                           ! POST version
+        subroutine calc_norm_range_POST(eq_limits,sol_limits,r_F_eq,r_F_sol)    ! POST version
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
                 &min_r_plot, max_r_plot
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
             ! input / output
-            integer, intent(inout) :: eq_limits(2), X_limits(2), sol_limits(2)  ! min. and max. index of eq, X and sol grid for this process
+            integer, intent(inout) :: eq_limits(2), sol_limits(2)               ! min. and max. index of eq, X and sol grid for this process
             real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! eq and sol r_F
             
             ! local variables
@@ -384,9 +361,6 @@ contains
             
             ! determine eq_limits: smallest eq range comprising sol range
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
-            
-            ! copy solution range to perturbation range
-            X_limits = sol_limits
         end subroutine calc_norm_range_POST
     end function calc_norm_range
 
@@ -524,134 +498,16 @@ contains
         end select
     end function setup_grid_eq_B
     
-    !> Redistribute the equilibrium variables.
-    !!
-    !! The routine first  calculates the smallest eq range that  comprises the X
-    !! range.  Then, it  gets the  lowest equilibrium  limits able  to setup  an
-    !! output grid that starts at index 1. After determining the output grid, it
-    !! then sends the variables to their new processes using MPI.
-    !!
-    !! \note
-    !!  -# Only the  Flux variables are saved.
-    !!  -# the redistributed grid has trimmed  outer limits, i.e. it starts at 1
-    !!  and ends at the upper limit of  the last process. This can be turned off
-    !!  optionally using \c no_outer_trim.
-    !!
-    !! \return ierr
-    integer function redistribute_output_grid(grid,grid_out,no_outer_trim) &
-        &result(ierr)
-        use grid_utilities, only: find_compr_range
-        use MPI_utilities, only: redistribute_var, get_ser_var
-        use grid_vars, only: n_r_sol
-        use num_vars, only: n_procs
-        
-        character(*), parameter :: rout_name = 'redistribute_output_grid'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
-        type(grid_type), intent(inout) :: grid_out                              !< redistributed equilibrium grid variables
-        logical, intent(in), optional :: no_outer_trim                          !< do not trim the outer limits
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        integer :: eq_limits(2)                                                 ! normal limits for equilibrium variables
-        integer :: X_limits(2)                                                  ! normal limits for perturbation variables
-        integer :: n_out(3)                                                     ! n of grid_out
-        integer :: i_lim_tot(2)                                                 ! total limits of grid
-        integer :: i_lim_out(2)                                                 ! limits of grid_out
-        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
-        real(dp), allocatable :: r_F_X(:)                                       ! perturbation r_F
-        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
-        integer, allocatable :: temp_lim(:)                                     ! temporary limit
-        integer, allocatable :: eq_limits_tot(:,:)                              ! total equilibrium limits
-        logical :: no_outer_trim_loc                                            ! local no_outer_trim
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! calculate normal range for perturbation
-        allocate(r_F_X(n_r_sol))
-        ierr = calc_norm_range(X_limits=X_limits,r_F_X=r_F_X)
-        CHCKERR('')
-        
-        ! determine eq_limits: smallest eq range comprising X range
-        call find_compr_range(grid%r_F,r_F_X(X_limits),eq_limits)
-        
-        ! get lowest equilibrium limits to be  able to setup an output grid that
-        ! starts at index 1
-        allocate(eq_limits_tot(2,n_procs))
-        do id = 1,2
-            ierr = get_ser_var(eq_limits(id:id),temp_lim,scatter=.true.)
-            CHCKERR('')
-            eq_limits_tot(id,:) = temp_lim
-        end do
-        
-        ! set up redistributed grid
-        no_outer_trim_loc = .false.
-        if (present(no_outer_trim)) no_outer_trim_loc = no_outer_trim
-        if (no_outer_trim_loc) then
-            n_out = grid%n
-            i_lim_tot = [1,n_out(3)]
-            i_lim_out = eq_limits
-        else
-            n_out(1:2) = grid%n(1:2)
-            n_out(3) = eq_limits_tot(2,n_procs)-eq_limits_tot(1,1)+1
-            i_lim_tot = [eq_limits_tot(1,1),eq_limits_tot(2,n_procs)]
-            i_lim_out = eq_limits-eq_limits_tot(1,1)+1
-        end if
-        ierr = grid_out%init(n_out,i_lim_out)
-        CHCKERR('')
-        
-        ! set up limits taking into account angular extent and temporary var
-        lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
-        lims(2) = product(grid%n(1:2))*grid%i_max
-        lims_dis(1) = product(grid%n(1:2))*(eq_limits(1)-1)+1
-        lims_dis(2) = product(grid%n(1:2))*eq_limits(2)
-        allocate(temp_var(lims_dis(2)-lims_dis(1)+1))
-        
-        ! copy total variables
-        ! r_F
-        grid_out%r_F = grid%r_F(i_lim_tot(1):i_lim_tot(2))
-        ! r_E
-        grid_out%r_E = grid%r_E(i_lim_tot(1):i_lim_tot(2))
-        
-        ! distribute local variables
-        ! theta_F
-        ierr = redistribute_var(reshape(grid%theta_F,[size(grid%theta_F)]),&
-            &temp_var,lims,lims_dis)
-        CHCKERR('')
-        grid_out%theta_F = reshape(temp_var,shape(grid_out%theta_F))
-        ! zeta_F
-        ierr = redistribute_var(reshape(grid%zeta_F,[size(grid%zeta_F)]),&
-            &temp_var,lims,lims_dis)
-        CHCKERR('')
-        grid_out%zeta_F = reshape(temp_var,shape(grid_out%zeta_F))
-        ! theta_E
-        ierr = redistribute_var(reshape(grid%theta_E,[size(grid%theta_E)]),&
-            &temp_var,lims,lims_dis)
-        CHCKERR('')
-        grid_out%theta_E = reshape(temp_var,shape(grid_out%theta_E))
-        ! zeta_E
-        ierr = redistribute_var(reshape(grid%zeta_E,[size(grid%zeta_E)]),&
-            &temp_var,lims,lims_dis)
-        CHCKERR('')
-        grid_out%zeta_E = reshape(temp_var,shape(grid_out%zeta_E))
-        ! loc_r_F and loc_R_E
-        if (grid_out%divided) then
-            grid_out%loc_r_F = grid_out%r_F(grid_out%i_min:grid_out%i_max)
-            grid_out%loc_r_E = grid_out%r_E(grid_out%i_min:grid_out%i_max)
-        end if
-    end function redistribute_output_grid
-    
     !> Sets  up  the  general  perturbation  grid,  in  which  the  perturbation
     !! variables are calculated.
     !!
-    !! This grid  has the same angular  extent as the equilibrium  grid but with
+    !! For \c  X_grid_style 1, this grid  is identical to the  equilibrium grid,
+    !! and  for \c  X_grid_style  2,it  has the  same  angular  extent but  with
     !! different normal points, indicated by the variable \c r_F_X.
     !!
     !! \return ierr
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
-        use num_vars, only: norm_disc_prec_X
+        use num_vars, only: norm_disc_prec_X, X_grid_style
         use grid_vars, only: disc_type
         use grid_utilities, only: coord_F2E, setup_interp_data, apply_disc
         
@@ -669,54 +525,67 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! create grid
-        ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
-        CHCKERR('')
-        
-        ! set Flux variables
-        grid_X%r_F = r_F_X
-        grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
-        
-        ! convert to Equilibrium variables
-        ierr = coord_F2E(grid_eq,grid_X%r_F,grid_X%r_E,&
-            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-        CHCKERR('')
-        ierr = coord_F2E(grid_eq,grid_X%loc_r_F,grid_X%loc_r_E,&
-            &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-        CHCKERR('')
-        
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
-        CHCKERR('')
-        
-        ! interpolate
-        ierr = apply_disc(grid_eq%theta_E,norm_interp_data,grid_X%theta_E,3)
-        CHCKERR('')
-        ierr = apply_disc(grid_eq%zeta_E,norm_interp_data,grid_X%zeta_E,3)
-        CHCKERR('')
-        ierr = apply_disc(grid_eq%theta_F,norm_interp_data,grid_X%theta_F,3)
-        CHCKERR('')
-        ierr = apply_disc(grid_eq%zeta_F,norm_interp_data,grid_X%zeta_F,3)
-        CHCKERR('')
-        
-        ! clean up
-        call norm_interp_data%dealloc()
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! X grid identical to equilibrium grid
+                ierr = grid_eq%copy(grid_X)
+                CHCKERR('')
+            case (2)                                                            ! solution
+                ! create grid
+                ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
+                CHCKERR('')
+                
+                ! set Flux variables
+                grid_X%r_F = r_F_X
+                grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
+                
+                ! convert to Equilibrium variables
+                ierr = coord_F2E(grid_eq,grid_X%r_F,grid_X%r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
+                CHCKERR('')
+                ierr = coord_F2E(grid_eq,grid_X%loc_r_F,grid_X%loc_r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
+                CHCKERR('')
+                
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
+                    &norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(grid_eq%theta_E,norm_interp_data,&
+                    &grid_X%theta_E,3)
+                CHCKERR('')
+                ierr = apply_disc(grid_eq%zeta_E,norm_interp_data,&
+                    &grid_X%zeta_E,3)
+                CHCKERR('')
+                ierr = apply_disc(grid_eq%theta_F,norm_interp_data,&
+                    &grid_X%theta_F,3)
+                CHCKERR('')
+                ierr = apply_disc(grid_eq%zeta_F,norm_interp_data,&
+                    &grid_X%zeta_F,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+        end select
     end function setup_grid_X
     
     !> Sets up  the general solution grid,  in which the solution  variables are
     !! calculated.
     !!
-    !! This grid is currently identical to  the perturbation grid, but with only
-    !! the normal variables.
-    !!
-    !! \see setup_grid_x()
+    !! For the  solution grid,  only one  parallel point  is used,  but possibly
+    !! multiple geodesic points, equal to the number of field lines, \c n_alpha.
+    !! For \c X_grid_style 1, the normal  variables are indicated by variable \c
+    !! r_F_sol, and  for \c X_grid_style 2,  they are identical to  those of the
+    !! perturbation grid.
     !!
     !! \return ierr
-    integer function setup_grid_sol(grid_X,grid_sol,sol_limits) &
+    integer function setup_grid_sol(grid_X,grid_sol,r_F_sol,sol_limits) &
         &result(ierr)
         
-        use num_vars, only: n_procs
+        use num_vars, only: n_procs, X_grid_style
+        use grid_vars, only: n_alpha
         use grid_utilities, only: coord_F2E
         
         character(*), parameter :: rout_name = 'setup_grid_sol'
@@ -724,20 +593,37 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              !< solution grid
+        real(dp), intent(in) :: r_F_sol(:)                                      !< points of solution grid
         integer, intent(in) :: sol_limits(2)                                    !< min. and max. index of sol grid of this process
         
         ! initialize ierr
         ierr = 0
         
-        ! create grid
-        ierr = grid_sol%init([0,0,grid_X%n(3)],sol_limits,divided=n_procs.gt.1)
-        CHCKERR('')
-        
-        ! set Flux variables
-        grid_sol%r_F = grid_X%r_F
-        grid_sol%r_E = grid_X%r_E
-        grid_sol%loc_r_F = grid_sol%r_F(sol_limits(1):sol_limits(2))
-        grid_sol%loc_r_E = grid_sol%r_E(sol_limits(1):sol_limits(2))
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! create grid
+                ierr = grid_sol%init([1,n_alpha,size(r_F_sol)],sol_limits,&
+                    &divided=n_procs.gt.1)
+                CHCKERR('')
+                
+                ! set Flux variables
+                grid_sol%r_F = r_F_sol
+                grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
+                
+                ! convert to Equilibrium variables
+                ierr = coord_F2E(grid_X,grid_sol%r_F,grid_sol%r_E,&
+                    &r_F_array=grid_X%r_F,r_E_array=grid_X%r_E)
+                CHCKERR('')
+                ierr = coord_F2E(grid_X,grid_sol%loc_r_F,grid_sol%loc_r_E,&
+                    &r_F_array=grid_X%r_F,r_E_array=grid_X%r_E)
+                CHCKERR('')
+            case (2)                                                            ! solution
+                ! X grid identical to equilibrium  grid but with only 1 parallel
+                ! point.
+                ierr = grid_sol%init([1,n_alpha,grid_X%n(3)],&
+                    &[grid_X%i_min,grid_X%i_max],grid_X%divided)
+                CHCKERR('')
+        end select
     end function setup_grid_sol
     
     !> Calculate equilibrium grid that follows magnetic field lines.
@@ -940,6 +826,125 @@ contains
         
         call lvl_ud(-1)
     end function calc_ang_grid_eq_B
+    
+    !> Redistribute the equilibrium grid.
+    !! 
+    !! The routine first  calculates the smallest eq range that  comprises the X
+    !! range.  Then, it  gets the  lowest equilibrium  limits able  to setup  an
+    !! output grid that starts at index 1. After determining the output grid, it
+    !! then sends the variables to their new processes using MPI.
+    !!
+    !! \note
+    !!  -# Only the  Flux variables are saved.
+    !!  -# the redistributed grid has trimmed  outer limits, i.e. it starts at 1
+    !!  and ends at the upper limit of  the last process. This can be turned off
+    !!  optionally using \c no_outer_trim.
+    !!
+    !! \return ierr
+    integer function redistribute_output_grid(grid,grid_out,no_outer_trim) &
+        &result(ierr)
+        use grid_utilities, only: find_compr_range
+        use MPI_utilities, only: redistribute_var, get_ser_var
+        use grid_vars, only: n_r_sol
+        use num_vars, only: n_procs
+        
+        character(*), parameter :: rout_name = 'redistribute_output_grid'
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid                                     !< equilibrium grid variables
+        type(grid_type), intent(inout) :: grid_out                              !< redistributed equilibrium grid variables
+        logical, intent(in), optional :: no_outer_trim                          !< do not trim the outer limits
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: eq_limits(2)                                                 ! normal limits for equilibrium variables
+        integer :: X_limits(2)                                                  ! normal limits for perturbation variables
+        integer :: n_out(3)                                                     ! n of grid_out
+        integer :: i_lim_tot(2)                                                 ! total limits of grid
+        integer :: i_lim_out(2)                                                 ! limits of grid_out
+        integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
+        real(dp), allocatable :: r_F_X(:)                                       ! perturbation r_F
+        real(dp), allocatable :: temp_var(:)                                    ! temporary variable
+        integer, allocatable :: temp_lim(:)                                     ! temporary limit
+        integer, allocatable :: eq_limits_tot(:,:)                              ! total equilibrium limits
+        logical :: no_outer_trim_loc                                            ! local no_outer_trim
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! calculate normal range for perturbation
+        allocate(r_F_X(n_r_sol))
+        ierr = calc_norm_range(sol_limits=X_limits,r_F_sol=r_F_X)
+        CHCKERR('')
+        
+        ! determine eq_limits: smallest eq range comprising X range
+        call find_compr_range(grid%r_F,r_F_X(X_limits),eq_limits)
+        
+        ! get lowest equilibrium limits to be  able to setup an output grid that
+        ! starts at index 1
+        allocate(eq_limits_tot(2,n_procs))
+        do id = 1,2
+            ierr = get_ser_var(eq_limits(id:id),temp_lim,scatter=.true.)
+            CHCKERR('')
+            eq_limits_tot(id,:) = temp_lim
+        end do
+        
+        ! set up redistributed grid
+        no_outer_trim_loc = .false.
+        if (present(no_outer_trim)) no_outer_trim_loc = no_outer_trim
+        if (no_outer_trim_loc) then
+            n_out = grid%n
+            i_lim_tot = [1,n_out(3)]
+            i_lim_out = eq_limits
+        else
+            n_out(1:2) = grid%n(1:2)
+            n_out(3) = eq_limits_tot(2,n_procs)-eq_limits_tot(1,1)+1
+            i_lim_tot = [eq_limits_tot(1,1),eq_limits_tot(2,n_procs)]
+            i_lim_out = eq_limits-eq_limits_tot(1,1)+1
+        end if
+        ierr = grid_out%init(n_out,i_lim_out)
+        CHCKERR('')
+        
+        ! set up limits taking into account angular extent and temporary var
+        lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
+        lims(2) = product(grid%n(1:2))*grid%i_max
+        lims_dis(1) = product(grid%n(1:2))*(eq_limits(1)-1)+1
+        lims_dis(2) = product(grid%n(1:2))*eq_limits(2)
+        allocate(temp_var(lims_dis(2)-lims_dis(1)+1))
+        
+        ! copy total variables
+        ! r_F
+        grid_out%r_F = grid%r_F(i_lim_tot(1):i_lim_tot(2))
+        ! r_E
+        grid_out%r_E = grid%r_E(i_lim_tot(1):i_lim_tot(2))
+        
+        ! distribute local variables
+        ! theta_F
+        ierr = redistribute_var(reshape(grid%theta_F,[size(grid%theta_F)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%theta_F = reshape(temp_var,shape(grid_out%theta_F))
+        ! zeta_F
+        ierr = redistribute_var(reshape(grid%zeta_F,[size(grid%zeta_F)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%zeta_F = reshape(temp_var,shape(grid_out%zeta_F))
+        ! theta_E
+        ierr = redistribute_var(reshape(grid%theta_E,[size(grid%theta_E)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%theta_E = reshape(temp_var,shape(grid_out%theta_E))
+        ! zeta_E
+        ierr = redistribute_var(reshape(grid%zeta_E,[size(grid%zeta_E)]),&
+            &temp_var,lims,lims_dis)
+        CHCKERR('')
+        grid_out%zeta_E = reshape(temp_var,shape(grid_out%zeta_E))
+        ! loc_r_F and loc_R_E
+        if (grid_out%divided) then
+            grid_out%loc_r_F = grid_out%r_F(grid_out%i_min:grid_out%i_max)
+            grid_out%loc_r_E = grid_out%r_E(grid_out%i_min:grid_out%i_max)
+        end if
+    end function redistribute_output_grid
     
     !> Plots the grid in real 3-D space.
     !!
