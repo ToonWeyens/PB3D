@@ -36,8 +36,6 @@ contains
     !!      - if \c eq_limits is provided,  the limits are found by dividing the
     !!      equilibrium  range  over  the  available  processes.  \c  r_F_eq  is
     !!      ignored.
-    !!      - if \c X_limits  is provided, the limits are set  equal to the case
-    !!      for \c sol_limits.
     !!      - if \c sol_limits is provided,  the solution range is divided under
     !!      the processes and \c r_F_eq is filled.
     !!  - For POST:
@@ -321,7 +319,7 @@ contains
             use grid_utilities, only: find_compr_range
             
             ! input / output
-            integer, intent(inout) :: eq_limits(2), sol_limits(2)               ! min. and max. index of eq, X and sol grid for this process
+            integer, intent(inout) :: eq_limits(2), sol_limits(2)               ! min. and max. index of eq and sol grid for this process
             real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! eq and sol r_F
             
             ! local variables
@@ -623,6 +621,8 @@ contains
                 ierr = grid_sol%init([1,n_alpha,grid_X%n(3)],&
                     &[grid_X%i_min,grid_X%i_max],grid_X%divided)
                 CHCKERR('')
+                grid_sol%r_F = grid_X%r_F
+                grid_sol%loc_r_F = grid_X%r_F(sol_limits(1):sol_limits(2))
         end select
     end function setup_grid_sol
     

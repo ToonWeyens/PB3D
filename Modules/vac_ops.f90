@@ -30,7 +30,7 @@ module vac_ops
     use num_vars, only: dp, pi, max_str_ln, iu
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_2_type
+    use X_vars, only: X_2_type, modes_type
     use vac_vars, only: copy_vac, &
         &vac_type
 
@@ -1413,14 +1413,14 @@ contains
     !! Currently, this procedure only works for vacuum style 2 (axisymmetric).
     !!
     !! \return ierr
-    integer function calc_vac_res(vac) result(ierr)
+    integer function calc_vac_res(mds,vac) result(ierr)
         use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use MPI
         use rich_vars, only: rich_lvl, n_par_X
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
             &use_pol_flux_F, rank, n_procs
         use PB3D_ops, only: reconstruct_PB3D_vac
-        use X_vars, only: n_mod_X, n_X, m_X
+        use X_vars, only: n_mod_X
         use vac_vars, only: set_loc_lims, in_context
         use vac_utilities, only: mat_dis2loc
         use eq_vars, only: vac_perm
@@ -1430,6 +1430,7 @@ contains
         character(*), parameter :: rout_name = 'calc_vac_res'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
@@ -1522,11 +1523,11 @@ contains
             
             ! set secondary mode numbers
             if (use_pol_flux_F) then
-                vac%lim_sec_X(1) = m_X(size(m_X,1),1)
-                vac%lim_sec_X(2) = m_X(size(m_X,1),size(m_X,2))
+                vac%lim_sec_X(1) = mds%m(size(mds%m,1),1)
+                vac%lim_sec_X(2) = mds%m(size(mds%m,1),size(mds%m,2))
             else
-                vac%lim_sec_X(1) = n_X(size(n_X,1),1)
-                vac%lim_sec_X(2) = n_X(size(n_X,1),size(n_X,2))
+                vac%lim_sec_X(1) = mds%n(size(mds%n,1),1)
+                vac%lim_sec_X(2) = mds%n(size(mds%n,1),size(mds%n,2))
             end if
             
             ! set sizes

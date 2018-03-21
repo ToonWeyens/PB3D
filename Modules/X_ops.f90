@@ -10,13 +10,13 @@ module X_ops
     use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
     use grid_vars, onlY: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type, X_2_type
+    use X_vars, only: X_1_type, X_2_type, modes_type
 
     implicit none
     private
     public calc_X, calc_magn_ints, print_output_X, resonance_plot, &
-        &calc_res_surf, check_X_modes, setup_nm_X, divide_X_jobs, &
-        &redistribute_output_X, interpolate_nm_X, restore_nm_X
+        &calc_res_surf, check_X_modes, init_modes, setup_modes, divide_X_jobs, &
+        &redistribute_output_X
 #if ldebug
     public debug_check_X_modes_2
 #endif
@@ -90,18 +90,19 @@ module X_ops
     
 contains
     !> \private vectorial version
-    integer function calc_X_1(grid_eq,grid_X,eq_1,eq_2,X,lim_sec_X) &
+    integer function calc_X_1(mds,grid_eq,grid_X,eq_1,eq_2,X,lim_sec_X) &
         &result(ierr)
         
         character(*), parameter :: rout_name = 'calc_X_1'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid variables
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         type(X_1_type), intent(inout) :: X                                      !< vectorial perturbation variables
-        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \ m_X (pol. flux) or \ n_X (tor. flux)
+        integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \ n_X (tor. flux)
         
         ! initialize ierr
         ierr = 0
@@ -111,7 +112,7 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call X%init(grid_X,lim_sec_X)
+        call X%init(mds,grid_X,lim_sec_X)
         
         ! calculate U and DU
         call writo('Calculating U and DU...')
@@ -124,12 +125,13 @@ contains
         call lvl_ud(-1)
     end function calc_X_1
     !> \private tensorial version
-    integer function calc_X_2(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
-        &result(ierr)
+    integer function calc_X_2(mds,grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,&
+        &lim_sec_X) result(ierr)
         
         character(*), parameter :: rout_name = 'calc_X_2'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid variables
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium
@@ -147,7 +149,7 @@ contains
         call lvl_ud(1)
         
         ! create perturbation with modes of current X job
-        call X%init(grid_X,lim_sec_X)
+        call X%init(mds,grid_X,lim_sec_X)
         
         ! Calculate  PV_i  for  all (k,m)  pairs  and n_r  (equilibrium)
         ! values of the normal coordinate
@@ -170,13 +172,14 @@ contains
     end function calc_X_2
     
     !> \private flux version
-    integer function redistribute_output_X_1(grid,grid_out,X,X_out) &
+    integer function redistribute_output_X_1(mds,grid,grid_out,X,X_out) &
         &result(ierr)
         use MPI_utilities, only: redistribute_var
         
         character(*), parameter :: rout_name = 'redistribute_output_X_1'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid                                     !< perturbation grid variables
         type(grid_type), intent(in) :: grid_out                                 !< redistributed perturbation grid variables
         type(X_1_type), intent(in) :: X                                         !< vectorial perturbation variables
@@ -202,7 +205,7 @@ contains
         end if
         
         ! create redistributed vectorial perturbation variables
-        call X_out%init(grid_out,lim_sec_X=X%lim_sec_X)
+        call X_out%init(mds,grid_out,lim_sec_X=X%lim_sec_X)
         
         ! set up limits taking into account angular extent and temporary var
         lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
@@ -260,13 +263,14 @@ contains
         call lvl_ud(-1)
     end function redistribute_output_X_1
     !> \private metric version
-    integer function redistribute_output_X_2(grid,grid_out,X,X_out) &
+    integer function redistribute_output_X_2(mds,grid,grid_out,X,X_out) &
         &result(ierr)
         use MPI_utilities, only: redistribute_var
         
         character(*), parameter :: rout_name = 'redistribute_output_X_2'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid                                     !< perturbation grid variables
         type(grid_type), intent(in) :: grid_out                                 !< redistributed perturbation grid variables
         type(X_2_type), intent(in) :: X                                         !< tensorial perturbation variables
@@ -296,7 +300,7 @@ contains
         end if
         
         ! create redistributed tensorial perturbation variables
-        call X_out%init(grid_out,lim_sec_X=X%lim_sec_X,&
+        call X_out%init(mds,grid_out,lim_sec_X=X%lim_sec_X,&
             &is_field_averaged=is_field_averaged)
         
         ! set up limits taking into account angular extent and temporary var
@@ -870,21 +874,12 @@ contains
         call lvl_ud(-1)
     end function print_output_X_2
     
-    !> Sets up some variables concerning the mode numbers.
+    !> Initializes some variables concerning the mode numbers.
     !!
     !! Setup  minimum and  maximum  of mode  numbers at  every  flux surface  in
     !! equilibrium coordinates
     !!  - \c min_n_X, \c max_n_X
     !!  - \c min_m_X, \c max_m_X,
-    !!
-    !! as well as the actual mode numbers
-    !!   - \c n_X, \c m_X,
-    !! 
-    !! in perturbation coordinates and the indices of the secondary modes
-    !!   - sec_X_ind,
-    !! 
-    !! in  perturbation coordinates  as well.  The normal  values of  these last
-    !! variables are saved in \c r_X.
     !!
     !! It  functions depending  on  the \c  X_style used:  1  (prescribed) or  2
     !! (fast). For the fast  style, at every flux surface the  range of modes is
@@ -898,71 +893,34 @@ contains
     !! absolute  value, than  \c min_sec_X.  Therefore,  the range  of width  \c
     !! n_mod_X can be shifted upwards.
     !!
-    !! Optionally, \c n and \c m can be plot.
-    !!
-    !! \note  For  \c  X_grid_style  2,   the  quantities  that  are  calculated
-    !! in  perturbation  coordinates,  \c  n_X,  \c m_X  and  \c  sec_X_ind  are
-    !! interpolated  on the  solution grid  and replaced  by their  interpolated
-    !! values  in   interpolate_nm_x().  They   are  subsequently   restored  in
-    !! restore_nm_x().
-    !!
-    !! \note
-    !!  -# the limits are  setup in the equilibrium grid but  the values are set
-    !!  up in the perturbation grid.
-    !! -# The perturbation grid has to be setup for this routine to work.
-    !!
     !! \return ierr
-    integer function setup_nm_X(grid_eq,grid_X,eq,plot_nm) result(ierr)
-        use num_vars, only: use_pol_flux_F, X_style, rank, norm_disc_prec_X
+    integer function init_modes(grid_eq,eq) result(ierr)
+        use num_vars, only: use_pol_flux_F, X_style
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
-            &max_n_X, min_m_X, max_m_X, min_nm_X, n_X, m_X, sec_X_ind, r_X
+            &max_n_X, min_m_X, max_m_X, min_nm_X
         use MPI_utilities, only: get_ser_var
-        use grid_vars, only: disc_type
-        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
-        use eq_vars, only: max_flux_F
+        use grid_utilities, only: trim_grid
         
-        character(*), parameter :: rout_name = 'setup_nm_X'
+        character(*), parameter :: rout_name = 'init_modes'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
-        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium
-        logical, intent(in), optional :: plot_nm                                !< plot \c n and \c m
         
         ! local variables
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
-        type(grid_type) :: grid_X_trim                                          ! trimmed version of perturbation grid
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
-        real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
-        real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
         real(dp), allocatable :: jq_tot(:)                                      ! saf. fac. or rot. transf. and derivs. in Flux coords.
-        real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
         integer :: norm_eq_id(2)                                                ! untrimmed normal indices for trimmed grids
-        integer :: id, ld, kd                                                   ! counters
-        integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
-        character(len=max_str_ln) :: plot_title                                 ! title for plots
-        character(len=max_str_ln) :: plot_name                                  ! file name for plots
-        logical :: plot_nm_loc                                                  ! local plot_nm
         
         ! initialize ierr
         ierr = 0
         
         ! user output
-        call writo('Setting up perturbation modes')
+        call writo('Initializing perturbation modes variables')
         call lvl_ud(1)
-        
-        ! user output
-        call writo('Set up mode numbers')
-        call lvl_ud(1)
-        
-        ! set local plot_nm
-        plot_nm_loc = .false.
-        if (present(plot_nm)) plot_nm_loc = plot_nm
         
         ! get trimmed grids
         ierr = trim_grid(grid_eq,grid_eq_trim,norm_eq_id)
-        CHCKERR('')
-        ierr = trim_grid(grid_X,grid_X_trim)
         CHCKERR('')
         
         ! (re)allocate variables
@@ -1035,6 +993,79 @@ contains
                 end if
         end select
         
+        ! clean up
+        call grid_eq_trim%dealloc()
+        
+        call lvl_ud(-1)
+        call writo('Perturbation modes variables initialized')
+    end function init_modes
+    
+    !> Sets up some variables concerning the mode numbers.
+    !!
+    !! Apart from the mode numbers
+    !!  - \c n, \c m,
+    !!
+    !! also the indices of the secondary modes
+    !!  - sec_ind,
+    !! 
+    !! are set up  in the coordinates of  the grid passed. The  normal values of
+    !! this grid are saved as well, in
+    !!  - r_F.
+    !!
+    !! This procedure makes use of the global variables
+    !!  - \c min_m_X, max_m_X, min_n_X, max_m_X
+    !!
+    !! that have to be set up using init_nm_x().
+    !!
+    !! Optionally, \c n and \c m can be plot.
+    !!
+    !! \return ierr
+    integer function setup_modes(mds,grid_eq,grid,plot_nm) result(ierr)
+        use num_vars, only: use_pol_flux_F, rank, norm_disc_prec_X
+        use X_vars, only: n_mod_X, min_n_X, max_n_X, min_m_X, max_m_X
+        use grid_vars, only: disc_type
+        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
+        use eq_vars, only: max_flux_F
+        
+        character(*), parameter :: rout_name = 'setup_modes'
+        
+        ! input / output
+        type(modes_type), intent(inout) :: mds                                  !< modes variables
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
+        type(grid_type), intent(in) :: grid                                     !< grid at which to calculate modes
+        logical, intent(in), optional :: plot_nm                                !< plot \c n and \c m
+        
+        ! local variables
+        type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
+        type(grid_type) :: grid_trim                                            ! trimmed version of perturbation grid
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
+        real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
+        real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
+        integer :: norm_eq_id(2)                                                ! untrimmed normal indices for trimmed grids
+        integer :: id, ld, kd                                                   ! counters
+        integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
+        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_name                                  ! file name for plots
+        logical :: plot_nm_loc                                                  ! local plot_nm
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user output
+        call writo('Setting up general modes variables')
+        call lvl_ud(1)
+        
+        ! set local plot_nm
+        plot_nm_loc = .false.
+        if (present(plot_nm)) plot_nm_loc = plot_nm
+        
+        ! get trimmed grids
+        ierr = trim_grid(grid_eq,grid_eq_trim,norm_eq_id)
+        CHCKERR('')
+        ierr = trim_grid(grid,grid_trim)
+        CHCKERR('')
+        
         ! bundle the mode limits in one variable and convert to real
         allocate(lim_nm_X(4,grid_eq_trim%n(3)))
         lim_nm_X(1,:) = min_n_X*1._dp
@@ -1043,12 +1074,12 @@ contains
         lim_nm_X(4,:) = max_m_X*1._dp
         
         ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq_trim%r_F,grid_X_trim%r_F,&
+        ierr = setup_interp_data(grid_eq_trim%r_F,grid_trim%r_F,&
             &norm_interp_data,norm_disc_prec_X)
         CHCKERR('')
         
         ! interpolate
-        allocate(lim_nm_X_interp(4,grid_X_trim%n(3)))
+        allocate(lim_nm_X_interp(4,grid_trim%n(3)))
         ierr = apply_disc(lim_nm_X,norm_interp_data,lim_nm_X_interp,2)
         CHCKERR('')
         
@@ -1056,29 +1087,27 @@ contains
         call norm_interp_data%dealloc()
         
         ! set up normal tabulation values
-        allocate(r_X(grid_X_trim%n(3)))
-        r_X = grid_X_trim%r_F
+        allocate(mds%r_F(grid_trim%n(3)))
+        mds%r_F = grid_trim%r_F
         
         ! set n and m
-        if (allocated(n_X)) deallocate(n_X)
-        if (allocated(m_X)) deallocate(m_X)
-        allocate(n_X(grid_X_trim%n(3),n_mod_X))
-        allocate(m_X(grid_X_trim%n(3),n_mod_X))
+        allocate(mds%n(grid_trim%n(3),n_mod_X))
+        allocate(mds%m(grid_trim%n(3),n_mod_X))
         if (use_pol_flux_F) then
-            do kd = 1,grid_X_trim%n(3)
-                n_X(kd,:) = nint(lim_nm_X_interp(1,kd))
-                m_X(kd,:) = [(ld, ld = nint(lim_nm_X_interp(3,kd)),&
+            do kd = 1,grid_trim%n(3)
+                mds%n(kd,:) = nint(lim_nm_X_interp(1,kd))
+                mds%m(kd,:) = [(ld, ld = nint(lim_nm_X_interp(3,kd)),&
                     &nint(lim_nm_X_interp(4,kd)))]
             end do
         else
-            do kd = 1,grid_X_trim%n(3)
-                n_X(kd,:) = [(ld, ld = nint(lim_nm_X_interp(1,kd)),&
+            do kd = 1,grid_trim%n(3)
+                mds%n(kd,:) = [(ld, ld = nint(lim_nm_X_interp(1,kd)),&
                     &nint(lim_nm_X_interp(2,kd)))]
-                m_X(kd,:) = nint(lim_nm_X_interp(3,kd))
+                mds%m(kd,:) = nint(lim_nm_X_interp(3,kd))
             end do
         end if
         
-        ! total number of modes that might occur
+        ! total number of mds that might occur
         if (use_pol_flux_F) then
             n_mod_tot = maxval(max_m_X)-minval(min_m_X)+1
         else
@@ -1086,26 +1115,23 @@ contains
         end if
         
         ! set up indices of n and m
-        if (allocated(sec_X_ind)) deallocate(sec_X_ind)
-        allocate(sec_X_ind(grid_X_trim%n(3),n_mod_tot))
+        allocate(mds%sec_ind(grid_trim%n(3),n_mod_tot))
         
-        ! loop over all possible modes to find possible indices
-        sec_X_ind = 0
-        do kd = 1,grid_X_trim%n(3)
+        ! loop over all possible mds to find possible indices
+        mds%sec_ind = 0
+        do kd = 1,grid_trim%n(3)
             do ld = 1,n_mod_tot
                 do id = 1,n_mod_X
                     if (use_pol_flux_F) then
-                        if (m_X(kd,id).eq.minval(min_m_X)+ld-1) &
-                            &sec_X_ind(kd,ld) = id
+                        if (mds%m(kd,id).eq.minval(min_m_X)+ld-1) &
+                            &mds%sec_ind(kd,ld) = id
                     else
-                        if (n_X(kd,id).eq.minval(min_n_X)+ld-1) &
-                            &sec_X_ind(kd,ld) = id
+                        if (mds%n(kd,id).eq.minval(min_n_X)+ld-1) &
+                            &mds%sec_ind(kd,ld) = id
                     end if
                 end do
             end do
         end do
-        
-        call lvl_ud(-1)
         
         ! master plots output if requested
         if (rank.eq.0 .and. plot_nm_loc) then
@@ -1113,21 +1139,21 @@ contains
             call lvl_ud(1)
             
             ! set up x values
-            allocate(x_plot(grid_X_trim%n(3),n_mod_X))
+            allocate(x_plot(grid_trim%n(3),n_mod_X))
             do ld = 1,n_mod_X
-                x_plot(:,ld) = grid_X_trim%r_F
+                x_plot(:,ld) = grid_trim%r_F
             end do
             x_plot = x_plot*2*pi/max_flux_F
             ! plot poloidal modes
             plot_title = 'poloidal mode numbers'
             plot_name = 'modes_m_X'
-            call print_ex_2D([plot_title],plot_name,m_X*1._dp,x=x_plot,&
+            call print_ex_2D([plot_title],plot_name,mds%m*1._dp,x=x_plot,&
                 &draw=.false.)
             call draw_ex([plot_title],plot_name,n_mod_X,1,.false.)
             ! plot toroidal modes
             plot_title = 'toroidal mode numbers'
             plot_name = 'modes_n_X'
-            call print_ex_2D([plot_title],plot_name,n_X*1._dp,x=x_plot,&
+            call print_ex_2D([plot_title],plot_name,mds%n*1._dp,x=x_plot,&
                 &draw=.false.)
             call draw_ex([plot_title],plot_name,n_mod_X,1,.false.)
             
@@ -1136,137 +1162,11 @@ contains
         
         ! clean up
         call grid_eq_trim%dealloc()
-        call grid_X_trim%dealloc()
+        call grid_trim%dealloc()
         
         call lvl_ud(-1)
-        call writo('Perturbation modes set up')
-    end function setup_nm_X
-    
-    !> \public   Interpolate  and   overwrite   quantities   tabulated  in   the
-    !! perturbation grid.
-    !!
-    !! \see See setup_nm_X().
-    !!
-    !! \note Recommended usage of this routine  includes storing \c r_X, \c n_X,
-    !! \c m_X and \sec_X_ind in the  calling routine, followed by restoring them
-    !! afterwards. If not,  they have to be recalculated in  the next Richardson
-    !! level.
-    !!
-    !! \note The grid needs to be trimmed.
-    !!
-    !! \return ierr
-    integer function interpolate_nm_X(grid_X,r_X,n_X,m_X,sec_X_ind) result(ierr)
-        use X_vars, only: r_X_new => r_X, n_X_new => n_X, m_X_new => m_X, &
-            &sec_X_ind_new => sec_X_ind, n_mod_X
-        use num_utilities, only: spline3
-        use num_vars, only: norm_disc_prec_X
-        
-        character(*), parameter :: rout_name = 'interpolate_nm_X'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_X                                   !< (trimmed) perturbation grid
-        real(dp), intent(inout), allocatable :: r_X(:)                          !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
-        integer, intent(inout), allocatable :: n_X(:,:)                         !< \f$n\f$ for all modes, in total X grid
-        integer, intent(inout), allocatable :: m_X(:,:)                         !< \f$m\f$ for all modes, in total X grid
-        integer, intent(inout), allocatable :: sec_X_ind(:,:)                   !< index of \c m_X or \c n_X for all possible modes, in total X grid
-        
-        ! local variables
-        integer :: ld                                                           ! counter
-        integer :: n_r_new                                                      ! number of normal points new variables
-        integer :: n_mod_tot                                                    ! total number of modes
-        real(dp), allocatable :: temp(:)                                        ! temporary variable
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! save old variables
-        allocate(r_X(size(r_X_new,1)))
-        allocate(n_X(size(n_X_new,1),size(n_X_new,2)))
-        allocate(m_X(size(m_X_new,1),size(m_X_new,2)))
-        allocate(sec_X_ind(size(m_X_new,1),size(m_X_new,2)))
-        r_X = r_X_new
-        n_X = n_X_new
-        m_X = m_X_new
-        sec_X_ind = sec_X_ind_new
-        
-        ! reallocate
-        n_r_new = grid_X%n(3)
-        n_mod_tot = size(sec_X_ind_new,2)
-        deallocate(r_X_new)
-        deallocate(n_X_new)
-        deallocate(m_X_new)
-        deallocate(sec_X_ind_new)
-        allocate(r_X_new(n_r_new))
-        allocate(n_X_new(n_r_new,n_mod_X))
-        allocate(m_X_new(n_r_new,n_mod_X))
-        allocate(sec_X_ind_new(n_r_new,n_mod_tot))
-        allocate(temp(n_r_new))
-        
-        ! r_X_new
-        r_X_new = grid_X%r_F
-        
-        ! n_X and m_X
-        do ld = 1,n_mod_X
-            ierr = spline3(norm_disc_prec_X,r_X,1._dp*n_X(:,ld),r_X_new,temp)
-            CHCKERR('')
-            n_X_new(:,ld) = nint(temp)
-            ierr = spline3(norm_disc_prec_X,r_X,1._dp*m_X(:,ld),r_X_new,temp)
-            CHCKERR('')
-            m_X_new(:,ld) = nint(temp)
-        end do
-        
-        ! sec_X_ind_new
-        do ld = 1,n_mod_tot
-            ierr = spline3(norm_disc_prec_X,r_X,1._dp*sec_X_ind(:,ld),r_X_new,&
-                &temp)
-            CHCKERR('')
-            sec_X_ind_new(:,ld) = nint(temp)
-        end do
-    end function interpolate_nm_X
-    
-    !> \public restore variables interpolated in interpolate_nm_x().
-    !!
-    !! Also deallocates the temporary variables
-    !!
-    !! \see See setup_nm_X() and interpolate_nm_x().
-    subroutine restore_nm_X(r_X,n_X,m_X,sec_X_ind)
-        use X_vars, only: r_X_new => r_X, n_X_new => n_X, m_X_new => m_X, &
-            &sec_X_ind_new => sec_X_ind, n_mod_X
-        
-        ! input / output
-        real(dp), intent(inout), allocatable :: r_X(:)                          !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
-        integer, intent(inout), allocatable :: n_X(:,:)                         !< \f$n\f$ for all modes, in total X grid
-        integer, intent(inout), allocatable :: m_X(:,:)                         !< \f$m\f$ for all modes, in total X grid
-        integer, intent(inout), allocatable :: sec_X_ind(:,:)                   !< index of \c m_X or \c n_X for all possible modes, in total X grid
-        
-        ! local variables
-        integer :: n_r_new                                                      ! number of normal points new variables
-        integer :: n_mod_tot                                                    ! total number of modes
-        
-        ! reallocate
-        n_r_new = size(r_X)
-        n_mod_tot = size(sec_X_ind,2)
-        deallocate(r_X_new)
-        deallocate(n_X_new)
-        deallocate(m_X_new)
-        deallocate(sec_X_ind_new)
-        allocate(r_X_new(n_r_new))
-        allocate(n_X_new(n_r_new,n_mod_X))
-        allocate(m_X_new(n_r_new,n_mod_X))
-        allocate(sec_X_ind_new(n_r_new,n_mod_tot))
-        
-        ! copy
-        r_X_new = r_X
-        n_X_new = n_X
-        m_X_new = m_X
-        sec_X_ind_new = sec_X_ind
-        
-        ! deallocate temporary variables
-        deallocate(r_X)
-        deallocate(n_X)
-        deallocate(m_X)
-        deallocate(sec_X_ind)
-    end subroutine restore_nm_X
+        call writo('General mode variables set up')
+    end function setup_modes
     
     !> Checks whether the high-n approximation is valid:
     !!
@@ -1582,7 +1482,7 @@ contains
     !!  - <tt>(:,2)</tt>: the radial position in Flux coordinates
     !!  - <tt>(:,3)</tt>: the fraction \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$
     !!
-    !! for every single mode in \c sec_X_ind.
+    !! for every single mode in \c sec_ind of \c mds.
     !!
     !! Optionally,  the  total safety  factor  or  rotational transform  can  be
     !! returned to the master.
@@ -1590,8 +1490,8 @@ contains
     !! Also, information can be displayed.
     !!
     !! \return ierr
-    integer function calc_res_surf(grid_eq,eq,res_surf,info,jq) result(ierr)
-        use X_vars, only: min_n_X, min_m_X, sec_X_ind, prim_X
+    integer function calc_res_surf(mds,grid_eq,eq,res_surf,info,jq) result(ierr)
+        use X_vars, only: min_n_X, min_m_X, prim_X
         use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
         use num_ops, only: calc_zero_Zhang
@@ -1601,6 +1501,7 @@ contains
         character(*), parameter :: rout_name = 'calc_res_surf'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid_eq
         type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium
         real(dp), intent(inout), allocatable :: res_surf(:,:)                   !< resonant surface
@@ -1662,21 +1563,21 @@ contains
         end if
         
         ! initialize local res_surf
-        allocate(res_surf_loc(1:size(sec_X_ind,2),3))
+        allocate(res_surf_loc(1:size(mds%sec_ind,2),3))
         
         ! calculate normalization factor max_flux / 2pi
         norm_factor = max_flux_F/(2*pi)
         
         ! loop over all modes (and shift the index in m_loc and n_loc by 1)
         ld_loc = 1
-        do ld = 1,size(sec_X_ind,2)
+        do ld = 1,size(mds%sec_ind,2)
             ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
             ! solving q-m/n  = 0 or  iota-n/m=0, using the functin  jq_fun. Only
             ! consider modes  that appear  somewhere in  the plasma  (e.g. where
-            ! sec_X_ind is nonzero somewhere)
+            ! sec_ind is nonzero somewhere)
             
             ! set up local m, n and nmfrac for function if mode appears
-            if (maxval(sec_X_ind(:,ld)).gt.0) then
+            if (maxval(mds%sec_ind(:,ld)).gt.0) then
                 if (use_pol_flux_F) then
                     n_loc = prim_X
                     m_loc = minval(min_m_X)+ld-1
@@ -1772,7 +1673,7 @@ contains
     !! \f$nq-m = 0\f$ or \f$n-\iota m = 0\f$ indicated if requested.
     !!
     !! \return ierr
-    integer function resonance_plot(grid,eq) result(ierr)
+    integer function resonance_plot(mds,grid,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
             &n_zeta_plot, rank, eq_style, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot
@@ -1785,6 +1686,7 @@ contains
         character(*), parameter :: rout_name = 'resonance_plot'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid                                     !< equilibrium grid
         type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium
         
@@ -1839,7 +1741,7 @@ contains
         call lvl_ud(1)
         
         ! find resonating surfaces
-        ierr = calc_res_surf(grid,eq,res_surf,info=.true.,jq=jq)
+        ierr = calc_res_surf(mds,grid,eq,res_surf,info=.true.,jq=jq)
         CHCKERR('')
         
         call lvl_ud(-1)

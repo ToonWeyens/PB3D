@@ -9,7 +9,8 @@ module driver_sol
     use messages
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
-    use X_vars, only: X_2_type
+    use X_vars, only: X_2_type, &
+        &mds_X, mds_sol
     use vac_vars, only: vac_type
     use sol_vars, only: sol_type
     
@@ -30,7 +31,9 @@ contains
     !!      * sol before setting up (but after guess)
     !!
     !! \return ierr
-    integer function run_driver_sol(grid_X,grid_sol,X,vac,sol) result(ierr)
+    integer function run_driver_sol(grid_eq,grid_X,grid_sol,X,vac,sol) &
+        &result(ierr)
+        
         use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, &
             &n_procs, X_grid_style
         use grid_vars, only: n_r_sol
@@ -44,11 +47,12 @@ contains
         use vac_ops, only: calc_vac_res, print_output_vac
         use MPI_utilities, only: get_ser_var
         use grid_utilities, only: trim_grid
-        use X_ops, only: interpolate_nm_x, restore_nm_X
+        use X_ops, only: setup_modes
         
         character(*), parameter :: rout_name = 'run_driver_sol'
         
         ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in), target :: grid_X                           !< perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              !< solution grid
         type(X_2_type), intent(in) :: X                                         !< integrated tensorial perturbation variables
@@ -66,10 +70,6 @@ contains
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed solution grid
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
-        integer, allocatable :: n_X_old(:,:)                                    ! old value of n_X
-        integer, allocatable :: m_X_old(:,:)                                    ! old value of m_X
-        integer, allocatable :: sec_X_ind_old(:,:)                              ! old value of sec_X_ind
-        real(dp), allocatable :: r_X_old(:)                                     ! old value of r_X
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
         complex(dp), allocatable :: ser_var_loc(:)                              ! local serial variable
         logical :: do_vac_ops                                                   ! whether specific calculations for vacuum are necessary
@@ -97,7 +97,7 @@ contains
         
         if (do_vac_ops) then
             ! calculate vacuum
-            ierr = calc_vac_res(vac)
+            ierr = calc_vac_res(mds_sol,vac)
             CHCKERR('')
             
             call writo('Write to output file')
@@ -134,13 +134,17 @@ contains
                 CHCKERR('')
                 call lvl_ud(-1)
                 
+                ! set up modes
+                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_nm=.false.)
+                CHCKERR('')
+                
                 call lvl_ud(-1)
             else
                 ! restore solution grid and previous solution
                 ierr = reconstruct_PB3D_grid(grid_sol,'sol',&
                     &grid_limits=sol_limits)
                 CHCKERR('')
-                ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',&
+                ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
                     &rich_lvl=rich_lvl-1)
                 CHCKERR('')
             end if
@@ -171,7 +175,7 @@ contains
                 ierr = grid_X_ser%init(n_X)
                 CHCKERR('')
                 grid_X_ser%r_F = grid_X_trim%r_F
-                call X_ser%init(grid_X_ser,is_field_averaged=.true.)
+                call X_ser%init(mds_X,grid_X_ser,is_field_averaged=.true.)
                 
                 allocate(ser_var_loc(product(n_X)))
                 if (grid_X_trim%divided) then
@@ -229,13 +233,8 @@ contains
                    X_ser%KV_2 = X%KV_2
                 end if
                 
-                ! overwrite n_X, m_X and sec_X_ind by interpolated quantities
-                ierr = interpolate_nm_x(grid_sol,r_X_old,n_X_old,m_X_old,&
-                    &sec_X_ind_old)
-                CHCKERR('')
-                
                 ! interpolate
-                call X_sol%init(grid_sol,is_field_averaged=.true.)
+                call X_sol%init(mds_sol,grid_sol,is_field_averaged=.true.)
                 ierr = interp_V(X_ser%PV_0,grid_X_ser%r_F,&
                     &X_sol%PV_0,grid_sol%loc_r_F)
                 CHCKERR('')
@@ -254,6 +253,9 @@ contains
                 ierr = interp_V(X_ser%KV_2,grid_X_ser%r_F,&
                     &X_sol%KV_2,grid_sol%loc_r_F)
                 CHCKERR('')
+                call plot_HDF5('KV','KV_2_X',rp(X%KV_2(1,:,:,:)))
+                call plot_HDF5('KV','KV_2_X_ser',rp(X_ser%KV_2(1,:,:,:)))
+                call plot_HDF5('KV','KV_2_sol',rp(X_sol%KV_2(1,:,:,:)))
                 
                 ! clean up
                 call grid_X_trim%dealloc()
@@ -261,7 +263,7 @@ contains
                 call X_ser%dealloc()
             case (2)                                                            ! solution
                 ! copy
-                call X%copy(grid_sol,X_sol)
+                call X%copy(mds_sol,grid_sol,X_sol)
         end select
         
         call lvl_ud(-1)
@@ -272,7 +274,7 @@ contains
         select case (EV_style)
             case(1)                                                             ! SLEPC solver for EV problem
                 ! solve the system
-                ierr = solve_EV_system_SLEPC(grid_sol,X_sol,vac,sol)
+                ierr = solve_EV_system_SLEPC(mds_sol,grid_sol,X_sol,vac,sol)
                 CHCKERR('')
             case default
                 err_msg = 'No EV solver style associated with '//&
@@ -290,9 +292,6 @@ contains
         ! calculate Richardson extrapolation factors if necessary
         call calc_rich_ex(sol%val)
         
-        ! restore old X values
-        if (X_grid_style.eq.1) &
-            &call restore_nm_X(r_X_old,n_X_old,m_X_old,sec_X_ind_old)
         
         ! clean up
         call X_sol%dealloc()
@@ -331,6 +330,7 @@ contains
         n = shape(V_i(:,:,:,1))
         allocate(spline_coeff(n(3),2))
         allocate(spline_knots(n(3)+norm_disc_prec_sol,2))
+        write(*,*) 'n', n
         do ld = 1,size(V_i,4)
             do jd = 1,n(2)
                 do id = 1,n(1)
@@ -353,7 +353,7 @@ contains
                             err_msg = get_status_message(ierr)
                             CHCKERR(err_msg)
                         end do
-                        V_o(id,jd,:,ld) = V_loc(1) + iu*V_loc(2)
+                        V_o(id,jd,kd,ld) = V_loc(1) + iu*V_loc(2)
                     end do
                 end do
             end do

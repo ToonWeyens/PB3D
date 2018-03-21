@@ -70,9 +70,10 @@ contains
     !! i.e. the variation of the safety factor or rotational transform.
     !!
     !! \return ierr
-    integer function insert_block_mat(block,mat,r_id,ind,n_r,transp,&
+    integer function insert_block_mat(mds,block,mat,r_id,ind,n_r,transp,&
         &overwrite,ind_insert) result(ierr)
-        use X_vars, only: n_X, m_X, n_mod_X
+        use X_vars, only: modes_type, &
+            &n_mod_X
         use num_vars, only: use_pol_flux_F
 #if ldebug
         use num_vars, only: rank
@@ -82,7 +83,8 @@ contains
         character(*), parameter :: rout_name = 'insert_block_mat'
         
         ! input / output
-        PetscScalar :: block(:,:)                                               !< (\cn_mod x \cn_mod) block matrix for 1 normal point
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
+        PetscScalar, intent(in) :: block(:,:)                                   !< (\cn_mod x \cn_mod) block matrix for 1 normal point
         Mat, intent(inout) :: mat                                               !< matrix in which to insert block
         PetscInt, intent(in) :: r_id                                            !< normal position of corresponding \f$\widetilde{V}^0\f$ (starting at 0)
         PetscInt, intent(in) :: ind(2)                                          !< 2D index in matrix, relative to \cr_id
@@ -144,15 +146,15 @@ contains
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
                     if (use_pol_flux_F) then
-                        k_loc = k + m_X(r_id+1,k) - &
-                            &m_X(min(r_id+1+ind(1),size(m_X,1)),k)
-                        m_loc = m + m_X(r_id+1,k) - &
-                            &m_X(min(r_id+1+ind(2),size(m_X,1)),k)
+                        k_loc = k + mds%m(r_id+1,k) - &
+                            &mds%m(min(r_id+1+ind(1),size(mds%m,1)),k)
+                        m_loc = m + mds%m(r_id+1,k) - &
+                            &mds%m(min(r_id+1+ind(2),size(mds%m,1)),k)
                     else
-                        k_loc = k + n_X(r_id+1,k) - &
-                            &n_X(min(r_id+1+ind(1),size(n_X,1)),k)
-                        m_loc = m + n_X(r_id+1,k) - &
-                            &n_X(min(r_id+1+ind(2),size(n_X,1)),k)
+                        k_loc = k + mds%n(r_id+1,k) - &
+                            &mds%n(min(r_id+1+ind(1),size(mds%n,1)),k)
+                        m_loc = m + mds%n(r_id+1,k) - &
+                            &mds%n(min(r_id+1+ind(2),size(mds%n,1)),k)
                     end if
                     if (k_loc.ge.1 .and. m_loc.ge.1 .and. &
                         &k_loc.le.n_mod_X .and. m_loc.le.n_mod_X) &

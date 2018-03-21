@@ -460,7 +460,7 @@ ITER Organization
 * Fixed a bug in the calculation of the normal range for high discretization orders.
 * Fixed a bug in the interpolation routines for high discretization orders.
 * The routines that adapt input variables now have correct error handling.
-* New input flag 'POST_post_style' that allows choice between POST output on extended grid (1) or field-aligned grid (2).
+* New input flag 'POST_style' that allows choice between POST output on extended grid (1) or field-aligned grid (2).
 * Reorganized the POST driver structure.
 * User can now use input variable 'slab_plots' to optionally generate slab plots.
 * Fixed bug in 'plot_HDF5' where plot was wrongly identified as having poloidal symmetry while it was just a slab plot.
@@ -1188,3 +1188,16 @@ ITER Organization
 * These variables can be interpolated on the new grid in 'interpolate_nm_x', and later restored in 'restore_nm_X'.
 * 'debug_run_driver_X_2' now multiplies (hard-coded) the Z-axis by 100 to have easier plots.
 * Fixed bugs in 'debug_run_driver_X_2' where multiple X jobs gave a wrong result. It is now all done after all the X jobs are done.
+
+# 2.12:
+* THIS VERSION HAS PB3D WORKING BUT NOT YET POST.
+* Fixed bug when using X_grid_style 2, where the normal interpolation in the solution driver was not done correctly because the last normal point was always chosen.
+* Fixed bug when using X_grid_style 2, where the solution grid was not correctly initialized.
+* 'n_X', 'm_X', 'sec_X_ind' and 'r_X' are now saved in a custom type 'modes_type'.
+* They are set in 'setup_modes' (formerly 'setup_nm_X'), of which 'init_modes' has been split off.
+* 'init_nm_X' now only sets up the minimum and maximum mode numbers, in the equilibrium grid.
+* 'interpolate_nm_X' and 'restore_nm_X' have been removed as they are no longer needed.
+* Solution driver now also needs equilibrium grid to set up the solution modes.
+* 'calc_XUQ' still outputs XUQ in the solution grid, but now also possibly interpolates the perturbation quantities if X_grid_style is 1.
+* For POST_style 1, 'setup_out_grids' does not need full grids, as it will extend them.
+* plot_sol_vec now uses less memory in the interpolated metric coefficients by selecting only the necessary ones.

@@ -1111,15 +1111,15 @@ contains
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol
         use eq_vars, only: eq_1_type, eq_2_type
-        use X_vars, only: X_1_type, &
-            &m_X
+        use X_vars, only: X_1_type, modes_type
         use sol_vars, only: sol_type
-        use X_ops, only: setup_nm_X
+        use X_ops, only: init_modes, setup_modes
         use VMEC_utilities, only: calc_trigon_factors
         
         character(*), parameter :: rout_name = 'test_read_HDF5_subset'
         
         ! local variables
+        type(modes_type) :: mds                                                 ! general modes variables
         type(grid_type) :: grid                                                 ! equilibrium or perturbation grid
         type(grid_type) :: grid_sub                                             ! grid for subset
         type(grid_type) :: grid_trim                                            ! trimmed grid for subset
@@ -1249,7 +1249,8 @@ contains
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name_eq,&
             &tot_rich=.true.,lim_pos=lims(:,:,1))
         CHCKERR('')
-        call print_ex_2D('r_E','r_E_'//trim(i2str(rank)),grid_eq%r_E,draw=.false.)
+        call print_ex_2D('r_E','r_E_'//trim(i2str(rank)),grid_eq%r_E,&
+            &draw=.false.)
         call draw_ex(['r_E'],'r_E_'//trim(i2str(rank)),1,1,.false.)
         
         ! set limits
@@ -1321,12 +1322,14 @@ contains
             ! set up nm in full grids
             ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
             CHCKERR('')
-            ierr = setup_nm_X(grid_eq,grid,eq_1,plot_nm=.false.)                ! is necessary for X variables
+            ierr = init_modes(grid_eq,eq_1)
+            CHCKERR('')
+            ierr = setup_modes(mds,grid_eq,grid,plot_nm=.false.)
             CHCKERR('')
             call eq_1%dealloc()
             ! get user input
             call writo('Which perturbation mode do you want to plot?')
-            i_sec = get_int(lim_lo=1,lim_hi=size(m_X,2))
+            i_sec = get_int(lim_lo=1,lim_hi=size(mds%m,2))
         end if
         
         ! synchronize MPI
@@ -1399,13 +1402,13 @@ contains
                         &lim_pos=lims_loc(:,:,i_sub))
                     CHCKERR('')
                 case (2)                                                        ! X_1
-                    ierr = reconstruct_PB3D_X_1(grid_sub,X_1,'X_1',&
+                    ierr = reconstruct_PB3D_X_1(mds,grid_sub,X_1,'X_1',&
                         &rich_lvl=rich_lvl_name,tot_rich=.true.,&
                         &lim_pos=lims_loc(:,:,i_sub),&
                         &lim_sec_X=[i_sec,i_sec])
                     CHCKERR('')
                 case (3)                                                        ! sol
-                    ierr = reconstruct_PB3D_sol(grid_sub,sol,'sol',&
+                    ierr = reconstruct_PB3D_sol(mds,grid_sub,sol,'sol',&
                         &rich_lvl=rich_lvl,&
                         &lim_pos=lims_loc(3:3,:,i_sub),&
                         &lim_sec_sol=[i_sec,i_sec])
@@ -1529,12 +1532,12 @@ contains
                         &rich_lvl=rich_lvl_name,tot_rich=.true.)
                     CHCKERR('')
                 case (2)                                                        ! X_1
-                    ierr = reconstruct_PB3D_X_1(grid,X_1,'X_1',&
+                    ierr = reconstruct_PB3D_X_1(mds,grid,X_1,'X_1',&
                         &rich_lvl=rich_lvl_name,tot_rich=.true.,&
                         &lim_sec_X=[i_sec,i_sec])
                     CHCKERR('')
                 case (3)                                                        ! sol
-                    ierr = reconstruct_PB3D_sol(grid,sol,'sol',&
+                    ierr = reconstruct_PB3D_sol(mds,grid,sol,'sol',&
                         &rich_lvl=rich_lvl,&
                         &lim_sec_sol=[i_sec,i_sec])
                     CHCKERR('')

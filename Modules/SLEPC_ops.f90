@@ -20,7 +20,7 @@ module SLEPC_ops
     use slepceps
     use num_vars, only: iu, dp, max_str_ln
     use grid_vars, only: grid_type
-    use X_vars, only: X_1_type, X_2_type
+    use X_vars, only: X_1_type, X_2_type, modes_type
     use vac_vars, only: vac_type
     use sol_vars, only: sol_type
 
@@ -55,7 +55,7 @@ contains
     !! \see read_input_opts()
     !!
     !! \return ierr
-    integer function solve_EV_system_SLEPC(grid_sol,X,vac,sol) &
+    integer function solve_EV_system_SLEPC(mds,grid_sol,X,vac,sol) &
         &result(ierr)
         
         use num_vars, only: matrix_SLEPC_style
@@ -68,6 +68,7 @@ contains
         character(*), parameter :: rout_name = 'solve_EV_system_SLEPC'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
@@ -97,7 +98,7 @@ contains
         ! set up the matrix
         call writo('Set up matrices')
         call lvl_ud(1)
-        ierr = setup_mats(grid_sol,X,A,B)
+        ierr = setup_mats(mds,grid_sol,X,A,B)
         CHCKERR('')
         call lvl_ud(-1)
         
@@ -123,7 +124,7 @@ contains
         
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
-                ierr = set_BC(grid_sol,X,vac,A,B)
+                ierr = set_BC(mds,grid_sol,X,vac,A,B)
                 CHCKERR('')
 #if ldebug
                 if (debug_set_BC) then
@@ -203,7 +204,7 @@ contains
         call writo('Store results for '//trim(i2str(max_n_EV))//' least &
             &stable Eigenvalues')
         
-        ierr = store_results(grid_sol,sol,solver,max_n_EV,A,B)
+        ierr = store_results(mds,grid_sol,sol,solver,max_n_EV,A,B)
         CHCKERR('')
         
         ! finalize
@@ -399,7 +400,7 @@ contains
     !! own normal range in the solution grid.
     !!
     !! \return ierr
-    integer function setup_mats(grid_sol,X,A,B) result(ierr)
+    integer function setup_mats(mds,grid_sol,X,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
             &rank, sol_n_procs, BC_style, norm_disc_style_sol
         use grid_utilities, only: trim_grid
@@ -415,6 +416,7 @@ contains
         character(*), parameter :: rout_name = 'setup_mats'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in), target :: X                                 !< field-averaged perturbation variables (so only first index)
         Mat, intent(inout) :: A                                                 !< matrix A
@@ -611,7 +613,7 @@ contains
         ! It is used  for both the matrix  A and B, corresponding  to the plasma
         ! potential energy and the (perpendicular) kinetic energy.
         !
-        ! Makes use of n_r and  grid_sol_trim
+        ! Makes use of mds, n_r and  grid_sol_trim
         !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
             use num_utilities, only: con, calc_coeff_fin_diff
@@ -718,7 +720,7 @@ contains
 #endif
 
                 ! add block to kd + (0,0)
-                ierr = insert_block_mat(loc_block,mat,kd,[0,0],n_r)
+                ierr = insert_block_mat(mds,loc_block,mat,kd,[0,0],n_r)
                 CHCKERR('')
                 
                 ! -------------!
@@ -735,7 +737,7 @@ contains
                 ! add block to kd +
                 ! (0,1-ndc_ind:1-st_size+jd)  +  Hermitian conjugate
                 do jd = 1,1+st_size
-                    ierr = insert_block_mat(loc_block*ndc(jd),mat,&
+                    ierr = insert_block_mat(mds,loc_block*ndc(jd),mat,&
                         &kd,[0,jd-ndc_ind],n_r,transp=.true.)                   ! so that jd = ndc_ind falls on [0,0]
                     CHCKERR('')
                 end do
@@ -763,8 +765,8 @@ contains
                 ! (1-ndc_ind:1-st_size+id,1-ndc_ind:1-st_size+jd)
                 do jd = 1,1+st_size
                     do id = 1,1+st_size
-                        ierr = insert_block_mat(loc_block*ndc(id)*ndc(jd),mat,&
-                            &kd,[id-ndc_ind,jd-ndc_ind],n_r)                    ! so that id,jd = ndc_ind,ndc_ind falls on [0,0]
+                        ierr = insert_block_mat(mds,loc_block*ndc(id)*ndc(jd),&
+                            &mat,kd,[id-ndc_ind,jd-ndc_ind],n_r)                ! so that id,jd = ndc_ind,ndc_ind falls on [0,0]
                         CHCKERR('')
                     end do
                 end do
@@ -920,7 +922,7 @@ contains
     !! -This is done using left finite differences.
     !!
     !! \return ierr
-    integer function set_BC(grid_sol,X,vac,A,B) result(ierr)
+    integer function set_BC(mds,grid_sol,X,vac,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
             &norm_disc_style_sol
         use X_vars, only: n_mod_X
@@ -931,6 +933,7 @@ contains
         character(*), parameter :: rout_name = 'set_BC'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
@@ -1128,20 +1131,20 @@ contains
             end select
             
             ! set block r_id + (0,0)
-            ierr = insert_block_mat(EV_BC*loc_block,A,r_id,[0,0],n_r,&
+            ierr = insert_block_mat(mds,EV_BC*loc_block,A,r_id,[0,0],n_r,&
                 &overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
-            ierr = insert_block_mat(loc_block,B,r_id,[0,0],n_r,&
+            ierr = insert_block_mat(mds,loc_block,B,r_id,[0,0],n_r,&
                 &overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
             
             ! iterate over range 2
             do kd = 1,st_size
                 ! set block r_id +/- (0,kd) and Hermitian conjugate
-                ierr = insert_block_mat(0*loc_block,A,r_id,[0,-pmone*kd],&
+                ierr = insert_block_mat(mds,0*loc_block,A,r_id,[0,-pmone*kd],&
                     &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(0*loc_block,B,r_id,[0,-pmone*kd],&
+                ierr = insert_block_mat(mds,0*loc_block,B,r_id,[0,-pmone*kd],&
                     &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
                 CHCKERR('')
             end do
@@ -1173,7 +1176,7 @@ contains
             ! -------------!
             ! add block to r_id + (0,0)
             write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-            !!!ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
+            !!!ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 !!!&ind_insert=.true.)
             !!!CHCKERR('')
         end function set_BC_2
@@ -1200,7 +1203,7 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = insert_block_mat(vac%res,A,r_id,[0,0],n_r,&
+            ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_3
@@ -1208,6 +1211,8 @@ contains
         ! set  BC style 4:
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
+        !
+        ! Makes use of mds.
         !> \private
         integer function set_BC_4(r_id,r_id_loc,X,A,B,n_r) result(ierr)
             use num_vars, only: norm_disc_style_sol
@@ -1266,11 +1271,11 @@ contains
             loc_block(:,:,1) = loc_block(:,:,1) + vac%res
             
             ! set block r_id + (0,0)
-            ierr = insert_block_mat(loc_block(:,:,1)*ndc(1+st_size),A,r_id,&
+            ierr = insert_block_mat(mds,loc_block(:,:,1)*ndc(1+st_size),A,r_id,&
                 &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
             ! set block r_id + (0,0)
-            ierr = insert_block_mat(loc_block(:,:,2)*ndc(1+st_size),B,r_id,&
+            ierr = insert_block_mat(mds,loc_block(:,:,2)*ndc(1+st_size),B,r_id,&
                 &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
             
@@ -1291,12 +1296,12 @@ contains
             
             ! set block r_id + (0,-st_size:0)
             do jd = -st_size,0
-                ierr = insert_block_mat(loc_block(:,:,1)*&
+                ierr = insert_block_mat(mds,loc_block(:,:,1)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),A,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(loc_block(:,:,2)*&
+                ierr = insert_block_mat(mds,loc_block(:,:,2)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),B,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)
@@ -1611,7 +1616,7 @@ contains
     !> Stores the results.
     !!
     !! \return ierr
-    integer function store_results(grid_sol,sol,solver,max_n_EV,A,B) &
+    integer function store_results(mds,grid_sol,sol,solver,max_n_EV,A,B) &
         &result(ierr)
         
         use eq_vars, only: T_0
@@ -1625,6 +1630,7 @@ contains
         character(*), parameter :: rout_name = 'store_results'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(sol_type), intent(inout) :: sol                                    !< solution variables
         EPS, intent(inout) :: solver                                            !< EV solver
@@ -1673,7 +1679,7 @@ contains
         
         ! create solution variables
         if (allocated(sol%val)) call sol%dealloc()
-        call sol%init(grid_sol_trim,max_n_EV)
+        call sol%init(mds,grid_sol_trim,max_n_EV)
         
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&

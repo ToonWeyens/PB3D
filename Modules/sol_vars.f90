@@ -7,6 +7,7 @@ module sol_vars
     use messages
     use num_vars, only: dp, max_str_ln, iu, weight_dp
     use grid_vars, only: grid_type
+    use X_vars, only: modes_type
     use output_ops
     
     implicit none
@@ -55,7 +56,7 @@ contains
     !! \note If the lowest limits of  the grid is not 1 (e.g. <tt>grid_sol%i_min
     !! = 1</tt> for first process), the input variable \c i_min should be set to
     !! set correctly. For a full grid, it should be set to 1.
-    subroutine init_sol(sol,grid_sol,n_EV,lim_sec_X)
+    subroutine init_sol(sol,mds,grid_sol,n_EV,lim_sec_X)
         use X_vars, only: set_nm_X
 #if ldebug
         use num_vars, only: print_mem_usage, rank
@@ -63,6 +64,7 @@ contains
         
         ! input / output
         class(sol_type), intent(inout) :: sol                                   !< solution variables
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         integer, intent(in) :: n_EV                                             !< nr. of Eigenvalues
         integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
@@ -73,7 +75,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_sol,sol%lim_sec_X,sol%n,sol%m,lim_sec_X)
+        call set_nm_X(mds,grid_sol,sol%lim_sec_X,sol%n,sol%m,lim_sec_X)
         
         ! set n_mod
         sol%n_mod = size(sol%n,2)

@@ -8,9 +8,10 @@ module driver_POST
     use output_ops
     use messages
     use num_vars, only: max_str_ln, dp, iu, pi
-    use grid_vars, only: grid_type
+    use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type
+    use X_vars, only: X_1_type, modes_type, &
+        &mds_X, mds_sol
     use sol_vars, only: sol_type
     use vac_vars, only: vac_type
     use rich_vars, only: rich_lvl
@@ -76,14 +77,15 @@ contains
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
+            &X_grid_style
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1, reconstruct_PB3D_sol, reconstruct_PB3D_vac, &
             &get_PB3D_grid_size
         use vac_ops, only: vac_pot_plot
-        use X_ops, only: setup_nm_X, resonance_plot, calc_res_surf
+        use X_ops, only: init_modes, setup_modes, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
         use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
         use HELENA_vars, only: nchi
@@ -179,12 +181,17 @@ contains
         ierr = reconstruct_PB3D_grid(grid_sol,'sol')
         CHCKERR('')
         
-        ! set up nm in full grids
+        ! set up modes variables in full grids
         !  Note: This  is needed  as many  routines count  on this,  for example
-        ! 'set_nm_X' in X_vars, also used to initialize a solution variable.
+        ! 'set_nm_X' in  X_vars, also  used to  initialize a  solution variable,
+        ! etc.
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
-        ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)                   ! is necessary for X variables
+        ierr = init_modes(grid_eq,eq_1)
+        CHCKERR('')
+        ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
+        CHCKERR('')
+        ierr = setup_modes(mds_sol,grid_eq,grid_sol)
         CHCKERR('')
         
         ! user output
@@ -199,10 +206,16 @@ contains
         ierr = calc_norm_range(eq_limits=lims_norm(:,1),&
             &sol_limits=lims_norm(:,3),r_F_eq=grid_eq%r_F,r_F_sol=grid_sol%r_F)
         CHCKERR('')
-        write(*,*) '!!!!! IS THIS TRUE???'
-        lims_norm(:,2) = lims_norm(:,3)
-        grid_X%r_F = grid_sol%r_F
-        write(*,*) '!!!!! UNTIL HERE...'
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! perturbation quantities in equilibrium grid
+                lims_norm(:,2) = lims_norm(:,1)
+                grid_X%r_F = grid_eq%r_F
+            case (2)                                                            ! solution
+                ! perturbation quantities in solution grid
+                lims_norm(:,2) = lims_norm(:,3)
+                grid_X%r_F = grid_sol%r_F
+        end select
         call writo('normal grid limits:')
         call lvl_ud(1)
         call writo('proc '//trim(i2str(rank))//' - equilibrium:  '//&
@@ -246,7 +259,8 @@ contains
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
         if (POST_output_sol) then
-            ierr = reconstruct_PB3D_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
+            ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
+                &rich_lvl=rich_lvl)
             CHCKERR('')
             write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
             !!!ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
@@ -262,7 +276,7 @@ contains
         call lvl_ud(1)
         
         if (plot_resonance) then
-            ierr = resonance_plot(grid_eq,eq_1)
+            ierr = resonance_plot(mds_X,grid_eq,eq_1)
             CHCKERR('')
         else
             call writo('Resonance plot not requested')
@@ -306,10 +320,10 @@ contains
         call writo('Prepare 3-D plots')
         call lvl_ud(1)
         
-        ! calculate resonant surfaces
+        ! calculate resonant surfaces on solution grid
         call writo('Calculate resonant surfaces')
         call lvl_ud(1)
-        ierr = calc_res_surf(grid_eq,eq_1,res_surf,info=.false.)
+        ierr = calc_res_surf(mds_sol,grid_eq,eq_1,res_surf,info=.false.)
         call lvl_ud(-1)
         
         ! plot eigenvalues
@@ -341,7 +355,7 @@ contains
                         &trim(i2str(size(sol%val)))//', with eigenvalue '&
                         &//trim(c2strt(sol%val(id))))
                     call lvl_ud(1)
-                    ierr = plot_harmonics(grid_sol,sol,id,res_surf)
+                    ierr = plot_harmonics(mds_sol,grid_sol,sol,id,res_surf)
                     CHCKERR('')
                     
                     ! user output
@@ -444,7 +458,7 @@ contains
             CHCKERR('')
             ierr = reconstruct_PB3D_eq_2(grid_eq_HEL,eq_2_HEL,'eq_2')
             CHCKERR('')
-            ierr = reconstruct_PB3D_X_1(grid_X_HEL,X_HEL,'X_1')
+            ierr = reconstruct_PB3D_X_1(mds_X,grid_X_HEL,X_HEL,'X_1')
             CHCKERR('')
             
             ! user output
@@ -519,7 +533,7 @@ contains
             &kappa_plot, delta_r_plot
         use eq_utilities, only: calc_inv_met
         use grid_utilities, only: setup_interp_data, apply_disc, copy_grid
-        use X_ops, only: calc_X, setup_nm_X
+        use X_ops, only: calc_X
         use sol_ops, only: plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
         use num_utilities, only: calc_aux_utilities
@@ -541,7 +555,7 @@ contains
         logical :: no_output_loc                                                ! local copy of no_output
         logical :: last_eq_job                                                  ! last parallel job
         real(dp), allocatable :: XYZ_eq(:,:,:,:)                                ! X, Y and Z on equilibrium output grid
-        real(dp), allocatable :: XYZ_X(:,:,:,:)                                 ! X, Y and Z on perturbation output grid
+        real(dp), allocatable :: XYZ_sol(:,:,:,:)                               ! X, Y and Z on solution output grid
         complex(dp), allocatable :: sol_val_comp(:,:,:)                         ! solution eigenvalue for requested solutions
 #if ldebug
         logical :: ltest_loc                                                    ! local copy of ltest
@@ -563,7 +577,7 @@ contains
         n_EV_out = sum(max_id-min_id+1)
         
         ! set up restricted output grids for this equilibrium job
-        ierr = setup_out_grids(grids,XYZ_eq,XYZ_X)
+        ierr = setup_out_grids(grids,XYZ_eq,XYZ_sol)
         CHCKERR('')
         
         ! set up output eq_1, eq_2 and X_1, depending on equilibrium style
@@ -587,7 +601,7 @@ contains
                 CHCKERR('')
                 
                 ! calculate X variables, vector phase
-                ierr = calc_X(grids(1),grids(2),eq_1,eq_2,X)
+                ierr = calc_X(mds_X,grids(1),grids(2),eq_1,eq_2,X)
                 CHCKERR('')
                 
                 ! reset no_plots and no_output
@@ -606,7 +620,7 @@ contains
                 call lvl_ud(1)
                 
                 call eq_2%init(grids(1),setup_E=.true.,setup_F=.true.)
-                call X%init(grids(2))
+                call X%init(mds_X,grids(2))
                 ierr = interp_HEL_on_grid(grid_eq_HEL,grids(1),&
                     &eq_2=eq_2_HEL,eq_2_out=eq_2,eq_1=eq_1,&
                     &grid_name='output equilibrium grid')
@@ -711,16 +725,16 @@ contains
                     call lvl_ud(1)
                     
                     ! plot solution vector
-                    ierr = plot_sol_vec(grids(1),grids(2),grids(3),&
-                        &eq_1,eq_2,X,sol,XYZ_X,id,[plot_sol_xi,plot_sol_Q])
+                    ierr = plot_sol_vec(mds_sol,grids(1),grids(2),grids(3),&
+                        &eq_1,eq_2,X,sol,XYZ_sol,id,[plot_sol_xi,plot_sol_Q])
                     CHCKERR('')
                     
                     ! user output
                     call writo('Decompose the energy into its terms')
                     call lvl_ud(1)
-                    ierr = decompose_energy(grids(1),grids(2),grids(3),&
+                    ierr = decompose_energy(mds_sol,grids(1),grids(2),grids(3),&
                         &eq_1,eq_2,X,sol,vac,id,B_aligned=POST_style.eq.2,&
-                        &XYZ=XYZ_X,E_pot_int=E_pot_int(:,i_EV_out),&
+                        &XYZ=XYZ_sol,E_pot_int=E_pot_int(:,i_EV_out),&
                         &E_kin_int=E_kin_int(:,i_EV_out))
                     CHCKERR('')
                     call lvl_ud(-1)
@@ -1132,35 +1146,40 @@ contains
         end if
     end subroutine plot_sol_val_comp
     
-    !> Sets up the output grid for a particular parallel job.
+    !> Sets up the output grids for a particular parallel job.
     !!
     !! \return ierr
-    integer function setup_out_grids(grids_out,XYZ_eq,XYZ_X) result(ierr)
+    integer function setup_out_grids(grids_out,XYZ_eq,XYZ_sol) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
-            &eq_job_nr, eq_jobs_lims
-        use grid_utilities, only: extend_grid_F, copy_grid
+            &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style
+        use grid_utilities, only: extend_grid_F, copy_grid, &
+            &setup_interp_data, apply_disc
         use PB3D_ops, only: reconstruct_PB3D_grid
         use num_vars, only: rank, n_procs
+#if ldebug
         use grid_utilities, only: nufft
+#endif
         
         character(*), parameter :: rout_name = 'setup_out_grids'
         
         ! input / output
         type(grid_type), intent(inout) :: grids_out(3)                          !< eq, X and sol output grids (full parallel and normal range)
         real(dp), intent(inout), allocatable :: XYZ_eq(:,:,:,:)                 !< \c X, \c Y and \c Z on output equilibrium grid
-        real(dp), intent(inout), allocatable :: XYZ_X(:,:,:,:)                  !< \c X, \c Y and \c Z on output perturbation grid
+        real(dp), intent(inout), allocatable :: XYZ_sol(:,:,:,:)                  !< \c X, \c Y and \c Z on output solution grid
         
         ! local variables
-        integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
-        real(dp) :: lim_theta(2)                                                ! theta limits
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         integer :: n_theta                                                      ! nr. of points in theta for extended grid
         integer :: id                                                           ! counter
+        integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
+        real(dp) :: lim_theta(2)                                                ! theta limits
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
         real(dp), allocatable :: xy(:,:,:)                                      ! x and y
         real(dp), allocatable :: f(:,:,:)                                       ! Fourier components
         real(dp), allocatable :: f_loc(:,:)                                     ! local f
+        real(dp), allocatable :: XYZ_X(:,:,:,:)                                 ! X, Y and Z on output perturbation grid
         
         ! initialize ierr
         ierr = 0
@@ -1188,12 +1207,12 @@ contains
                 ! reconstruct equilibrium, perturbation and solution grids
                 call writo('Reconstruct PB3D variables')
                 ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
-                    &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                    &lim_pos=lim_loc(:,:,1),grid_limits=lims_norm(:,1))
+                    &rich_lvl=rich_lvl_name,lim_pos=lim_loc(:,:,1),&
+                    &grid_limits=lims_norm(:,1))
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grid_X,'X',&
-                    &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                    &lim_pos=lim_loc(:,:,2),grid_limits=lims_norm(:,2))
+                    &rich_lvl=rich_lvl_name,lim_pos=lim_loc(:,:,2),&
+                    &grid_limits=lims_norm(:,2))
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grids_out(3),'sol',&
                     &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
@@ -1207,11 +1226,11 @@ contains
                 else
                     lim_theta = min_theta_plot
                 end if
+                n_theta = eq_jobs_lims(2,eq_job_nr)-eq_jobs_lims(1,eq_job_nr)+1
                 
                 ! extend eq and X grid
                 call writo('Extend equilibrium grid')
                 call lvl_ud(1)
-                n_theta = eq_jobs_lims(2,eq_job_nr)-eq_jobs_lims(1,eq_job_nr)+1
                 ierr = extend_grid_F(grid_eq,grids_out(1),n_theta_plot=n_theta,&
                     &lim_theta_plot=lim_theta,grid_eq=grid_eq)                  ! extend eq grid and convert to F
                 CHCKERR('')
@@ -1263,6 +1282,34 @@ contains
         CHCKERR('')
         call lvl_ud(-1)
         
+        call writo('Calculate X, Y and Z of perturbation grid')
+        call lvl_ud(1)
+        ierr = calc_XYZ_of_output_grid(grids_out(2),XYZ_X)
+        CHCKERR('')
+        call lvl_ud(-1)
+        
+        call writo('Calculate X, Y and Z of solution grid')
+        call lvl_ud(1)
+        allocate(XYZ_sol(grids_out(2)%n(1),grids_out(2)%n(2),&
+            &grids_out(3)%loc_n_r,3))
+        select case (X_grid_style)
+            case (1)                                                            ! equilibrium
+                ! setup normal interpolation data
+                ierr = setup_interp_data(grids_out(2)%loc_r_F,&
+                    &grids_out(3)%loc_r_F,norm_interp_data,norm_disc_prec_X)
+                CHCKERR('')
+                
+                ! interpolate
+                ierr = apply_disc(XYZ_X,norm_interp_data,XYZ_sol,3)
+                CHCKERR('')
+                
+                ! clean up
+                call norm_interp_data%dealloc()
+            case (2)                                                            ! solution
+                XYZ_sol = XYZ_X
+        end select
+        call lvl_ud(-1)
+        
 #if ldebug
         ! Plot toroidal dependency of ripple.
         ! Note: Hard-code NFP.
@@ -1302,12 +1349,6 @@ contains
                 &ex_plot_style=1)
         end if
 #endif
-        
-        call writo('Calculate X, Y and Z of perturbation grid')
-        call lvl_ud(1)
-        ierr = calc_XYZ_of_output_grid(grids_out(2),XYZ_X)
-        CHCKERR('')
-        call lvl_ud(-1)
         
         call lvl_ud(-1)
     contains

@@ -13,7 +13,7 @@ module PB3D_ops
     use num_vars, only: dp, pi, max_str_ln, max_name_ln, iu, min_PB3D_version
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type, X_2_type
+    use X_vars, only: X_1_type, X_2_type, modes_type
     use vac_vars, only: vac_type
     use sol_vars, only: sol_type
     use HDF5_vars, only: dealloc_var_1D, var_1D_type
@@ -822,7 +822,7 @@ contains
     !! \c lim_sec_X, on the other hand, selects a range of mode numbers.
     !!
     !! \return ierr
-    integer function reconstruct_PB3D_X_1(grid_X,X,data_name,rich_lvl,&
+    integer function reconstruct_PB3D_X_1(mds,grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: n_mod_X
@@ -832,6 +832,7 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_1'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid 
         type(X_1_type), intent(inout) :: X                                      !< vectorial perturbation variables
         character(len=*), intent(in) :: data_name                               !< name to reconstruct
@@ -872,7 +873,7 @@ contains
         end if
         
         ! create X
-        call X%init(grid_X,lim_sec_X)
+        call X%init(mds,grid_X,lim_sec_X)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
@@ -980,7 +981,7 @@ contains
     !! only. This can be triggered using \c is_field_averaged.
     !!
     !! \return ierr
-    integer function reconstruct_PB3D_X_2(grid_X,X,data_name,rich_lvl,&
+    integer function reconstruct_PB3D_X_2(mds,grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
@@ -990,6 +991,7 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_2'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid 
         type(X_2_type), intent(inout) :: X                                      !< tensorial perturbation vars
         character(len=*), intent(in) :: data_name                               !< name to reconstruct
@@ -1037,7 +1039,7 @@ contains
         end if
         
         ! create X
-        call X%init(grid_X,lim_sec_X,is_field_averaged)
+        call X%init(mds,grid_X,lim_sec_X,is_field_averaged)
         
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
@@ -1342,7 +1344,7 @@ contains
     !! \c lim_sec_sol, on the other hand, selects a range of mode numbers.
     !!
     !! \return ierr
-    integer function reconstruct_PB3D_sol(grid_sol,sol,data_name,rich_lvl,&
+    integer function reconstruct_PB3D_sol(mds,grid_sol,sol,data_name,rich_lvl,&
         &lim_sec_sol,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
@@ -1352,6 +1354,7 @@ contains
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid 
         type(sol_type), intent(inout) :: sol                                    !< solution variables
         character(len=*), intent(in) :: data_name                               !< name to reconstruct
@@ -1382,7 +1385,7 @@ contains
         if (present(lim_sec_sol)) lim_sec_sol_loc = lim_sec_sol
         
         ! create solution
-        call sol%init(grid_sol,n_EV,lim_sec_sol)
+        call sol%init(mds,grid_sol,n_EV,lim_sec_sol)
         
         ! set up local limits for HDF5 reconstruction
         lim_mem(1,:) = lim_sec_sol_loc

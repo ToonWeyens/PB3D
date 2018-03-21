@@ -10,7 +10,8 @@ module driver_X
     use num_vars, only: dp, pi, max_str_ln
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type, X_2_type
+    use X_vars, only: X_1_type, X_2_type, modes_type, &
+        &mds_X
     
     implicit none
     private
@@ -65,7 +66,7 @@ contains
         use grid_ops, only: calc_norm_range
         use grid_vars, only: min_par_X, max_par_X, n_r_sol, n_r_eq
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
-            &setup_nm_X
+            &init_modes, setup_modes
         use files_utilities, only: delete_file
         !!use num_utilities, only: calc_aux_utilities
         
@@ -132,18 +133,20 @@ contains
                     CHCKERR('')
             end select
             
-            ! nm_X
-            ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.false.)
+            ! initialize modes and set up
+            ierr = init_modes(grid_eq,eq_1)
+            CHCKERR('')
+            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.false.)
             CHCKERR('')
             
             ! X_1
             if (eq_style.eq.2) then                                             ! HELENA
-                ierr = reconstruct_PB3D_X_1(grid_X,X_1,'X_1')
+                ierr = reconstruct_PB3D_X_1(mds_X,grid_X,X_1,'X_1')
                 CHCKERR('')
             end if
             
             ! X_2
-            ierr = reconstruct_PB3D_X_2(grid_X,X_2,'X_2_int',&
+            ierr = reconstruct_PB3D_X_2(mds_X,grid_X,X_2,'X_2_int',&
                 &rich_lvl=rich_lvl,is_field_averaged=.true.)
             CHCKERR('')
             
@@ -201,8 +204,10 @@ contains
         
         ! setup nm and check the X modes if first Richardson level
         if (rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
-            ! setup limits of modes
-            ierr = setup_nm_X(grid_eq,grid_X,eq_1,plot_nm=.true.)
+            ! initialize modes and set up
+            ierr = init_modes(grid_eq,eq_1)
+            CHCKERR('')
+            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
             CHCKERR('')
             
             ! tests
@@ -217,7 +222,7 @@ contains
         else
             ! plot resonances if requested
             if (plot_resonance .and. rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
-                ierr = resonance_plot(grid_eq,eq_1)
+                ierr = resonance_plot(mds_X,grid_eq,eq_1)
                 CHCKERR('')
             else
                 call writo('Resonance plot not requested')
@@ -402,7 +407,7 @@ contains
             if (allocated(X_1%U_0)) call X_1%dealloc()
             
             ! calc variables
-            ierr = calc_X(grid_eq,grid_X,eq_1,eq_2,X_1)
+            ierr = calc_X(mds_X,grid_eq,grid_X,eq_1,eq_2,X_1)
             CHCKERR('')
         else
             ! For HELENA, everything has been done
@@ -581,7 +586,7 @@ contains
 #if ldebug
         use num_vars, only: use_pol_flux_F
         use num_utilities, only: c, con
-        use X_vars, only: sec_X_ind, min_m_X, min_n_X, n_mod_X, n_x, m_X
+        use X_vars, only: min_m_X, min_n_X, n_mod_X
         use grid_vars, only: alpha, n_alpha
         use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
@@ -640,7 +645,7 @@ contains
         ! tensorial perturbation variables
         if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
             if (rich_lvl.eq.1) then
-                call X_2_int%init(grid_X_B,is_field_averaged=.true.)
+                call X_2_int%init(mds_X,grid_X_B,is_field_averaged=.true.)
                 X_2_int%PV_0 = 0._dp
                 X_2_int%PV_1 = 0._dp
                 X_2_int%PV_2 = 0._dp
@@ -648,7 +653,7 @@ contains
                 X_2_int%KV_1 = 0._dp
                 X_2_int%KV_2 = 0._dp
             else
-                ierr = reconstruct_PB3D_X_2(grid_X,X_2_int,'X_2_int',&
+                ierr = reconstruct_PB3D_X_2(mds_X,grid_X,X_2_int,'X_2_int',&
                     &rich_lvl=rich_lvl-1,is_field_averaged=.true.)
                 CHCKERR('')
             end if
@@ -685,7 +690,7 @@ contains
             ! set local X_1
             do id = 1,2
                 ! create X_1_loc
-                call X_1_loc(id)%init(grid_X,lim_sec_X=lims_loc(:,id))
+                call X_1_loc(id)%init(mds_X,grid_X,lim_sec_X=lims_loc(:,id))
                 
                 ! fill X_1_loc
                 X_1_loc(id)%U_0 = X_1%U_0(:,:,:,lims_loc(1,id):lims_loc(2,id))
@@ -706,8 +711,8 @@ contains
             end do
             
             ! calculate X variables, tensor phase
-            ierr = calc_X(grid_eq_B,grid_X_B,eq_1,eq_2_B,X_1_loc(1),X_1_loc(2),&
-                &X_2,lim_sec_X=lims_loc)
+            ierr = calc_X(mds_X,grid_eq_B,grid_X_B,eq_1,eq_2_B,&
+                &X_1_loc(1),X_1_loc(2),X_2,lim_sec_X=lims_loc)
             CHCKERR('')
             
 #if ldebug
@@ -853,7 +858,7 @@ contains
             CHCKERR('')
             
             ! set local n_mod and allocate integrated quantities
-            n_mod_tot = size(sec_X_ind,2)
+            n_mod_tot = size(mds_X%sec_ind,2)
             allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
                 &grid_trim%n(2),0:2))
             allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
@@ -864,7 +869,7 @@ contains
             PV_int = 0._dp
             KV_int = 0._dp
             
-            ! minimal index in sec_X_ind modes
+            ! minimal index in sec_ind modes
             if (use_pol_flux_F) then
                 min_nm_X = minval(min_m_X)
             else
@@ -895,11 +900,11 @@ contains
                         
                         ! total mode combinations indices
                         if (use_pol_flux_F) then
-                            rd = m_X(grid_trim%i_min-1+kd,k)
-                            cd = m_X(grid_trim%i_min-1+kd,m)
+                            rd = mds_X%m(grid_trim%i_min-1+kd,k)
+                            cd = mds_X%m(grid_trim%i_min-1+kd,m)
                         else
-                            rd = n_X(grid_trim%i_min-1+kd,k)
-                            cd = n_X(grid_trim%i_min-1+kd,m)
+                            rd = mds_X%n(grid_trim%i_min-1+kd,k)
+                            cd = mds_X%n(grid_trim%i_min-1+kd,m)
                         end if
                         cd = cd-min_nm_X+1
                         rd = rd-min_nm_X+1

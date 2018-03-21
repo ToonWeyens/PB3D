@@ -10,7 +10,7 @@ module sol_ops
     use num_vars, only: dp, iu, max_str_ln, pi, rank
     use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type
+    use X_vars, only: X_1_type, modes_type
     use sol_vars, only: sol_type
     use vac_vars, only: vac_type
 
@@ -102,8 +102,8 @@ contains
     !! where \f$X_0\f$ is not determined but is common to all factors.
     !!
     !! \return ierr
-    integer function plot_sol_vec(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-        &XYZ,X_id,plot_var) result(ierr)
+    integer function plot_sol_vec(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
+        &sol,XYZ,X_id,plot_var) result(ierr)
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
             &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_sol, &
             &use_normalization
@@ -115,13 +115,13 @@ contains
         use MPI_utilities, only: get_ser_var
 #if ldebug
         use num_vars, only: norm_disc_prec_sol, use_pol_flux_F
-        use num_utilities, only: con2dis
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use grid_utilities, only: setup_deriv_data
 #endif
         
         character(*), parameter :: rout_name = 'plot_sol_vec'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
@@ -149,8 +149,11 @@ contains
         real(dp), allocatable :: time(:)                                        ! fraction of Alfvén time
         real(dp), allocatable :: XYZ_plot(:,:,:,:,:)                            ! copies of XYZ
         real(dp), allocatable :: XYZ_vec(:,:,:,:,:)                             ! copies of XYZ for vector plot
-        real(dp), allocatable :: h_FD_int(:,:,:,:)                              ! interpolated h_FD on solution grid
-        real(dp), allocatable :: g_FD_int(:,:,:,:)                              ! interpolated g_FD on solution grid
+        real(dp), allocatable :: h12(:,:,:)                                     ! interpolated h_FD(1,2) on solution grid
+        real(dp), allocatable :: h22(:,:,:)                                     ! interpolated h_FD(2,2) on solution grid
+        real(dp), allocatable :: h23(:,:,:)                                     ! interpolated h_FD(3,2) on solution grid
+        real(dp), allocatable :: g13(:,:,:)                                     ! interpolated g_FD(1,3) on solution grid
+        real(dp), allocatable :: g33(:,:,:)                                     ! interpolated g_FD(3,3) on solution grid
         real(dp), allocatable :: jac_FD_int(:,:,:)                              ! interpolated jac_FD on solution grid
         real(dp), allocatable :: f_plot_phase(:,:,:,:)                          ! phase of f_plot
         real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
@@ -163,13 +166,12 @@ contains
         character(len=2) :: sol_name                                            ! name of solution vector ('xi' or 'Q')
         type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
 #if ldebug
-        real(dp), allocatable :: loc_r_eq(:)                                    ! loc_r_F of sol grid interpolated in eq grid
         type(disc_type) :: norm_deriv_data                                      ! normal derivative data
         integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
-        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
         integer :: ld                                                           ! counter
         complex(dp), allocatable :: U_inf(:,:,:,:)                              ! ideal ballooning U
         complex(dp), allocatable :: U_inf_prop(:,:,:)                           ! proportional part of U_inf
+        complex(dp), allocatable :: U_inf_prop_interp(:,:,:)                    ! U_inf_prop interpolated on solution grid
 #endif
         
         ! initialize ierr
@@ -277,24 +279,37 @@ contains
         XYZ_plot_setup = .false.
         
         ! set up interpolated metric factors
-        allocate(h_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,&
-            &size(eq_2%h_FD,4)))
-        allocate(g_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,&
-            &size(eq_2%g_FD,4)))
-        allocate(jac_FD_int(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
+        allocate(h12(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+        allocate(h22(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+        allocate(h23(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+        allocate(g13(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+        allocate(g33(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
+        allocate(jac_FD_int(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r))
         
         ! setup normally interpolated metric factors in solution grid
         ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
             &norm_interp_data,norm_disc_prec_sol)
         CHCKERR('')
-        ierr = apply_disc(eq_2%h_FD(:,:,:,:,0,0,0),norm_interp_data,h_FD_int,3)
+        
+        ! interpolate
+        ierr = apply_disc(eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0),&
+            &norm_interp_data,h12,3)
         CHCKERR('')
-        ierr = apply_disc(eq_2%g_FD(:,:,:,:,0,0,0),norm_interp_data,g_FD_int,3)
+        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
+            &norm_interp_data,h22,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0),&
+            &norm_interp_data,h23,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0),&
+            &norm_interp_data,g13,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
+            &norm_interp_data,g33,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),norm_interp_data,jac_FD_int,&
             &3)
         CHCKERR('')
-        call norm_interp_data%dealloc()
         
         ! calculate omega =  sqrt(sol_val) and make sure to  select the decaying
         ! solution
@@ -315,21 +330,21 @@ contains
             ! file name and description
             select case (jd)
                 case (1)                                                        ! plasma perturbation
-                    ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,1,time,&
-                        &f_plot(:,:,:,:,1))
+                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
+                        &X,sol,X_id,1,time,f_plot(:,:,:,:,1))
                     CHCKERR('')
-                    ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,2,time,&
-                        &f_plot(:,:,:,:,2))
+                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
+                        &X,sol,X_id,2,time,f_plot(:,:,:,:,2))
                     CHCKERR('')
                     sol_name = 'xi'
                     file_name(1) = trim(i2str(X_id))//'_sol_X'
                     file_name(2) = trim(i2str(X_id))//'_sol_U'
                 case (2)                                                        ! magnetic perturbation
-                    ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,3,time,&
-                        &f_plot(:,:,:,:,1))
+                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
+                        &X,sol,X_id,3,time,f_plot(:,:,:,:,1))
                     CHCKERR('')
-                    ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,4,time,&
-                        &f_plot(:,:,:,:,2))
+                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
+                        &X,sol,X_id,4,time,f_plot(:,:,:,:,2))
                     CHCKERR('')
                     sol_name = 'Q'
                     file_name(1) = trim(i2str(X_id))//'_sol_Qn'
@@ -352,13 +367,11 @@ contains
                 !   xi . e_theta = 0
                 ! and similar for Q
                 ccomp(:,:,:,1,1) = rp(f_plot(:,:,:,kd,2)) * &
-                    &jac_FD_int**2*h_FD_int(:,:,:,c([2,2],.true.))/&
-                    &g_FD_int(:,:,:,c([3,3],.true.))
+                    &jac_FD_int**2*h22/g33
                 ccomp(:,:,:,2,1) = rp(f_plot(:,:,:,kd,1)) * &
-                    &1._dp/h_FD_int(:,:,:,c([2,2],.true.)) - &
+                    &1._dp/h22 - &
                     &rp(f_plot(:,:,:,kd,2)) * &
-                    &jac_FD_int**2*h_FD_int(:,:,:,c([1,2],.true.))/&
-                    &g_FD_int(:,:,:,c([3,3],.true.))
+                    &jac_FD_int**2*h12/g33
                 ccomp(:,:,:,3,1) = 0._dp
                 
                 ! contravariant components:
@@ -367,16 +380,10 @@ contains
                 !   xi . nabla theta = X h23/h22 - U g13/g33
                 ! and similar for Q
                 ccomp(:,:,:,1,2) = rp(f_plot(:,:,:,kd,1)) * &
-                    &h_FD_int(:,:,:,c([1,2],.true.))/&
-                    &h_FD_int(:,:,:,c([2,2],.true.)) + &
-                    &rp(f_plot(:,:,:,kd,2))
+                    &h12/h22 + rp(f_plot(:,:,:,kd,2))
                 ccomp(:,:,:,2,2) = rp(f_plot(:,:,:,kd,1))
                 ccomp(:,:,:,3,2) = rp(f_plot(:,:,:,kd,1)) * &
-                    &h_FD_int(:,:,:,c([3,2],.true.))/&
-                    &h_FD_int(:,:,:,c([2,2],.true.)) - &
-                    &rp(f_plot(:,:,:,kd,2)) * &
-                    &g_FD_int(:,:,:,c([3,1],.true.))/&
-                    &g_FD_int(:,:,:,c([3,3],.true.)) 
+                    &h23/h22 - rp(f_plot(:,:,:,kd,2)) * g13/g33 
                 
                 ! multiplication factor if xi
                 if (abs(pert_mult_factor_POST).ge.tol_zero .and. jd.eq.1) &
@@ -393,6 +400,8 @@ contains
                 end if
                 
                 ! transform to Cartesian components
+                write(*,*) '!!!!!!!!!!!!! GRID_X IS WRONG...... WE NEED A DIFFERENT GRID'
+                write(*,*) '!!!!!!!! MIGHT BE BETTER JUST TO INTERPOLATE EVERYTHING FROM THE START.......'
                 ierr = calc_vec_comp(grid_X,grid_eq,eq_1,eq_2,ccomp,&
                     &norm_disc_prec_sol)
                 CHCKERR('')
@@ -473,14 +482,6 @@ contains
                 allocate(U_inf(grid_eq%n(1),grid_eq%n(2),grid_sol%loc_n_r,&
                     &product(n_t)))
                 
-                ! get the normal interpolation factors
-                allocate(loc_r_eq(grid_sol%loc_n_r))
-                do kd = 1,grid_sol%loc_n_r
-                    ierr = con2dis(grid_sol%loc_r_F(kd),loc_r_eq(kd),&
-                        &grid_eq%loc_r_F)
-                    CHCKERR('')
-                end do
-                
                 ! derive the X vector
                 ierr = setup_deriv_data(grid_sol%loc_r_F,norm_deriv_data,1,&
                     &norm_disc_prec_sol)
@@ -510,18 +511,19 @@ contains
                 end if
                 
                 ! multiply by i/n or i/m and add the proportional part
+                allocate(U_inf_prop_interp(grid_eq%n(1),grid_eq%n(2),&
+                    &grid_sol%loc_n_r))
                 do ld = 1,product(n_t)
-                    do kd = 1,grid_sol%loc_n_r
-                        i_lo = floor(loc_r_eq(kd))
-                        i_hi = ceiling(loc_r_eq(kd))
-                        
-                        U_inf(:,:,kd,ld) = iu/nm * U_inf(:,:,kd,ld) - &
-                            &f_plot(:,:,kd,ld,1) * (&
-                            &U_inf_prop(:,:,i_lo)+(loc_r_eq(kd)-i_lo)*&
-                            &(U_inf_prop(:,:,i_hi)-U_inf_prop(:,:,i_lo)))
-                    end do
+                    ! interpolate
+                    ierr = apply_disc(U_inf_prop,norm_interp_data,&
+                        &U_inf_prop_interp,3)
+                    CHCKERR('')
+                    
+                    ! add
+                    U_inf(:,:,:,ld) = iu/nm * U_inf(:,:,:,ld) - &
+                        &f_plot(:,:,:,ld,1) * U_inf_prop_interp
                 end do
-                deallocate(U_inf_prop)
+                deallocate(U_inf_prop, U_inf_prop_interp)
                 
                 ! plotting real part
                 call plot_HDF5('RE X','TEST_RE_X_'//&
@@ -553,6 +555,7 @@ contains
         end do
         
         ! clean up
+        call norm_interp_data%dealloc()
         call grid_sol_trim%dealloc()
         
         call lvl_ud(-1)
@@ -561,17 +564,18 @@ contains
     !> Plots the harmonics and their maximum in 2-D.
     !!
     !! \return ierr
-    integer function plot_harmonics(grid_sol,sol,X_id,res_surf) result(ierr)
+    integer function plot_harmonics(mds,grid_sol,sol,X_id,res_surf) result(ierr)
         use MPI_utilities, only: get_ser_var
         use num_vars, only: ex_max_size, rank, no_plots, use_pol_flux_F
         use eq_vars, only: max_flux_F
-        use X_vars, only: sec_X_ind, min_n_X, min_m_X
+        use X_vars, only: min_n_X, min_m_X
         use sol_utilities, only: calc_tot_sol_vec
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'plot_harmonics'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(sol_type), intent(in) :: sol                                       !< solution variables
         integer, intent(in) :: X_id                                             !< nr. of Eigenvalue (for output name)
@@ -610,7 +614,7 @@ contains
         ! set up local and total nr.  of modes, which can be different for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = size(sec_X_ind,2)
+        n_mod_tot = size(mds%sec_ind,2)
         
         ! if master, set up plot titles
         if (rank.eq.0) then
@@ -630,7 +634,7 @@ contains
         ! convert to full mode on master and set up normal factor
         if (rank.eq.0) then
             allocate(sol_vec_ser_tot(1:n_mod_tot,1:grid_sol_trim%n(3)))
-            ierr = calc_tot_sol_vec(grid_sol%i_min,sol_vec_ser,&
+            ierr = calc_tot_sol_vec(mds,grid_sol%i_min,sol_vec_ser,&
                 &sol_vec_ser_tot)                                               ! Note: need to use untrimmed grid for minimal i
             CHCKERR('')
             
@@ -847,14 +851,16 @@ contains
     !! compared with the eigenvalue.
     !!
     !! \return ierr
-    integer function decompose_energy(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-        &sol,vac,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
+    integer function decompose_energy(mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+        &eq_2,X,sol,vac,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
+        
         use grid_utilities, only: trim_grid
         use num_vars, only: no_plots, eq_job_nr, eq_jobs_lims, eq_job_nr
         
         character(*), parameter :: rout_name = 'decompose_energy'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
@@ -902,8 +908,8 @@ contains
         call lvl_ud(1)
         
         ! calculate for this parallel job
-        ierr = calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,B_aligned,&
-            &X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
+        ierr = calc_E(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,&
+            &B_aligned,X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
         CHCKERR('')
         
         ! add to totals if requested
@@ -1058,14 +1064,15 @@ contains
     !! \note see explanation of routine in decompose_energy().
     !!
     !! \return ierr
-    integer function calc_E(grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,&
-        &B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
+    integer function calc_E(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+        &vac,B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
             &norm_disc_prec_sol, rank, eq_job_nr, eq_jobs_lims
         use eq_vars, only: vac_perm
-        use num_utilities, only: c, con2dis
-        use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
+        use num_utilities, only: c
+        use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid, &
+            &setup_interp_data, apply_disc
         use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ
@@ -1076,6 +1083,7 @@ contains
         character(*), parameter :: rout_name = 'calc_E'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< and solution grid
@@ -1094,10 +1102,9 @@ contains
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: jd, kd                                                       ! counter
-        integer :: i_lo, i_hi                                                   ! upper and lower index for interpolation of eq grid to sol grid
         integer :: loc_dim(3)                                                   ! local dimension
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
-        real(dp) :: loc_r_eq                                                    ! loc_r_F of sol grid interpolated in eq grid
+        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)               ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
         real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)                 ! interpolated kappa_n and kappa_g
         real(dp), allocatable :: sigma(:,:,:)                                   ! interpolated sigma
@@ -1114,7 +1121,7 @@ contains
 #endif
         
         ! set loc_dim
-        loc_dim = [grid_X%n(1:2),grid_X%loc_n_r]                                ! includes ghost regions of width norm_disc_prec_sol
+        loc_dim = [grid_X%n(1:2),grid_sol%loc_n_r]                              ! includes ghost regions of width norm_disc_prec_sol
         
         ! allocate local variables
         allocate(h22(loc_dim(1),loc_dim(2),loc_dim(3)))
@@ -1137,8 +1144,8 @@ contains
             allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
             
             ! calculate D_par U
-            ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,2,0._dp,DU,&
-                &deriv=.true.)
+            ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+                &X_id,2,0._dp,DU,deriv=.true.)
             CHCKERR('')
         end if
 #endif
@@ -1148,52 +1155,43 @@ contains
         J = 0._dp
 #endif
         
-        ! iterate over all normal points in sol grid and interpolate
+        ! setup normal interpolation data for equilibrium grid
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
+            &norm_interp_data,norm_disc_prec_sol)
+        CHCKERR('')
+        
+        ! interpolate
+        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
+            &norm_interp_data,h22,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
+            &norm_interp_data,g33,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),&
+            &norm_interp_data,J,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%kappa_n,norm_interp_data,kappa_n,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%kappa_g,norm_interp_data,kappa_g,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_2%sigma,norm_interp_data,sigma,3)
+        CHCKERR('')
+        ierr = apply_disc(eq_1%pres_FD(:,1),norm_interp_data,D2p(1,1,:))
+        CHCKERR('')
+        ierr = apply_disc(eq_1%rho,norm_interp_data,rho(1,1,:))
+        CHCKERR('')
         do kd = 1,loc_dim(3)
-            ierr = con2dis(grid_X%loc_r_F(kd),loc_r_eq,grid_eq%loc_r_F)
-            CHCKERR('')
-            i_lo = floor(loc_r_eq)
-            i_hi = ceiling(loc_r_eq)
-            
-            h22(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%h_FD(:,:,i_lo,c([2,2],.true.),0,0,0)
-            h22(:,:,kd) = h22(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%h_FD(:,:,i_hi,c([2,2],.true.),0,0,0)
-            g33(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%g_FD(:,:,i_lo,c([3,3],.true.),0,0,0)
-            g33(:,:,kd) = g33(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%g_FD(:,:,i_hi,c([3,3],.true.),0,0,0)
-            J(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%jac_FD(:,:,i_lo,0,0,0)
-            J(:,:,kd) = J(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%jac_FD(:,:,i_hi,0,0,0)
-            kappa_n(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%kappa_n(:,:,i_lo)
-            kappa_n(:,:,kd) = kappa_n(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%kappa_n(:,:,i_hi)
-            kappa_g(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%kappa_g(:,:,i_lo)
-            kappa_g(:,:,kd) = kappa_g(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%kappa_g(:,:,i_hi)
-            sigma(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_2%sigma(:,:,i_lo)
-            sigma(:,:,kd) = sigma(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_2%sigma(:,:,i_hi)
-            D2p(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_1%pres_FD(i_lo,1)
-            D2p(:,:,kd) = D2p(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_1%pres_FD(i_hi,1)
-            rho(:,:,kd) = (1._dp-loc_r_eq+i_lo)*&
-                &eq_1%rho(i_lo)
-            rho(:,:,kd) = rho(:,:,kd) + (loc_r_eq-i_lo)*&
-                &eq_1%rho(i_hi)
-#if ldebug
-            if (debug_calc_E) then
-                S(:,:,kd) = eq_2%S(:,:,i_lo)+(loc_r_eq-i_lo)*&
-                    &(eq_2%S(:,:,i_hi)-eq_2%S(:,:,i_lo))
-            end if
-#endif
+            D2p(:,:,kd) = D2p(1,1,kd)
+            rho(:,:,kd) = rho(1,1,kd)
         end do
+#if ldebug
+        if (debug_calc_E) then
+            ierr = apply_disc(eq_2%S,norm_interp_data,S,3)
+            CHCKERR('')
+        end if
+#endif
+        ! clean up
+        call norm_interp_data%dealloc()
         
         ! set angles and norm
         if (B_aligned) then
@@ -1213,8 +1211,8 @@ contains
         
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
-            ierr = calc_XUQ(grid_eq,grid_X,eq_1,eq_2,X,sol,X_id,kd,0._dp,&
-                &XUQ(:,:,:,kd))
+            ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+                &X_id,kd,0._dp,XUQ(:,:,:,kd))
             CHCKERR('')
         end do
         

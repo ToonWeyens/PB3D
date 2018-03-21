@@ -12,32 +12,26 @@ module X_vars
     
     private
     public set_nm_X, set_nn_mod, &
-        &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, r_X, min_n_X, &
-        &max_n_X, min_m_X, max_m_X, min_r_sol, max_r_sol, n_X, m_X, sec_X_ind
+        &n_mod_X, prim_X, min_sec_X, max_sec_X, min_nm_X, min_n_X, max_n_X, &
+        &min_m_X, max_m_X, min_r_sol, max_r_sol, mds_X, mds_sol
 #if ldebug
     public n_alloc_X_1s, n_alloc_X_2s
 #endif
     
-    ! global variables
-    integer :: prim_X                                                           !< \c n_X (pol. flux) or \c m_X (tor. flux)
-    integer :: min_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for \c X style 1)
-    integer :: max_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for\ c X style 1)
-    integer :: n_mod_X                                                          !< size of \c m_X (pol. flux) or \c n_X (tor. flux)
-    integer :: min_nm_X = 5                                                     !< minimum for the high-n theory (debable)
-    real(dp), allocatable :: r_X(:)                                             !< normal variable at which \c n_X, \c m_X and \c sec_X_ind are tabulated
-    integer, allocatable :: min_n_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
-    integer, allocatable :: max_n_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
-    integer, allocatable :: min_m_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
-    integer, allocatable :: max_m_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
-    integer, allocatable :: n_X(:,:)                                            !< \f$n\f$ for all modes, in total X grid
-    integer, allocatable :: m_X(:,:)                                            !< \f$m\f$ for all modes, in total X grid
-    integer, allocatable :: sec_X_ind(:,:)                                      !< index of \c m_X or \c n_X for all possible modes, in total X grid
-    real(dp) :: min_r_sol                                                       !< min. normal range for pert.
-    real(dp) :: max_r_sol                                                       !< max. normal range for pert.
-#if ldebug
-    integer :: n_alloc_X_1s                                                     !< nr. of allocated <tt>X_1</tt>'s \ldebug
-    integer :: n_alloc_X_2s                                                     !< nr. of allocated <tt>X_2</tt>'s \ldebug
-#endif
+    !> mode number type
+    !!
+    !! Type containing information about mode numbers at every flux surface:
+    !!  - mode numbers: \c n, \c m,
+    !!  - indices of the secondary modes: \c sec_X_ind,
+    !!  - Flux normal coordinate: \c r_F.
+    !!
+    !! These are set up in setup_nm_x().
+    type, public :: modes_type
+        real(dp), allocatable :: r_F(:)                                         !< normal variable at which \c n, \c m and \c sec_ind are tabulated
+        integer, allocatable :: n(:,:)                                          !< \f$n\f$ for all modes, in total grid
+        integer, allocatable :: m(:,:)                                          !< \f$m\f$ for all modes, in total grid
+        integer, allocatable :: sec_ind(:,:)                                    !< index of \c m or \c n for all possible modes, in total grid
+    end type
     
     !> vectorial perturbation type
     !!
@@ -117,11 +111,31 @@ module X_vars
         module procedure set_nm_X_2
     end interface
     
+    ! global variables
+    type(modes_type) :: mds_X                                                   !< modes variables for perturbation grid
+    type(modes_type) :: mds_sol                                                 !< modes variables for solution grid
+    integer :: prim_X                                                           !< \c n_X (pol. flux) or \c m_X (tor. flux)
+    integer :: min_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for \c X style 1)
+    integer :: max_sec_X                                                        !< \c m_X (pol. flux) or \c n_X (tor. flux) (only for\ c X style 1)
+    integer :: n_mod_X                                                          !< size of \c m_X (pol. flux) or \c n_X (tor. flux)
+    integer :: min_nm_X = 5                                                     !< minimum for the high-n theory (debable)
+    integer, allocatable :: min_n_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: max_n_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: min_m_X(:)                                          !< lowest poloidal mode number \c m_X, in total eq grid
+    integer, allocatable :: max_m_X(:)                                          !< highest poloidal mode number \c m_X, in total eq grid
+    real(dp) :: min_r_sol                                                       !< min. normal range for pert.
+    real(dp) :: max_r_sol                                                       !< max. normal range for pert.
+#if ldebug
+    integer :: n_alloc_X_1s                                                     !< nr. of allocated <tt>X_1</tt>'s \ldebug
+    integer :: n_alloc_X_2s                                                     !< nr. of allocated <tt>X_2</tt>'s \ldebug
+#endif
+    
 contains
     !> \private vectorial version
-    subroutine set_nm_X_1(grid_X,lim_sec_X_o,n_X_loc,m_X_loc,lim_sec_X_i)
+    subroutine set_nm_X_1(mds,grid_X,lim_sec_X_o,n_X_loc,m_X_loc,lim_sec_X_i)
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         integer, intent(inout) :: lim_sec_X_o(2)                                !< limits on secondary mode numbers
         integer, intent(inout), allocatable :: n_X_loc(:,:)                     !< toroidal mode numbers
@@ -135,16 +149,17 @@ contains
         ! set n and m
         allocate(n_X_loc(grid_X%loc_n_r,lim_sec_X_o(2)-lim_sec_X_o(1)+1))
         allocate(m_X_loc(grid_X%loc_n_r,lim_sec_X_o(2)-lim_sec_X_o(1)+1))
-        n_X_loc = n_X(grid_X%i_min:grid_X%i_max,&
+        n_X_loc = mds%n(grid_X%i_min:grid_X%i_max,&
             &lim_sec_X_o(1):lim_sec_X_o(2))
-        m_X_loc = m_X(grid_X%i_min:grid_X%i_max,&
+        m_X_loc = mds%m(grid_X%i_min:grid_X%i_max,&
             &lim_sec_X_o(1):lim_sec_X_o(2))
     end subroutine set_nm_X_1
     !> \private tensorial version
-    subroutine set_nm_X_2(grid_X,lim_sec_X_o,n_X_1,m_X_1,n_X_2,m_X_2,&
+    subroutine set_nm_X_2(mds,grid_X,lim_sec_X_o,n_X_1,m_X_1,n_X_2,m_X_2,&
         &lim_sec_X_i)
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         integer, intent(inout) :: lim_sec_X_o(2,2)                              !< limits on secondary mode numbers
         integer, intent(inout), allocatable :: n_X_1(:,:)                       !< toroidal mode numbers for dimension 1
@@ -155,11 +170,13 @@ contains
         
         ! call vectorial version
         if (present(lim_sec_X_i)) then
-            call set_nm_X(grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1,lim_sec_X_i(:,1))
-            call set_nm_X(grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2,lim_sec_X_i(:,2))
+            call set_nm_X(mds,grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1,&
+                &lim_sec_X_i(:,1))
+            call set_nm_X(mds,grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2,&
+                &lim_sec_X_i(:,2))
         else
-            call set_nm_X(grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1)
-            call set_nm_X(grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2)
+            call set_nm_X(mds,grid_X,lim_sec_X_o(:,1),n_X_1,m_X_1)
+            call set_nm_X(mds,grid_X,lim_sec_X_o(:,2),n_X_2,m_X_2)
         end if
     end subroutine set_nm_X_2
     
@@ -174,13 +191,14 @@ contains
     !! \note If the lowest limits of  the grid is not 1 (e.g. <tt>grid_sol%i_min
     !! = 1</tt> for first process), the input variable \c i_min should be set to
     !! set correctly. For a full grid, it should be set to 1.
-    subroutine init_X_1(X,grid_X,lim_sec_X)
+    subroutine init_X_1(X,mds,grid_X,lim_sec_X)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
         class(X_1_type), intent(inout) :: X                                     !< vectorial perturbation variables
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         integer, intent(in), optional :: lim_sec_X(2)                           !< limits of \c m_X (pol. flux) or \c n_X (tor. flux)
         
@@ -199,7 +217,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_X,X%lim_sec_X,X%n,X%m,lim_sec_X)
+        call set_nm_X(mds,grid_X,X%lim_sec_X,X%n,X%m,lim_sec_X)
         
         ! set n_mod
         X%n_mod = size(X%n,2)
@@ -240,13 +258,14 @@ contains
     !! difference  between a  tensorial  perturbation type  with  size of  first
     !! dimension  set to  one through  the use  of this  flag, or  through other
     !! means.
-    subroutine init_X_2(X,grid_X,lim_sec_X,is_field_averaged)
+    subroutine init_X_2(X,mds,grid_X,lim_sec_X,is_field_averaged)
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
         
         ! input / output
         class(X_2_type), intent(inout) :: X                                     !< tensorial perturbation variables
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol. flux) or \c n_X (tor. flux) for both dimensions
         logical, intent(in), optional :: is_field_averaged                      !< if field-aligned, only one dimension for first index
@@ -270,7 +289,7 @@ contains
 #endif
         
         ! set mode numbers
-        call set_nm_X(grid_X,X%lim_sec_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
+        call set_nm_X(mds,grid_X,X%lim_sec_X,X%n_1,X%m_1,X%n_2,X%m_2,lim_sec_X)
         
         ! set n_mod
         X%n_mod(1) = size(X%n_1,2)
@@ -306,15 +325,16 @@ contains
     end subroutine init_X_2
     
     !> \public Deep copy of vectorial perturbation variables.
-    subroutine copy_X_1(X_i,grid_i,X_o)
+    subroutine copy_X_1(X_i,mds,grid_i,X_o)
         use grid_vars, only: grid_type
         
         ! input / output
         class(X_1_type), intent(in) :: X_i                                      !< X_1 to be copied
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
         type(X_1_type), intent(inout) :: X_o                                    !< copied X_1
         
-        call X_o%init(grid_i,lim_sec_X=X_i%lim_sec_X)
+        call X_o%init(mds,grid_i,lim_sec_X=X_i%lim_sec_X)
         
         ! U_i
         X_o%U_0 = X_i%U_0
@@ -326,15 +346,16 @@ contains
     end subroutine copy_X_1
     
     !> \public Deep copy of tensorial perturbation variables.
-    subroutine copy_X_2(X_i,grid_i,X_o)
+    subroutine copy_X_2(X_i,mds,grid_i,X_o)
         use grid_vars, only: grid_type
         
         ! input / output
         class(X_2_type), intent(in) :: X_i                                      !< X_2 to be copied
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_i                                   !< grid of eq_i
         type(X_2_type), intent(inout) :: X_o                                    !< copied X_1
         
-        call X_o%init(grid_i,lim_sec_X=X_i%lim_sec_X,&
+        call X_o%init(mds,grid_i,lim_sec_X=X_i%lim_sec_X,&
             &is_field_averaged=size(X_i%PV_0,1).eq.1)
         
         ! PV_i

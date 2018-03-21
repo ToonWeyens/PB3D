@@ -28,13 +28,15 @@ contains
         use num_vars, only: n_sol_requested, rich_restart_lvl, eq_style, rank
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
-        use X_ops, only: setup_nm_X
+        use X_ops, only: init_modes, setup_modes
+        use X_vars, only: mds_X, mds_sol
         
         character(*), parameter :: rout_name = 'init_rich'
         
         ! local variables
         type(grid_type) :: grid_eq_B                                            !< equilibrium grid
         type(grid_type) :: grid_X_B                                             !< field-aligned perturbation grid
+        type(grid_type) :: grid_sol                                             !< solution grid
         type(eq_1_type) :: eq                                                   !< flux equilibrium variables
         type(sol_type) :: sol                                                   !< solution variables
         character(len=4) :: grid_eq_name                                        !< name of equilibrium grid
@@ -86,7 +88,7 @@ contains
                 ! use guess
                 use_guess = .true.
                 
-                ! set up grid name
+                ! set up grid names
                 select case (eq_style)
                     case (1)                                                    ! VMEC
                         grid_X_name = 'X'                                       ! grids are already field-aligned
@@ -99,6 +101,10 @@ contains
                 ! reconstruct field-aligned equilibrium grid (for level 1)
                 ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_name),&
                     &rich_lvl=1)
+                CHCKERR('')
+                
+                ! reconstruct solution grid
+                ierr = reconstruct_PB3D_grid(grid_sol,'sol')
                 CHCKERR('')
                 
                 ! reconstruct flux equilibrium variables
@@ -120,13 +126,21 @@ contains
                     CHCKERR('')
                     
                     if (rich_lvl.eq.1) then
-                        ! set up n and m variables
-                        ierr = setup_nm_X(grid_eq_B,grid_X_B,eq)
+                        ! initialize global n and m variables
+                        ierr = init_modes(grid_eq_B,eq)
+                        CHCKERR('')
+                        
+                        ! set up n and m variables for field-aligned X grid
+                        ierr = setup_modes(mds_X,grid_eq_B,grid_X_B)
+                        CHCKERR('')
+                        
+                        ! set up n and m variables for sol grid
+                        ierr = setup_modes(mds_sol,grid_eq_B,grid_sol)
                         CHCKERR('')
                     end if
                     
                     ! reconstruct solution
-                    ierr = reconstruct_PB3D_sol(grid_X_B,sol,'sol',&
+                    ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
                         &rich_lvl=rich_lvl)
                     CHCKERR('')
                     
@@ -175,6 +189,7 @@ contains
                 
                 ! clean up
                 call grid_eq_B%dealloc()
+                call grid_sol%dealloc()
                 call eq%dealloc()
                 
                 ! set rich_lvl
