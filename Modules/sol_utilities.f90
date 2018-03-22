@@ -43,20 +43,11 @@ module sol_utilities
     !! For \f$Q_n\f$ and \f$Q_g\f$, the metric  variables have to be provided as
     !! well.
     !!
-    !! As  this operation  requires  the equilibrium,  metric, perturbation  and
-    !! solution  variables,  the  grid  in  which  this  happens  requires  some
-    !! explanation:
-    !!
-    !!  - The equilibrium  and metric variables are tabulated  in an equilibrium
-    !!  grid, which  needs to have the  same angular extent as  the perturbation
-    !!  grid, in which the perturbation variables are tabulated.
-    !!  - The normal extent of these two grids can be different, though, as well
-    !!  as  the normal  extent  of  the solution  grid,  in  which the  solution
-    !!  variables are tabulated.
-    !!  -  The  variable  \c  X_grid_style indicates  whether  the  perturbation
-    !!  variables are in the same grid as the equilibrium (1) or as the solution
-    !!  (2).
-    !!  - The resulting variables XUQ are output in the solution grid.
+    !! The perturbtion grid  is assumed to have the same  angular coordinates as
+    !! the equilibrium grid, and the normal coordinates correspond to either the
+    !! equilibrium grid (X_grid_style 1) or  the solution grid (X_grid_style 2).
+    !! The output grid,  furthermore, has the angular part  corresponding to the
+    !! equilibrium grid, and the normal part to the solution grid.
     !!
     !! \return ierr
     interface calc_XUQ
@@ -195,12 +186,12 @@ contains
         ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
             &norm_interp_data(1),norm_disc_prec_sol)
         CHCKERR('')
-        ! setup normal interpolation data for eq grid to sol grid
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
+        ! setup normal interpolation data for X grid to sol grid
+        ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
             &norm_interp_data(2),norm_disc_prec_sol)
         CHCKERR('')
         
-        ! interpolate
+        ! interpolate eq->X
         if (use_pol_flux_F) then
             ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data(1),jq)
             CHCKERR('')
@@ -357,7 +348,7 @@ contains
             ! get multiplicative factors and exponent in solution grid
             select case (X_grid_style)
                 case (1)                                                        ! equilibrium
-                    ! interpolate
+                    ! interpolate X->sol
                     ierr = apply_disc(expon,norm_interp_data(2),expon_sol,3)
                     CHCKERR('')
                     ierr = apply_disc(fac_0,norm_interp_data(2),fac_0_sol,3)

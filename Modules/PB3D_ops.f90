@@ -43,12 +43,13 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &norm_disc_style_sol, EV_BC, magn_int_style, K_style, &
-            &alpha_style, X_grid_style, debug_version
+            &alpha_style, X_grid_style, V_interp_style, debug_version
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, min_alpha, max_alpha, &
+            &n_alpha
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
@@ -391,6 +392,10 @@ contains
         K_style = nint(dum_1D(11))
         alpha_style = nint(dum_1D(12))
         X_grid_style = nint(dum_1D(13))
+        V_interp_style = nint(dum_1D(14))
+        min_alpha = nint(dum_1D(15))
+        max_alpha = nint(dum_1D(16))
+        n_alpha = nint(dum_1D(17))
         call dealloc_var_1D(var_1D)
         
         ! misc_sol

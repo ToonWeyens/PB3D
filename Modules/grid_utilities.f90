@@ -2520,7 +2520,7 @@ contains
         grid_out%r_f = grid_in%r_f
     end function untrim_grid
     
-    !> Calculates  contra-  and covariant  components  of  a vector  in  multiple
+    !> Calculates  contra- and  covariant  components of  a  vector in  multiple
     !! coordinate systems.
     !!
     !! Chain of coordinate systems considered:
@@ -2537,7 +2537,7 @@ contains
     !!
     !! Also, the fluxes can be calculated and plot by providing a \c base_name.
     !!
-    !! By  default,  the cartesian  components  are  returned,  but this  can  be
+    !! By  default, the  cartesian  components  are returned,  but  this can  be
     !! indicated differently by providing \c max_transf.
     !!
     !! \note

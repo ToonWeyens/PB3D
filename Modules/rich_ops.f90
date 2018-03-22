@@ -30,6 +30,8 @@ contains
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: init_modes, setup_modes
         use X_vars, only: mds_X, mds_sol
+        use grid_vars, only: n_alpha, min_alpha, max_alpha, alpha
+        use grid_utilities, only: calc_eqd_grid
         
         character(*), parameter :: rout_name = 'init_rich'
         
@@ -74,6 +76,11 @@ contains
         allocate(x_axis_rich(max_it_rich,n_sol_requested))
         allocate(max_rel_err(max_it_rich-1))
         allocate(loc_max_rel_err(max_it_rich-1,1))
+        
+        ! set up alpha
+        allocate(alpha(n_alpha))
+        ierr = calc_eqd_grid(alpha,min_alpha*pi,max_alpha*pi,excl_last=.true.)
+        CHCKERR('')
         
         ! set variables
         if (max_it_rich.gt.1) then                                              ! only when more than one level

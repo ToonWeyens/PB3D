@@ -1201,3 +1201,14 @@ ITER Organization
 * 'calc_XUQ' still outputs XUQ in the solution grid, but now also possibly interpolates the perturbation quantities if X_grid_style is 1.
 * For POST_style 1, 'setup_out_grids' does not need full grids, as it will extend them.
 * plot_sol_vec now uses less memory in the interpolated metric coefficients by selecting only the necessary ones.
+
+# 2.13:
+* UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION.
+* Only quantities with same mode number (combination) can be interpolated between, which is currently not done.
+* Alpha variables are once again stored in HDF5, because they are needed in POST.
+* 'alpha' is now allocated in init_rich.
+* For Richardson extrapolation, a bug is fixed when solution variables were set up to be used as guess: the grid has to be trimmed.
+* Output concerning which Richardson level used for POST is now more helpful.
+* The solution grid now again just a normal grid with 0 angular points. A local hybrid grid was implemented in driver_sol to interpolate for X_grid_style 2.
+* If energy reconstruction not requested, it is not plotted any more.
+* Implemented new option through 'V_interp_style' that allows the user to switch between 1 (finite difference, new default) and 2 (spline, previous default).

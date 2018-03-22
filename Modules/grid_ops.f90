@@ -583,7 +583,6 @@ contains
         &result(ierr)
         
         use num_vars, only: n_procs, X_grid_style
-        use grid_vars, only: n_alpha
         use grid_utilities, only: coord_F2E
         
         character(*), parameter :: rout_name = 'setup_grid_sol'
@@ -600,7 +599,7 @@ contains
         select case (X_grid_style)
             case (1)                                                            ! equilibrium
                 ! create grid
-                ierr = grid_sol%init([1,n_alpha,size(r_F_sol)],sol_limits,&
+                ierr = grid_sol%init([0,0,size(r_F_sol)],sol_limits,&
                     &divided=n_procs.gt.1)
                 CHCKERR('')
                 
@@ -618,7 +617,7 @@ contains
             case (2)                                                            ! solution
                 ! X grid identical to equilibrium  grid but with only 1 parallel
                 ! point.
-                ierr = grid_sol%init([1,n_alpha,grid_X%n(3)],&
+                ierr = grid_sol%init([0,0,grid_X%n(3)],&
                     &[grid_X%i_min,grid_X%i_max],grid_X%divided)
                 CHCKERR('')
                 grid_sol%r_F = grid_X%r_F

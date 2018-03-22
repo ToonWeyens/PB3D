@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.12
+!>  \version    2.13
 !!  \date       2012-2017
 !!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
@@ -98,7 +98,7 @@ program PB3D
         if (rich_restart_lvl.eq.1) then
             ierr = read_input_eq()                                              ! read input equilibrium file
             CHCKERR
-            ierr = calc_normalization_const()                                     ! set up normalization constants
+            ierr = calc_normalization_const()                                   ! set up normalization constants
             CHCKERR
             call normalize_input()                                              ! normalize the input
         end if

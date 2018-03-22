@@ -1482,7 +1482,8 @@ contains
     !!  - <tt>(:,2)</tt>: the radial position in Flux coordinates
     !!  - <tt>(:,3)</tt>: the fraction \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$
     !!
-    !! for every single mode in \c sec_ind of \c mds.
+    !! for every single mode in \c sec_ind  of \c mds, which can be tabulated in
+    !! an arbitrary grid, not necessarily the equilibrium one.
     !!
     !! Optionally,  the  total safety  factor  or  rotational transform  can  be
     !! returned to the master.
@@ -1672,8 +1673,11 @@ contains
     !> plot  \f$q\f$-profile or  \f$\iota\f$-profile  in  flux coordinates  with
     !! \f$nq-m = 0\f$ or \f$n-\iota m = 0\f$ indicated if requested.
     !!
+    !! The plot will be done in the grid in which \c mds is tabulated, which is
+    !! not necessarily the equilibrium one.
+    !!
     !! \return ierr
-    integer function resonance_plot(mds,grid,eq) result(ierr)
+    integer function resonance_plot(mds,grid_eq,eq) result(ierr)
         use num_vars, only: use_pol_flux_F, no_plots, n_theta_plot, &
             &n_zeta_plot, rank, eq_style, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot
@@ -1687,7 +1691,7 @@ contains
         
         ! input / output
         type(modes_type), intent(in) :: mds                                     !< general modes variables
-        type(grid_type), intent(in) :: grid                                     !< equilibrium grid
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(eq_1_type), intent(in) :: eq                                       !< flux equilibrium
         
         ! local variables (not to be used in child functions)
@@ -1716,7 +1720,7 @@ contains
         if (no_plots) return
         
         ! get trimmed grid
-        ierr = trim_grid(grid,grid_trim)
+        ierr = trim_grid(grid_eq,grid_trim)
         CHCKERR('')
         
         ! initialize variables
@@ -1741,7 +1745,7 @@ contains
         call lvl_ud(1)
         
         ! find resonating surfaces
-        ierr = calc_res_surf(mds,grid,eq,res_surf,info=.true.,jq=jq)
+        ierr = calc_res_surf(mds,grid_eq,eq,res_surf,info=.true.,jq=jq)
         CHCKERR('')
         
         call lvl_ud(-1)
@@ -1809,8 +1813,8 @@ contains
                 
                 ! calculate normal vars in Equilibrium coords.
                 allocate(r_plot_E(n_mod_loc))
-                ierr = coord_F2E(grid,x_plot_loc(n_r,2:n_mod_loc+1),r_plot_E,&
-                    &r_F_array=grid%r_F,r_E_array=grid%r_E)
+                ierr = coord_F2E(grid_eq,x_plot_loc(n_r,2:n_mod_loc+1),&
+                    &r_plot_E,r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 
                 ! create plot grid for single flux surface
@@ -1837,7 +1841,7 @@ contains
                     grid_plot%loc_r_E = r_plot_E(ld)
                     
                     ! calculate X, Y and Z
-                    ierr = calc_XYZ_grid(grid,grid_plot,X_plot(:,:,:,ld),&
+                    ierr = calc_XYZ_grid(grid_eq,grid_plot,X_plot(:,:,:,ld),&
                         &Y_plot(:,:,:,ld),Z_plot(:,:,:,ld))
                     CHCKERR('')
                 end do

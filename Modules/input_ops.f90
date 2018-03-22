@@ -37,7 +37,7 @@ contains
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
             &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
-            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style
+            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style, V_interp_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -71,7 +71,7 @@ contains
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, alpha_style, &
             &max_nr_backtracks_HH, magn_int_style, ex_plot_style, n_alpha, &
-            &solver_SLEPC_style, X_grid_style
+            &solver_SLEPC_style, X_grid_style, V_interp_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
@@ -331,6 +331,7 @@ contains
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             X_grid_style = 1                                                    ! use equilibrium normal grid for perturbation grid as well
+            V_interp_style = 1                                                  ! use finite differences
         end subroutine default_input_PB3D
         
         ! POST version
@@ -487,18 +488,26 @@ contains
                 plot_E_rec = .false.
                 PB3D_rich_lvl = 1
             else
-                call writo('Maximum Richardson level found: '//&
-                    &trim(i2str(max_PB3D_rich_lvl)))
                 if (PB3D_rich_lvl.eq.huge(1)) then
                     PB3D_rich_lvl = max_PB3D_rich_lvl
+                    call writo('Treating maximum Richardson level found: '//&
+                        &trim(i2str(max_PB3D_rich_lvl)))
+                else if (PB3D_rich_lvl.le.max_PB3D_rich_lvl) then
+                    call writo('Treating Richardson level requested: '//&
+                        &trim(i2str(PB3D_rich_lvl)))
+                    if (PB3D_rich_lvl.lt.max_PB3D_rich_lvl) then
+                        call lvl_ud(1)
+                        call writo('Less than maximum Richardson level: '//&
+                            &trim(i2str(max_PB3D_rich_lvl)),warning=.true.)
+                        call lvl_ud(-1)
+                    end if
                 else if (PB3D_rich_lvl.gt.max_PB3D_rich_lvl) then
                     ierr = 1
                     err_msg = 'PB3D_rich_lvl cannot be higher than '//&
                         &trim(i2str(max_PB3D_rich_lvl))
                     CHCKERR(err_msg)
                 else if (PB3D_rich_lvl.lt.1) then
-                    ierr = 1
-                    call writo('Richardson level chosen '//&
+                    call writo('Richardson level requested '//&
                         &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
                         &output will be done.',alert=.true.)
                     plot_sol_xi = .false.
@@ -794,13 +803,8 @@ contains
         !   alpha_style has to be either 0 or 1
         !   for 1, n_alpha = 1 and min/max_alpha = alpha
         !   for 2, max_par_X - min_par_X = 2
-        ! Also sets the alpha array variable.
         !> \private
         integer function adapt_alpha() result(ierr)
-            use grid_utilities, only: calc_eqd_grid
-            use grid_vars, only: alpha_arr => alpha
-            use num_vars, only: pi
-            
             character(*), parameter :: rout_name = 'adapt_alpha'
             
             ! local variables
@@ -852,12 +856,6 @@ contains
                         &n_alpha = 1 needed',warning=.true.)
                 end if
             end if
-            
-            ! set up alpha
-            allocate(alpha_arr(n_alpha))
-            ierr = calc_eqd_grid(alpha_arr,min_alpha*pi,max_alpha*pi,&
-                &excl_last=.true.)
-            CHCKERR('')
         end function adapt_alpha
         
         ! Checks  whether variables  concerning the  solution grid  are correct:
@@ -1146,10 +1144,11 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol, X_grid_style
+            &norm_disc_style_sol, X_grid_style, V_interp_style
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol
+        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
+            &max_alpha
         use grid_ops, only: calc_norm_range
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
@@ -1579,15 +1578,16 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [13]
+        in_1D_loc%loc_i_max = [17]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(13))
+        allocate(in_1D_loc%p(17))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
             &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp,&
-            &X_grid_style*1._dp]
+            &X_grid_style*1._dp,V_interp_style*1._dp,min_alpha*1._dp,&
+            &max_alpha*1._dp,n_alpha*1._dp]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1

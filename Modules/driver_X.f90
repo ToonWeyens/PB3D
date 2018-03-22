@@ -165,7 +165,8 @@ contains
         if (X_grid_style.eq.1) then
             call lvl_ud(1)
             call writo('interpolation to the solution grid with '//&
-                &trim(i2str(n_r_sol))//' will happen in the solution driver')
+                &trim(i2str(n_r_sol))//' points will happen in the solution &
+                &driver')
             call lvl_ud(-1)
         end if
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
@@ -617,7 +618,7 @@ contains
         integer :: k, m                                                         ! local row and column index in flux surface
         integer :: ld, kd, rd, cd                                               ! counters
         integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
-        integer :: n_mod_tot                                                    ! local number of modes
+        integer :: n_mod_tot                                                    ! total number of modes
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
@@ -938,6 +939,15 @@ contains
                 end do
             end do
             
+            call print_ex_2D(['PV'],'PV',&
+                &rp(PV_int(111-min_nm_X+1,111-min_nm_X+1,:,1,:)),x=&
+                &reshape(grid_trim%loc_r_F,[grid_trim%loc_n_r,1])/max_flux_F*2*pi)
+            call print_ex_2D(['KV'],'KV',&
+                &rp(KV_int(111-min_nm_X+1,111-min_nm_X+1,:,1,:)),x=&
+                &reshape(grid_trim%loc_r_F,[grid_trim%loc_n_r,1])/max_flux_F*2*pi)
+            call print_ex_2D('mds','mds_r',mds_X%sec_ind(:,111-min_nm_X+1)*1._dp,&
+                &x=grid_trim%loc_r_F/max_flux_F*2*pi)
+            call print_ex_2D('mds','mds',mds_X%sec_ind(:,111-min_nm_X+1)*1._dp)
             ! plot
             allocate(var_names(n_alpha))
             do ld = 1,size(var_names)
