@@ -120,7 +120,7 @@ contains
         ! set  up local and  total nr.  of modes, which  can be different  for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = size(mds%sec_ind,2)
+        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
         
         ! tests
         if (grid_eq%n(1).ne.grid_X%n(1) .or. grid_eq%n(2).ne.grid_X%n(2)) then
@@ -209,16 +209,14 @@ contains
         
         ! initialize XUQ
         XUQ = 0._dp
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!'
+        write(*,*) '!!!!! CHECK THIS AS WELL'
+        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!'
         
         ! set up normal derivative of X vec
-        ! Note: The mode indices of the different modes can change as a function
-        ! of the normal coordinate. Therefore, to correctly derive the same mode
-        ! in  the normal  coordinate, this  mode has  to be  tracked along  this
-        ! coordinate. 
-        ! This is done by setting up  an total solution vector that contains all
-        ! the possible  mode numbers n_mod_tot,  which is then  derived normally
-        ! and finally the  corresponding local resonating modes  are copied back
-        ! at each normal surface.
+        ! Note: In X_style 2 (fast), the mode  indices vary as a function as the
+        ! normal coordinate.  All of  these contiguous  ranges are  tabulated in
+        ! variable 'sec'.
         if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
             ! set up variables
             allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r))
@@ -435,10 +433,10 @@ contains
     !! version.
     !!
     !! This is the  solution vector for all of the  possible mode numbers, which
-    !! can be different from the local mode numbers for X style 2:
+    !! can be different from the local mode numbers for X style 2 (fast):
     !!  -  local: the  size of  the saved  perturbation and  solution variables,
     !!  prescribed  by the  user as  input:
-    !!  - either directly through \c n_mod_X
+    !!      - either directly through \c n_mod_X
     !!      -  or through  the limits  on the  modes using  \c min_sec_X  and \c
     !!      max_sec_X.
     !!  - total: all  the possible modes that can resonate  in the plasma, which
@@ -447,9 +445,10 @@ contains
     !!
     !! If the output variable is not allocated, it is done here.
     !!
-    !! \note If the lowest limits of the  grid is not 1 (e.g. <tt>grid_X%i_min =
-    !! 1</tt> for first  process), the input variable \c i_min  should be set to
-    !! set correctly. For a full grid, it should be set to 1.
+    !! \note If the  lowest limits of the  grid is not 1  (e.g. <tt>grid%i_min =
+    !! 1</tt>, corresponding  to \c sol_vec_tot,  for first process),  the input
+    !! variable \c i_min should be set appropriately. For a full grid, it should
+    !! be set to 1.
     !!
     !! \return ierr
     integer function calc_tot_sol_vec(mds,i_min,sol_vec_loc,sol_vec_tot) &
@@ -469,8 +468,9 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
-        integer :: kd, ld                                                       ! counters
-        integer :: kd_loc                                                       ! local kd
+        integer :: ld                                                           ! counter
+        integer :: kdl(2)                                                       ! kd limits
+        integer :: ld_loc                                                       ! local ld
         integer :: n_r                                                          ! normal size of variables
         
         ! set n_r
@@ -478,6 +478,7 @@ contains
         
         ! initialize ierr
         ierr = 0
+        write(*,*) '!!! CHECK !!!'
         
         ! operations depending on X style
         select case (X_style)
@@ -498,7 +499,7 @@ contains
             case (2)                                                            ! fast
                 ! set local and total nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec_ind,2)
+                n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
                 
                 ! test allocation
                 if (allocated(sol_vec_tot)) then
@@ -515,12 +516,12 @@ contains
                 
                 ! track all possible modes and copy
                 sol_vec_tot = 0._dp
-                do ld = 1,n_mod_tot
-                    do kd = 1,n_r
-                        kd_loc = kd + i_min - 1
-                        if (mds%sec_ind(kd_loc,ld).ne.0) sol_vec_tot(ld,kd) = &
-                            &sol_vec_loc(mds%sec_ind(kd_loc,ld),kd)
-                    end do
+                do ld = 1,size(mds%sec,1)
+                    ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
+                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-i_min+1                 ! range in sol_vec_loc
+                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    sol_vec_tot(ld_loc,kdl(1):kdl(2)) = &
+                        &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2))
                 end do
         end select
     end function calc_tot_sol_vec
@@ -548,8 +549,9 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
-        integer :: kd, ld                                                       ! counters
-        integer :: kd_loc                                                       ! local kd
+        integer :: ld                                                           ! counter
+        integer :: kdl(2)                                                       ! kd limits
+        integer :: ld_loc                                                       ! local ld
         integer :: n_r                                                          ! normal size of variables
         
         ! set n_r
@@ -559,6 +561,7 @@ contains
         ierr = 0
         
         ! operations depending on X style
+        write(*,*) '!!! CHECK !!!'
         select case (X_style)
             case (1)                                                            ! prescribed
                 ! test allocation
@@ -577,7 +580,7 @@ contains
             case (2)                                                            ! fast
                 ! set local and total nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec_ind,2)
+                n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
                 
                 ! test allocation
                 if (allocated(sol_vec_loc)) then
@@ -594,13 +597,12 @@ contains
                 
                 ! track all possible modes and copy
                 sol_vec_loc = 0._dp
-                do kd = 1,n_r
-                    kd_loc = kd + i_min - 1
-                    do ld = 1,n_mod_tot
-                        if (mds%sec_ind(kd_loc,ld).ne.0) &
-                            &sol_vec_loc(mds%sec_ind(kd_loc,ld),kd) = &
-                            &sol_vec_tot(ld,kd)
-                    end do
+                do ld = 1,size(mds%sec,1)
+                    ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
+                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-i_min+1                 ! range in sol_vec_loc
+                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2)) = &
+                        &sol_vec_tot(ld_loc,kdl(1):kdl(2))
                 end do
         end select
     end function calc_loc_sol_vec

@@ -329,7 +329,7 @@ contains
         ! tests
         if (n.lt.1 .or. n_loc.lt.1) then
             ierr = 1
-            err_msg = 'n and n_loc need to be > 1'
+            err_msg = 'n and n_loc need to be at least 1'
             CHCKERR(err_msg)
         end if
         

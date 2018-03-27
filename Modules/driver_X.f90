@@ -25,7 +25,7 @@ module driver_X
     integer :: rich_lvl_name                                                    !< either the Richardson level or zero
 #if ldebug
     logical :: debug_run_driver_X_1 = .false.                                   !< debug information for run_driver_X_1 \ldebug
-    logical :: debug_run_driver_X_2 = .true.                                   !< debug information for run_driver_X_2 \ldebug
+    logical :: debug_run_driver_X_2 = .false.                                   !< debug information for run_driver_X_2 \ldebug
     logical :: plot_info= .false.                                               !< plot information for comparison with HELENA \ldebug
 #endif
     
@@ -362,10 +362,12 @@ contains
     !!
     !! \return ierr
     integer function run_driver_X_1(grid_eq,grid_X,eq_1,eq_2,X_1) result(ierr)
-        use num_vars, only: rank, n_procs, eq_style, U_style, eq_job_nr, &
-            &rich_restart_lvl
+        use num_vars, only: eq_style, U_style, eq_job_nr, rich_restart_lvl
         use X_ops, only: calc_X, print_output_X
         use rich_vars, only: rich_lvl
+#if ldebug
+        use X_ops, only: print_debug_X_1
+#endif
         
         character(*), parameter :: rout_name = 'run_driver_X_1'
         
@@ -378,11 +380,6 @@ contains
         
         ! local variables
         logical :: do_X_1_ops                                                   ! whether specific calculations for X_1 are necessary
-#if ldebug
-        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
-        character(len=max_str_ln) :: file_name                                  ! name of file
-        integer :: ld                                                           ! counter
-#endif
         
         ! initialize ierr
         ierr = 0
@@ -425,69 +422,7 @@ contains
 #if ldebug
         ! write vectorial perturbation quantities to output
         if (debug_run_driver_X_1) then
-            ! angles
-            call plot_HDF5('theta_F_B','theta_F',grid_X%theta_F)
-            call plot_HDF5('zeta_F_B','zeta_F',grid_X%zeta_F)
-            ! U_0
-            allocate(var_names(size(X_1%U_0,4)))
-            if (n_procs.eq.1) then
-                file_name = 'U_0'
-            else
-                file_name = 'U_0'//trim(i2str(rank))
-            end if
-            do ld = 1,size(var_names)
-                var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-            end do
-            call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                &rp(X_1%U_0),col_id=4,col=1)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                &ip(X_1%U_0),col_id=4,col=1)
-            deallocate(var_names)
-            ! U_1
-            allocate(var_names(size(X_1%U_1,4)))
-            if (n_procs.eq.1) then
-                file_name = 'U_1'
-            else
-                file_name = 'U_1'//trim(i2str(rank))
-            end if
-            do ld = 1,size(var_names)
-                var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-            end do
-            call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                &rp(X_1%U_1),col_id=4,col=1)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                &ip(X_1%U_1),col_id=4,col=1)
-            deallocate(var_names)
-            ! DU_0
-            allocate(var_names(size(X_1%DU_0,4)))
-            if (n_procs.eq.1) then
-                file_name = 'DU_0'
-            else
-                file_name = 'DU_0'//trim(i2str(rank))
-            end if
-            do ld = 1,size(var_names)
-                var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-            end do
-            call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                &rp(X_1%DU_0),col_id=4,col=1)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                &ip(X_1%DU_0),col_id=4,col=1)
-            deallocate(var_names)
-            ! DU_1
-            allocate(var_names(size(X_1%DU_1,4)))
-            if (n_procs.eq.1) then
-                file_name = 'DU_1'
-            else
-                file_name = 'DU_1'//trim(i2str(rank))
-            end if
-            do ld = 1,size(var_names)
-                var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-            end do
-            call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                &rp(X_1%DU_1),col_id=4,col=1)
-            call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                &ip(X_1%DU_1),col_id=4,col=1)
-            deallocate(var_names)
+            call print_debug_X_1(grid_X,X_1)
         end if
         
         if (plot_info) then
@@ -577,20 +512,14 @@ contains
     integer function run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B,X_1,&
         &X_2_int) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_X_2
-        use num_vars, only: X_job_nr, X_jobs_lims, rank, n_procs, eq_style, &
-            &eq_job_nr, eq_jobs_lims, magn_int_style, no_output, &
-            &rich_restart_lvl
+        use num_vars, only: X_job_nr, X_jobs_lims, eq_style, eq_job_nr, &
+            &eq_jobs_lims, magn_int_style, no_output, rich_restart_lvl
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
         use X_utilities, only: do_X
 #if ldebug
-        use num_vars, only: use_pol_flux_F
-        use num_utilities, only: c, con
-        use X_vars, only: min_m_X, min_n_X, n_mod_X
-        use grid_vars, only: alpha, n_alpha
-        use grid_utilities, only: trim_grid
-        use eq_vars, only: max_flux_F
+        use X_ops, only: print_debug_X_2
 #endif
         
         character(*), parameter :: rout_name = 'run_driver_X_2'
@@ -612,24 +541,6 @@ contains
         integer :: var_size_without_par                                         ! size of array for jobs division
         integer :: prev_style                                                   ! style to treat prev_X
         integer :: lims_loc(2,2)                                                ! local X_jobs_lims
-#if ldebug
-        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
-        character(len=max_str_ln) :: file_name                                  ! name of file
-        integer :: k, m                                                         ! local row and column index in flux surface
-        integer :: ld, kd, rd, cd                                               ! counters
-        integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
-        integer :: n_mod_tot                                                    ! total number of modes
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
-        integer :: plot_dim(4)                                                  ! dimensions of plot
-        integer :: plot_offset(4)                                               ! local offset of plot
-        integer :: c_tot(2)                                                     ! total index for symmetric and asymmetric quantities
-        complex(dp), allocatable :: PV_int(:,:,:,:,:)                           ! integrated PV_i for all mode combinations
-        complex(dp), allocatable :: KV_int(:,:,:,:,:)                           ! integrated KV_i for all mode combinations
-        real(dp), allocatable :: X_plot(:,:,:,:)                                ! X of plot
-        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! Y of plot
-        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! Y of plot
-        type(grid_type) :: grid_trim                                            ! trimmed grid
-#endif
         
         ! initialize ierr
         ierr = 0
@@ -716,105 +627,6 @@ contains
                 &X_1_loc(1),X_1_loc(2),X_2,lim_sec_X=lims_loc)
             CHCKERR('')
             
-#if ldebug
-            ! write field-aligned tensorial perturbation quantities to output
-            if (debug_run_driver_X_2) then
-                ! angles
-                call plot_HDF5('theta_F_B','theta_F_B',grid_X_B%theta_F)
-                call plot_HDF5('zeta_F_B','zeta_F_B',grid_X_B%zeta_F)
-                ! PV_0
-                allocate(var_names(size(X_2%PV_0,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'PV_0'
-                else
-                    file_name = 'PV_0_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%PV_0),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%PV_0),col_id=4,col=1)
-                deallocate(var_names)
-                ! PV_1
-                allocate(var_names(size(X_2%PV_1,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'PV_1'
-                else
-                    file_name = 'PV_1_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%PV_1),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%PV_1),col_id=4,col=1)
-                deallocate(var_names)
-                ! PV_2
-                allocate(var_names(size(X_2%PV_2,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'PV_2'
-                else
-                    file_name = 'PV_2_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%PV_2),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%PV_2),col_id=4,col=1)
-                deallocate(var_names)
-                ! KV_0
-                allocate(var_names(size(X_2%KV_0,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'KV_0'
-                else
-                    file_name = 'KV_0_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%KV_0),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%KV_0),col_id=4,col=1)
-                deallocate(var_names)
-                ! KV_1
-                allocate(var_names(size(X_2%KV_1,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'KV_1'
-                else
-                    file_name = 'KV_1_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%KV_1),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%KV_1),col_id=4,col=1)
-                deallocate(var_names)
-                ! KV_2
-                allocate(var_names(size(X_2%KV_2,4)))
-                if (n_procs.eq.1) then
-                    file_name = 'KV_2'
-                else
-                    file_name = 'KV_2_'//trim(i2str(rank))
-                end if
-                do ld = 1,size(var_names)
-                    var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-                end do
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(X_2%KV_2),col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(X_2%KV_2),col_id=4,col=1)
-                deallocate(var_names)
-            end if
-#endif
-            
             ! integrate magnetic  integrals of tensorial  perturbation variables
             ! over  field-aligned  grid.  If   not  first  Richardson  level  or
             ! equilibrium job, previous integrated X_2 is used:
@@ -854,134 +666,8 @@ contains
         ! write  integrated field-aligned  tensorial perturbation  quantities to
         ! output and plot
         if (debug_run_driver_X_2) then
-            ! trim grid
-            ierr = trim_grid(grid_X,grid_trim,norm_id=norm_id)
+            ierr = print_debug_X_2(mds_X,grid_X,X_2_int)
             CHCKERR('')
-            
-            ! set local n_mod and allocate integrated quantities
-            n_mod_tot = size(mds_X%sec_ind,2)
-            allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
-                &grid_trim%n(2),0:2))
-            allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
-                &grid_trim%n(2),0:2))
-            allocate(X_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            allocate(Y_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            allocate(Z_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
-            PV_int = 0._dp
-            KV_int = 0._dp
-            
-            ! minimal index in sec_ind modes
-            if (use_pol_flux_F) then
-                min_nm_X = minval(min_m_X)
-            else
-                min_nm_X = minval(min_n_X)
-            end if
-            
-            ! setup X, Y and Z of plot
-            ! loop over all normal grid points
-            do kd = 1,grid_trim%loc_n_r
-                Z_plot(:,:,kd,1) = 100*grid_trim%loc_r_F(kd)/max_flux_F*2*pi
-                ! loop over all possible mode combinations
-                do cd = 1,n_mod_tot
-                    do rd = 1,n_mod_tot
-                        Y_plot(rd,cd,kd,1) = min_nm_X+cd-1
-                        X_plot(rd,cd,kd,1) = min_nm_X+rd-1
-                    end do
-                end do
-            end do
-            
-            ! loop over all normal grid points
-            do kd = 1,grid_trim%loc_n_r
-                ! loop over all mode combinations of this X job
-                do m = 1,n_mod_X
-                    do k = 1,n_mod_X
-                        ! index in tables
-                        c_tot(1) = c([k,m],.true.,n_mod_X)
-                        c_tot(2) = c([k,m],.false.,n_mod_X)
-                        
-                        ! total mode combinations indices
-                        if (use_pol_flux_F) then
-                            rd = mds_X%m(grid_trim%i_min-1+kd,k)
-                            cd = mds_X%m(grid_trim%i_min-1+kd,m)
-                        else
-                            rd = mds_X%n(grid_trim%i_min-1+kd,k)
-                            cd = mds_X%n(grid_trim%i_min-1+kd,m)
-                        end if
-                        cd = cd-min_nm_X+1
-                        rd = rd-min_nm_X+1
-                        
-                        ! symmetric quantities
-                        if (k.ge.m) then
-                            PV_int(rd,cd,kd,:,0) = con(X_2_int%&
-                                &PV_0(1,:,norm_id(1)-1+kd,c_tot(1)),&
-                                &[rd,cd],.true.,[n_alpha])
-                            PV_int(rd,cd,kd,:,2) = con(X_2_int%&
-                                &PV_2(1,:,norm_id(1)-1+kd,c_tot(1)),&
-                                &[rd,cd],.true.,[n_alpha])
-                            KV_int(rd,cd,kd,:,0) = con(X_2_int%&
-                                &KV_0(1,:,norm_id(1)-1+kd,c_tot(1)),&
-                                &[rd,cd],.true.,[n_alpha])
-                            KV_int(rd,cd,kd,:,2) = con(X_2_int%&
-                                &KV_2(1,:,norm_id(1)-1+kd,c_tot(1)),&
-                                &[rd,cd],.true.,[n_alpha])
-                            PV_int(cd,rd,kd,:,0) = PV_int(rd,cd,kd,:,0)
-                            PV_int(cd,rd,kd,:,2) = PV_int(rd,cd,kd,:,2)
-                            KV_int(cd,rd,kd,:,0) = KV_int(rd,cd,kd,:,0)
-                            KV_int(cd,rd,kd,:,2) = KV_int(rd,cd,kd,:,2)
-                        end if
-                        
-                        ! asymmetric quantities
-                        PV_int(rd,cd,kd,:,1) = &
-                            &X_2_int%PV_1(1,:,norm_id(1)-1+kd,c_tot(2))
-                        KV_int(rd,cd,kd,:,1) = &
-                            &X_2_int%KV_1(1,:,norm_id(1)-1+kd,c_tot(2))
-                    end do
-                end do
-            end do
-            
-            call print_ex_2D(['PV'],'PV',&
-                &rp(PV_int(111-min_nm_X+1,111-min_nm_X+1,:,1,:)),x=&
-                &reshape(grid_trim%loc_r_F,[grid_trim%loc_n_r,1])/max_flux_F*2*pi)
-            call print_ex_2D(['KV'],'KV',&
-                &rp(KV_int(111-min_nm_X+1,111-min_nm_X+1,:,1,:)),x=&
-                &reshape(grid_trim%loc_r_F,[grid_trim%loc_n_r,1])/max_flux_F*2*pi)
-            call print_ex_2D('mds','mds_r',mds_X%sec_ind(:,111-min_nm_X+1)*1._dp,&
-                &x=grid_trim%loc_r_F/max_flux_F*2*pi)
-            call print_ex_2D('mds','mds',mds_X%sec_ind(:,111-min_nm_X+1)*1._dp)
-            ! plot
-            allocate(var_names(n_alpha))
-            do ld = 1,size(var_names)
-                var_names(ld) = 'alpha = '//trim(r2strt(alpha(ld)))
-            end do
-            plot_dim = [n_mod_tot,n_mod_tot,grid_trim%n(3),n_alpha]
-            plot_offset = [0,0,grid_trim%i_min-1,0]
-            do id = 0,2
-                file_name = 'PV_'//trim(i2str(id))//'_int_R'//&
-                    &trim(i2str(rich_lvl))
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(PV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
-                    &tot_dim=plot_dim, loc_offset=plot_offset,&
-                    &col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(PV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
-                    &tot_dim=plot_dim, loc_offset=plot_offset,&
-                    &col_id=4,col=1)
-                
-                file_name = 'KV_'//trim(i2str(id))//'_int_R'//&
-                    &trim(i2str(rich_lvl))
-                call plot_HDF5(var_names,'RE_'//trim(file_name),&
-                    &rp(KV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
-                    &tot_dim=plot_dim, loc_offset=plot_offset,&
-                    &col_id=4,col=1)
-                call plot_HDF5(var_names,'IM_'//trim(file_name),&
-                    &ip(KV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
-                    &tot_dim=plot_dim, loc_offset=plot_offset,&
-                    &col_id=4,col=1)
-            end do
-            deallocate(var_names)
-            
-            ! clean up
-            call grid_trim%dealloc()
         end if
 #endif
         

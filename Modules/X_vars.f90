@@ -22,15 +22,22 @@ module X_vars
     !!
     !! Type containing information about mode numbers at every flux surface:
     !!  - mode numbers: \c n, \c m,
-    !!  - indices of the secondary modes: \c sec_X_ind,
+    !!  - information of secondary modes: \c sec,
+    !!      * 1: mode number
+    !!      * 2: lower limit of normal range
+    !!      * 3: upper limit of normal range
+    !!      * 4: index in tables
+    !!      where the number of modes can be bigger than the range if the safety
+    !!      factor or  rotational transform is  non-monotonous so that  the same
+    !!      mode number can have multiple ranges.
     !!  - Flux normal coordinate: \c r_F.
     !!
     !! These are set up in setup_nm_x().
     type, public :: modes_type
-        real(dp), allocatable :: r_F(:)                                         !< normal variable at which \c n, \c m and \c sec_ind are tabulated
+        real(dp), allocatable :: r_F(:)                                         !< normal variable at which \c n, \c m and \c sec are tabulated
         integer, allocatable :: n(:,:)                                          !< \f$n\f$ for all modes, in total grid
         integer, allocatable :: m(:,:)                                          !< \f$m\f$ for all modes, in total grid
-        integer, allocatable :: sec_ind(:,:)                                    !< index of \c m or \c n for all possible modes, in total grid
+        integer, allocatable :: sec(:,:)                                        !< \c m or \c n for all possible modes, index and limits, in total grid
     end type
     
     !> vectorial perturbation type

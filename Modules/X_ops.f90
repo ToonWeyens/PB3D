@@ -18,12 +18,13 @@ module X_ops
         &calc_res_surf, check_X_modes, init_modes, setup_modes, divide_X_jobs, &
         &redistribute_output_X
 #if ldebug
-    public debug_check_X_modes_2
+    public debug_check_X_modes_2, print_debug_X_1, print_debug_X_2
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_check_X_modes_2 = .false.                                  !< plot debug information for check_x_modes_2() \ldebug
+    logical :: debug_setup_modes = .false.                                      !< plot debug information for setup_modes() \ldebug
 #endif
     
     ! interfaces
@@ -1005,12 +1006,27 @@ contains
     !! Apart from the mode numbers
     !!  - \c n, \c m,
     !!
-    !! also the indices of the secondary modes
-    !!  - sec_ind,
+    !! also the variables of the secondary modes
+    !!  - sec,
     !! 
     !! are set up  in the coordinates of  the grid passed. The  normal values of
     !! this grid are saved as well, in
     !!  - r_F.
+    !!
+    !! All variables  are tabulated in the  full normal grid. The  mode indices,
+    !! however, are  chosen so that  there is maximum overlap  between different
+    !! normal positions. This is trivial for \c  X_style 1 (prescribed), but for
+    !! \c X_style 2 (fast), this is best explained by an example:
+    !!
+    !!  kd  m1 m2 m3
+    !!  ------------
+    !!   1  10 11 12 <- start
+    !!   2  10 11 12 <- no change in limits
+    !!   2  13 11 12 <- limits shift up by one
+    !!   3  13 11 12 <- no change in limits
+    !!   4  13 14 12 <- limits shift up by one
+    !!   5  16 14 15 <- limits shift up by two
+    !!   6  13 14 15 <- limits shift down by one
     !!
     !! This procedure makes use of the global variables
     !!  - \c min_m_X, max_m_X, min_n_X, max_m_X
@@ -1021,7 +1037,7 @@ contains
     !!
     !! \return ierr
     integer function setup_modes(mds,grid_eq,grid,plot_nm) result(ierr)
-        use num_vars, only: use_pol_flux_F, rank, norm_disc_prec_X
+        use num_vars, only: use_pol_flux_F, rank
         use X_vars, only: n_mod_X, min_n_X, max_n_X, min_m_X, max_m_X
         use grid_vars, only: disc_type
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
@@ -1030,7 +1046,7 @@ contains
         character(*), parameter :: rout_name = 'setup_modes'
         
         ! input / output
-        type(modes_type), intent(inout) :: mds                                  !< modes variables
+        type(modes_type), intent(inout), target :: mds                          !< modes variables
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid                                     !< grid at which to calculate modes
         logical, intent(in), optional :: plot_nm                                !< plot \c n and \c m
@@ -1042,12 +1058,18 @@ contains
         real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
         real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
         real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
-        integer :: norm_eq_id(2)                                                ! untrimmed normal indices for trimmed grids
+        integer, pointer :: nm_X(:,:)                                           ! either n or m
         integer :: id, ld, kd                                                   ! counters
-        integer :: n_mod_tot                                                    ! total number of modes, not equal to n_mod_X for X_style 2
+        integer :: ld_loc                                                       ! shfited ld
+        integer :: ind_id                                                       ! current size of ind_tot
+        integer :: ld_shift                                                     ! shift in table indices
+        integer :: delta_ld                                                     ! change in total mode numbers
+        integer, allocatable :: ind_cur(:)                                      ! current indices
+        integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
         character(len=max_str_ln) :: plot_title                                 ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         logical :: plot_nm_loc                                                  ! local plot_nm
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -1061,7 +1083,7 @@ contains
         if (present(plot_nm)) plot_nm_loc = plot_nm
         
         ! get trimmed grids
-        ierr = trim_grid(grid_eq,grid_eq_trim,norm_eq_id)
+        ierr = trim_grid(grid_eq,grid_eq_trim)
         CHCKERR('')
         ierr = trim_grid(grid,grid_trim)
         CHCKERR('')
@@ -1075,7 +1097,7 @@ contains
         
         ! setup normal interpolation data
         ierr = setup_interp_data(grid_eq_trim%r_F,grid_trim%r_F,&
-            &norm_interp_data,norm_disc_prec_X)
+            &norm_interp_data,1)
         CHCKERR('')
         
         ! interpolate
@@ -1083,55 +1105,135 @@ contains
         ierr = apply_disc(lim_nm_X,norm_interp_data,lim_nm_X_interp,2)
         CHCKERR('')
         
+        !!! For non-monotonous tests:
+        !!lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3)) = &
+            !!&2*lim_nm_X_interp(3,grid_trim%n(3)*0.7) - &
+            !!&lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3))
+        !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
+        
         ! clean up
         call norm_interp_data%dealloc()
         
         ! set up normal tabulation values
         allocate(mds%r_F(grid_trim%n(3)))
         mds%r_F = grid_trim%r_F
+        allocate(ind_tot(grid_trim%n(3)*n_mod_X,4))                             ! not quite absolute maximum but should never be reached
+        allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
         
-        ! set n and m
+        ! calculate n and m
         allocate(mds%n(grid_trim%n(3),n_mod_X))
         allocate(mds%m(grid_trim%n(3),n_mod_X))
-        if (use_pol_flux_F) then
-            do kd = 1,grid_trim%n(3)
-                mds%n(kd,:) = nint(lim_nm_X_interp(1,kd))
-                mds%m(kd,:) = [(ld, ld = nint(lim_nm_X_interp(3,kd)),&
-                    &nint(lim_nm_X_interp(4,kd)))]
+        
+        ! iterate over n (id=1) and m (id=2)
+        do id = 1,2
+            ! point nm_X
+            if (id.eq.1) then
+                nm_X => mds%n
+            else
+                nm_X => mds%m
+            end if
+            
+            ! initialize variables for first normal grid point
+            ld_shift = 0
+            ind_id = 0
+            do ld = 1,n_mod_X
+                nm_X(1,ld) = nint(lim_nm_X_interp(2*id-1,1) + &
+                    &(lim_nm_X_interp(2*id,1)-lim_nm_X_interp(2*id-1,1))/&
+                    &(n_mod_X-1)*(ld-1))
+                ind_tot(ld,:) = [nm_X(1,ld),1,0,ld]
+                ind_id = ind_id + 1
+#if ldebug
+                if (debug_setup_modes) write(*,*) 'starting with', ld, ':', &
+                    &ind_tot(ld,:)
+#endif
             end do
-        else
-            do kd = 1,grid_trim%n(3)
-                mds%n(kd,:) = [(ld, ld = nint(lim_nm_X_interp(1,kd)),&
-                    &nint(lim_nm_X_interp(2,kd)))]
-                mds%m(kd,:) = nint(lim_nm_X_interp(3,kd))
-            end do
-        end if
-        
-        ! total number of mds that might occur
-        if (use_pol_flux_F) then
-            n_mod_tot = maxval(max_m_X)-minval(min_m_X)+1
-        else
-            n_mod_tot = maxval(max_n_X)-minval(min_n_X)+1
-        end if
-        
-        ! set up indices of n and m
-        allocate(mds%sec_ind(grid_trim%n(3),n_mod_tot))
-        
-        ! loop over all possible mds to find possible indices
-        mds%sec_ind = 0
-        do kd = 1,grid_trim%n(3)
-            do ld = 1,n_mod_tot
-                do id = 1,n_mod_X
-                    if (use_pol_flux_F) then
-                        if (mds%m(kd,id).eq.minval(min_m_X)+ld-1) &
-                            &mds%sec_ind(kd,ld) = id
-                    else
-                        if (mds%n(kd,id).eq.minval(min_n_X)+ld-1) &
-                            &mds%sec_ind(kd,ld) = id
-                    end if
+            ind_cur = [(ld, ld=1,n_mod_X)]
+            
+            ! iterate over all next normal grid points
+            do kd = 2,grid_trim%n(3)
+                ! update ld delta and shift
+                delta_ld = nint(lim_nm_X_interp(2*id-1,kd)) - &
+                    &nint(lim_nm_X_interp(2*id-1,kd-1))
+                ld_shift = ld_shift + delta_ld
+                
+                ! set n or m
+                do ld = 1,n_mod_X
+                    ! shift ld and wrap back to [1..n_mod_X]
+                    ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
+                    nm_X(kd,ld_loc) = nint(lim_nm_X_interp(2*id-1,kd) + &
+                        &(lim_nm_X_interp(2*id,kd)-lim_nm_X_interp(2*id-1,kd))/&
+                        &(n_mod_X-1)*(ld-1))
                 end do
+                
+                ! if there was a shift, set new total index information
+                if (abs(delta_ld).gt.0) then
+#if ldebug
+                    if (debug_setup_modes) write(*,*) 'kd', kd, 'delta', &
+                        &delta_ld
+#endif
+                    do ld = 1,abs(delta_ld)
+                        if (delta_ld.gt.0) then                                 ! mode number has increased
+                            ind_tot(ind_cur(1),3) = kd - 1                      ! upper limit in normal range
+                            ind_tot(ind_id+ld,:) = [ &
+                                &ind_tot(ind_cur(n_mod_X),1) + 1, &                   ! total mode number
+                                &kd, &                                          ! lower limit in normal range
+                                &0, &                                           ! initalize upper limit normal range
+                                &modulo(ind_tot(ind_id,4)+ld-1,n_mod_X) + 1]    ! index in tables, shifted and wrapped around
+#if ldebug
+                            if (debug_setup_modes) then
+                                write(*,*) '    FINISHES', ind_cur(1), &
+                                    &':', ind_tot(ind_cur(1),:)
+                                write(*,*) '    STARTS', ind_id+ld, ':', &
+                                    &ind_tot(ind_id+ld,:) 
+                            end if
+#endif
+                            ind_cur = [ind_cur(2:n_mod_X),ind_id+ld]            ! add ind_id+ld at top
+                        else                                                    ! mode number has decreased
+                            ind_tot(ind_cur(n_mod_X),3) = kd - 1                ! upper limit normal range
+                            ind_tot(ind_id+ld,:) = [ &
+                                &ind_tot(ind_cur(1),1) - 1, &                   ! total mode number
+                                &kd, &                                          ! lower limit in normal range
+                                &0, &                                           ! initalize upper limit normal range
+                                &modulo(ind_tot(ind_id,4)-ld,n_mod_X) + 1]      ! index in tables, shifted and wrapped around
+#if ldebug
+                            if (debug_setup_modes) then
+                                write(*,*) '    FINISHES', ind_cur(n_mod_X), &
+                                    &':', ind_tot(ind_cur(n_mod_X),:)
+                                write(*,*) '    STARTS', ind_id+ld, ':', &
+                                    &ind_tot(ind_id+ld,:) 
+                            end if
+#endif
+                            ind_cur = [ind_id+ld,ind_cur(1:n_mod_X-1)]          ! add ind_id+ld at bottom
+                        end if
+                    end do
+                    ind_id = ind_id+abs(delta_ld)
+#if ldebug
+                    if (debug_setup_modes) write(*,*) '    current indices:', &
+                        &ind_cur
+#endif
+                end if
             end do
+            
+            ! close last total modes
+            ind_tot(ind_id-n_mod_X+1:ind_id,3) = grid_trim%n(3)
+            
+            ! save in index information
+            if ((use_pol_flux_F .and. id.eq.2) .or. &
+                &(.not.use_pol_flux_F .and. id.eq.1)) then
+                allocate(mds%sec(ind_id,4))
+                mds%sec = ind_tot(1:ind_id,:)
+            end if
         end do
+        
+        ! test whether all modes have at least one normal position
+        if (minval(mds%sec(:,3)-mds%sec(:,2)+1).lt.1) then
+            ierr = 1
+            call writo('Mode '//&
+                &trim(i2str(minloc(mds%sec(:,3)-mds%sec(:,2),1)))//&
+                &' is not present in any flux surface')
+            err_msg = 'Aument number of modes or choose finer equilibrium'
+            CHCKERR(err_msg)
+        end if
         
         ! master plots output if requested
         if (rank.eq.0 .and. plot_nm_loc) then
@@ -1161,6 +1263,7 @@ contains
         end if
         
         ! clean up
+        nullify(nm_X)
         call grid_eq_trim%dealloc()
         call grid_trim%dealloc()
         
@@ -1482,17 +1585,17 @@ contains
     !!  - <tt>(:,2)</tt>: the radial position in Flux coordinates
     !!  - <tt>(:,3)</tt>: the fraction \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$
     !!
-    !! for every single mode in \c sec_ind  of \c mds, which can be tabulated in
-    !! an arbitrary grid, not necessarily the equilibrium one.
+    !! for every single mode  in \c sec of \c mds, which can  be tabulated in an
+    !! arbitrary grid, not necessarily the equilibrium one.
     !!
     !! Optionally,  the  total safety  factor  or  rotational transform  can  be
     !! returned to the master.
     !!
-    !! Also, information can be displayed.
+    !! Also, information can be displayed with \info.
     !!
     !! \return ierr
     integer function calc_res_surf(mds,grid_eq,eq,res_surf,info,jq) result(ierr)
-        use X_vars, only: min_n_X, min_m_X, prim_X
+        use X_vars, only: prim_X
         use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
         use num_ops, only: calc_zero_Zhang
@@ -1564,32 +1667,26 @@ contains
         end if
         
         ! initialize local res_surf
-        allocate(res_surf_loc(1:size(mds%sec_ind,2),3))
+        allocate(res_surf_loc(1:size(mds%sec,1),3))
         
         ! calculate normalization factor max_flux / 2pi
         norm_factor = max_flux_F/(2*pi)
         
         ! loop over all modes (and shift the index in m_loc and n_loc by 1)
         ld_loc = 1
-        do ld = 1,size(mds%sec_ind,2)
+        do ld = 1,size(mds%sec,1)
             ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
-            ! solving q-m/n  = 0 or  iota-n/m=0, using the functin  jq_fun. Only
-            ! consider modes  that appear  somewhere in  the plasma  (e.g. where
-            ! sec_ind is nonzero somewhere)
+            ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun.
             
-            ! set up local m, n and nmfrac for function if mode appears
-            if (maxval(mds%sec_ind(:,ld)).gt.0) then
-                if (use_pol_flux_F) then
-                    n_loc = prim_X
-                    m_loc = minval(min_m_X)+ld-1
-                    nmfrac_fun = 1.0_dp*m_loc/n_loc
-                else
-                    n_loc = minval(min_n_X)+ld-1
-                    m_loc = prim_X
-                    nmfrac_fun = 1.0_dp*n_loc/m_loc
-                end if
+            ! set up local m, n and nmfrac for function
+            if (use_pol_flux_F) then
+                n_loc = prim_X
+                m_loc = mds%sec(ld,1)
+                nmfrac_fun = 1.0_dp*m_loc/n_loc
             else
-                cycle
+                n_loc = mds%sec(ld,1)
+                m_loc = prim_X
+                nmfrac_fun = 1.0_dp*n_loc/m_loc
             end if
             
             ! calculate zero using Zhang
@@ -2993,7 +3090,7 @@ contains
         ! Makes use of nr_int_regions, int_dims, int_facs and J_exp_ang
         
         ! jacobian
-        real(dp), pointer :: J(:,:,:)                                       ! jac
+        real(dp), pointer :: J(:,:,:)                                           ! jac
         
         ! initialize ierr
         ierr = 0
@@ -3359,4 +3456,265 @@ contains
             end do
         end subroutine calc_X_jobs_lims
     end function divide_X_jobs
+    
+#if ldebug
+    !> Prints debug information for X_1 driver
+    subroutine print_debug_X_1(grid_X,X_1)
+        use num_vars, only: n_procs, rank
+        
+        ! input / output
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(X_1_type), intent(in) :: X_1                                       !< vectorial X variables
+        
+        ! local variabbles
+        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
+        character(len=max_str_ln) :: file_name                                  ! name of file
+        integer :: ld                                                           ! counter
+        
+        ! angles
+        call plot_HDF5('theta_F_B','theta_F',grid_X%theta_F)
+        call plot_HDF5('zeta_F_B','zeta_F',grid_X%zeta_F)
+        
+        ! U_0
+        allocate(var_names(size(X_1%U_0,4)))
+        if (n_procs.eq.1) then
+            file_name = 'U_0'
+        else
+            file_name = 'U_0'//trim(i2str(rank))
+        end if
+        do ld = 1,size(var_names)
+            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+        end do
+        call plot_HDF5(var_names,'RE_'//trim(file_name),&
+            &rp(X_1%U_0),col_id=4,col=1)
+        call plot_HDF5(var_names,'IM_'//trim(file_name),&
+            &ip(X_1%U_0),col_id=4,col=1)
+        deallocate(var_names)
+        
+        ! U_1
+        allocate(var_names(size(X_1%U_1,4)))
+        if (n_procs.eq.1) then
+            file_name = 'U_1'
+        else
+            file_name = 'U_1'//trim(i2str(rank))
+        end if
+        do ld = 1,size(var_names)
+            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+        end do
+        call plot_HDF5(var_names,'RE_'//trim(file_name),&
+            &rp(X_1%U_1),col_id=4,col=1)
+        call plot_HDF5(var_names,'IM_'//trim(file_name),&
+            &ip(X_1%U_1),col_id=4,col=1)
+        deallocate(var_names)
+        
+        ! DU_0
+        allocate(var_names(size(X_1%DU_0,4)))
+        if (n_procs.eq.1) then
+            file_name = 'DU_0'
+        else
+            file_name = 'DU_0'//trim(i2str(rank))
+        end if
+        do ld = 1,size(var_names)
+            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+        end do
+        call plot_HDF5(var_names,'RE_'//trim(file_name),&
+            &rp(X_1%DU_0),col_id=4,col=1)
+        call plot_HDF5(var_names,'IM_'//trim(file_name),&
+            &ip(X_1%DU_0),col_id=4,col=1)
+        deallocate(var_names)
+        
+        ! DU_1
+        allocate(var_names(size(X_1%DU_1,4)))
+        if (n_procs.eq.1) then
+            file_name = 'DU_1'
+        else
+            file_name = 'DU_1'//trim(i2str(rank))
+        end if
+        do ld = 1,size(var_names)
+            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+        end do
+        call plot_HDF5(var_names,'RE_'//trim(file_name),&
+            &rp(X_1%DU_1),col_id=4,col=1)
+        call plot_HDF5(var_names,'IM_'//trim(file_name),&
+            &ip(X_1%DU_1),col_id=4,col=1)
+        deallocate(var_names)
+    end subroutine print_debug_X_1
+    
+    !> Prints debug information for X_2 driver
+    integer function print_debug_X_2(mds,grid_X,X_2_int) result(ierr)
+        use num_utilities, only: c, con
+        use X_vars, only: n_mod_X
+        use grid_vars, only: alpha, n_alpha
+        use grid_utilities, only: trim_grid
+        use eq_vars, only: max_flux_F
+        use rich_vars, only: rich_lvl
+        
+        character(*), parameter :: rout_name = 'print_debug_X_2'
+        
+        ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
+        type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
+        type(X_2_type), intent(in) :: X_2_int                                   !< tensorial X variables
+        
+        ! local variables
+        type(grid_type) :: grid_trim                                            ! trimmed grid
+        character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
+        character(len=max_str_ln) :: file_name                                  ! name of file
+        integer :: id                                                           ! counter
+        integer :: k, m                                                         ! local row and column index in flux surface
+        integer :: ld, kd, rd, cd                                               ! counters
+        integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
+        integer :: n_mod_tot                                                    ! total number of modes
+        integer :: kdl_tot(2)                                                   ! limits on total normal index for a mode combination
+        integer :: kd_loc                                                       ! local kd
+        integer :: kd_loc_trim                                                  ! local kd on trimmed grid
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        integer :: c_loc(2)                                                     ! table index for symmetric and asymmetric quantities
+        integer :: rdl, cdl                                                     ! rd and cd in local tables
+        complex(dp), allocatable :: PV_int(:,:,:,:,:)                           ! integrated PV_i for all mode combinations
+        complex(dp), allocatable :: KV_int(:,:,:,:,:)                           ! integrated KV_i for all mode combinations
+        real(dp), allocatable :: X_plot(:,:,:,:)                                ! X of plot
+        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! Y of plot
+        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! Y of plot
+        
+        ! initiaiize ierr
+        ierr = 0
+        
+        ! trim grid
+        ierr = trim_grid(grid_X,grid_trim)
+        CHCKERR('')
+        
+        ! set local n_mod and allocate integrated quantities
+        min_nm_X = minval(mds%sec(:,1),1)
+        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
+            &grid_trim%n(2),0:2))
+        allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
+            &grid_trim%n(2),0:2))
+        allocate(X_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+        allocate(Y_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+        allocate(Z_plot(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,1))
+        PV_int = 0._dp
+        KV_int = 0._dp
+        
+        ! setup X, Y and Z of plot
+        ! loop over all normal grid points
+        do kd = 1,grid_trim%loc_n_r
+            Z_plot(:,:,kd,1) = 1000*grid_trim%loc_r_F(kd)/max_flux_F*2*pi
+            ! loop over all possible mode combinations
+            do cd = 1,n_mod_tot
+                do rd = 1,n_mod_tot
+                    X_plot(rd,cd,kd,1) = min_nm_X+rd-1
+                    Y_plot(rd,cd,kd,1) = min_nm_X+cd-1
+                end do
+            end do
+        end do
+        
+        ! select all mode combinations
+        do m = 1,size(mds%sec,1)
+            do k = 1,size(mds%sec,1)
+                ! set normal limits for mode pair (k,m)
+                kdl_tot(1) = max(mds%sec(k,2),mds%sec(m,2))
+                kdl_tot(2) = min(mds%sec(k,3),mds%sec(m,3))
+                
+                ! limit to trimmed grid range
+                kdl_tot(1) = max(kdl_tot(1),grid_trim%i_min)
+                kdl_tot(2) = min(kdl_tot(2),grid_trim%i_max)
+                
+                ! skip if out of normal range
+                if (kdl_tot(1).gt.kdl_tot(2)) cycle
+                
+                ! total mode combinations indices (starting from 1)
+                rd = mds%sec(k,1)-min_nm_X+1
+                cd = mds%sec(m,1)-min_nm_X+1
+                
+                ! indices in local tables
+                rdl = mds%sec(k,4)
+                cdl = mds%sec(m,4)
+                
+                ! index in tables
+                c_loc(1) = c([rdl,cdl],.true.,n_mod_X)
+                c_loc(2) = c([rdl,cdl],.false.,n_mod_X)
+                
+                ! loop over all normal points
+                do kd = kdl_tot(1),kdl_tot(2)
+                    ! set indices
+                    kd_loc = kd - grid_X%i_min + 1
+                    kd_loc_trim = kd - grid_trim%i_min + 1
+                    
+                    ! symmetric quantities
+                    PV_int(rd,cd,kd_loc_trim,:,0) = &
+                        &con(X_2_int%PV_0(1,:,kd_loc,c_loc(1)),&
+                        &[rdl,cdl],.true.,[n_alpha])
+                    PV_int(rd,cd,kd_loc_trim,:,2) = &
+                        &con(X_2_int%PV_2(1,:,kd_loc,c_loc(1)),&
+                        &[rdl,cdl],.true.,[n_alpha])
+                    KV_int(rd,cd,kd_loc_trim,:,0) = &
+                        &con(X_2_int%KV_0(1,:,kd_loc,c_loc(1)),&
+                        &[rdl,cdl],.true.,[n_alpha])
+                    KV_int(rd,cd,kd_loc_trim,:,2) = &
+                        &con(X_2_int%KV_2(1,:,kd_loc,c_loc(1)),&
+                        &[rdl,cdl],.true.,[n_alpha])
+                    
+                    ! asymmetric quantities
+                    PV_int(rd,cd,kd_loc_trim,:,1) = &
+                        &X_2_int%PV_1(1,:,kd_loc,c_loc(2))
+                    KV_int(rd,cd,kd_loc_trim,:,1) = &
+                        &X_2_int%KV_1(1,:,kd_loc,c_loc(2))
+                end do
+                !if (mod(rdl,n_mod_X).eq.0 .or. mod(cdl,n_mod_X).eq.0) then
+                    !write(*,*) 'for k,m', k,m, 'of', size(mds%sec,1)
+                    !write(*,*) 'k vars', mds%sec(k,:)
+                    !write(*,*) 'm vars', mds%sec(m,:)
+                    !write(*,*) 'normal range', Z_plot(1,1,kdl_tot(1),1), &
+                        !&Z_plot(1,1,kdl_tot(2),1)
+                        !write(*,*) 'in c_loc ', c_loc(2)
+                    !call print_ex_2D([''],'',transpose(rp(X_2_int%KV_1(1,:,kdl_tot(1)-grid_trim%i_min+1:&
+                        !&kdl_tot(2)-grid_trim%i_min+1,c_loc(2)))))
+                    !call print_ex_2D([''],'',X_2_int%m_1(kdl_tot(1)-grid_trim%i_min+1:&
+                        !&kdl_tot(2)-grid_trim%i_min+1,:)*1._dp)
+                    !call print_ex_2D([''],'',mds%m(kdl_tot(1):kdl_tot(2),:)*1._dp)
+                    !call print_ex_2D([''],'',X_2_int%m_2(kdl_tot(1)-grid_trim%i_min+1:&
+                        !&kdl_tot(2)-grid_trim%i_min+1,:)*1._dp)
+                !end if
+            end do
+        end do
+        
+        ! plot
+        allocate(var_names(n_alpha))
+        do ld = 1,size(var_names)
+            var_names(ld) = 'alpha = '//trim(r2strt(alpha(ld)))
+        end do
+        plot_dim = [n_mod_tot,n_mod_tot,grid_trim%n(3),n_alpha]
+        plot_offset = [0,0,grid_trim%i_min-1,0]
+        do id = 0,2
+            file_name = 'PV_'//trim(i2str(id))//'_int_R'//&
+                &trim(i2str(rich_lvl))
+            call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                &rp(PV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                &ip(PV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            
+            file_name = 'KV_'//trim(i2str(id))//'_int_R'//&
+                &trim(i2str(rich_lvl))
+            call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                &rp(KV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                &ip(KV_int(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+        end do
+        deallocate(var_names)
+        
+        ! clean up
+        call grid_trim%dealloc()
+    end function print_debug_X_2
+#endif
 end module

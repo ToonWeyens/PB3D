@@ -1394,42 +1394,28 @@ contains
             write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! create checkbox
-            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox = CheckboxGroup(labels=[\'
+            write(cmd_i,"(A)",IOSTAT=istat) 'labels=list()'
             do iplt = 1,nplt
-                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
-                    &'"'//trim(var_names_loc(iplt))
-                if (iplt.lt.nplt) then
-                    write(cmd_i,"(A)",IOSTAT=istat) '",\'
-                else
-                    write(cmd_i,"(A)",IOSTAT=istat) '"], active=[\'
-                end if
+                write(cmd_i,"(A)",IOSTAT=istat) 'labels.append("'//&
+                    &trim(var_names_loc(iplt))//'")'
             end do
+            write(cmd_i,"(A)",IOSTAT=istat) 'active=list()'
             do iplt = 1,nplt
-                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
-                    &trim(i2str(iplt-1))
-                if (iplt.lt.nplt) then
-                    write(cmd_i,"(A)",IOSTAT=istat) ',\'
-                else
-                    write(cmd_i,"(A)",IOSTAT=istat) '])'
-                end if
+                write(cmd_i,"(A)",IOSTAT=istat) 'active.append('//&
+                    &trim(i2str(iplt-1))//')'
             end do
+            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox = CheckboxGroup(&
+                &labels=labels, active=active)'
             write(cmd_i,"(A)",IOSTAT=istat) ''
             
             ! create callback
-            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox.callback = CustomJS(&
-                &args=dict('
+            write(cmd_i,"(A)",IOSTAT=istat) 'args=dict()'
             do iplt = 1,nplt
-                write(cmd_i,"(A)",IOSTAT=istat,ADVANCE="no") &
-                    &'l'//trim(i2str(iplt))//'=l'//&
-                    &trim(i2str(iplt))//', c'//trim(i2str(iplt))//'=c'//&
-                    &trim(i2str(iplt))
-                if (iplt.lt.nplt) then
-                    write(cmd_i,"(A)",IOSTAT=istat) ',\'
-                    !write(cmd_i,"(A)",IOSTAT=istat) ',\'                       ! doxygen bug: need a meaningless line with slash
-                else
-                    write(cmd_i,"(A)",IOSTAT=istat) '), code="""'
-                end if
+                write(cmd_i,"(A)",IOSTAT=istat) 'args["l'//&
+                    &trim(i2str(iplt))//'"] = l'//trim(i2str(iplt))
             end do
+            
+            write(cmd_i,"(A)",IOSTAT=istat) 'code="""'
             write(cmd_i,"(A)",IOSTAT=istat) '//console.log(cb_obj.active);'
             do iplt = 1,nplt
                 write(cmd_i,"(A)",IOSTAT=istat) 'l'//trim(i2str(iplt))//&
@@ -1450,7 +1436,10 @@ contains
                 write(cmd_i,"(A)",IOSTAT=istat) '    }'
             end do
             write(cmd_i,"(A)",IOSTAT=istat) '}'
-            write(cmd_i,"(A)",IOSTAT=istat) '""")'
+            write(cmd_i,"(A)",IOSTAT=istat) '"""'
+            
+            write(cmd_i,"(A)",IOSTAT=istat) 'checkbox.callback = CustomJS(&
+                &args=args, code=code)'
             
             ! create layout
             write(cmd_i,"(A)",IOSTAT=istat) &

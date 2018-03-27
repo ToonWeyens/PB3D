@@ -619,7 +619,6 @@ contains
         use MPI_utilities, only: get_ser_var
         use num_vars, only: ex_max_size, rank, no_plots, use_pol_flux_F
         use eq_vars, only: max_flux_F
-        use X_vars, only: min_n_X, min_m_X
         use sol_utilities, only: calc_tot_sol_vec
         use grid_utilities, only: trim_grid
         
@@ -665,11 +664,10 @@ contains
         ! set up local and total nr.  of modes, which can be different for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = size(mds%sec_ind,2)
+        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        min_nm_X = minval(mds%sec(:,1),1)
         
-        ! if master, set up plot titles
-        if (rank.eq.0) then
-        end if
+        write(*,*) '!!!!! CHECK !!!!!!!!'
         
         ! set up serial sol_vec on master
         if (rank.eq.0) &
@@ -700,10 +698,8 @@ contains
             allocate(plot_title(n_mod_tot))
             if (use_pol_flux_F) then
                 nm_X = 'm'
-                min_nm_X = minval(min_m_X)
             else
                 nm_X = 'n'
-                min_nm_X = minval(min_n_X)
             end if
             
             ! identical copies of r_F of solution grid and mode numbers

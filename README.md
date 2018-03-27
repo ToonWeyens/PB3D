@@ -1212,3 +1212,14 @@ ITER Organization
 * The solution grid now again just a normal grid with 0 angular points. A local hybrid grid was implemented in driver_sol to interpolate for X_grid_style 2.
 * If energy reconstruction not requested, it is not plotted any more.
 * Implemented new option through 'V_interp_style' that allows the user to switch between 1 (finite difference, new default) and 2 (spline, previous default).
+
+# 2.14:
+UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION FIXED, BUT STILL UNABLE TO REPRODUCE PREVIOUS RESULTS.
+* Changed way in which secondary modes are stored: The index is kept constant now for a certain mode.
+* 'setup_modes' has been adapted and now calculates the variable 'sec' which is part of the class 'modes' and which indicates the normal limits and table index of every mode. It also works for non-monotomous safety factors with possibly mulpiple ranges of same total mode.
+* Also, the interpolation that is uses is now hard coded of precision 1 (i.e. linear). This is necessary to ensure that the mode ranges are consistent between the perturbation and solution grid for the case of X_grid_style 1.
+* Improved Bokeh external output plotting so that it is more easily legible and does not throw an error for more than 255 plots.
+* Debug information for X_1 and X_2 drivers are now procedures in X_ops, so they can be called externally as well as is done in solution driver.
+* The old debug information for X_2 is not available any more, as it has been superseded by the real X_2 debug information that is also valid for X_style fast.
+* 'setup_interp_data' now accepts extrapolation, and this is used for solution driver.
+WHAT ABOUT ALLOWING PREC 0?!??!

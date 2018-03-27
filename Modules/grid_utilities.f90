@@ -2194,7 +2194,7 @@ contains
     !! 
     !! \return ierr
     integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len,&
-        &tol) result(ierr)
+        &tol,extrap) result(ierr)
         use grid_vars, only: disc_type
         use num_utilities, only: con2dis
         
@@ -2208,6 +2208,7 @@ contains
         logical, intent(in), optional :: is_trigon                              !< trigonometric interpolation
         real(dp), intent(in), optional :: norm_len                              !< custom normalization length
         real(dp), intent(in), optional :: tol                                   !< tolerance
+        logical, intent(in), optional :: extrap                                 !< allow extrapolation
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -2220,20 +2221,24 @@ contains
         real(dp), allocatable :: weight(:)                                      ! weights w_j
         real(dp) :: weight_loc                                                  ! local weight factor
         logical :: is_trigon_loc                                                ! local is_trigon
+        logical :: extrap_loc                                                   ! local extrap
+        logical :: extrap_id                                                    ! extrapolating for this id
         
         ! initialize ierr
         ierr = 0
         
-        ! set local is_trigon and tolerance
+        ! set local is_trigon, tolerance and extrap
         is_trigon_loc = .false.
         if (present(is_trigon)) is_trigon_loc = is_trigon
         tol_loc = 1.E-8_dp
         if (present(tol)) tol_loc = tol
+        extrap_loc = .false.
+        if (present(extrap)) extrap_loc = extrap
         
         ! tests
-        if (ord.lt.1) then
+        if (ord.lt.0) then
             ierr = 1
-            err_msg = 'order has to be at least 1'
+            err_msg = 'order has to be at least 0 (constant)'
             CHCKERR(err_msg)
         else if (ord+1.gt.size(x)) then
             ierr = 1
@@ -2260,8 +2265,23 @@ contains
         ! iterate over all x_interp values
         do id = 1,n
             ! find the base of the interpolation value
-            ierr = con2dis(x_interp(id),x_interp_disc,x)
-            CHCKERR('')
+            extrap_id = .false.
+            if (x_interp(id).lt.minval(x)) then
+                x_interp_disc = minloc(x,1)*1._dp
+                extrap_id = .true.
+            else if (x_interp(id).gt.maxval(x)) then
+                x_interp_disc = maxloc(x,1)*1._dp
+                extrap_id = .true.
+            else
+                ierr = con2dis(x_interp(id),x_interp_disc,x)
+                CHCKERR('')
+            end if
+            if (extrap_id .and. .not.extrap_loc) then
+                ierr = 1
+                err_msg = 'Extrapolation needed at point x='//&
+                    &trim(r2str(x_interp(id)))//' but not allowed'
+                CHCKERR(err_msg)
+            end if
             
             ! set up start id
             if (n_loc.lt.size(x)) then
@@ -2272,44 +2292,48 @@ contains
             end if
             
             ! check for (near) exact match
-            if (mod(x_interp_disc,1._dp).lt.tol_loc) then
+            if (mod(x_interp_disc,1._dp).lt.tol_loc .and. .not.extrap_id) then
                 ! directly set the correct index to 1
                 A%dat(id,:) = 0._dp
                 A%dat(id,nint(x_interp_disc)-A%id(id,1)+1) = 1._dp
             else
-                ! calculate w_j/(x-x_j)
-                len = (x(A%id(id,1)+n_loc-1) - x(A%id(id,1)))/n_loc
-                if (is_trigon_loc) len = sin(len/2)                             ! take sines
-                if (present(norm_len)) len = norm_len
-                
-                ! set up the interp. coeffs. due to each of the points used
-                weight = 1._dp
-                do jd = 1,n_loc
-                    do kd = 1,n_loc
-                        ! basis of local weight
-                        if (kd.ne.jd) then                                      ! skip k = j
-                            ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
-                            weight_loc = &
-                                &x(A%id(id,1)-1+jd)-x(A%id(id,1)-1+kd)
-                        else
-                            ! multiply additionally by (x_interp - x_j)
-                            weight_loc = x_interp(id)-x(A%id(id,1)-1+jd)
-                        end if
-                        
-                        ! modification of local weight
-                        if (is_trigon_loc) weight_loc = sin(weight_loc/2)       ! take sines
-                        weight_loc = weight_loc/len                             ! normalize
-                        
-                        ! including modified local weight
-                        weight(jd) = weight(jd) * weight_loc
+                if (n_loc.gt.1) then
+                    ! calculate w_j/(x-x_j)
+                    len = (x(A%id(id,1)+n_loc-1) - x(A%id(id,1)))/n_loc
+                    if (is_trigon_loc) len = sin(len/2)                         ! take sines
+                    if (present(norm_len)) len = norm_len
+                    
+                    ! set up the interp. coeffs. due to each of the points used
+                    weight = 1._dp
+                    do jd = 1,n_loc
+                        do kd = 1,n_loc
+                            ! basis of local weight
+                            if (kd.ne.jd) then                                  ! skip k = j
+                                ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
+                                weight_loc = &
+                                    &x(A%id(id,1)-1+jd)-x(A%id(id,1)-1+kd)
+                            else
+                                ! multiply additionally by (x_interp - x_j)
+                                weight_loc = x_interp(id)-x(A%id(id,1)-1+jd)
+                            end if
+                            
+                            ! modification of local weight
+                            if (is_trigon_loc) weight_loc = sin(weight_loc/2)   ! take sines
+                            weight_loc = weight_loc/len                         ! normalize
+                            
+                            ! including modified local weight
+                            weight(jd) = weight(jd) * weight_loc
+                        end do
                     end do
-                end do
-                
-                ! invert
-                weight = 1._dp/weight
-                
-                ! scale by sum and save in A
-                A%dat(id,:) = weight/sum(weight)
+                    
+                    ! invert
+                    weight = 1._dp/weight
+                    
+                    ! scale by sum and save in A
+                    A%dat(id,:) = weight/sum(weight)
+                else
+                    A%dat(id,:) = 1._dp
+                end if
             end if
         end do
         
