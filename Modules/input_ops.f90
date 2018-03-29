@@ -37,7 +37,8 @@ contains
             &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
             &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
-            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style, V_interp_style
+            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style, &
+            &V_interp_style
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -394,6 +395,8 @@ contains
         !   max_it_SLEPC has to be at least 1,
         !   magnetic integral style has to be 1..2,
         !   perturbation grid style has to be 1..2,
+        !   tensorial perturbation variables interpolation style has to be 1..2
+        !   (for style 2, a warning should be displayed)
         !   for HELENA (eq_style 1), only poloidal flux can be used.
         !> \private
         integer function adapt_run_PB3D() result(ierr)
@@ -435,6 +438,15 @@ contains
                 err_msg = 'X_grid_style has to be 1 (equilibrium) or 2 &
                     &(solution)'
                 CHCKERR(err_msg)
+            end if
+            if (V_interp_style.lt.1 .or. V_interp_style.gt.2) then
+                ierr = 1
+                err_msg = 'V_interp_style has to be 1 (finite differences) or &
+                    &2 (splines)'
+                CHCKERR(err_msg)
+                if (V_interp_style.eq.2) call writo('V_interp_style 2 will &
+                    &probably not work because the splines need at least 3 &
+                    &points, which is not guaranteed',warning=.true.)
             end if
             if (eq_style.eq.2 .and. .not.use_pol_flux_F) then
                 use_pol_flux_F = .true.

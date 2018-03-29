@@ -896,7 +896,7 @@ contains
     !!
     !! \return ierr
     integer function init_modes(grid_eq,eq) result(ierr)
-        use num_vars, only: use_pol_flux_F, X_style
+        use num_vars, only: use_pol_flux_F, X_style, X_grid_style
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
             &max_n_X, min_m_X, max_m_X, min_nm_X
         use MPI_utilities, only: get_ser_var
@@ -1066,7 +1066,7 @@ contains
         integer :: delta_ld                                                     ! change in total mode numbers
         integer, allocatable :: ind_cur(:)                                      ! current indices
         integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
-        character(len=max_str_ln) :: plot_title                                 ! title for plots
+        character(len=max_str_ln) :: plot_titles(3)                             ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         logical :: plot_nm_loc                                                  ! local plot_nm
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1246,18 +1246,32 @@ contains
                 x_plot(:,ld) = grid_trim%r_F
             end do
             x_plot = x_plot*2*pi/max_flux_F
+            
             ! plot poloidal modes
-            plot_title = 'poloidal mode numbers'
+            plot_titles(1) = 'poloidal mode numbers'
             plot_name = 'modes_m_X'
-            call print_ex_2D([plot_title],plot_name,mds%m*1._dp,x=x_plot,&
+            call print_ex_2D(plot_titles(1:1),plot_name,mds%m*1._dp,x=x_plot,&
                 &draw=.false.)
-            call draw_ex([plot_title],plot_name,n_mod_X,1,.false.)
+            call draw_ex(plot_titles(1:1),plot_name,n_mod_X,1,.false.)
+            
             ! plot toroidal modes
-            plot_title = 'toroidal mode numbers'
+            plot_titles(1) = 'toroidal mode numbers'
             plot_name = 'modes_n_X'
-            call print_ex_2D([plot_title],plot_name,mds%n*1._dp,x=x_plot,&
+            call print_ex_2D(plot_titles(1:1),plot_name,mds%n*1._dp,x=x_plot,&
                 &draw=.false.)
-            call draw_ex([plot_title],plot_name,n_mod_X,1,.false.)
+            call draw_ex(plot_titles(1:1),plot_name,n_mod_X,1,.false.)
+        
+#if ldebug
+            ! plot secondary limits
+            plot_titles(1) = 'lower limit'
+            plot_titles(2) = 'upper limit'
+            plot_titles(3) = 'normal extent'
+            plot_name = 'modes_sec'
+            call print_ex_2D(plot_titles,plot_name,1._dp*reshape(&
+                &[mds%sec(:,2:3),mds%sec(:,3)-mds%sec(:,2)+1],&
+                &[size(mds%sec,1),3]),x=mds%sec(:,1:1)*1._dp,draw=.false.)
+            call draw_ex(plot_titles,plot_name,3,1,.false.)
+#endif
             
             call lvl_ud(-1)
         end if
@@ -3459,86 +3473,147 @@ contains
     
 #if ldebug
     !> Prints debug information for X_1 driver
-    subroutine print_debug_X_1(grid_X,X_1)
-        use num_vars, only: n_procs, rank
+    integer function print_debug_X_1(mds,grid_X,X_1) result(ierr)
+        use num_vars, only: use_pol_flux_F
+        use grid_utilities, only: trim_grid
+        use grid_vars, only: alpha, n_alpha
+        use eq_vars, only: max_flux_F
+        use rich_vars, only: rich_lvl
+        
+        character(*), parameter :: rout_name = 'print_debug_X_1'
         
         ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(X_1_type), intent(in) :: X_1                                       !< vectorial X variables
         
         ! local variabbles
+        type(grid_type) :: grid_trim                                            ! trimmed grid
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
-        integer :: ld                                                           ! counter
+        integer :: k                                                            ! local row index in flux surface
+        integer :: ld, kd, jd, rd, id                                           ! counters
+        integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
+        integer :: n_mod_tot                                                    ! total number of modes
+        integer :: kdl_tot(2)                                                   ! limits on total normal index for a mode
+        integer :: rdl                                                          ! rd in local tables
+        integer :: kd_loc                                                       ! local kd
+        integer :: kd_loc_trim                                                  ! local kd on trimmed grid
+        integer :: plot_dim(4)                                                  ! dimensions of plot
+        integer :: plot_offset(4)                                               ! local offset of plot
+        complex(dp), allocatable :: U(:,:,:,:,:)                                ! U_i for all modes
+        complex(dp), allocatable :: DU(:,:,:,:,:)                               ! DU_i for all modes
+        real(dp), allocatable :: X_plot(:,:,:,:)                                ! X of plot
+        real(dp), allocatable :: Y_plot(:,:,:,:)                                ! Y of plot
+        real(dp), allocatable :: Z_plot(:,:,:,:)                                ! Y of plot
         
-        ! angles
-        call plot_HDF5('theta_F_B','theta_F',grid_X%theta_F)
-        call plot_HDF5('zeta_F_B','zeta_F',grid_X%zeta_F)
+        ! initiaiize ierr
+        ierr = 0
         
-        ! U_0
-        allocate(var_names(size(X_1%U_0,4)))
-        if (n_procs.eq.1) then
-            file_name = 'U_0'
-        else
-            file_name = 'U_0'//trim(i2str(rank))
-        end if
-        do ld = 1,size(var_names)
-            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
+        ! trim grid
+        ierr = trim_grid(grid_X,grid_trim)
+        CHCKERR('')
+        
+        ! set local n_mod and allocate integrated quantities
+        min_nm_X = minval(mds%sec(:,1),1)
+        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        allocate(U(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
+            &0:1))
+        allocate(DU(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
+            &0:1))
+        allocate(X_plot(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,&
+            &grid_trim%n(2)))
+        allocate(Y_plot(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,&
+            &grid_trim%n(2)))
+        allocate(Z_plot(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,&
+            &grid_trim%n(2)))
+        U = 0._dp
+        DU = 0._dp
+        
+        ! setup X, Y and Z of plot
+        do kd = 1,grid_trim%loc_n_r
+            Z_plot(:,:,kd,1) = 1000*grid_trim%loc_r_F(kd)/max_flux_F*2*pi
+            do rd = 1,n_mod_tot
+                do id = 1,grid_trim%n(1)
+                    X_plot(rd,id,kd,:) = min_nm_X+rd-1
+                    do jd = 1,grid_trim%n(2)
+                        if (use_pol_flux_F) then
+                            Y_plot(rd,id,kd,jd) = grid_trim%theta_F(id,jd,kd)*10
+                        else
+                            Y_plot(rd,id,kd,jd) = grid_trim%zeta_F(id,jd,kd)*10
+                        end if
+                    end do
+                end do
+            end do
         end do
-        call plot_HDF5(var_names,'RE_'//trim(file_name),&
-            &rp(X_1%U_0),col_id=4,col=1)
-        call plot_HDF5(var_names,'IM_'//trim(file_name),&
-            &ip(X_1%U_0),col_id=4,col=1)
+        
+        ! select all modes combinations
+        do k = 1,size(mds%sec,1)
+            ! set normal limits for mode k
+            kdl_tot(1) = mds%sec(k,2)
+            kdl_tot(2) = mds%sec(k,3)
+            
+            ! limit to trimmed grid range
+            kdl_tot(1) = max(kdl_tot(1),grid_trim%i_min)
+            kdl_tot(2) = min(kdl_tot(2),grid_trim%i_max)
+            
+            ! skip if out of normal range
+            if (kdl_tot(1).gt.kdl_tot(2)) cycle
+            
+            ! total mode index (starting from 1)
+            rd = mds%sec(k,1)-min_nm_X+1
+            
+            ! indices in local tables
+            rdl = mds%sec(k,4)
+            
+            ! loop over all normal points
+            do kd = kdl_tot(1),kdl_tot(2)
+                ! set indices
+                kd_loc = kd - grid_X%i_min + 1
+                kd_loc_trim = kd - grid_trim%i_min + 1
+                
+                U(rd,:,kd_loc_trim,:,0) = X_1%U_0(:,:,kd_loc,rdl)
+                U(rd,:,kd_loc_trim,:,1) = X_1%U_1(:,:,kd_loc,rdl)
+                DU(rd,:,kd_loc_trim,:,0) = X_1%DU_0(:,:,kd_loc,rdl)
+                DU(rd,:,kd_loc_trim,:,1) = X_1%DU_1(:,:,kd_loc,rdl)
+            end do
+        end do
+        
+        ! plot
+        allocate(var_names(n_alpha))
+        do ld = 1,size(var_names)
+            var_names(ld) = 'alpha = '//trim(r2strt(alpha(ld)))
+        end do
+        plot_dim = [n_mod_tot,grid_trim%n(1),grid_trim%n(3),n_alpha]
+        plot_offset = [0,0,grid_trim%i_min-1,0]
+        do id = 0,1
+            file_name = 'U_'//trim(i2str(id))//'_R'//&
+                &trim(i2str(rich_lvl))
+            call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                &rp(U(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                &ip(U(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            
+            file_name = 'DU_'//trim(i2str(id))//'_R'//&
+                &trim(i2str(rich_lvl))
+            call plot_HDF5(var_names,'RE_'//trim(file_name),&
+                &rp(DU(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+            call plot_HDF5(var_names,'IM_'//trim(file_name),&
+                &ip(DU(:,:,:,:,id)),x=X_plot,y=Y_plot,z=Z_plot,&
+                &tot_dim=plot_dim, loc_offset=plot_offset,&
+                &col_id=4,col=1)
+        end do
         deallocate(var_names)
         
-        ! U_1
-        allocate(var_names(size(X_1%U_1,4)))
-        if (n_procs.eq.1) then
-            file_name = 'U_1'
-        else
-            file_name = 'U_1'//trim(i2str(rank))
-        end if
-        do ld = 1,size(var_names)
-            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-        end do
-        call plot_HDF5(var_names,'RE_'//trim(file_name),&
-            &rp(X_1%U_1),col_id=4,col=1)
-        call plot_HDF5(var_names,'IM_'//trim(file_name),&
-            &ip(X_1%U_1),col_id=4,col=1)
-        deallocate(var_names)
-        
-        ! DU_0
-        allocate(var_names(size(X_1%DU_0,4)))
-        if (n_procs.eq.1) then
-            file_name = 'DU_0'
-        else
-            file_name = 'DU_0'//trim(i2str(rank))
-        end if
-        do ld = 1,size(var_names)
-            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-        end do
-        call plot_HDF5(var_names,'RE_'//trim(file_name),&
-            &rp(X_1%DU_0),col_id=4,col=1)
-        call plot_HDF5(var_names,'IM_'//trim(file_name),&
-            &ip(X_1%DU_0),col_id=4,col=1)
-        deallocate(var_names)
-        
-        ! DU_1
-        allocate(var_names(size(X_1%DU_1,4)))
-        if (n_procs.eq.1) then
-            file_name = 'DU_1'
-        else
-            file_name = 'DU_1'//trim(i2str(rank))
-        end if
-        do ld = 1,size(var_names)
-            var_names(ld) = trim(file_name)//'_'//trim(i2str(ld))
-        end do
-        call plot_HDF5(var_names,'RE_'//trim(file_name),&
-            &rp(X_1%DU_1),col_id=4,col=1)
-        call plot_HDF5(var_names,'IM_'//trim(file_name),&
-            &ip(X_1%DU_1),col_id=4,col=1)
-        deallocate(var_names)
-    end subroutine print_debug_X_1
+        ! clean up
+        call grid_trim%dealloc()
+    end function print_debug_X_1
     
     !> Prints debug information for X_2 driver
     integer function print_debug_X_2(mds,grid_X,X_2_int) result(ierr)
@@ -3560,9 +3635,8 @@ contains
         type(grid_type) :: grid_trim                                            ! trimmed grid
         character(len=max_str_ln), allocatable :: var_names(:)                  ! names of variables
         character(len=max_str_ln) :: file_name                                  ! name of file
-        integer :: id                                                           ! counter
         integer :: k, m                                                         ! local row and column index in flux surface
-        integer :: ld, kd, rd, cd                                               ! counters
+        integer :: id, ld, kd, rd, cd                                           ! counters
         integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: kdl_tot(2)                                                   ! limits on total normal index for a mode combination
@@ -3599,10 +3673,8 @@ contains
         KV_int = 0._dp
         
         ! setup X, Y and Z of plot
-        ! loop over all normal grid points
         do kd = 1,grid_trim%loc_n_r
             Z_plot(:,:,kd,1) = 1000*grid_trim%loc_r_F(kd)/max_flux_F*2*pi
-            ! loop over all possible mode combinations
             do cd = 1,n_mod_tot
                 do rd = 1,n_mod_tot
                     X_plot(rd,cd,kd,1) = min_nm_X+rd-1
@@ -3663,21 +3735,6 @@ contains
                     KV_int(rd,cd,kd_loc_trim,:,1) = &
                         &X_2_int%KV_1(1,:,kd_loc,c_loc(2))
                 end do
-                !if (mod(rdl,n_mod_X).eq.0 .or. mod(cdl,n_mod_X).eq.0) then
-                    !write(*,*) 'for k,m', k,m, 'of', size(mds%sec,1)
-                    !write(*,*) 'k vars', mds%sec(k,:)
-                    !write(*,*) 'm vars', mds%sec(m,:)
-                    !write(*,*) 'normal range', Z_plot(1,1,kdl_tot(1),1), &
-                        !&Z_plot(1,1,kdl_tot(2),1)
-                        !write(*,*) 'in c_loc ', c_loc(2)
-                    !call print_ex_2D([''],'',transpose(rp(X_2_int%KV_1(1,:,kdl_tot(1)-grid_trim%i_min+1:&
-                        !&kdl_tot(2)-grid_trim%i_min+1,c_loc(2)))))
-                    !call print_ex_2D([''],'',X_2_int%m_1(kdl_tot(1)-grid_trim%i_min+1:&
-                        !&kdl_tot(2)-grid_trim%i_min+1,:)*1._dp)
-                    !call print_ex_2D([''],'',mds%m(kdl_tot(1):kdl_tot(2),:)*1._dp)
-                    !call print_ex_2D([''],'',X_2_int%m_2(kdl_tot(1)-grid_trim%i_min+1:&
-                        !&kdl_tot(2)-grid_trim%i_min+1,:)*1._dp)
-                !end if
             end do
         end do
         

@@ -1116,12 +1116,17 @@ contains
     !! if \c  rich_lvl is  provided, <tt>_R_[rich_lvl]</tt>  is appended  to the
     !! head name if it is > 0.
     !!
-    !! \note    See    <https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html>,
+    !! Also optionally, previously encountered arrays can be removed. This is to
+    !! be used with care, as it may disturb the internal workings of PB3D.
+    !! Currently (v2.15)  it is used  only for the  specific case of  jumping to
+    !! solutions for X_grid_style 1, when writing solutions and solution grids.
+    !!
+    !! \note    See   <https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html>,
     !! 7.4.2.3 for an explanation of the selection of the dataspaces.
     !!
     !! \return ierr
     integer function print_HDF5_arrs(vars,PB3D_name,head_name,rich_lvl,&
-        &disp_info,ind_print) result(ierr)
+        &disp_info,ind_print,remove_previous_arrs) result(ierr)
         use num_vars, only: n_procs, rank
         use MPI
         use MPI_vars, only: HDF5_lock
@@ -1137,6 +1142,7 @@ contains
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to append to file name
         logical, intent(in), optional :: disp_info                              !< display additional information about variable being read
         logical, intent(in), optional :: ind_print                              !< individual write (possibly partial I/O)
+        logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
         integer :: id, jd                                                       ! counters
@@ -1149,6 +1155,7 @@ contains
         character(len=max_str_ln) :: head_name_loc                              ! local head_name
         logical :: ind_print_loc                                                ! local ind_print
         logical :: disp_info_loc                                                ! local disp_info
+        logical :: remove_previous_arrs_loc                                     ! local remove_previous_arrs
         logical :: group_exists                                                 ! the group exists and does not have to be created
         integer(HID_T) :: a_plist_id                                            ! access property list identifier 
         integer(HID_T) :: x_plist_id                                            ! transfer property list identifier 
@@ -1182,6 +1189,11 @@ contains
             if (rich_lvl.gt.0) head_name_loc = trim(head_name_loc)//'_R_'//&
                 &trim(i2str(rich_lvl))
         end if
+        
+        ! set local remove_previous_arrs
+        remove_previous_arrs_loc = .false.
+        if (present(remove_previous_arrs)) remove_previous_arrs_loc = &
+            &remove_previous_arrs
         
         ! detect whether individual or collective print
         call detect_ind_print(ind_print_loc)
@@ -1247,6 +1259,13 @@ contains
         CHCKERR('Failed to disable error printing')
         call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,istat)
         group_exists = istat.eq.0
+        if (group_exists .and. remove_previous_arrs_loc) then
+            write(*,*) 'group', trim(head_name_loc), 'exists'
+            call H5Ldelete_f(HDF5_i,trim(head_name_loc),ierr)
+            CHCKERR('Failed to delete group')
+            group_exists = .false.
+            write(*,*) 'DELETED'
+        end if
         if (.not.group_exists) then                                             ! group does not exist
             call H5Gcreate_f(HDF5_i,trim(head_name_loc),head_group_id,ierr)
             CHCKERR('Failed to create group')
@@ -1369,9 +1388,15 @@ contains
             call H5Dwrite_f(dset_id,HDF5_kind_64,vars(id)%p,dimsf,ierr,&
                 &file_space_id=filespace,mem_space_id=memspace,&
                 &xfer_prp=x_plist_id)
-            if (ierr.ne.0) call writo('Did you increase max_tot_mem &
-                &while restarting Richardson? If so, must start from 1...',&
-                &alert=.true.)
+            if (ierr.ne.0) then
+                call writo('Did you increase max_tot_mem while restarting &
+                    &Richardson or jumping to solution with different grid &
+                    &size?',alert=.true.)
+                call lvl_ud(1)
+                call writo('If so, must restart from lvl = 1.')
+                call writo('Or modify the code to use "remove_previous_arrs".')
+                call lvl_ud(-1)
+            end if
             CHCKERR('Failed to write data data set')
             call H5Pclose_f(x_plist_id,ierr)
             CHCKERR('Failed to close property list')

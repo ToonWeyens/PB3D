@@ -1335,7 +1335,7 @@ contains
     !!
     !! \return ierr
     integer function print_output_grid(grid,grid_name,data_name,rich_lvl,&
-        &par_div) result(ierr)
+        &par_div,remove_previous_arrs) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: var_1D_type, &
@@ -1350,6 +1350,7 @@ contains
         character(len=*), intent(in) :: data_name                               !< name under which to store
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
         logical, intent(in), optional :: par_div                                !< is a parallely divided grid
+        logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
         integer :: n_tot(3)                                                     ! total n
@@ -1480,7 +1481,8 @@ contains
         ! write
         ierr = print_HDF5_arrs(grid_1D(1:id-1),PB3D_name,&
             &'grid_'//trim(data_name),rich_lvl=rich_lvl,&
-            &ind_print=.not.grid_trim%divided)
+            &ind_print=.not.grid_trim%divided,&
+            &remove_previous_arrs=remove_previous_arrs)
         CHCKERR('')
         
         ! clean up

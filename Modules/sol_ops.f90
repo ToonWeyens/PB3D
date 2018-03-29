@@ -1419,7 +1419,9 @@ contains
     !! name if it is \c >0.
     !!
     !! \return ierr
-    integer function print_output_sol(grid,sol,data_name,rich_lvl) result(ierr)
+    integer function print_output_sol(grid,sol,data_name,rich_lvl,&
+        &remove_previous_arrs) result(ierr)
+        
         use num_vars, only: PB3D_name, sol_n_procs, rank
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
@@ -1433,6 +1435,7 @@ contains
         type(sol_type), intent(in) :: sol                                       !< solution variables
         character(len=*), intent(in) :: data_name                               !< name under which to store
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to print
+        logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
         type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables
@@ -1511,8 +1514,9 @@ contains
             ! solution  vector and  should therefore  not be  used to  write the
             ! output.
             if (sol_n_procs.gt.1 .or. rank.eq.0) then
-                ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,trim(data_name),&
-                    &rich_lvl=rich_lvl)
+                ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,&
+                    &trim(data_name),rich_lvl=rich_lvl,&
+                    &remove_previous_arrs=remove_previous_arrs)
                 CHCKERR('')
             end if
             

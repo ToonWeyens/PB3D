@@ -1000,7 +1000,6 @@ ITER Organization
 * Fixed the bug where the vacuum contribution was not saved and therefore could not be used when jumping to the solution.
 
 ## 1.88:
-* Changed the Boundary Conditions system through 'BC_style':
 * 1 to set to zero.
 * 2 to use asymmetric finite differences close to the edge and delta_vac on the edge.
 * 3 to extend the normal grid to accomodate finite differences on the edge, and delta_vac on the edge.
@@ -1189,7 +1188,7 @@ ITER Organization
 * 'debug_run_driver_X_2' now multiplies (hard-coded) the Z-axis by 100 to have easier plots.
 * Fixed bugs in 'debug_run_driver_X_2' where multiple X jobs gave a wrong result. It is now all done after all the X jobs are done.
 
-# 2.12:
+## 2.12:
 * THIS VERSION HAS PB3D WORKING BUT NOT YET POST.
 * Fixed bug when using X_grid_style 2, where the normal interpolation in the solution driver was not done correctly because the last normal point was always chosen.
 * Fixed bug when using X_grid_style 2, where the solution grid was not correctly initialized.
@@ -1202,7 +1201,7 @@ ITER Organization
 * For POST_style 1, 'setup_out_grids' does not need full grids, as it will extend them.
 * plot_sol_vec now uses less memory in the interpolated metric coefficients by selecting only the necessary ones.
 
-# 2.13:
+## 2.13:
 * UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION.
 * Only quantities with same mode number (combination) can be interpolated between, which is currently not done.
 * Alpha variables are once again stored in HDF5, because they are needed in POST.
@@ -1213,8 +1212,8 @@ ITER Organization
 * If energy reconstruction not requested, it is not plotted any more.
 * Implemented new option through 'V_interp_style' that allows the user to switch between 1 (finite difference, new default) and 2 (spline, previous default).
 
-# 2.14:
-UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION FIXED, BUT STILL UNABLE TO REPRODUCE PREVIOUS RESULTS.
+## 2.14:
+* UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION FIXED, BUT STILL UNABLE TO REPRODUCE PREVIOUS RESULTS.
 * Changed way in which secondary modes are stored: The index is kept constant now for a certain mode.
 * 'setup_modes' has been adapted and now calculates the variable 'sec' which is part of the class 'modes' and which indicates the normal limits and table index of every mode. It also works for non-monotomous safety factors with possibly mulpiple ranges of same total mode.
 * Also, the interpolation that is uses is now hard coded of precision 1 (i.e. linear). This is necessary to ensure that the mode ranges are consistent between the perturbation and solution grid for the case of X_grid_style 1.
@@ -1222,4 +1221,16 @@ UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VER
 * Debug information for X_1 and X_2 drivers are now procedures in X_ops, so they can be called externally as well as is done in solution driver.
 * The old debug information for X_2 is not available any more, as it has been superseded by the real X_2 debug information that is also valid for X_style fast.
 * 'setup_interp_data' now accepts extrapolation, and this is used for solution driver.
-WHAT ABOUT ALLOWING PREC 0?!??!
+* 'setup_interp_data' now also accepts precision 0, which means using the constant single value.
+
+## 2.15:
+* USUABLE VERSION.
+* There is still a problem when the equilibrium grid is not fine enough to allow for real interpolation in X_grid style 1 (eq) with X_style 2 (fast).
+* A solution would be to define X_grid style 3 where the X grid is intermediary between the eq and the sol grid, in order to guarantee that the secondary mode range does not vary too fast in the normal direction.
+* Another possible solution would be to limit the actual number of modes of the solution to to a number lesser than n_mod_X and to throw away those modes that cannot be treated appropriately with interpolation.
+* Fixed bug in 'insert_block_mat' where k was used as index instead of m.
+* Rewrote 'print_debug_X_1' in the style of 'print_debug_X_2'.
+* 'setup_modes' now also plots the limits and the normal extent in debug mode.
+* Minimal normal extent for modes is now monitored in 'interp_V'.
+* For X_grid_style 1, 'init_modes' now sets the limits for the modes for the last normal point equal to the ones for the previous point, so that interpolation works better.
+* Added option to remove possible previously present arrs in 'print_HDF5_arrs', which is currently used only to print the solution grid and variables in case of X_grid_style 2.

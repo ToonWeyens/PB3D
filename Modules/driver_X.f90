@@ -422,7 +422,8 @@ contains
 #if ldebug
         ! write vectorial perturbation quantities to output
         if (debug_run_driver_X_1) then
-            call print_debug_X_1(grid_X,X_1)
+            ierr = print_debug_X_1(mds_X,grid_X,X_1)
+            CHCKERR('')
         end if
         
         if (plot_info) then

@@ -20,7 +20,7 @@ module driver_sol
     
     ! global variables
 #if ldebug
-    logical :: debug_run_driver_sol = .true.                                   !< debug information for run_driver_sol \ldebug
+    logical :: debug_run_driver_sol = .false.                                   !< debug information for run_driver_sol \ldebug
 #endif
     
 contains
@@ -40,7 +40,7 @@ contains
         &result(ierr)
         
         use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, &
-            &n_procs, X_grid_style, norm_disc_prec_X
+            &n_procs, X_grid_style, jump_to_sol
         use grid_vars, only: n_r_sol, n_alpha
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
@@ -115,7 +115,8 @@ contains
                 
                 call writo('Write to output file')
                 call lvl_ud(1)
-                ierr = print_output_grid(grid_sol,'solution','sol')
+                ierr = print_output_grid(grid_sol,'solution','sol',&
+                    &remove_previous_arrs=(jump_to_sol.and.X_grid_style.eq.1))
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -175,6 +176,15 @@ contains
             end if
             call lvl_ud(-1)
         end if
+            
+            ! initialize interpolated X
+            ierr = grid_X_sol%init([1,n_alpha,grid_sol%n(3)],&
+                &[grid_sol%i_min,grid_sol%i_max],grid_sol%divided)
+            CHCKERR('')
+            grid_X_sol%r_F = grid_sol%r_F
+            grid_X_sol%r_E = grid_sol%r_E
+            grid_X_sol%loc_r_F = grid_sol%loc_r_F
+            grid_X_sol%loc_r_E = grid_sol%loc_r_E
         
         select case (X_grid_style)
             case (1)                                                            ! equilibrium
@@ -183,31 +193,12 @@ contains
                     &solution grid')
                 call lvl_ud(1)
                 
-                ! initialize interpolated X
-                ierr = grid_X_sol%init([1,n_alpha,grid_sol%n(3)],&
-                    &[grid_sol%i_min,grid_sol%i_max],grid_sol%divided)
-                CHCKERR('')
-                grid_X_sol%r_F = grid_sol%r_F
-                grid_X_sol%r_E = grid_sol%r_E
-                grid_X_sol%loc_r_F = grid_sol%loc_r_F
-                grid_X_sol%loc_r_E = grid_sol%loc_r_E
+                ! initialize
                 call X_sol%init(mds_sol,grid_X_sol,is_field_averaged=.true.)
                 
                 ! interpolate
                 ierr = interp_V(mds_X,grid_X,X,mds_sol,grid_X_sol,X_sol)
                 CHCKERR('')
-                
-#if ldebug
-                ! write  integrated  and  interpolated  field-aligned  tensorial
-                ! perturbation quantities to output and plot
-                if (debug_run_driver_sol) then
-                    ierr = print_debug_X_2(mds_sol,grid_X_sol,X_sol)
-                    CHCKERR('')
-                end if
-#endif
-                
-                ! clean up
-                call grid_X_sol%dealloc()
                 
                 call lvl_ud(-1)
             case (2)                                                            ! solution
@@ -220,6 +211,18 @@ contains
                 
                 call lvl_ud(-1)
         end select
+        
+#if ldebug
+        ! write integrated  field-aligned tensorial  perturbation quantities
+        ! to output and plot
+        if (debug_run_driver_sol) then
+            ierr = print_debug_X_2(mds_sol,grid_X_sol,X_sol)
+            CHCKERR('')
+        end if
+#endif
+        
+        ! clean up
+        call grid_X_sol%dealloc()
         
         ! solve the system
         call writo('Solving the system')
@@ -239,7 +242,8 @@ contains
         call writo('System solved')
         
         ! write solution variables to output
-        ierr = print_output_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl)
+        ierr = print_output_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl,&
+            &remove_previous_arrs=(jump_to_sol.and.X_grid_style.eq.1))
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary
@@ -305,6 +309,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         integer :: km_id
+        integer, allocatable :: norm_ext_i(:,:)                                 ! normal extent for input quantity mode combinations
         real(dp), allocatable :: r_loc_tot(:,:,:)                               ! r_i_loc and r_o_loc for all combinations
         complex(dp), allocatable :: V_plot(:,:)                                 ! for debug plotting of interpolated V
 #endif
@@ -342,7 +347,9 @@ contains
         n_mod_tot = size(mds_o%sec,1)
 #if ldebug
         allocate(r_loc_tot(2,n_mod_tot**2,3))
+        allocate(norm_ext_i(n_mod_tot,n_mod_tot))
         km_id = 0
+        norm_ext_i = 0
 #endif
         do m = 1,n_mod_tot
             do k = 1,n_mod_tot
@@ -396,6 +403,7 @@ contains
                 r_loc_tot(:,km_id,1) = [r_i_loc(1),r_i_loc(size(r_i_loc))]
                 r_loc_tot(:,km_id,2) = [r_o_loc(1),r_o_loc(size(r_o_loc))]
                 r_loc_tot(:,km_id,3) = km_id
+                norm_ext_i(k,m) = size(r_i_loc)
 #endif
                 
                 ! check whether mode combination needs to be calculated
@@ -415,17 +423,11 @@ contains
                 ! prepare interpolation
                 select case (V_interp_style)
                     case (1)                                                    ! finite differences
-                        ! can only interpolate with at least precision one
-                        !if (norm_disc_prec_loc.ge.1) then
-                            ! set up normal interpolation factors
-                            ierr = setup_interp_data(r_i_loc,r_o_loc,&
-                                &norm_interp_data,norm_disc_prec_loc,&
-                                &extrap=.true.)
-                            CHCKERR('')
-                        !else
-                            !write(*,*) 'ONLY ONE POINT'
-                            !read(*,*)
-                        !end if
+                        ! set up normal interpolation factors
+                        ierr = setup_interp_data(r_i_loc,r_o_loc,&
+                            &norm_interp_data,norm_disc_prec_loc,&
+                            &extrap=.true.)
+                        CHCKERR('')
                     case (2)                                                    ! splines
                         allocate(spline_coeff(size(r_i_loc),2))
                         allocate(spline_knots(size(r_i_loc)+norm_disc_prec_loc,&
@@ -526,6 +528,8 @@ contains
             &r_loc_tot(:,1:km_id,2)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
             &draw=.false.)
         call draw_ex([''],'r_o_loc',km_id,1,.false.)
+        call plot_HDF5('normal extent','norm_ext_i',1._dp*&
+            &reshape(norm_ext_i*1._dp,[n_mod_tot,n_mod_tot,1]))
 #endif
         
         ! clean up
