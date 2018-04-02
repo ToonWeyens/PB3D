@@ -87,7 +87,9 @@ contains
     !!
     !! The perturbtion grid  is assumed to have the same  angular coordinates as
     !! the equilibrium grid, and the normal coordinates correspond to either the
-    !! equilibrium grid (X_grid_style 1) or  the solution grid (X_grid_style 2).
+    !! equilibrium grid (\c X_grid_style 1),  the solution grid (\c X_grid_style
+    !! 2) or the enriched equilibrium grid (\c X_grid_style 3).
+    !!
     !! The output grid,  furthermore, has the angular part  corresponding to the
     !! equilibrium grid, and the normal part to the solution grid.
     !!
@@ -111,8 +113,9 @@ contains
     integer function plot_sol_vec(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
         &sol,XYZ,X_id,plot_var) result(ierr)
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
-            &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_X, &
-            &norm_disc_prec_sol, use_normalization, X_grid_style
+            &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_eq, &
+            &norm_disc_prec_X, norm_disc_prec_sol, use_normalization, &
+            &X_grid_style
         use grid_utilities, only: trim_grid, calc_vec_comp, setup_interp_data, &
             &apply_disc
         use sol_utilities, only: calc_XUQ
@@ -171,7 +174,7 @@ contains
         character(len=max_str_ln) :: file_name(2)                               ! name of file
         character(len=max_str_ln) :: description(2)                             ! description
         character(len=2) :: sol_name                                            ! name of solution vector ('xi' or 'Q')
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        type(disc_type) :: norm_interp_data(2)                                  ! data for normal interpolation (eq->sol, X->sol)
 #if ldebug
         type(disc_type) :: norm_deriv_data                                      ! normal derivative data
         integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
@@ -248,9 +251,12 @@ contains
             col = 1                                                             ! no collection
         end if
         
-        ! setup normal interpolation data X->sol
+        ! setup normal interpolation data eq->sol and X->sol
+        ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
+            &norm_interp_data(1),norm_disc_prec_eq)
+        CHCKERR('')
         ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_X)
+            &norm_interp_data(2),norm_disc_prec_X)
         CHCKERR('')
         
         ! set up output grid
@@ -262,18 +268,18 @@ contains
         grid_out%loc_r_F = grid_sol%loc_r_F
         grid_out%loc_r_E = grid_sol%loc_r_E
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 ! interpolate
-                ierr = apply_disc(grid_X%theta_F,norm_interp_data,&
+                ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
                     grid_out%theta_F,3)
                 CHCKERR('')
-                ierr = apply_disc(grid_X%theta_E,norm_interp_data,&
+                ierr = apply_disc(grid_X%theta_E,norm_interp_data(2),&
                     grid_out%theta_E,3)
                 CHCKERR('')
-                ierr = apply_disc(grid_X%zeta_F,norm_interp_data,&
+                ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
                     grid_out%zeta_F,3)
                 CHCKERR('')
-                ierr = apply_disc(grid_X%zeta_E,norm_interp_data,&
+                ierr = apply_disc(grid_X%zeta_E,norm_interp_data(2),&
                     grid_out%zeta_E,3)
                 CHCKERR('')
             case (2)                                                            ! solution
@@ -327,27 +333,27 @@ contains
         
         ! interpolate eq->sol
         ierr = apply_disc(eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0),&
-            &norm_interp_data,h12,3)
+            &norm_interp_data(1),h12,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
-            &norm_interp_data,h22,3)
+            &norm_interp_data(1),h22,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0),&
-            &norm_interp_data,h23,3)
+            &norm_interp_data(1),h23,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0),&
-            &norm_interp_data,g13,3)
+            &norm_interp_data(1),g13,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
-            &norm_interp_data,g33,3)
+            &norm_interp_data(1),g33,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),&
-            &norm_interp_data,jac_FD_int,3)
+            &norm_interp_data(1),jac_FD_int,3)
         CHCKERR('')
 #if ldebug
-        ierr = apply_disc(eq_1%q_saf_FD(:,1),norm_interp_data,Dq_saf)
+        ierr = apply_disc(eq_1%q_saf_FD(:,1),norm_interp_data(1),Dq_saf)
         CHCKERR('')
-        ierr = apply_disc(eq_1%rot_t_FD(:,1),norm_interp_data,Drot_t)
+        ierr = apply_disc(eq_1%rot_t_FD(:,1),norm_interp_data(1),Drot_t)
         CHCKERR('')
 #endif
         
@@ -600,12 +606,12 @@ contains
             
             ! clean up
             deallocate(f_plot_phase)
-            write(*,*) 'WAITING'
-            read(*,*)
         end do
         
         ! clean up
-        call norm_interp_data%dealloc()
+        do id = 1,2
+            call norm_interp_data(id)%dealloc()
+        end do
         call grid_out%dealloc()
         call grid_out_trim%dealloc()
         
@@ -666,8 +672,6 @@ contains
         n_mod_loc = sol%n_mod
         n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
         min_nm_X = minval(mds%sec(:,1),1)
-        
-        write(*,*) '!!!!! CHECK !!!!!!!!'
         
         ! set up serial sol_vec on master
         if (rank.eq.0) &

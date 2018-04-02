@@ -29,7 +29,7 @@ contains
     !!      * \c eq_1 [out] (only first Richardson level)
     !!      * \c eq_2 [out] (for HELENA, only first Richardson level)
     !!  where output means
-    !!      * on the equilibrium grid if \c X_grid style is 1 (no change).
+    !!      * on the equilibrium grid if \c X_grid style is 1,3 (no change).
     !!      * on a redistributed grid if \c X_grid_style is 2
     !!
     !!  - writes to HDF5:
@@ -102,7 +102,7 @@ contains
         
         ! Divide equilibrium grid under  group processes, calculating the limits
         ! and the normal coordinate.
-        ierr = calc_norm_range(eq_limits=eq_limits)
+        ierr = calc_norm_range('PB3D_eq',eq_limits=eq_limits)
         CHCKERR('')
         
         ! jump to solution if requested
@@ -112,9 +112,9 @@ contains
             
             ! grid_eq_out
             select case (X_grid_style)
-                case (1)                                                        ! equilibrium
+                case (1,3)                                                      ! equilibrium or optimized
                     ! perturbation  quantities  are  calculated  on  equilibrium
-                    ! normal grid
+                    ! normal grid or optimized variant
                     ierr = reconstruct_PB3D_grid(grid_eq_out,'eq',&
                         &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
                     CHCKERR('')
@@ -287,7 +287,7 @@ contains
         
         ! set output variables
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 call writo('Copy the equilibrium grids and variables to &
                     &output grid')
             case (2)                                                            ! solution
@@ -300,7 +300,7 @@ contains
         if (do_eq_2_ops) then
             if (associated(grid_eq_out%r_F)) call grid_eq_out%dealloc()         ! deallocate if necessary
             select case (X_grid_style)
-                case (1)                                                        ! equilibrium
+                case (1,3)                                                      ! equilibrium or enriched
                     ierr = grid_eq%copy(grid_eq_out)
                     CHCKERR('')
                 case (2)                                                        ! solution
@@ -313,7 +313,7 @@ contains
         if (do_eq_1_ops) then
             if (allocated(eq_1_out%pres_FD)) call eq_1_out%dealloc()            ! deallocate if necessary
             select case (X_grid_style)
-                case (1)                                                        ! equilibrium
+                case (1,3)                                                      ! equilibrium or optimized
                     call eq_1%copy(grid_eq,eq_1_out)
                 case (2)                                                        ! solution
                     ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_1,&
@@ -326,7 +326,7 @@ contains
         if (do_eq_2_ops) then
             if (allocated(eq_2_out%jac_FD)) call eq_2_out%dealloc()             ! deallocate if necessary
             select case (X_grid_style)
-                case (1)                                                        ! equilibrium
+                case (1,3)                                                      ! equilibrium or optimized
                     call eq_2%copy(grid_eq,eq_2_out)
                 case (2)                                                        ! solution
                     ierr = redistribute_output_eq(grid_eq,grid_eq_out,eq_2,&
@@ -347,7 +347,7 @@ contains
                 end if
                 allocate(grid_eq_B_out)
                 select case (X_grid_style)
-                    case (1)                                                    ! equilibrium
+                    case (1,3)                                                  ! equilibrium or optimized
                         ierr = grid_eq_B%copy(grid_eq_B_out)
                         CHCKERR('')
                     case (2)                                                    ! solution

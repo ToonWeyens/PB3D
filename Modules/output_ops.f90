@@ -1413,6 +1413,8 @@ contains
             do iplt = 1,nplt
                 write(cmd_i,"(A)",IOSTAT=istat) 'args["l'//&
                     &trim(i2str(iplt))//'"] = l'//trim(i2str(iplt))
+                write(cmd_i,"(A)",IOSTAT=istat) 'args["c'//&
+                    &trim(i2str(iplt))//'"] = c'//trim(i2str(iplt))
             end do
             
             write(cmd_i,"(A)",IOSTAT=istat) 'code="""'

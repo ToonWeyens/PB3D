@@ -215,49 +215,57 @@ contains
         lims_dis(2) = product(grid%n(1:2))*grid_out%i_max
         siz = [grid%n(1:2),grid%loc_n_r]
         siz_dis = [grid%n(1:2),grid_out%loc_n_r]
-        allocate(temp_var(2*product(siz_dis)))                                  ! factor 2 because complex variable
+        allocate(temp_var(product(siz_dis)))
         
         ! for all mode numbers
         do ld = 1,size(X%U_0,4)
             ! U_0
-            ierr = redistribute_var(reshape(&
-                &[rp(X%U_0(:,:,:,ld)),ip(X%U_0(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%U_0(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
             X_out%U_0(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%U_0(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%U_0(:,:,:,ld) = X_out%U_0(:,:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! U_1
-            ierr = redistribute_var(reshape(&
-                &[rp(X%U_1(:,:,:,ld)),ip(X%U_1(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%U_1(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
             X_out%U_1(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%U_1(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%U_1(:,:,:,ld) = X_out%U_1(:,:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! DU_0
-            ierr = redistribute_var(reshape(&
-                &[rp(X%DU_0(:,:,:,ld)),ip(X%DU_0(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%DU_0(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
             X_out%DU_0(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%DU_0(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%DU_0(:,:,:,ld) = X_out%DU_0(:,:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! DU_1
-            ierr = redistribute_var(reshape(&
-                &[rp(X%DU_1(:,:,:,ld)),ip(X%DU_1(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%DU_1(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
             X_out%DU_1(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%DU_1(:,:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%DU_1(:,:,:,ld) = X_out%DU_1(:,:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
         end do
         
         ! user output
@@ -313,72 +321,84 @@ contains
         lims_dis(2) = product(n_loc)*grid_out%i_max
         siz = [n_loc,grid%loc_n_r]
         siz_dis = [n_loc,grid_out%loc_n_r]
-        allocate(temp_var(2*product(siz_dis)))                                  ! factor 2 because complex variable
+        allocate(temp_var(product(siz_dis)))
         
         ! for all mode number combinations, symmetric
         do ld = 1,size(X%PV_0,4)
             ! PV_0
-            ierr = redistribute_var(reshape(&
-                &[rp(X%PV_0(:,:,:,ld)),ip(X%PV_0(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%PV_0(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%PV_0(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%PV_0(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%PV_0(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_0(1:n_loc(1),:,:,ld) = X_out%PV_0(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! PV_2
-            ierr = redistribute_var(reshape(&
-                &[rp(X%PV_2(:,:,:,ld)),ip(X%PV_2(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%PV_2(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%PV_2(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%PV_2(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%PV_2(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_2(1:n_loc(1),:,:,ld) = X_out%PV_2(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! KV_0
-            ierr = redistribute_var(reshape(&
-                &[rp(X%KV_0(:,:,:,ld)),ip(X%KV_0(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%KV_0(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%KV_0(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%KV_0(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%KV_0(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_0(1:n_loc(1),:,:,ld) = X_out%KV_0(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! KV_2
-            ierr = redistribute_var(reshape(&
-                &[rp(X%KV_2(:,:,:,ld)),ip(X%KV_2(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%KV_2(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%KV_2(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%KV_2(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%KV_2(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_2(1:n_loc(1),:,:,ld) = X_out%KV_2(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
         end do
         
         ! for all mode number combinations, asymmetric
         do ld = 1,size(X%PV_1,4)
             ! PV_1
-            ierr = redistribute_var(reshape(&
-                &[rp(X%PV_1(:,:,:,ld)),ip(X%PV_1(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%PV_1(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%PV_1(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%PV_1(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%PV_1(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%PV_1(1:n_loc(1),:,:,ld) = X_out%PV_1(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
             
             ! KV_1
-            ierr = redistribute_var(reshape(&
-                &[rp(X%KV_1(:,:,:,ld)),ip(X%KV_1(:,:,:,ld))],[2*product(siz)]),&
-                &temp_var,lims,lims_dis)
+            ierr = redistribute_var(reshape(rp(X%KV_1(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
             CHCKERR('')
-            X_out%KV_1(:,:,:,ld) = &
-                &reshape(temp_var(1:product(siz_dis)),siz_dis) + iu*&
-                &reshape(temp_var(product(siz_dis)+1:2*product(siz_dis)),&
-                &siz_dis)
+            X_out%KV_1(1:n_loc(1),:,:,ld) = &
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
+            ierr = redistribute_var(reshape(ip(X%KV_1(1:n_loc(1),:,:,ld)),&
+                &[product(siz)]),temp_var,lims,lims_dis)
+            CHCKERR('')
+            X_out%KV_1(1:n_loc(1),:,:,ld) = X_out%KV_1(1:n_loc(1),:,:,ld) + iu*&
+                &reshape(temp_var(1:product(siz_dis)),siz_dis)
         end do
         
         ! user output
@@ -896,7 +916,7 @@ contains
     !!
     !! \return ierr
     integer function init_modes(grid_eq,eq) result(ierr)
-        use num_vars, only: use_pol_flux_F, X_style, X_grid_style
+        use num_vars, only: use_pol_flux_F, X_style
         use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X, min_n_X, &
             &max_n_X, min_m_X, max_m_X, min_nm_X
         use MPI_utilities, only: get_ser_var
@@ -2182,7 +2202,7 @@ contains
         select case (X_grid_style)
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 allocate(q_saf(grid_X%loc_n_r))
                 allocate(rot_t(grid_X%loc_n_r))
                 allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r,T_size))
@@ -2315,7 +2335,7 @@ contains
                 T4_X => T4
                 T5_X => T5
                 T6_X => T6
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 ! setup normal interpolation data
                 ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
                     &norm_interp_data,norm_disc_prec_X)
@@ -2487,7 +2507,7 @@ contains
         select case (X_grid_style) 
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 deallocate(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X,T6_X)
         end select
         nullify(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X,T6_X)
@@ -2693,7 +2713,7 @@ contains
         select case (X_grid_style)
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 allocate(q_saf(grid_X%loc_n_r))
                 allocate(rot_t(grid_X%loc_n_r))
                 allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
@@ -2727,7 +2747,7 @@ contains
                 T3_X => T3
                 T4_X => T4
                 T5_X => T5
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 ! setup normal interpolation data
                 ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
                     &norm_interp_data,norm_disc_prec_X)
@@ -2817,7 +2837,7 @@ contains
         select case (X_grid_style) 
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 deallocate(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X)
         end select
         nullify(q_saf,rot_t,T1_X,T2_X,T3_X,T4_X,T5_X)
@@ -2903,7 +2923,7 @@ contains
         select case (X_grid_style)
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 allocate(T1_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
                 allocate(T2_X(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
         end select
@@ -2924,7 +2944,7 @@ contains
                 ! point
                 T1_X => T1
                 T2_X => T2
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 ! setup normal interpolation data
                 ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
                     &norm_interp_data,norm_disc_prec_X)
@@ -3007,7 +3027,7 @@ contains
         select case (X_grid_style) 
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 deallocate(T1_X,T2_X)
         end select
         nullify(T1_X,T2_X)
@@ -3123,7 +3143,7 @@ contains
             case (1)                                                            ! equilibrium
                 ! point
                 J => eq%jac_FD(:,:,:,0,0,0)
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
                 
                 ! setup normal interpolation data
@@ -3293,7 +3313,7 @@ contains
         select case (X_grid_style) 
             case (1)                                                            ! equilibrium
                 ! do nothing
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution or enriched
                 deallocate(J)
         end select
         nullify(J)

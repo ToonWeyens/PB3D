@@ -64,11 +64,12 @@ contains
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
             &n_mod_X
         use grid_ops, only: calc_norm_range
-        use grid_vars, only: min_par_X, max_par_X, n_r_sol, n_r_eq
+        use grid_vars, only: min_par_X, max_par_X, n_r_sol
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &init_modes, setup_modes
         use files_utilities, only: delete_file
-        !!use num_utilities, only: calc_aux_utilities
+        use grid_utilities, only: trim_grid
+        use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'run_driver_X'
         
@@ -77,13 +78,18 @@ contains
         type(grid_type), intent(in), pointer :: grid_eq_B                       !< field-aligned equilibrium grid (should be in but needs inout for interp_HEL_on_grid)
         type(grid_type), intent(inout), target :: grid_X                        !< perturbation grid
         type(grid_type), intent(inout), pointer :: grid_X_B                     !< field-aligned perturbation grid
-        type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium variables
+        type(eq_1_type), intent(in), target :: eq_1                             !< flux equilibrium variables
         type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables (should be in but needs inout for interp_HEL_on_grid)
         type(X_1_type), intent(inout) :: X_1                                    !< vectorial perturbation variables
         type(X_2_type), intent(inout) :: X_2                                    !< tensorial perturbation variables
         
         ! local variables
+        type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
+        integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid for this process
+        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        real(dp), pointer :: jq(:)                                              ! q_saf (pol. flux) or rot_t (tor. flux) in Flux variables
+        real(dp), allocatable :: jq_ser(:)                                      ! serial jq
         
         ! initialize ierr
         ierr = 0
@@ -99,17 +105,26 @@ contains
         ! Divide perturbation grid under group processes, calculating the limits
         ! and the normal coordinate.
         if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
-            select case (X_grid_style)
-                case (1)                                                        ! equilibrium
-                    allocate(r_F_X(n_r_eq))
-                    ierr = calc_norm_range(eq_limits=X_limits)
-                    CHCKERR('')
-                    r_F_X = grid_eq%r_F
-                case (2)                                                        ! solution
-                    allocate(r_F_X(n_r_sol))
-                    ierr = calc_norm_range(sol_limits=X_limits,r_F_sol=r_F_X)
-                    CHCKERR('')
-            end select
+            ! initialize helper variables
+            ierr = trim_grid(grid_eq,grid_eq_trim,norm_id)
+            CHCKERR('')
+            if (use_pol_flux_F) then
+                jq => eq_1%q_saf_FD(:,0)
+            else
+                jq => eq_1%rot_t_FD(:,0)
+            end if
+            ierr = get_ser_var(jq(norm_id(1):norm_id(2)),jq_ser,scatter=.true.)
+            CHCKERR('')
+            call grid_eq_trim%dealloc()
+            eq_limits = [grid_eq%i_min,grid_eq%i_max]
+            
+            ! calculate normal range
+            ierr = calc_norm_range('PB3D_X',eq_limits=eq_limits,&
+                &X_limits=X_limits,r_F_eq=grid_eq%r_F,r_F_X=r_F_X,jq=jq_ser)
+            CHCKERR('')
+            
+            ! clean up
+            nullify(jq)
         end if
         
         ! jump to solution if requested
@@ -162,13 +177,16 @@ contains
         call writo('for '//trim(i2str(size(r_F_X)))//&
             &' values on normal range '//trim(r2strt(min_r_sol))//'..'//&
             &trim(r2strt(max_r_sol)))
-        if (X_grid_style.eq.1) then
-            call lvl_ud(1)
-            call writo('interpolation to the solution grid with '//&
-                &trim(i2str(n_r_sol))//' points will happen in the solution &
-                &driver')
-            call lvl_ud(-1)
-        end if
+        select case (X_grid_style)
+            case (1,3)                                                          ! equilibrium or enriched
+                call lvl_ud(1)
+                call writo('interpolation to the solution grid with '//&
+                    &trim(i2str(n_r_sol))//' points will happen in the &
+                    &solution driver')
+                call lvl_ud(-1)
+            case (2)                                                            ! solution
+                ! do nothing
+        end select
         call writo('for '//trim(i2str(n_par_X))//' values on parallel &
             &range '//trim(r2strt(min_par_X*pi))//'..'//&
             &trim(r2strt(max_par_X*pi)))

@@ -38,7 +38,7 @@ contains
             &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
             &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
             &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style, &
-            &V_interp_style
+            &V_interp_style, max_njq_change
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -72,7 +72,8 @@ contains
             &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, alpha_style, &
             &max_nr_backtracks_HH, magn_int_style, ex_plot_style, n_alpha, &
-            &solver_SLEPC_style, X_grid_style, V_interp_style
+            &solver_SLEPC_style, X_grid_style, V_interp_style, &
+            &max_njq_change
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
@@ -331,8 +332,9 @@ contains
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
-            X_grid_style = 1                                                    ! use equilibrium normal grid for perturbation grid as well
+            X_grid_style = huge(1)                                              ! nonsensible value to check for user overwriting
             V_interp_style = 1                                                  ! use finite differences
+            max_njq_change = 1._dp                                              ! maximum change of 1 for n q (pol. flux) or n iota (tor. flux)
         end subroutine default_input_PB3D
         
         ! POST version
@@ -431,12 +433,6 @@ contains
                 ierr = 1
                 err_msg = 'magn_int_style has to be 1 (trapezoidal) or 2 &
                     &(Simpson 3/8 rule)'
-                CHCKERR(err_msg)
-            end if
-            if (X_grid_style.lt.1 .or. X_grid_style.gt.2) then
-                ierr = 1
-                err_msg = 'X_grid_style has to be 1 (equilibrium) or 2 &
-                    &(solution)'
                 CHCKERR(err_msg)
             end if
             if (V_interp_style.lt.1 .or. V_interp_style.gt.2) then
@@ -741,6 +737,24 @@ contains
                 end if
             end if
             
+            ! set X_grid_style if not overwritten by user
+            if (X_grid_style.ge.huge(1._dp)) then
+                select case (X_style)
+                    case (1)                                                    ! prescribed
+                        X_grid_style = 1                                        ! equilibrium
+                    case (2)                                                    ! fast
+                        X_grid_style = 3                                        ! enriched
+                end select
+            end if
+            
+            ! check X_grid style
+            if (X_grid_style.lt.1 .or. X_grid_style.gt.3) then
+                ierr = 1
+                err_msg = 'X_grid_style has to be 1 (equilibrium), 2 &
+                    &(solution) or 3 (enriched)'
+                CHCKERR(err_msg)
+            end if
+            
             ! checks for each X style
             select case (X_style)
                 case (1)                                                        ! prescribed
@@ -759,6 +773,12 @@ contains
                     if (min_sec_X.ge.huge(1)) then
                         ierr = 1
                         err_msg = 'min_sec_X not set'
+                        CHCKERR(err_msg)
+                    end if
+                    if (X_grid_style.eq.3) then
+                        ierr = 1
+                        err_msg = 'X_grid_style 3 (enriched) does not make &
+                            &sense for X_style 1 (prescribed)'
                         CHCKERR(err_msg)
                     end if
                     
@@ -1156,7 +1176,8 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol, X_grid_style, V_interp_style
+            &norm_disc_style_sol, X_grid_style, V_interp_style, &
+            &max_njq_change
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
@@ -1235,7 +1256,7 @@ contains
         end if
         
         ! calculate limits of input range
-        ierr = calc_norm_range(in_limits=in_limits)
+        ierr = calc_norm_range('PB3D_in',in_limits=in_limits)
         CHCKERR('')
         n_r_eq = in_limits(2)-in_limits(1)+1
         if (in_limits(1).gt.1 .or. in_limits(2).lt.n_r_in) then
@@ -1590,16 +1611,16 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [17]
+        in_1D_loc%loc_i_max = [18]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(17))
+        allocate(in_1D_loc%p(18))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
             &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp,&
             &X_grid_style*1._dp,V_interp_style*1._dp,min_alpha*1._dp,&
-            &max_alpha*1._dp,n_alpha*1._dp]
+            &max_alpha*1._dp,n_alpha*1._dp,max_njq_change]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1

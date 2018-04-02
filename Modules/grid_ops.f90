@@ -29,81 +29,109 @@ contains
     !> Calculates normal range  for the input grid, the  equilibrium grid and/or
     !! the solution grid.
     !!
-    !!  - For PB3D:
-    !!      - if \c  in_limits is provided, the limits are  found by calculating
-    !!      the  tightest equilibrium  grid points  that encompass  the solution
-    !!      range. The global \c max_flux variables are also set.
-    !!      - if \c eq_limits is provided,  the limits are found by dividing the
-    !!      equilibrium  range  over  the  available  processes.  \c  r_F_eq  is
-    !!      ignored.
-    !!      - if \c sol_limits is provided,  the solution range is divided under
-    !!      the processes and \c r_F_eq is filled.
-    !!  - For POST:
-    !!      - The  solution range  is calculated  and the  tightest encompassing
-    !!      equilibrium  range is  found.  Also  \c r_F_eq  and  \c r_F_sol  are
-    !!      provided and necessary.
+    !! General workings, depending on \c X_grid_style:
     !!
-    !! \note
-    !!  -# when setting  \c r_F_eq with \c  sol_limits, it has to  be of correct
-    !!  size.
-    !!  -# The  input limits strip the  input variables from the  ranges that do
-    !!  not  matter  to  the  solution  range  requested  but  does  not  divide
-    !!  the  resulting range  under processes.  This  is the  information of  \c
-    !!  eq_limits, which implies that \c  in_limits have to be correctly applied
-    !!  to the input variables for \c eq_limits to behave correctly.
+    !! | 1 (equilibrium)     | 2 (solution )       | 3 (enriched)           |
+    !! | ------------------- | ------------------- | ---------------------- |
+    !! | calc_eq()           | calc_eq()           | calc_eq()              |
+    !! |                     | redistribute to sol | add points to optimize |
+    !! |                     | interpolate to sol  | interpolate to X       |
+    !! | calc_x()            | calc_x()            | calc_x()               |
+    !! | redistribute to sol | copy to sol         | redistribute to sol    |
+    !! | interpolate to sol  |                     | interpolate to sol     |
     !!
     !! \return ierr
-    integer function calc_norm_range(in_limits,eq_limits,sol_limits,r_F_eq,&
-        &r_F_sol) result(ierr)
-        
-        use num_vars, only: prog_style
+    integer function calc_norm_range(style,in_limits,eq_limits,X_limits,&
+        &sol_limits,r_F_eq,r_F_X,r_F_sol,jq) result(ierr)
         
         character(*), parameter :: rout_name = 'calc_norm_range'
         
         ! input / output
+        character(len=*), intent(in) :: style                                   !< style of calculation (PB3D: in, eq, X or sol; POST)
         integer, intent(inout), optional :: in_limits(2)                        !< min. and max. index of in grid
         integer, intent(inout), optional :: eq_limits(2)                        !< min. and max. index of eq grid for this process
+        integer, intent(inout), optional :: X_limits(2)                         !< min. and max. index of X grid for this process
         integer, intent(inout), optional :: sol_limits(2)                       !< min. and max. index of sol grid for this process
         real(dp), intent(inout), optional :: r_F_eq(:)                          !< equilibrium r_F
+        real(dp), intent(inout), allocatable, optional :: r_F_X(:)              !< perturbation r_F
         real(dp), intent(inout), optional :: r_F_sol(:)                         !< solution r_F
+        real(dp), intent(in), optional :: jq(:)                                 !< q_saf (pol. flux) or rot_t (tor. flux) in total Flux variables
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! select depending on program style
-        select case (prog_style)
-            case(1)                                                             ! PB3D
+        ! select depending on style
+        select case (style)
+            case ('PB3D_in')                                                    ! PB3D: in
                 if (present(in_limits)) then
                     ierr = calc_norm_range_PB3D_in(in_limits)
                     CHCKERR('')
-                else if (present(eq_limits)) then
+                else
+                    ierr = 1
+                    err_msg = 'for PB3D: in, in_limits need to be provided'
+                    CHCKERR(err_msg)
+                end if
+            case ('PB3D_eq')                                                    ! PB3D: eq
+                if (present(eq_limits)) then
                     call calc_norm_range_PB3D_eq(eq_limits)
-                else if (present(sol_limits).and.present(r_F_sol)) then
+                else
+                    ierr = 1
+                    err_msg = 'for PB3D: eq, eq_limits need to be provided'
+                    CHCKERR(err_msg)
+                end if
+            case ('PB3D_X')                                                     ! PB3D: X
+                if (present(eq_limits).and.present(X_limits).and.&
+                    &present(r_F_eq).and.present(r_F_X).and.(present(jq))) then
+                    ierr = calc_norm_range_PB3D_X(eq_limits,X_limits,&
+                        &r_F_eq,r_F_X,jq)
+                    CHCKERR('')
+                else
+                    ierr = 1
+                    err_msg = 'for PB3D: X, eq_limits, X_limits, r_F_eq, &
+                        &r_F_X and jq need to be provided'
+                    CHCKERR(err_msg)
+                end if
+            case ('PB3D_sol')                                                   ! PB3D: sol
+                if (present(sol_limits).and.present(r_F_sol)) then
                     ierr = calc_norm_range_PB3D_sol(sol_limits,r_F_sol)
                     CHCKERR('')
                 else
                     ierr = 1
-                    CHCKERR('Incorrect variables provided.')
+                    err_msg = 'for PB3D: sol, sol_limits and r_F_sol need to &
+                        &be provided'
+                    CHCKERR(err_msg)
                 end if
-            case(2)                                                             ! PB3D post-processing
-                if (present(eq_limits) .and. present(sol_limits) .and. &
-                    &present(r_F_eq) .and.  present(r_F_sol)) then
-                    call calc_norm_range_POST(eq_limits,sol_limits,&
-                        &r_F_eq,r_F_sol)
+            case ('POST')                                                       ! POST
+                if (present(eq_limits) .and. present(X_limits) .and. &
+                    &present(sol_limits) .and.  present(r_F_eq) .and. &
+                    &present(r_F_X) .and.  present(r_F_sol)) then
+                    call calc_norm_range_POST(eq_limits,X_limits,sol_limits,&
+                        &r_F_eq,r_F_X,r_F_sol)
                 else
                     ierr = 1
-                    CHCKERR('Incorrect variables provided.')
+                    err_msg = 'for POST, eq_limits, X_limits, sol_limits, &
+                        &r_F_eq, r_F_X and r_F_sol need to be provided'
+                    CHCKERR(err_msg)
                 end if
+            case default
+                ierr = 1
+                err_msg = 'Incorrect style "'//trim(style)//'"'
+                CHCKERR(err_msg)
         end select
     contains
-        ! The normal  range is calculated by  finding the tightest range  of the
-        ! input variables encompassing the  entire solution range. Additionally,
-        ! the global max_flux variables are set as well..
-        ! Note: this is the global, undivided range. The division information is
-        ! calculated in 'eq_limits'. Furthermore, the input variables have to be
-        ! tabulated on the full grid provided by the equilibrium code to be able
-        ! to be used in PB3D and POST.
-        !> \private
+        !> \public PB3D input version
+        !!
+        !! The normal range  is calculated by finding the tightest  range of the
+        !! input variables encompassing the entire solution range. Additionally,
+        !! the global max_flux variables are set as well..
+        !!
+        !! \note This is  the global, undivided range.  The division information
+        !! is calculated  in 'eq_limits'. Furthermore, the  input variables have
+        !! to be tabulated on the full  grid provided by the equilibrium code to
+        !! be able to be used in PB3D and POST.
         integer function calc_norm_range_PB3D_in(in_limits) &
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
@@ -119,7 +147,7 @@ contains
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_in'
             
             ! input / output
-            integer, intent(inout) :: in_limits(2)                              ! total min. and max. index of eq. grid for this process
+            integer, intent(inout) :: in_limits(2)                              !< total min. and max. index of eq. grid for this process
             
             ! local variables
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
@@ -213,19 +241,21 @@ contains
             in_limits(2) = ceiling(tot_max_r_in_E_dis)
         end function calc_norm_range_PB3D_in
         
-        ! The normal range is calculated  by dividing the full equilibrium range
-        ! passed from the input phase between the processes.
-        ! Note  that at  the end  of  the equilibrium  phase, there  will be  an
-        ! exchange of  data from each process  to each process so  that they all
-        ! have the tightest  possible fit of data of  the corresponding solution
-        ! limits.
-        !> \private
+        !> \public PB3D equilibrium version
+        !!
+        !! The normal range is calculated by dividing the full equilibrium range
+        !! passed from the input phase between the processes.
+        !!
+        !! \note For  X_style 2 (solution) or  3 (optimized), at the  end of the
+        !! equilibrium  phase, there  will  be  an exchange  of  data from  each
+        !! process to each  process so that they all have  the tightest possible
+        !! fit of data of the corresponding perturbation limits.
         subroutine calc_norm_range_PB3D_eq(eq_limits)                           ! PB3D version for equilibrium grid
             use num_vars, only: n_procs, rank, norm_disc_prec_eq
             use grid_vars, only: n_r_eq
             
             ! input / output
-            integer, intent(inout) :: eq_limits(2)                              ! min. and max. index of eq. grid for this process
+            integer, intent(inout) :: eq_limits(2)                              !< min. and max. index of eq. grid for this process
             
             ! set local equilibrium limits
             eq_limits(1) = nint(1 + 1._dp*rank*(n_r_eq-1)/n_procs)
@@ -239,16 +269,106 @@ contains
             eq_limits(2) = min(eq_limits(2)+2*norm_disc_prec_eq,n_r_eq)
         end subroutine calc_norm_range_PB3D_eq
         
-        ! The normal range is determined  by simply dividing the solution range,
-        ! a ghost range is required, depending on matrix_SLEPC_style:
-        !   - 1  (explicit storage  of SLEPC  matrices): need  1 point  to avoid
-        !   having holes in the grid.
-        !   - 2 (shell matrices): need  norm_disc_prec_sol points to get all the
-        !   information  of the  multiplication  of the  SLEPC  matrices with  a
-        !   vector on the local processor.
-        ! By default, this routine uses "sol_n_procs" processes, but this can be
-        ! overruled.
-        !> \private
+        !> \public PB3D perturbation version
+        !!
+        !! The normal range is determined according to X_grid style:
+        !!  1. taken identical  to the equilibrium grid, which  means that after
+        !!  the perturbation  phase the integrated tensorial  quantities have to
+        !!  be  interpolated in  interp_v()  in driver_sol()  after having  been
+        !!  redistributed at the start of the solution driver.
+        !!  2.  taken identical  to  the  solution grid,  which  means that  the
+        !!  the  equilibrium quantities  have  to be  interpolated in  calc_u(),
+        !!  calc_kv() and calc_pv()  after having been redistributed  at the end
+        !!  of the equilibrium driver.
+        !!  3. by   considering  an   optimal  interpolation  extension  of  the
+        !!  equilibrium range,  adding intermediairy points between  grid points
+        !!  where  the  safety factor  changes  too  quickly, according  to  the
+        !!  variable 'max_njq_change'. This uses \c prim_X.
+        integer function calc_norm_range_PB3D_X(eq_limits,X_limits,r_F_eq,&
+            &r_F_X,jq) result(ierr)                                             ! PB3D version for perturbation grid
+            
+            use num_vars, only: X_grid_style, max_njq_change, rank
+            use grid_vars, only: n_r_eq, n_r_sol
+            use X_vars, only: prim_X
+            use grid_utilities, only: calc_eqd_grid
+            use eq_vars, only: max_flux_F
+            
+            character(*), parameter :: rout_name = 'calc_norm_range_PB3D_X'
+            
+            ! input / output
+            integer, intent(in) :: eq_limits(2)                                 !< min. and max. index of eq grid for this process
+            integer, intent(inout) :: X_limits(2)                               !< min. and max. index of X grid for this process
+            real(dp), intent(in) :: r_F_eq(:)                                   !< equilibrium r_F
+            real(dp), intent(inout), allocatable :: r_F_X(:)                    !< perturbation r_F
+            real(dp), intent(in) :: jq(:)                                       !< q_saf (pol. flux) or rot_t (tor. flux) in total Flux variables
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            integer, allocatable :: div(:)                                      ! number of extra divisions for this grid interval
+            real(dp), allocatable :: r_F_plot(:,:)                              ! plot of r_F_eq and r_F_X
+            
+            ! initialize ierr
+            ierr = 0
+            
+            select case (X_grid_style)
+                case (1)                                                        ! equilibrium
+                    ! copy equilibrium
+                    allocate(r_F_X(n_r_eq))
+                    r_F_X = r_F_eq
+                    X_limits = eq_limits
+                case (2)                                                        ! solution
+                    ! calculate solution
+                    allocate(r_F_X(n_r_sol))
+                    ierr = calc_norm_range_PB3D_sol(sol_limits=X_limits,&
+                        &r_F_sol=r_F_X)
+                    CHCKERR('')
+                case (3)                                                        ! enriched
+                    ! decide extra divisions for each interval
+                    allocate(div(size(r_F_eq)-1))
+                    do kd = 1,size(r_F_eq)-1
+                        div(kd) = floor(prim_X*(jq(kd+1)-jq(kd))/max_njq_change)
+                    end do
+                    
+                    ! set up r_F_X with divisions
+                    allocate(r_F_X(size(r_F_eq)+sum(div)))
+                    do kd = 1,size(r_F_eq)-1
+                        ierr = calc_eqd_grid(&
+                            &r_F_X(kd+sum(div(1:kd-1)):kd+sum(div(1:kd))),&
+                            &r_F_eq(kd),r_F_eq(kd+1),excl_last=.true.)
+                        CHCKERR('')
+                    end do
+                    r_F_X(size(r_F_X)) = r_F_eq(size(r_F_eq))
+                    
+                    ! set up normal limits
+                    X_limits(1) = eq_limits(1)+sum(div(1:eq_limits(1)-1))
+                    X_limits(2) = eq_limits(2)+sum(div(1:eq_limits(2)-1))
+                    
+                    ! plot
+                    if (rank.eq.0) then
+                        allocate(r_F_plot(size(r_F_X),4))
+                        r_F_plot(1:size(r_F_eq),1) = r_F_eq
+                        r_F_plot(1:size(r_F_eq),3) = [(kd,kd=1,size(r_F_eq))]
+                        r_F_plot(size(r_F_eq)+1:size(r_F_X),1) = &
+                            &r_F_eq(size(r_F_eq))
+                        r_F_plot(size(r_F_eq)+1:size(r_F_X),3) = size(r_F_eq)
+                        r_F_plot(:,2) = r_F_X
+                        r_F_plot(:,4) = [(kd,kd=1,size(r_F_X))]
+                        r_F_plot(:,1:2) = r_F_plot(:,1:2)/max_flux_F*2*pi
+                        call print_ex_2D(['eq','X '],'r_F_X',&
+                            &r_F_plot(:,3:4),x=r_F_plot(:,1:2),draw=.false.)
+                        call draw_ex(['eq','X '],'r_F_X',2,1,&
+                            &.false.)
+                    end if
+            end select
+        end function calc_norm_range_PB3D_X
+        
+        !> \public PB3D solution version
+        !!
+        !! The normal range is determined by simply dividing the solution range,
+        !! a ghost range is required.
+        !!
+        !! By default, this routine uses  \c sol_n_procs processes, but this can
+        !! be overruled.
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol,n_procs) &
             &result(ierr)                                                       ! PB3D version for solution grid
             use num_vars, only: sol_n_procs, rank, norm_disc_prec_sol
@@ -260,9 +380,9 @@ contains
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_sol'
             
             ! input / output
-            integer, intent(inout) :: sol_limits(2)                             ! min. and max. index of sol grid for this process
-            real(dp), intent(inout) :: r_F_sol(:)                               ! solution r_F
-            integer, intent(in), optional :: n_procs                            ! how many processes used
+            integer, intent(inout) :: sol_limits(2)                             !< min. and max. index of sol grid for this process
+            real(dp), intent(inout) :: r_F_sol(:)                               !< solution r_F
+            integer, intent(in), optional :: n_procs                            !< how many processes used
             
             ! local variables
             integer :: id                                                       ! counter
@@ -308,23 +428,31 @@ contains
             r_F_sol = r_F_sol*max_flux_F/(2*pi)
         end function calc_norm_range_PB3D_sol
         
-        ! The normal range is determined by simply dividing a possible subset of
-        ! the solution range, indicated by min_r_plot and max_r_sol, including a
-        ! ghost range and getting a bounding equilibrium range.
-        !> \private
-        subroutine calc_norm_range_POST(eq_limits,sol_limits,r_F_eq,r_F_sol)    ! POST version
+        !> \public POST version
+        !!
+        !! The normal range  is determined by simply dividing  a possible subset
+        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_sol,
+        !! including  a  ghost range  and  getting  a bounding  equilibrium  and
+        !! perturbation range.
+        subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
+            &r_F_X,r_F_sol)                                                     ! POST version
+            
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
                 &min_r_plot, max_r_plot
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
             ! input / output
-            integer, intent(inout) :: eq_limits(2), sol_limits(2)               ! min. and max. index of eq and sol grid for this process
-            real(dp), intent(in) :: r_F_eq(:), r_F_sol(:)                       ! eq and sol r_F
+            integer, intent(inout) :: eq_limits(2)                              !< min. and max. index of eq grid for this process
+            integer, intent(inout) :: X_limits(2)                               !< min. and max. index of X grid for this process
+            integer, intent(inout) :: sol_limits(2)                             !< min. and max. index of sol grid for this process
+            real(dp), intent(in) :: r_F_eq(:)                                   !< eq r_F
+            real(dp), intent(in) :: r_F_X(:)                                    !< X r_F
+            real(dp), intent(in) :: r_F_sol(:)                                  !< sol r_F
             
             ! local variables
             integer :: sol_limits_tot(2)                                        ! total solution limits
-            integer :: n_r_eq, n_r_sol                                          ! total nr. of normal points in eq and solution grid
+            integer :: n_r_sol                                                  ! total nr. of normal points in solution grid
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
             
@@ -338,8 +466,7 @@ contains
             ! find the solution index that comprises this range
             call find_compr_range(r_F_sol,[min_sol,max_sol],sol_limits_tot)
             
-            ! initialize n_r_eq and n_r_sol
-            n_r_eq = size(r_F_eq)
+            ! initialize n_r_sol
             n_r_sol = sol_limits_tot(2)-sol_limits_tot(1)+1
             allocate(loc_n_r_sol(n_procs))
             
@@ -357,8 +484,9 @@ contains
             min_sol = minval(r_F_sol(sol_limits(1):sol_limits(2)))
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
-            ! determine eq_limits: smallest eq range comprising sol range
+            ! determine eq_limits: smallest eq and X range comprising sol range
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
+            call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
         end subroutine calc_norm_range_POST
     end function calc_norm_range
 
@@ -514,7 +642,7 @@ contains
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(inout) :: grid_X                                !< perturbation grid
-        real(dp), intent(in) :: r_F_X(:)                                        !< points of perturbation grid
+        real(dp), intent(in), allocatable :: r_F_X(:)                           !< points of perturbation grid
         integer, intent(in) :: X_limits(2)                                      !< min. and max. index of perturbation grid of this process
         
         ! local variables
@@ -528,7 +656,7 @@ contains
                 ! X grid identical to equilibrium grid
                 ierr = grid_eq%copy(grid_X)
                 CHCKERR('')
-            case (2)                                                            ! solution
+            case (2,3)                                                          ! solution and enriched
                 ! create grid
                 ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
                 CHCKERR('')
@@ -574,9 +702,6 @@ contains
     !!
     !! For the  solution grid,  only one  parallel point  is used,  but possibly
     !! multiple geodesic points, equal to the number of field lines, \c n_alpha.
-    !! For \c X_grid_style 1, the normal  variables are indicated by variable \c
-    !! r_F_sol, and  for \c X_grid_style 2,  they are identical to  those of the
-    !! perturbation grid.
     !!
     !! \return ierr
     integer function setup_grid_sol(grid_X,grid_sol,r_F_sol,sol_limits) &
@@ -597,7 +722,7 @@ contains
         ierr = 0
         
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 ! create grid
                 ierr = grid_sol%init([0,0,size(r_F_sol)],sol_limits,&
                     &divided=n_procs.gt.1)
@@ -826,9 +951,9 @@ contains
         call lvl_ud(-1)
     end function calc_ang_grid_eq_B
     
-    !> Redistribute the equilibrium grid.
+    !> Redistribute a grid to match the normal distribution of solution grid.
     !! 
-    !! The routine first  calculates the smallest eq range that  comprises the X
+    !! The routine first calculates the smallest eq range that comprises the sol
     !! range.  Then, it  gets the  lowest equilibrium  limits able  to setup  an
     !! output grid that starts at index 1. After determining the output grid, it
     !! then sends the variables to their new processes using MPI.
@@ -857,12 +982,12 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         integer :: eq_limits(2)                                                 ! normal limits for equilibrium variables
-        integer :: X_limits(2)                                                  ! normal limits for perturbation variables
+        integer :: sol_limits(2)                                                ! normal limits for perturbation variables
         integer :: n_out(3)                                                     ! n of grid_out
         integer :: i_lim_tot(2)                                                 ! total limits of grid
         integer :: i_lim_out(2)                                                 ! limits of grid_out
         integer :: lims(2), lims_dis(2)                                         ! limits and distributed limits, taking into account the angular extent
-        real(dp), allocatable :: r_F_X(:)                                       ! perturbation r_F
+        real(dp), allocatable :: r_F_sol(:)                                     ! perturbation r_F
         real(dp), allocatable :: temp_var(:)                                    ! temporary variable
         integer, allocatable :: temp_lim(:)                                     ! temporary limit
         integer, allocatable :: eq_limits_tot(:,:)                              ! total equilibrium limits
@@ -871,13 +996,13 @@ contains
         ! initialize ierr
         ierr = 0
         
-        ! calculate normal range for perturbation
-        allocate(r_F_X(n_r_sol))
-        ierr = calc_norm_range(sol_limits=X_limits,r_F_sol=r_F_X)
+        ! calculate normal range for solution and save in perturbation variables
+        allocate(r_F_sol(n_r_sol))
+        ierr = calc_norm_range('PB3D_sol',sol_limits=sol_limits,r_F_sol=r_F_sol)
         CHCKERR('')
         
         ! determine eq_limits: smallest eq range comprising X range
-        call find_compr_range(grid%r_F,r_F_X(X_limits),eq_limits)
+        call find_compr_range(grid%r_F,r_F_sol(sol_limits),eq_limits)
         
         ! get lowest equilibrium limits to be  able to setup an output grid that
         ! starts at index 1

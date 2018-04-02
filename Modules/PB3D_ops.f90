@@ -43,7 +43,8 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &norm_disc_style_sol, EV_BC, magn_int_style, K_style, &
-            &alpha_style, X_grid_style, V_interp_style, debug_version
+            &alpha_style, X_grid_style, V_interp_style, debug_version, &
+            &max_njq_change
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_1D2ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
@@ -396,6 +397,7 @@ contains
         min_alpha = nint(dum_1D(15))
         max_alpha = nint(dum_1D(16))
         n_alpha = nint(dum_1D(17))
+        max_njq_change = dum_1D(18)
         call dealloc_var_1D(var_1D)
         
         ! misc_sol

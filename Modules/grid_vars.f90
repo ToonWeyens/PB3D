@@ -9,15 +9,16 @@ module grid_vars
 
     implicit none
     private
-    public n_r_in, n_r_eq, n_r_sol, min_par_X, max_par_X, n_alpha, min_alpha, &
-        &max_alpha, alpha
+    public n_r_in, n_r_eq, n_r_X, n_r_sol, min_par_X, max_par_X, n_alpha, &
+        &min_alpha, max_alpha, alpha
 #if ldebug
     public n_alloc_grids, n_alloc_discs
 #endif
     
     ! global variables
     integer :: n_r_in                                                           !< nr. of normal points in input grid
-    integer :: n_r_eq                                                           !< nr. of normal points in equilibrium (and perturbation) grid
+    integer :: n_r_eq                                                           !< nr. of normal points in equilibrium grid
+    integer :: n_r_X                                                            !< nr. of normal points in perturbation grid
     integer :: n_r_sol                                                          !< nr. of normal points in solution grid
     integer :: n_alpha                                                          !< nr. of field-lines
     real(dp) :: min_par_X                                                       !< min. of parallel coordinate [\f$\pi\f$] in field-aligned grid

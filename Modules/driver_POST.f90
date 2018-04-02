@@ -79,8 +79,7 @@ contains
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
-            &X_grid_style
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -109,6 +108,7 @@ contains
         integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job
         integer :: n_div_max                                                    ! maximum divisions of equilibrium jobs
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
+        real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -209,20 +209,14 @@ contains
         call writo('Dividing grids over MPI processes')
         call lvl_ud(1)
         
-        ! set eq and X limits, using r_F of the grids
-        ierr = calc_norm_range(eq_limits=lims_norm(:,1),&
-            &sol_limits=lims_norm(:,3),r_F_eq=grid_eq%r_F,r_F_sol=grid_sol%r_F)
+        ! set eq, X and sol limits, using r_F of the grids
+        allocate(r_F_X(grid_X%n(3)))                                            ! r_F_X needs to be allocatable for calc_norm_range
+        r_F_X = grid_X%r_F
+        ierr = calc_norm_range('POST',eq_limits=lims_norm(:,1),&
+            &X_limits=lims_norm(:,2),sol_limits=lims_norm(:,3),&
+            &r_F_eq=grid_eq%r_F,r_F_X=r_F_X,r_F_sol=grid_sol%r_F)
         CHCKERR('')
-        select case (X_grid_style)
-            case (1)                                                            ! equilibrium
-                ! perturbation quantities in equilibrium grid
-                lims_norm(:,2) = lims_norm(:,1)
-                grid_X%r_F = grid_eq%r_F
-            case (2)                                                            ! solution
-                ! perturbation quantities in solution grid
-                lims_norm(:,2) = lims_norm(:,3)
-                grid_X%r_F = grid_sol%r_F
-        end select
+        deallocate(r_F_X)
         call writo('normal grid limits:')
         call lvl_ud(1)
         call writo('proc '//trim(i2str(rank))//' - equilibrium:  '//&
@@ -1274,7 +1268,7 @@ contains
                         grids_out(2)%theta_E = grids_out(1)%theta_E
                         grids_out(2)%zeta_F = grids_out(1)%zeta_F
                         grids_out(2)%zeta_E = grids_out(1)%zeta_E
-                    case (2)                                                    ! solution
+                    case (2,3)                                                  ! solution or enriched
                         ! normal interpolation data
                         ierr = setup_interp_data(grids_out(1)%loc_r_F,&
                             &grids_out(2)%loc_r_F,norm_interp_data,&
@@ -1352,7 +1346,7 @@ contains
         allocate(XYZ_sol(grids_out(2)%n(1),grids_out(2)%n(2),&
             &grids_out(3)%loc_n_r,3))
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 ! setup normal interpolation data
                 ierr = setup_interp_data(grids_out(2)%loc_r_F,&
                     &grids_out(3)%loc_r_F,norm_interp_data,norm_disc_prec_X)

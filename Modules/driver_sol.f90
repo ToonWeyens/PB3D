@@ -45,15 +45,13 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
         use grid_ops, only: calc_norm_range, setup_grid_sol, &
-            &print_output_grid
+            &print_output_grid, redistribute_output_grid
         use sol_ops, only: print_output_sol
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
         use vac_ops, only: calc_vac_res, print_output_vac
-        use MPI_utilities, only: get_ser_var
         use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
-        use X_ops, only: setup_modes
-        use X_vars, only: min_m_X, min_n_X
+        use X_ops, only: setup_modes, redistribute_output_X
 #if ldebug
         use X_ops, only: print_debug_X_2
 #endif
@@ -70,10 +68,9 @@ contains
         
         ! local variables
         type(grid_type) :: grid_sol_trim                                        ! trimmed solution grid
-        type(grid_type) :: grid_X_trim                                          ! trimmed perturbation grid
-        type(grid_type) :: grid_X_ser                                           ! serial perturbation grid
+        type(grid_type) :: grid_X_rdst                                          ! redistributed perturbation grid
         type(grid_type) :: grid_X_sol                                           ! perturbation grid with solution normal part
-        type(X_2_type) :: X_ser                                                 ! serial X
+        type(X_2_type) :: X_rdst                                                ! redistributed X
         type(X_2_type) :: X_sol                                                 ! interpolated X
         integer :: pmone                                                        ! plus (increasing r_F) or minus (decreasing r_F) one
         integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
@@ -81,10 +78,7 @@ contains
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: norm_range_X(2)                                              ! normal range in X grid of total mode
         integer :: norm_range_sol(2)                                            ! normal range in sol grid of total mode
-        integer :: n_X(3)                                                       ! n of grid_X_trim
-        integer :: n_X_loc                                                      ! local size in grid_X_trim
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed solution grid
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
         complex(dp), allocatable :: V_X(:,:,:)                                  ! PV or KV for total mode
@@ -100,7 +94,8 @@ contains
             ! Divide solution grid under group processes, calculating the limits
             ! and the normal coordinate.
             allocate(r_F_sol(n_r_sol))
-            ierr = calc_norm_range(sol_limits=sol_limits,r_F_sol=r_F_sol)
+            ierr = calc_norm_range('PB3D_sol',sol_limits=sol_limits,&
+                &r_F_sol=r_F_sol)
             CHCKERR('')
             
             if (rich_lvl.eq.1) then
@@ -116,7 +111,8 @@ contains
                 call writo('Write to output file')
                 call lvl_ud(1)
                 ierr = print_output_grid(grid_sol,'solution','sol',&
-                    &remove_previous_arrs=(jump_to_sol.and.X_grid_style.eq.1))
+                    &remove_previous_arrs=(jump_to_sol.and.&
+                    &(X_grid_style.eq.1 .or. X_grid_style.eq.3)))
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -176,28 +172,36 @@ contains
             end if
             call lvl_ud(-1)
         end if
-            
-            ! initialize interpolated X
-            ierr = grid_X_sol%init([1,n_alpha,grid_sol%n(3)],&
-                &[grid_sol%i_min,grid_sol%i_max],grid_sol%divided)
-            CHCKERR('')
-            grid_X_sol%r_F = grid_sol%r_F
-            grid_X_sol%r_E = grid_sol%r_E
-            grid_X_sol%loc_r_F = grid_sol%loc_r_F
-            grid_X_sol%loc_r_E = grid_sol%loc_r_E
+        
+        ! initialize interpolated X
+        ierr = grid_X_sol%init([1,n_alpha,grid_sol%n(3)],&
+            &[grid_sol%i_min,grid_sol%i_max],grid_sol%divided)
+        CHCKERR('')
+        grid_X_sol%r_F = grid_sol%r_F
+        grid_X_sol%r_E = grid_sol%r_E
+        grid_X_sol%loc_r_F = grid_sol%loc_r_F
+        grid_X_sol%loc_r_E = grid_sol%loc_r_E
+        
         
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 ! user output
-                call writo('Interpolate the perturbation variables to &
-                    &solution grid')
+                call writo('Redistribute and interpolate the perturbation &
+                    &variables to solution grid')
                 call lvl_ud(1)
+                
+                ! redistribute grid and X variables
+                ierr = redistribute_output_grid(grid_X,grid_X_rdst)
+                CHCKERR('')
+                ierr = redistribute_output_X(mds_X,grid_X,grid_X_rdst,X,X_rdst)
+                CHCKERR('')
                 
                 ! initialize
                 call X_sol%init(mds_sol,grid_X_sol,is_field_averaged=.true.)
                 
                 ! interpolate
-                ierr = interp_V(mds_X,grid_X,X,mds_sol,grid_X_sol,X_sol)
+                ierr = interp_V(mds_X,grid_X_rdst,X_rdst,mds_sol,grid_X_sol,&
+                    &X_sol)
                 CHCKERR('')
                 
                 call lvl_ud(-1)
@@ -243,7 +247,8 @@ contains
         
         ! write solution variables to output
         ierr = print_output_sol(grid_sol,sol,'sol',rich_lvl=rich_lvl,&
-            &remove_previous_arrs=(jump_to_sol.and.X_grid_style.eq.1))
+            &remove_previous_arrs=&
+            &(jump_to_sol.and.(X_grid_style.eq.1 .or. X_grid_style.eq.3)))
         CHCKERR('')
         
         ! calculate Richardson extrapolation factors if necessary

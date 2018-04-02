@@ -1234,3 +1234,12 @@ ITER Organization
 * Minimal normal extent for modes is now monitored in 'interp_V'.
 * For X_grid_style 1, 'init_modes' now sets the limits for the modes for the last normal point equal to the ones for the previous point, so that interpolation works better.
 * Added option to remove possible previously present arrs in 'print_HDF5_arrs', which is currently used only to print the solution grid and variables in case of X_grid_style 2.
+
+## 2.16:
+* PB3D WORKS WELL NOW, BUT NEEDS SOME DEBUGGING TO MAKE SURE. THE NEW X_grid_style 3 WORKS VERY FAST AND ACCURATELY.
+* POST NEEDS SOME MORE PROFOUND DEBUGGING, AND ALSO calc_E DOES NOT WORK YET.
+* Implemented new X_grid_style 3 (optimized) where the perturbation variable are tabulated in a modified copy of the equilibrium grid that has been enriched in places where the safety factor changes too fast. It only makes sense to use this with X_style 2 (fast).
+* Implemented new variable 'max_jq_change' that can be used with X_grid_style 3 (optimized) and X_style 2 (fast) to determine the maximum allowable change for the safety factor (pol. flux) or rotational transform (tor. flux) per normal grid point..
+* Fixed bug in 'redistribute_output_X' where complex variables were not correctly redistributed.
+* Fixed bug in external Bokeh drawing where interactivity of plots was not correct.
+* Changed 'calc_norm_range' to make it more flexible and added PB3D_X.

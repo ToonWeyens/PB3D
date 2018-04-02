@@ -1117,9 +1117,10 @@ contains
     !! head name if it is > 0.
     !!
     !! Also optionally, previously encountered arrays can be removed. This is to
-    !! be used with care, as it may disturb the internal workings of PB3D.
+    !! be  used with  care, as  it may  disturb the  internal workings  of PB3D.
     !! Currently (v2.15)  it is used  only for the  specific case of  jumping to
-    !! solutions for X_grid_style 1, when writing solutions and solution grids.
+    !! solutions for \c X_grid_style 1 or 3, when writing solutions and solution
+    !! grids.
     !!
     !! \note    See   <https://www.hdfgroup.org/HDF5/doc/UG/12_Dataspaces.html>,
     !! 7.4.2.3 for an explanation of the selection of the dataspaces.

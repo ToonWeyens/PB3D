@@ -45,7 +45,9 @@ module sol_utilities
     !!
     !! The perturbtion grid  is assumed to have the same  angular coordinates as
     !! the equilibrium grid, and the normal coordinates correspond to either the
-    !! equilibrium grid (X_grid_style 1) or  the solution grid (X_grid_style 2).
+    !! equilibrium grid (\c X_grid_style 1),  the solution grid (\c X_grid_style
+    !! 2) or the enriched equilibrium grid (\c X_grid_style 3).
+    !!
     !! The output grid,  furthermore, has the angular part  corresponding to the
     !! equilibrium grid, and the normal part to the solution grid.
     !!
@@ -174,7 +176,7 @@ contains
         allocate(Dsol_vec(n_mod_loc,grid_sol%loc_n_r))
         allocate(XUQ_loc(size(XUQ,1),size(XUQ,2)))
         select case (X_grid_style)
-            case (1)                                                            ! equilibrium
+            case (1,3)                                                          ! equilibrium or enriched
                 allocate(expon_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
                 allocate(fac_0_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
                 allocate(fac_1_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
@@ -209,9 +211,6 @@ contains
         
         ! initialize XUQ
         XUQ = 0._dp
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!'
-        write(*,*) '!!!!! CHECK THIS AS WELL'
-        write(*,*) '!!!!!!!!!!!!!!!!!!!!!!!!!!'
         
         ! set up normal derivative of X vec
         ! Note: In X_style 2 (fast), the mode  indices vary as a function as the
@@ -345,7 +344,7 @@ contains
             
             ! get multiplicative factors and exponent in solution grid
             select case (X_grid_style)
-                case (1)                                                        ! equilibrium
+                case (1,3)                                                      ! equilibrium or enriched
                     ! interpolate X->sol
                     ierr = apply_disc(expon,norm_interp_data(2),expon_sol,3)
                     CHCKERR('')
@@ -381,11 +380,12 @@ contains
             call norm_interp_data(id)%dealloc()
         end do
         select case (X_grid_style) 
-            case (1)                                                            ! equilibrium
-                ! do nothing
+            case (1,3)                                                          ! equilibrium or enriched
+                allocate(expon_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
+                allocate(fac_0_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
+                allocate(fac_1_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))
             case (2)                                                            ! solution
-                deallocate(expon_sol)
-                deallocate(fac_0_sol,fac_1_sol)
+                ! do nothing
         end select
         nullify(expon_sol)
         nullify(fac_0_sol, fac_1_sol)
@@ -478,7 +478,6 @@ contains
         
         ! initialize ierr
         ierr = 0
-        write(*,*) '!!! CHECK !!!'
         
         ! operations depending on X style
         select case (X_style)
@@ -561,7 +560,6 @@ contains
         ierr = 0
         
         ! operations depending on X style
-        write(*,*) '!!! CHECK !!!'
         select case (X_style)
             case (1)                                                            ! prescribed
                 ! test allocation
