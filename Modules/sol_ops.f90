@@ -24,7 +24,7 @@ module sol_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_plot_sol_vec = .true.                                     !< plot debug information for plot_sol_vec() \ldebug
+    logical :: debug_plot_sol_vec = .false.                                     !< plot debug information for plot_sol_vec() \ldebug
     logical :: debug_calc_E = .false.                                           !< plot debug information for calc_E() \ldebug
     logical :: debug_X_norm = .false.                                           !< plot debug information \c X_norm \ldebug
     logical :: debug_DU = .false.                                               !< plot debug information for calculation of \c DU \ldebug
@@ -218,6 +218,7 @@ contains
         call writo('Plot the solution vector')
         call lvl_ud(1)
         
+#if ldebug
         ! tests
         if (size(XYZ,4).ne.3) then
             ierr = 1
@@ -231,6 +232,7 @@ contains
             err_msg = 'XYZ needs to have the correct dimensions'
             CHCKERR(err_msg)
         end if
+#endif
         
         ! set up n_t
         ! if the  Eigenvalue is negative,  the Eigenfunction explodes,  so limit
@@ -260,7 +262,7 @@ contains
         CHCKERR('')
         
         ! set up output grid
-        ierr = grid_out%init([grid_X%n(1:2),grid_sol%n(3)],&
+        ierr = grid_out%init([grid_eq%n(1:2),grid_sol%n(3)],&
             &i_lim=[grid_sol%i_min,grid_sol%i_max],divided=grid_sol%divided)
         CHCKERR('')
         grid_out%r_F = grid_sol%r_F
@@ -269,7 +271,7 @@ contains
         grid_out%loc_r_E = grid_sol%loc_r_E
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
-                ! interpolate
+                ! interpolate X->sol
                 ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
                     grid_out%theta_F,3)
                 CHCKERR('')
@@ -294,7 +296,7 @@ contains
         ierr = trim_grid(grid_out,grid_out_trim,norm_id)
         CHCKERR('')
         
-        ! set up plot dimensions and local dimensions
+        ! set up plot dimensions and offset
         plot_dim = [grid_out_trim%n,product(n_t)]
         plot_offset = [0,0,grid_out_trim%i_min-1,0]
         
@@ -520,11 +522,6 @@ contains
                     nm = sol%m(1,1)
                 end if
                 
-                call print_ex_2D('X_inf','X_inf',rp(f_plot(50,1,:,1,1)),persistent=.true.)
-                call print_ex_2D('U_inf','U_inf',rp(U_inf(50,1,:,1)))
-                call plot_HDF5(['U_inf'],'U_inf',&
-                    &reshape([rp(iu/nm*U_inf(:,:,:,1)),ip(iu/nm*U_inf(:,:,:,1))],&
-                    &[grid_out%n(1:2),grid_out%loc_n_r,2]))
                 ! multiply by i/n or i/m and add the proportional part
                 do ld = 1,product(n_t)
                     U_inf(:,:,:,ld) = iu/nm * U_inf(:,:,:,ld) - &
@@ -575,11 +572,6 @@ contains
                 end select
             end if
             
-            call plot_HDF5([var_name(1)],'TEST',&
-                &rp(f_plot(:,:,norm_id(1):norm_id(2),:,1)),&
-                &tot_dim=plot_dim,loc_offset=plot_offset,&
-                &col=col,cont_plot=cont_plot,&
-                &descr=description(1))
             do kd = 1,2
                 call plot_HDF5([var_name(kd)],trim(file_name(kd))//'_RE',&
                     &rp(f_plot(:,:,norm_id(1):norm_id(2),:,kd)),&
@@ -1119,7 +1111,8 @@ contains
         &vac,B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
-            &norm_disc_prec_sol, rank, eq_job_nr, eq_jobs_lims
+            &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, rank, &
+            &eq_job_nr, eq_jobs_lims, X_grid_style
         use eq_vars, only: vac_perm
         use num_utilities, only: c
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid, &
@@ -1152,10 +1145,10 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: jd, kd                                                       ! counter
+        integer :: id, jd, kd                                                   ! counters
         integer :: loc_dim(3)                                                   ! local dimension
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        type(disc_type) :: norm_interp_data(2)                                  ! data for normal interpolation (eq->sol, X->sol)
         real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)               ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
         real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)                 ! interpolated kappa_n and kappa_g
         real(dp), allocatable :: sigma(:,:,:)                                   ! interpolated sigma
@@ -1165,6 +1158,8 @@ contains
         complex(dp), allocatable :: E_int_tot(:)                                ! integrated potential or kinetic energy of all processes
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
+        integer :: plot_dim(3)                                                  ! dimensions of plot
+        integer :: plot_offset(3)                                               ! local offset of plot
         real(dp), allocatable :: S(:,:,:)                                       ! interpolated S
         complex(dp), allocatable :: DU(:,:,:)                                   ! D_par U
         complex(dp), allocatable :: DU_ALT(:,:,:)                               ! DU calculated from U
@@ -1172,7 +1167,13 @@ contains
 #endif
         
         ! set loc_dim
-        loc_dim = [grid_X%n(1:2),grid_sol%loc_n_r]                              ! includes ghost regions of width norm_disc_prec_sol
+        loc_dim = [grid_eq%n(1:2),grid_sol%loc_n_r]                             ! includes ghost regions of width norm_disc_prec_sol
+        
+#if ldebug
+        ! set up plot dimensions and offset
+        plot_dim = [grid_eq%n(1:2),grid_sol%n(3)]
+        plot_offset = [0,0,grid_sol%i_min-1]
+#endif
         
         ! allocate local variables
         allocate(h22(loc_dim(1),loc_dim(2),loc_dim(3)))
@@ -1206,30 +1207,33 @@ contains
         J = 0._dp
 #endif
         
-        ! setup normal interpolation data for equilibrium grid
+        ! setup normal interpolation data eq->sol and X->sol
         ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data,norm_disc_prec_sol)
+            &norm_interp_data(1),norm_disc_prec_eq)
+        CHCKERR('')
+        ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
+            &norm_interp_data(2),norm_disc_prec_X)
         CHCKERR('')
         
-        ! interpolate
+        ! interpolate eq->sol
         ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
-            &norm_interp_data,h22,3)
+            &norm_interp_data(1),h22,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
-            &norm_interp_data,g33,3)
+            &norm_interp_data(1),g33,3)
         CHCKERR('')
         ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),&
-            &norm_interp_data,J,3)
+            &norm_interp_data(1),J,3)
         CHCKERR('')
-        ierr = apply_disc(eq_2%kappa_n,norm_interp_data,kappa_n,3)
+        ierr = apply_disc(eq_2%kappa_n,norm_interp_data(1),kappa_n,3)
         CHCKERR('')
-        ierr = apply_disc(eq_2%kappa_g,norm_interp_data,kappa_g,3)
+        ierr = apply_disc(eq_2%kappa_g,norm_interp_data(1),kappa_g,3)
         CHCKERR('')
-        ierr = apply_disc(eq_2%sigma,norm_interp_data,sigma,3)
+        ierr = apply_disc(eq_2%sigma,norm_interp_data(1),sigma,3)
         CHCKERR('')
-        ierr = apply_disc(eq_1%pres_FD(:,1),norm_interp_data,D2p(1,1,:))
+        ierr = apply_disc(eq_1%pres_FD(:,1),norm_interp_data(1),D2p(1,1,:))
         CHCKERR('')
-        ierr = apply_disc(eq_1%rho,norm_interp_data,rho(1,1,:))
+        ierr = apply_disc(eq_1%rho,norm_interp_data(1),rho(1,1,:))
         CHCKERR('')
         do kd = 1,loc_dim(3)
             D2p(:,:,kd) = D2p(1,1,kd)
@@ -1237,28 +1241,53 @@ contains
         end do
 #if ldebug
         if (debug_calc_E) then
-            ierr = apply_disc(eq_2%S,norm_interp_data,S,3)
+            ierr = apply_disc(eq_2%S,norm_interp_data(1),S,3)
             CHCKERR('')
         end if
 #endif
-        ! clean up
-        call norm_interp_data%dealloc()
         
         ! set angles and norm
-        if (B_aligned) then
-            if (use_pol_flux_F) then
-                ang_1 = grid_X%theta_F
-            else
-                ang_1 = grid_X%zeta_F
-            end if
-            do jd = 1,n_alpha
-                ang_2(:,jd,:) = alpha(jd)
-            end do
-        else
-            ang_1 = grid_X%theta_F
-            ang_2 = grid_X%zeta_F
-        end if
-        norm = grid_X%loc_r_F
+        select case (X_grid_style)
+            case (1,3)                                                          ! equilibrium or enriched
+                ! interpolate X->sol
+                if (B_aligned) then
+                    if (use_pol_flux_F) then
+                        ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
+                            ang_1,3)
+                        CHCKERR('')
+                    else
+                        ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
+                            ang_1,3)
+                        CHCKERR('')
+                    end if
+                    do jd = 1,n_alpha
+                        ang_2(:,jd,:) = alpha(jd)
+                    end do
+                else
+                    ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
+                        ang_1,3)
+                    CHCKERR('')
+                    ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
+                        ang_2,3)
+                    CHCKERR('')
+                end if
+            case (2)                                                            ! solution
+                ! copy
+                if (B_aligned) then
+                    if (use_pol_flux_F) then
+                        ang_1 = grid_X%theta_F
+                    else
+                        ang_1 = grid_X%zeta_F
+                    end if
+                    do jd = 1,n_alpha
+                        ang_2(:,jd,:) = alpha(jd)
+                    end do
+                else
+                    ang_1 = grid_X%theta_F
+                    ang_2 = grid_X%zeta_F
+                end if
+        end select
+        norm = grid_sol%loc_r_F
         
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
@@ -1314,7 +1343,7 @@ contains
             
             call plot_HDF5('X_norm', 'TEST_X_norm_POST_'//trim(i2str(X_id)),&
                 &rp(XUQ(:,:,:,1)*conjg(XUQ(:,:,:,1))),&
-                &tot_dim=grid_X%n,loc_offset=[0,0,grid_X%i_min-1])
+                &tot_dim=plot_dim,loc_offset=plot_offset)
             
             call lvl_ud(-1)
         end if
@@ -1341,20 +1370,20 @@ contains
             
             ! plot real part
             call plot_HDF5('RE U','TEST_RE_U_'//&
-                &trim(i2str(X_id)),rp(XUQ(:,:,:,2)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1])
+                &trim(i2str(X_id)),rp(XUQ(:,:,:,2)),tot_dim=plot_dim,&
+                &loc_offset=plot_offset)
             call plot_diff_HDF5(rp(DU),rp(DU_ALT),&
-                &'TEST_RE_DU_'//trim(i2str(X_id)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1],descr='To test whether DU is &
+                &'TEST_RE_DU_'//trim(i2str(X_id)),plot_dim,&
+                &plot_offset,descr='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
             ! plot imaginary part
             call plot_HDF5('IM U','TEST_IM_U_'//&
-                &trim(i2str(X_id)),ip(XUQ(:,:,:,2)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1])
+                &trim(i2str(X_id)),ip(XUQ(:,:,:,2)),tot_dim=plot_dim,&
+                &loc_offset=plot_offset)
             call plot_diff_HDF5(ip(DU),ip(DU_ALT),&
-                &'TEST_IM_DU_'//trim(i2str(X_id)),grid_X%n,&
-                &[0,0,grid_sol%i_min-1],descr='To test whether DU is &
+                &'TEST_IM_DU_'//trim(i2str(X_id)),plot_dim,&
+                &plot_offset,descr='To test whether DU is &
                 &parallel derivative of U',output_message=.true.)
             
             deallocate(DU_ALT)
@@ -1409,7 +1438,10 @@ contains
             deallocate(E_int_tot)
         end do
         
-        ! deallocate variables
+        ! clean up
+        do id = 1,2
+            call norm_interp_data(id)%dealloc()
+        end do
         call grid_sol_trim%dealloc()
     end function calc_E
     

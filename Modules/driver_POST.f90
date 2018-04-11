@@ -74,12 +74,13 @@ contains
     !! \return ierr
     integer function init_POST() result(ierr)
         use grid_vars, only: disc_type, &
-            &alpha, n_alpha, min_alpha, max_alpha
+            &alpha, n_alpha, min_alpha, max_alpha, n_r_sol
         use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
+            &X_grid_style
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -416,7 +417,12 @@ contains
             
             ! set size of all variables, without parallel dimension
             var_size_without_par(1) = n_out(3,1)
-            var_size_without_par(2) = n_out(3,2)
+            select case (X_grid_style)
+                case (1,3)                                                      ! equilibrium or enriched
+                    var_size_without_par(2) = n_out(3,2) + n_r_sol
+                case (2)                                                        ! solution
+                    var_size_without_par(2) = n_out(3,2)
+            end select
             
             n_div_max = n_out(1,1)-1
             if (compare_tor_pos) n_div_max = 1
@@ -1261,6 +1267,8 @@ contains
                 CHCKERR('')
                 grids_out(2)%r_F = grid_X%r_F
                 grids_out(2)%r_E = grid_X%r_E
+                grids_out(2)%loc_r_F = grid_X%loc_r_F
+                grids_out(2)%loc_r_E = grid_X%loc_r_E
                 select case (X_grid_style)
                     case (1)                                                    ! equilibrium
                         ! copy angular variables
@@ -1328,7 +1336,6 @@ contains
                 CHCKERR('')
         end select
         
-        write(*,*) '!!!!!!!!!!! CHANGE THE XYZ THING!!!!!!'
         call writo('Calculate X, Y and Z of equilibrium grid')
         call lvl_ud(1)
         ierr = calc_XYZ_of_output_grid(grids_out(1),XYZ_eq)

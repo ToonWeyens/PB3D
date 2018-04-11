@@ -1243,3 +1243,12 @@ ITER Organization
 * Fixed bug in 'redistribute_output_X' where complex variables were not correctly redistributed.
 * Fixed bug in external Bokeh drawing where interactivity of plots was not correct.
 * Changed 'calc_norm_range' to make it more flexible and added PB3D_X.
+
+## 2.17:
+* INTERPOLATION ROUTINES ARE BAD: CONTINUITY IS NOT GUARANTEED. SPLINES ARE NECESSARY.
+* Fixed bug in 'extend_grid_F' where total r_E was not set.
+* Fixed bug in 'setup_grid_sol' where the perturbation grid was used wrongly as the equilibrium grid.
+* Fixed bug where in the solution grid, the Equilibrium coordinates were not set and thus not written to output and therefore not correctly used in the postprocessing.
+* In 'calc_norm_range' for POST, the perturbation limits are set explicitely to the solution limits for X_grid_style 2 (perturbation).
+* Fixed bug in 'calc_XUQ' where normal derivative was done on the whole normal grid, even for X_style 2 (fast). The appropriate subset is now taken.
+* Fixed bug in initialization of X_grid_style.

@@ -104,7 +104,8 @@ contains
                 
                 call writo('Calculate the grid')
                 call lvl_ud(1)
-                ierr = setup_grid_sol(grid_X,grid_sol,r_F_sol,sol_limits)
+                ierr = setup_grid_sol(grid_eq,grid_X,grid_sol,r_F_sol,&
+                    &sol_limits)
                 CHCKERR('')
                 call lvl_ud(-1)
                 
@@ -325,8 +326,8 @@ contains
         ! test
         if (grid_i%n(2).ne.grid_o%n(2)) then
             ierr = 1
-            err_msg = 'input and output grid are not compatible in the geodesic &
-                &coordinate: '//trim(i2str(grid_i%n(2)))//' vs. '//&
+            err_msg = 'input and output grid are not compatible in the &
+                &geodesic coordinate: '//trim(i2str(grid_i%n(2)))//' vs. '//&
                 &trim(i2str(grid_o%n(2)))
             CHCKERR(err_msg)
         end if

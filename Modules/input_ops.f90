@@ -738,7 +738,7 @@ contains
             end if
             
             ! set X_grid_style if not overwritten by user
-            if (X_grid_style.ge.huge(1._dp)) then
+            if (X_grid_style.ge.huge(1)) then
                 select case (X_style)
                     case (1)                                                    ! prescribed
                         X_grid_style = 1                                        ! equilibrium

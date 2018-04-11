@@ -438,7 +438,7 @@ contains
             &r_F_X,r_F_sol)                                                     ! POST version
             
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &min_r_plot, max_r_plot
+                &min_r_plot, max_r_plot, X_grid_style
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
@@ -486,7 +486,12 @@ contains
             
             ! determine eq_limits: smallest eq and X range comprising sol range
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
-            call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
+            select case (X_grid_style)
+                case (1,3)                                                      ! equilibrium or enriched
+                    call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
+                case (2)                                                        ! solution
+                    X_limits = sol_limits
+            end select
         end subroutine calc_norm_range_POST
     end function calc_norm_range
 
@@ -704,8 +709,8 @@ contains
     !! multiple geodesic points, equal to the number of field lines, \c n_alpha.
     !!
     !! \return ierr
-    integer function setup_grid_sol(grid_X,grid_sol,r_F_sol,sol_limits) &
-        &result(ierr)
+    integer function setup_grid_sol(grid_eq,grid_X,grid_sol,r_F_sol,&
+        &sol_limits) result(ierr)
         
         use num_vars, only: n_procs, X_grid_style
         use grid_utilities, only: coord_F2E
@@ -713,6 +718,7 @@ contains
         character(*), parameter :: rout_name = 'setup_grid_sol'
         
         ! input / output
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              !< solution grid
         real(dp), intent(in) :: r_F_sol(:)                                      !< points of solution grid
@@ -733,20 +739,22 @@ contains
                 grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
                 
                 ! convert to Equilibrium variables
-                ierr = coord_F2E(grid_X,grid_sol%r_F,grid_sol%r_E,&
-                    &r_F_array=grid_X%r_F,r_E_array=grid_X%r_E)
+                ierr = coord_F2E(grid_eq,grid_sol%r_F,grid_sol%r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
-                ierr = coord_F2E(grid_X,grid_sol%loc_r_F,grid_sol%loc_r_E,&
-                    &r_F_array=grid_X%r_F,r_E_array=grid_X%r_E)
+                ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
+                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
             case (2)                                                            ! solution
-                ! X grid identical to equilibrium  grid but with only 1 parallel
-                ! point.
+                ! solution grid  identical to perturation  grid but with  only 1
+                ! parallel point.
                 ierr = grid_sol%init([0,0,grid_X%n(3)],&
                     &[grid_X%i_min,grid_X%i_max],grid_X%divided)
                 CHCKERR('')
                 grid_sol%r_F = grid_X%r_F
                 grid_sol%loc_r_F = grid_X%r_F(sol_limits(1):sol_limits(2))
+                grid_sol%r_E = grid_X%r_E
+                grid_sol%loc_r_E = grid_X%r_E(sol_limits(1):sol_limits(2))
         end select
     end function setup_grid_sol
     

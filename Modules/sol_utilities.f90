@@ -93,18 +93,20 @@ contains
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: id, kd, ld                                                   ! counter
+        integer :: kdl(2)                                                       ! kd limits
+        integer :: ld_loc                                                       ! local ld
+        logical :: deriv_loc                                                    ! local copy of deriv
         character(len=max_str_ln) :: err_msg                                    ! error message
         complex(dp) :: sqrt_sol_val_norm                                        ! normalized sqrt(sol_val)
-        logical :: deriv_loc                                                    ! local copy of deriv
-        real(dp), allocatable, target :: expon(:,:,:)                           ! exponent in perturbation grid
-        complex(dp), allocatable, target :: fac_0(:,:,:), fac_1(:,:,:)          ! factor to be multiplied with X and DX in perturbation grid
         complex(dp), pointer :: fac_0_sol(:,:,:), fac_1_sol(:,:,:)              ! fac_0 and fac_1 interpolated in solution grid
-        real(dp), pointer :: expon_sol(:,:,:)                                   ! expon in solution grid
+        complex(dp), allocatable, target :: fac_0(:,:,:), fac_1(:,:,:)          ! factor to be multiplied with X and DX in perturbation grid
         complex(dp), allocatable :: XUQ_loc(:,:)                                ! complex XUQ without time at a normal point
         complex(dp), allocatable :: sol_vec_tot(:,:)                            ! total solution vector in solution grid
         complex(dp), allocatable :: Dsol_vec(:,:)                               ! normal derivative of sol_vec in solution grid
         complex(dp), allocatable :: Dsol_vec_tot(:,:)                           ! total normal derivative of sol_vec in solution grid
         complex(dp), allocatable :: Dsol_vec_loc(:)                             ! local Dsol_vec_tot in solution grid
+        real(dp), pointer :: expon_sol(:,:,:)                                   ! expon in solution grid
+        real(dp), allocatable, target :: expon(:,:,:)                           ! exponent in perturbation grid
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
         real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at perturbation grid
         real(dp), allocatable :: S(:,:,:), inv_J(:,:,:)                         ! S and 1/J, interpolated at perturbation grid
@@ -220,20 +222,36 @@ contains
             ! set up variables
             allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r))
             allocate(Dsol_vec_tot(n_mod_tot,grid_sol%loc_n_r))
-            allocate(Dsol_vec_loc(grid_sol%loc_n_r))
             sol_vec_tot = 0._dp
+            Dsol_vec_tot = 0._dp
             
             ! convert to total solution vector
             ierr = calc_tot_sol_vec(mds,grid_sol%i_min,sol%vec(:,:,X_id),&
                 &sol_vec_tot)
             CHCKERR('')
             
-            ! derive
-            do ld = 1,n_mod_tot
-                ierr = spline3(norm_disc_prec_sol,grid_sol%loc_r_F,&
-                    &sol_vec_tot(ld,:),grid_sol%loc_r_F,dynew=Dsol_vec_loc)
-                CHCKERR('')
-                Dsol_vec_tot(ld,:) = Dsol_vec_loc
+            ! derivate
+            do ld = 1,size(mds%sec,1)
+                ! prepare
+                ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
+                kdl = [mds%sec(ld,2),mds%sec(ld,3)]-grid_sol%i_min+1            ! normal range in solution vector
+                kdl = max(1,min(kdl,grid_sol%loc_n_r))                          ! limit to sol_vec_loc range
+                allocate(Dsol_vec_loc(kdl(2)-kdl(1)+1))
+                Dsol_vec_loc = 0._dp
+                
+                ! derivative
+                if (kdl(2)-kdl(1).gt.norm_disc_prec_sol) then                   ! only calculate if enough points
+                    ierr = spline3(norm_disc_prec_sol,&
+                        &grid_sol%r_F(kdl(1):kdl(2)),&
+                        &sol_vec_tot(ld_loc,kdl(1):kdl(2)),&
+                        &grid_sol%r_F(kdl(1):kdl(2)),&
+                        &dynew=Dsol_vec_loc)
+                    CHCKERR('')
+                end if
+                Dsol_vec_tot(ld_loc,kdl(1):kdl(2)) = Dsol_vec_loc
+                
+                ! clean up
+                deallocate(Dsol_vec_loc)
             end do
             
 #if ldebug
@@ -249,21 +267,23 @@ contains
                     call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
                         &[rp(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_sol%loc_n_r,2]),x=reshape(&
-                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
-                        &[grid_sol%loc_n_r,2]))
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
+                        &[grid_sol%loc_n_r,1]))
                     ierr = calc_int(ip(Dsol_vec_tot(ld,:)),&
                         &grid_sol%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
                         &[ip(sol_vec_tot(ld,:)),sol_vec_ALT],&
                         &[grid_sol%loc_n_r,2]),x=reshape(&
-                        &[grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
-                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r)],&
-                        &[grid_sol%loc_n_r,2]))
+                        &grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
+                        &[grid_sol%loc_n_r,1]))
                     deallocate(sol_vec_ALT)
                 end do
             end if
+            call plot_HDF5(['Re','Im'],'sol_vec',reshape(&
+                &[rp(sol_vec_tot),ip(sol_vec_tot)],[shape(sol_vec_tot),1,2]))
+            call plot_HDF5(['Re','Im'],'Dsol_vec',reshape(&
+                &[rp(Dsol_vec_tot),ip(Dsol_vec_tot)],[shape(Dsol_vec_tot),1,2]))
 #endif
             
             ! convert back to local solution vector

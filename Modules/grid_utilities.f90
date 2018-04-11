@@ -226,7 +226,7 @@ contains
         character(*), parameter :: rout_name = 'coord_F2E_rtz'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits and possibly loc_r)
         real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
         real(dp), intent(in) :: theta_F(:,:,:)                                  !< \f$\theta_\text{F}\f$
         real(dp), intent(in) :: zeta_F(:,:,:)                                   !< \f$\zeta_\text{F}\f$
@@ -404,7 +404,7 @@ contains
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
         ! input / output
-        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
+        type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for possibly loc_r)
         real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
         real(dp), intent(inout) :: r_E(:)                                       !< \f$r_\text{E}\f$
         real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
@@ -1639,6 +1639,7 @@ contains
         &n_zeta_plot,lim_theta_plot,lim_zeta_plot) result(ierr)
         use num_vars, only: n_theta => n_theta_plot, n_zeta => n_zeta_plot, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot
+        use mpi_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'extend_grid_F'
         
@@ -1652,10 +1653,12 @@ contains
         real(dp), intent(in), optional :: lim_zeta_plot(2)                      !< limits in zeta
         
         ! local variables
+        type(grid_type) :: grid_ext_trim                                        ! trimmed grid_ext
         integer :: n_theta_plot_loc                                             ! local n_theta_plot
         integer :: n_zeta_plot_loc                                              ! local n_zeta_plot
         real(dp) :: lim_theta_plot_loc(2)                                       ! local limits of theta_plot
         real(dp) :: lim_zeta_plot_loc(2)                                        ! local limits of zeta_plot
+        real(dp), allocatable :: r_E(:)                                         ! total r_E
         
         ! initialize ierr
         ierr = 0
@@ -1695,11 +1698,23 @@ contains
             call writo('convert F to E coordinates')
             call lvl_ud(1)
             
-            grid_ext%r_F = grid_in%r_F
+            ! get local r_E and angular theta_E and zeta_E
             ierr = coord_F2E(grid_eq,&
                 &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F,&
                 &grid_ext%loc_r_E,grid_ext%theta_E,grid_ext%zeta_E)
             CHCKERR('')
+            
+            ! trim external grid
+            ierr = trim_grid(grid_ext,grid_ext_trim)
+            CHCKERR('')
+            
+            ! get total r_E from variables of trimmed grid
+            ierr = get_ser_var(grid_ext_trim%loc_r_E,r_E,scatter=.true.)
+            CHCKERR('')
+            grid_ext%r_E = r_E
+            
+            ! clean up
+            call grid_ext_trim%dealloc()
             
             call lvl_ud(-1)
         end if
