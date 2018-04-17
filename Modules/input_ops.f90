@@ -315,9 +315,9 @@ contains
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
-            norm_disc_prec_eq = 2                                               ! precision 1 normal discretization of equilibrium
-            norm_disc_prec_X = 2                                                ! precision 1 normal discretization of perturbation
-            norm_disc_prec_sol = 2                                              ! precision 1 normal discretization of solution
+            norm_disc_prec_eq = 3                                               ! cubic precision for normal discretization of equilibrium
+            norm_disc_prec_X = 3                                                ! cubic precision for normal discretization of perturbation
+            norm_disc_prec_sol = 3                                              ! cubic precision for normal discretization of solution
             norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
@@ -333,7 +333,7 @@ contains
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             X_grid_style = huge(1)                                              ! nonsensible value to check for user overwriting
-            V_interp_style = 1                                                  ! use finite differences
+            V_interp_style = 1                                                  ! use splines
             max_njq_change = 1._dp                                              ! maximum change of 1 for n q (pol. flux) or n iota (tor. flux)
         end subroutine default_input_PB3D
         
@@ -400,6 +400,8 @@ contains
         !   tensorial perturbation variables interpolation style has to be 1..2
         !   (for style 2, a warning should be displayed)
         !   for HELENA (eq_style 1), only poloidal flux can be used.
+        !   norm_disc_prec_eq has to  be 3 because cubics are  the maximum order
+        !   for splines and derivatives of order 3 are needed.
         !> \private
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
@@ -435,18 +437,19 @@ contains
                     &(Simpson 3/8 rule)'
                 CHCKERR(err_msg)
             end if
-            if (V_interp_style.lt.1 .or. V_interp_style.gt.2) then
+            if (V_interp_style.ne.1) then
                 ierr = 1
-                err_msg = 'V_interp_style has to be 1 (finite differences) or &
-                    &2 (splines)'
+                err_msg = 'V_interp_style has to be 1 (splines)'
                 CHCKERR(err_msg)
-                if (V_interp_style.eq.2) call writo('V_interp_style 2 will &
-                    &probably not work because the splines need at least 3 &
-                    &points, which is not guaranteed',warning=.true.)
             end if
             if (eq_style.eq.2 .and. .not.use_pol_flux_F) then
                 use_pol_flux_F = .true.
                 call writo('can only use poloidal flux for HELENA',&
+                    &warning=.true.)
+            end if
+            if (norm_disc_prec_eq.ne.3) then
+                norm_disc_prec_eq = 3
+                call writo('can only use norm_disc_prec_eq = 3 currently',&
                     &warning=.true.)
             end if
         end function adapt_run_PB3D
@@ -1580,14 +1583,15 @@ contains
                 ! RBphi_H
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'RBphi_H'
-                allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
-                allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
-                in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [n_r_eq]
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,0]
+                in_1D_loc%loc_i_max = [n_r_eq,size(RBphi_H,2)-1]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(n_r_eq))
-                in_1D_loc%p = RBphi_H(in_limits(1):in_limits(2))
+                allocate(in_1D_loc%p(loc_size))
+                in_1D_loc%p = reshape(RBphi_H(in_limits(1):in_limits(2),:),&
+                    &[loc_size])
                 
                 ! h_H
                 in_1D_loc => in_1D(id); id = id+1

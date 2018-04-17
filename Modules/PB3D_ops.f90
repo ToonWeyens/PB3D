@@ -177,7 +177,7 @@ contains
                     &'flux_t_V')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_2D)
-                allocate(flux_t_V(n_r_eq,0:max_deriv+2))
+                allocate(flux_t_V(n_r_eq,0:max_deriv+1))
                 flux_t_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
@@ -186,7 +186,7 @@ contains
                     &'flux_p_V')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_2D)
-                allocate(flux_p_V(n_r_eq,0:max_deriv+2))
+                allocate(flux_p_V(n_r_eq,0:max_deriv+1))
                 flux_p_V = dum_2D
                 call dealloc_var_1D(var_1D)
                 
@@ -244,8 +244,8 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'jac_V')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_4D)
-                allocate(jac_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(jac_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
+                allocate(jac_V_c(mnmax_V,n_r_eq,0:max_deriv))
+                allocate(jac_V_s(mnmax_V,n_r_eq,0:max_deriv))
                 jac_V_c = dum_4D(:,:,:,1)
                 jac_V_s = dum_4D(:,:,:,2)
                 call dealloc_var_1D(var_1D)
@@ -353,9 +353,9 @@ contains
                 ! RBphi_H
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'RBphi_H')
                 CHCKERR('')
-                call conv_1D2ND(var_1D,dum_1D)
-                allocate(RBphi_H(n_r_eq))
-                RBphi_H = dum_1D
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(RBphi_H(n_r_eq,0:max_deriv+1))
+                RBphi_H = dum_2D
                 call dealloc_var_1D(var_1D)
                 
                 ! h_H

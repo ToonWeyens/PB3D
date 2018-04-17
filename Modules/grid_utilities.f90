@@ -191,9 +191,11 @@ module grid_utilities
         module procedure calc_tor_diff_2D
     end interface
     
-    !> \public    Applies     the    discretization    data     calculated    in
-    !! grid_utilities.setup_deriv_data() or setup_interp_data() to calculate the
-    !! derivative or interpolation in a dimension \c disc_dim.
+    !> \public Applies the discretization  data calculated in setup_deriv_data()
+    !! or setup_interp_data() to calculate the  derivative or interpolation in a
+    !! dimension \c disc_dim.
+    !!
+    !! \note setup_interp_data() has been deprecated.
     !!
     !! \return ierr
     interface apply_disc
@@ -917,7 +919,7 @@ contains
     integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
         &result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot
-        use num_utilities, only: spline3, order_per_fun
+        use num_utilities, only: spline, order_per_fun
         
         character(*), parameter :: rout_name = 'calc_tor_diff_2D'
         
@@ -963,8 +965,9 @@ contains
                             &norm_disc_prec)
                         CHCKERR('')
                         
-                        istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
-                            &theta_eqd,ynew=v_com_interp(:,jd))
+                        istat = spline(theta_ord,v_com_ord,theta_eqd,&
+                            &v_com_interp(:,jd),ord=min(norm_disc_prec,3),&
+                            &deriv=0)
                         deallocate(theta_ord,v_com_ord)
                         
                         if (istat.ne.0) then
@@ -987,8 +990,9 @@ contains
                     CHCKERR('')
                     
                     ! interpolate back
-                    istat = spline3(norm_disc_prec,theta_ord,v_com_ord,&
-                        &theta(:,2,kd),ynew=v_com(:,2,kd,id,ld))
+                    istat = spline(theta_ord,v_com_ord,theta(:,2,kd),&
+                        &v_com(:,2,kd,id,ld),min(norm_disc_prec,3),&
+                        &deriv=0)
                     deallocate(theta_ord,v_com_ord)
                     
                     if (istat.ne.0) then
@@ -2203,9 +2207,12 @@ contains
     !! interpolation point  \c x_interp is within  a tiny tolerance of  the grid
     !! points \c x, the machinery is bypassed to avoid unstabilities.
     !!
-    !! \note Optionally also a normalization length  can be provided so that the
-    !! individual terms in the interpolation do  not blow up. This can be useful
-    !! for example for interpolation with many points.
+    !! \note
+    !!  -# This routine is deprecated, as it does not guarantee any continuity.
+    !!  Use the spline routines instead.
+    !!  -# Optionally  also a normalization length  can be provided so  that the
+    !!  individual terms in the interpolation do not blow up. This can be useful
+    !!  for example for interpolation with many points.
     !! 
     !! \return ierr
     integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len,&
@@ -2241,6 +2248,10 @@ contains
         
         ! initialize ierr
         ierr = 0
+        
+        ! deprecated warning
+        call writo('Using deprecated routine "setup_interp_data". Use &
+            &splines instead',warning=.true.)
         
         ! set local is_trigon, tolerance and extrap
         is_trigon_loc = .false.
@@ -2487,6 +2498,17 @@ contains
         else
             grid_out%r_E = grid_in%r_E
             grid_out%r_F = grid_in%r_F
+        end if
+        
+        ! if allocated, copy trigonometric factors
+        if (allocated(grid_in%trigon_factors)) then
+            allocate(grid_out%trigon_factors(&
+                &size(grid_in%trigon_factors,1),&
+                &size(grid_in%trigon_factors,2),&
+                &size(grid_in%trigon_factors,3),&
+                &grid_out%loc_n_r,2))
+            grid_out%trigon_factors = &
+                &grid_in%trigon_factors(:,:,:,i_lim_out(1):i_lim_out(2),:)
         end if
     end function trim_grid
     

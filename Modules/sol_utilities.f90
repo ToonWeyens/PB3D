@@ -65,7 +65,7 @@ contains
         &X_id,XUQ_style,time,XUQ,deriv) result(ierr)
         
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
-        use num_utilities, only: con2dis, spline3
+        use num_utilities, only: con2dis, spline
         use grid_utilities, only: setup_interp_data, apply_disc
 #if ldebug
         use num_utilities, only: calc_int
@@ -241,12 +241,10 @@ contains
                 
                 ! derivative
                 if (kdl(2)-kdl(1).gt.norm_disc_prec_sol) then                   ! only calculate if enough points
-                    ierr = spline3(norm_disc_prec_sol,&
-                        &grid_sol%r_F(kdl(1):kdl(2)),&
+                    ierr = spline(grid_sol%r_F(kdl(1):kdl(2)),&
                         &sol_vec_tot(ld_loc,kdl(1):kdl(2)),&
-                        &grid_sol%r_F(kdl(1):kdl(2)),&
-                        &dynew=Dsol_vec_loc)
-                    CHCKERR('')
+                        &grid_sol%r_F(kdl(1):kdl(2)),Dsol_vec_loc,&
+                        &ord=min(norm_disc_prec_sol,3),deriv=1)
                 end if
                 Dsol_vec_tot(ld_loc,kdl(1):kdl(2)) = Dsol_vec_loc
                 

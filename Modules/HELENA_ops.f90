@@ -8,7 +8,7 @@ module HELENA_ops
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type
     use HELENA_vars
@@ -81,10 +81,8 @@ contains
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, norm_disc_prec_eq, max_deriv, &
-            &tol_zero
-        use grid_utilities, only: setup_deriv_data, apply_disc
-        use num_utilities, only: calc_int, spline3
+        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero
+        use num_utilities, only: calc_int, spline
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
             &nchi, chi_H, ias, RBphi_H, R_H, Z_H, RMtoG_H, BMtoG_H
         
@@ -97,24 +95,23 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counters
-        integer :: lper                                                         ! periodicity flag for derivation
         integer :: nchi_loc                                                     ! local nchi
         integer :: max_loc_Z(2)                                                 ! location of maximum Z
         real(dp), allocatable :: s_H(:)                                         ! flux coordinate s
         real(dp), allocatable :: curj(:)                                        ! toroidal current
         real(dp), allocatable :: vx(:), vy(:)                                   ! R and Z of surface
-        real(dp) :: Dp0, Dpe                                                    ! derivative of pressure on axis and surface
         real(dp) :: diff_Dp                                                     ! Dp difference
         real(dp) :: tol_diff_Dp                                                 ! tolerance on diff_Dp
+        real(dp) :: Dp0, Dpe                                                    ! derivative of pressure on axis and surface
+        real(dp) :: Dq0, Dqe                                                    ! derivative of safety factor on axis and surface
         real(dp) :: Dj0, Dje                                                    ! derivative of toroidal current on axis and surface
-        real(dp) :: dRBphi0, dRBphie                                            ! normal derivative of R B_phi on axis and surface
+        real(dp) :: DF0, DFe                                                    ! derivative of RBphi on axis and surface
         real(dp) :: radius, raxis                                               ! minor radius, major radius normalized w.r.t.  magnetic axis (i.e. R_m)
         real(dp) :: B0                                                          ! B_geo/B_m
         real(dp) :: eps                                                         ! inverse aspect ratio
         real(dp) :: cpsurf                                                      ! poloidal flux on surface
         real(dp) :: ellip                                                       ! ellipticity
         real(dp) :: tria                                                        ! triangularity
-        type(disc_type), allocatable :: norm_deriv_data(:)                      ! data for normal derivatives
         
         ! initialize ierr
         ierr = 0
@@ -143,8 +140,11 @@ contains
         allocate(q_saf_H(n_r_in,0:max_deriv+1))                                 ! safety factor
         read(eq_i,*,IOSTAT=ierr) (q_saf_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
-        read(eq_i,*,IOSTAT=ierr) q_saf_H(1,1),q_saf_H(n_r_in,1)                 ! first point, last point
+        read(eq_i,*,IOSTAT=ierr) dq0, Dqe                                       ! first point, last point
         CHCKERR(err_msg)
+        ! Note: Dq0 an  Dqe are in the local coordinate  of the finite elements,
+        ! and are therefore not used here: q_saf_H(:,1) will be overwritten
+        q_saf_H(1,1) = Dq0
         read(eq_i,*,IOSTAT=ierr) (q_saf_H(kd,1),kd=2,n_r_in)                    ! second to last point (again)
         CHCKERR(err_msg)
         
@@ -179,8 +179,8 @@ contains
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (gem12)
         CHCKERR(err_msg)
         do id = 1,nchi-1
-            ierr = spline3(norm_disc_prec_eq,s_H(2:n_r_in),h_H_12(id,2:n_r_in),&
-                &s_H(1:1),ynew=h_H_12(id,1:1),extrap=.true.)
+            ierr = spline(s_H(2:n_r_in),h_H_12(id,2:n_r_in),s_H(1:1),&
+                &h_H_12(id,1:1),deriv=0,extrap=.true.)
             CHCKERR('')
         end do
         if (ias.ne.0) h_H_12(nchi,:) = h_H_12(1,:)
@@ -205,11 +205,11 @@ contains
         read(eq_i,*,IOSTAT=ierr) Dp0, Dpe                                       ! first point, last point
         CHCKERR(err_msg)
         
-        allocate(RBphi_H(n_r_in))                                               ! R B_phi (= F)
-        read(eq_i,*,IOSTAT=ierr) (RBphi_H(kd),kd=1,n_r_in)
+        allocate(RBphi_H(n_r_in,0:max_deriv+1))                                 ! R B_phi (= F)
+        read(eq_i,*,IOSTAT=ierr) (RBphi_H(kd,0),kd=1,n_r_in)
         CHCKERR(err_msg)
-        
-        read(eq_i,*,IOSTAT=ierr) dRBphi0,dRBphie                                ! derivatives of R B_phi on axis and surface
+        ! Note: DF0 and DFe contain rubbish and are not used.
+        read(eq_i,*,IOSTAT=ierr) DF0, DFe                                       ! derivatives of R B_phi on axis and surface
         CHCKERR(err_msg)
         
         allocate(vx(nchi))                                                      ! R B_phi
@@ -235,15 +235,8 @@ contains
             &id=nchi_loc+1,n_r_in*nchi_loc)                                     ! (yout)
         CHCKERR(err_msg)
         
-        ! set up periodicity flag
-        if (ias.eq.0) then                                                      ! top-bottom symmetric
-            lper = 2                                                            ! even half periodic
-        else
-            lper = 1                                                            ! full periodic
-        end if
-        
         ! transform to MISHKA normalization
-        allocate(flux_p_H(n_r_in,0:max_deriv+1))
+        allocate(flux_p_H(n_r_in,0:max_deriv+1))  
         flux_p_H(:,0) = 2*pi*s_H**2 * cpsurf                                    ! rescale flux coordinate (HELENA uses psi_pol/2pi as flux)
         radius = radius * raxis                                                 ! global length normalization with R_m
         R_H = radius*(1._dp/eps + R_H)                                          ! local normalization with a
@@ -266,27 +259,16 @@ contains
         call writo('Calculated ellipticity: '//trim(r2str(ellip)))
         call writo('Calculated triangularity: '//trim(r2str(tria)))
         
-        ! calculate data for normal derivatives with flux_p_H/2pi
-        allocate(norm_deriv_data(max_deriv+1))
-        do kd = 1,max_deriv+1
-            ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),norm_deriv_data(kd),&
-                &kd,norm_disc_prec_eq)
-            CHCKERR('')
-        end do
-        
         ! calculate derivatives of fluxes
         allocate(flux_t_H(n_r_in,0:max_deriv+1))
-        do kd = 1,max_deriv+1
-            ierr = apply_disc(flux_p_H(:,0),norm_deriv_data(kd),&
-                &flux_p_H(:,kd))
-            CHCKERR('')
-        end do
+        flux_p_H(:,1) = 2*pi
+        flux_p_H(:,2:max_deriv+1) = 0._dp
         flux_t_H(:,1) = q_saf_H(:,0)*flux_p_H(:,1)
         ierr = calc_int(flux_t_H(:,1),flux_p_H(:,0)/(2*pi),flux_t_H(:,0))
         CHCKERR('')
         do kd = 2,max_deriv+1
-            ierr = apply_disc(flux_t_H(:,1),norm_deriv_data(kd-1),&
-                &flux_t_H(:,kd))
+            ierr = spline(flux_p_H(:,0)/(2*pi),flux_t_H(:,1),&
+                &flux_p_H(:,0)/(2*pi),flux_t_H(:,kd),deriv=kd-1)
             CHCKERR('')
         end do
         
@@ -294,11 +276,18 @@ contains
         allocate(rot_t_H(n_r_in,0:max_deriv+1))                                 ! rotational transform
         rot_t_H(:,0) = 1._dp/q_saf_H(:,0)
         do kd = 1,max_deriv+1
-            ierr = apply_disc(pres_H(:,0),norm_deriv_data(kd),pres_H(:,kd))
+            ierr = spline(flux_p_H(:,0)/(2*pi),pres_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),pres_H(:,kd),deriv=kd,bcs=[0,1],&
+                &bcs_val=[0._dp,Dpe*pi/(flux_p_H(n_r_in,0)*s_H(n_r_in))])
             CHCKERR('')
-            ierr = apply_disc(rot_t_H(:,0),norm_deriv_data(kd),rot_t_H(:,kd))
+            ierr = spline(flux_p_H(:,0)/(2*pi),RBphi_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),RBphi_H(:,kd),deriv=kd)
             CHCKERR('')
-            ierr = apply_disc(q_saf_H(:,0),norm_deriv_data(kd),q_saf_H(:,kd))
+            ierr = spline(flux_p_H(:,0)/(2*pi),rot_t_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),rot_t_H(:,kd),deriv=kd)
+            CHCKERR('')
+            ierr = spline(flux_p_H(:,0)/(2*pi),q_saf_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),q_saf_H(:,kd),deriv=kd)
             CHCKERR('')
         end do
         
@@ -329,12 +318,6 @@ contains
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.
-        
-        ! clean up
-        do id = 1,size(norm_deriv_data)
-            call norm_deriv_data(id)%dealloc()
-        end do
-        deallocate(norm_deriv_data)
         
         ! user output
         call writo('HELENA output given on '//trim(i2str(nchi))//&
@@ -1262,16 +1245,16 @@ contains
     !! \return ierr
     integer function test_metrics_H() result(ierr)
         use num_vars, only: rank, norm_disc_prec_eq
-        use grid_utilities, only: setup_deriv_data, apply_disc
         use output_ops, only: plot_diff_HDF5
         use input_utilities, only: get_int
         use grid_vars, only: n_r_eq
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'test_metrics_H'
         
         ! local variables
         integer :: id, kd                                                       ! counters
-        integer :: lper                                                         ! periodicity flag for derivation
+        integer :: bcs(2)                                                       ! boundary condition
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         real(dp), allocatable :: jac(:,:)                                       ! jac as defined above
@@ -1283,8 +1266,6 @@ contains
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: r_min = 4                                                    ! first normal index that has meaning
         real(dp), allocatable :: tempvar(:,:,:,:)                               ! temporary variable
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivative
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         
         ! initialize ierr
         ierr = 0
@@ -1300,32 +1281,36 @@ contains
             allocate(Zchi(nchi,n_r_eq),Zpsi(nchi,n_r_eq))
             allocate(jac(nchi,n_r_eq))
             
-            ! set up periodicity flag
+            ! set up boundary conditions
             if (ias.eq.0) then                                                  ! top-bottom symmetric
-                lper = 2                                                        ! even half periodic
+                bcs = [0,0]                                                     ! not-a-knot
             else
-                lper = 1                                                        ! full periodic
+                bcs = [-1,-1]                                                   ! periodic
             end if
             
             ! calculate derivatives
-            ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)
-            CHCKERR('')
-            ierr = apply_disc(R_H,norm_deriv_data,Rpsi,2)
-            CHCKERR('')
-            ierr = apply_disc(Z_H,norm_deriv_data,Zpsi,2)
-            CHCKERR('')
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
-                &lper)
-            CHCKERR('')
-            ierr = apply_disc(R_H,ang_deriv_data,Rchi,1)
-            CHCKERR('')
-            ierr = apply_disc(Z_H,ang_deriv_data,Zchi,1)
-            CHCKERR('')
+            do id = 1,nchi
+                ierr = spline(flux_p_H(:,0)/(2*pi),R_H(id,:),&
+                    &flux_p_H(:,0)/(2*pi),Rpsi(id,:),ord=norm_disc_prec_eq,&
+                    &deriv=1)
+                CHCKERR('')
+                ierr = spline(flux_p_H(:,0)/(2*pi),Z_H(id,:),&
+                    &flux_p_H(:,0)/(2*pi),Zpsi(id,:),ord=norm_disc_prec_eq,&
+                    &deriv=1)
+                CHCKERR('')
+            end do
+            do kd = 1,n_r_eq
+                ierr = spline(chi_H,R_H(:,kd),chi_H,Rchi(:,kd),&
+                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs)
+                CHCKERR('')
+                ierr = spline(chi_H,Z_H(:,kd),chi_H,Zchi(:,kd),&
+                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs)
+                CHCKERR('')
+            end do
             
             ! calculate Jacobian
             do kd = 1,n_r_eq
-                jac(:,kd) = q_saf_H(kd,0)/(h_H_33(:,kd)*RBphi_H(kd))
+                jac(:,kd) = q_saf_H(kd,0)/(h_H_33(:,kd)*RBphi_H(kd,0))
             end do
             
             ! calculate Jacobian differently
@@ -1400,26 +1385,33 @@ contains
             !   3: D1 (q/F h_11) ,
             !   4: D2 (q/F h_12) .
             allocate(tempvar(nchi,1,n_r_eq,4))
-            ierr = apply_disc(RBphi_H,norm_deriv_data,tempvar(1,1,:,1))
+            ierr = spline(flux_p_H(:,0)/(2*pi),RBphi_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,1),ord=norm_disc_prec_eq,&
+                &deriv=1)
             CHCKERR('')
-            ierr = apply_disc(pres_H(:,0),norm_deriv_data,tempvar(1,1,:,2))
+            ierr = spline(flux_p_H(:,0)/(2*pi),pres_H(:,0),&
+                &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,2),ord=norm_disc_prec_eq,&
+                &deriv=1)
             CHCKERR('')
             do id = 1,nchi
                 tempvar(id,1,:,1:2) = tempvar(1,1,:,1:2)
-                ierr = apply_disc(q_saf_H(:,0)/RBphi_H*h_H_11(id,:),&
-                    &norm_deriv_data,tempvar(id,1,:,3))
+                ierr = spline(flux_p_H(:,0)/(2*pi),&
+                    &q_saf_H(:,0)/RBphi_H(:,0)*h_H_11(id,:),&
+                    &flux_p_H(:,0)/(2*pi),tempvar(id,1,:,3),&
+                    &ord=norm_disc_prec_eq,deriv=1)
                 CHCKERR('')
             end do
             do kd = 1,n_r_eq
-                ierr = apply_disc(q_saf_H(kd,0)/RBphi_H(kd)*h_H_12(:,kd),&
-                    &ang_deriv_data,tempvar(:,1,kd,4))
+                ierr = spline(chi_H,q_saf_H(kd,0)/RBphi_H(kd,0)*h_H_12(:,kd),&
+                    &chi_H,tempvar(:,1,kd,4),ord=norm_disc_prec_eq,deriv=1)
                 CHCKERR('')
             end do
             
             ! calculate pressure  balance in tempvar(1)
             !   mu_0 p' = F/(qR^2) (d/d1 (h_11 q/F) + d/d2 (h_12 q/F) + q F')
             do kd = 1,n_r_eq
-                tempvar(:,1,kd,1) = -RBphi_H(kd)*h_H_33(:,kd)/q_saf_H(kd,0) * &
+                tempvar(:,1,kd,1) = &
+                    &-RBphi_H(kd,0)*h_H_33(:,kd)/q_saf_H(kd,0) * &
                     &(tempvar(:,1,kd,1)*q_saf_H(kd,0) + tempvar(:,1,kd,3) + &
                     &tempvar(:,1,kd,4))
             end do
@@ -1433,10 +1425,6 @@ contains
             ! plot difference
             call plot_diff_HDF5(tempvar(:,:,:,1),tempvar(:,:,:,2),&
                 &file_name,descr=description,output_message=.true.)
-            
-            ! clean up
-            call norm_deriv_data%dealloc()
-            call ang_deriv_data%dealloc()
             
             ! user output
             call lvl_ud(-1)
@@ -1495,11 +1483,11 @@ contains
         do kd = 1,n_r_eq
             ierr = nufft(chi_full,R_H_full(:,kd),f_loc)
             CHCKERR('')
-            if (kd.eq.1) allocate(R_H_F(size(f_loc,1),1,n_r_eq,size(f_loc,2)))
+            if (kd.eq.1) allocate(R_H_F(size(f_loc,1),1,n_r_eq,2))
             R_H_F(:,1,kd,:) = f_loc
             ierr = nufft(chi_full,Z_H_full(:,kd),f_loc)
             CHCKERR('')
-            if (kd.eq.1) allocate(Z_H_F(size(f_loc,1),1,n_r_eq,size(f_loc,2)))
+            if (kd.eq.1) allocate(Z_H_F(size(f_loc,1),1,n_r_eq,2))
             Z_H_F(:,1,kd,:) = f_loc
         end do
         
@@ -1508,27 +1496,29 @@ contains
         loc_str(2) = 'Im'
         do kd = 1,2
             plot_name = loc_str(kd)//'_R_H_F'
-            call print_ex_2D(['1'],plot_name,R_H_F(:,1,:,1),draw=.false.)
+            call print_ex_2D(['1'],plot_name,R_H_F(:,1,:,kd),draw=.false.)
             call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
             plot_name = loc_str(kd)//'_Z_H_F'
-            call print_ex_2D(['1'],plot_name,Z_H_F(:,1,:,1),draw=.false.)
+            call print_ex_2D(['1'],plot_name,Z_H_F(:,1,:,kd),draw=.false.)
             call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
             
             plot_name = loc_str(kd)//'_R_H_F_log'
             call print_ex_2D(['1'],plot_name,&
-                &log10(max(1.E-10_dp,abs(R_H_F(:,1,:,1)))),&
+                &log10(max(1.E-10_dp,abs(R_H_F(:,1,:,kd)))),&
                 &draw=.false.)
             call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
             plot_name = loc_str(kd)//'_Z_H_F_log'
             call print_ex_2D(['1'],plot_name,&
-                &log10(max(1.E-10_dp,abs(Z_H_F(:,1,:,1)))),&
+                &log10(max(1.E-10_dp,abs(Z_H_F(:,1,:,kd)))),&
                 &draw=.false.)
             call draw_ex(['1'],plot_name,n_r_eq,1,.false.)
         end do
         call plot_HDF5(['real','imag'],'R_H_F',R_H_F)
-        call plot_HDF5(['real','imag'],'R_H_F_log',log10(max(1.E-10_dp,abs(R_H_F))))
+        call plot_HDF5(['real','imag'],'R_H_F_log',&
+            &log10(max(1.E-10_dp,abs(R_H_F))))
         call plot_HDF5(['real','imag'],'Z_H_F',Z_H_F)
-        call plot_HDF5(['real','imag'],'Z_H_F_log',log10(max(1.E-10_dp,abs(Z_H_F))))
+        call plot_HDF5(['real','imag'],'Z_H_F_log',&
+            &log10(max(1.E-10_dp,abs(Z_H_F))))
     end function
 #endif
 end module HELENA_ops

@@ -167,8 +167,11 @@ contains
     !!  -#  The quantities  that  do  not have  a  derivative  are considered  F
     !!  quantities. Alternatively,  all quantities  that have only  one version,
     !!  are considered F quantities, such as \c rho, \c kappa_n, ...
+    !!  -# The maximum derivative degree for  flux quantities is one higher than
+    !!  \c  max_deriv, because  the derivative  of some  of them  appear in  the
+    !!  transformation matrices.
     subroutine init_eq_1(eq,grid,setup_E,setup_F)
-        use num_vars, only: max_deriv, eq_style
+        use num_vars, only: max_deriv
 #if ldebug
         use num_vars, only: print_mem_usage, rank
 #endif
@@ -207,42 +210,17 @@ contains
             ! rot_t_E
             allocate(eq%rot_t_E(loc_n_r,0:max_deriv+1))
             
+            ! flux_p_E
+            allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
+            
+            ! flux_t_E
+            allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
+            
 #if ldebug
             ! set estimated memory usage
             if (print_mem_usage) eq%estim_mem_usage(1) = &
-                &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+2)*3
+                &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+2)*5
 #endif
-            
-            ! initialize  variables that  are  specificic  to which  equilibrium
-            ! style is being used:
-            !   1:  VMEC
-            !   2:  HELENA
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ! flux_p_E
-                    allocate(eq%flux_p_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
-                    
-                    ! flux_t_E
-                    allocate(eq%flux_t_E(loc_n_r,0:max_deriv+2))                ! Need extra order because used in transformation of flux q.
-                    
-#if ldebug
-                    ! set estimated memory usage
-                    if (print_mem_usage) eq%estim_mem_usage(1) = &
-                        &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+3)*2
-#endif
-                case (2)                                                        ! HELENA
-                    ! flux_p_E
-                    allocate(eq%flux_p_E(loc_n_r,0:max_deriv+1))
-                    
-                    ! flux_t_E
-                    allocate(eq%flux_t_E(loc_n_r,0:max_deriv+1))
-                    
-#if ldebug
-                    ! set estimated memory usage
-                    if (print_mem_usage) eq%estim_mem_usage(1) = &
-                        &eq%estim_mem_usage(1) + loc_n_r*(max_deriv+2)*2
-#endif
-            end select
         end if
         
         if (setup_F_loc) then
@@ -287,6 +265,10 @@ contains
     !> \public Initializes new metric equilibrium.
     !!
     !! \see For explanation see init_eq_1().
+    !!
+    !! \note The  maximum derivative degree  for R, Z  and lambda is  one higher
+    !! than \c max_deriv, because their  first derivative already appears in g_C
+    !! and h_C.
     subroutine init_eq_2(eq,grid,setup_E,setup_F)                               ! metric version
         use num_vars, only: max_deriv, eq_style
 #if ldebug

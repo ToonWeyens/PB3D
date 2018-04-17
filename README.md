@@ -1252,3 +1252,22 @@ ITER Organization
 * In 'calc_norm_range' for POST, the perturbation limits are set explicitely to the solution limits for X_grid_style 2 (perturbation).
 * Fixed bug in 'calc_XUQ' where normal derivative was done on the whole normal grid, even for X_style 2 (fast). The appropriate subset is now taken.
 * Fixed bug in initialization of X_grid_style.
+
+## 2.18:
+* THIS VERSION IS IN DEVELOPMENT AND SHOULD NOT BE USED: FOR HELENA FULL 2PI PERIOD SHOULD BE SAVED.
+* max_deriv+1 SHOULD BE LOOKED AT AGAIN BECAUSE IT CANNOT BE THAT AT SO MANY PLACES IT HAS TO BE PLUS 1.
+* VMEC HAS TO BE RECHECKED, FOR EXAMPLE WITH debug_calc_derived_q.
+* Replaced bspline_module by Princeton's NTCC pspline library, which is much more versatile.
+* Implemented a test "test_splines".
+* Implemented miminum value for detA in 'calc_inv_3D' to avoid division by zero.
+* RBphi in HELENA is now saved with derivatives.
+* HELENA and VMEC now use cubic splines for derivatives of flux quantities. Order 3 is necessary to reach the 2nd derivatives.
+* Fixed an unitialization bug in VMEC.
+* When trimming a grid, the trigonometric factors are also copied now, as they should be.
+* V_interp_style now only takes one option (1: spline), finite differences are not available any more as they are deprecated.
+* Default normal precision is now 3 for equilibrium, perturbation and solution.
+* Cleared up confusion about maximum derivative degrees: For metric factors, this is 2; For flux quantities, this is one higher, because the first derivative of some of them appear in the transformation matrices; For R, Z and lambda, this is also one higher because the first derivative is present in the g_C and h_C. For HELENA, the derivatives of R and Z happen separately.
+* norm_disc_prec_eq now has to be 3.
+* Fixed bug in 'test_harm_cont_H' where the real part was used twice.
+* The derivatives of HELENA quantities now happen with 2-D splines, with periodic boundary conditions for top-bottom asymmetric equilbria and not-a-knot conditions for the symmetric ones. This is less accurate but should not pose a problem. The system with lper in 'setup_deriv_data' is therefore not used anymore.
+* 'test_D12h_H' has been changed to 'test_D12g_H'.

@@ -136,8 +136,7 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &norm_disc_prec_eq
-            use num_utilities, only: con2dis, dis2con, round_with_tol
-            use grid_utilities, only: setup_interp_data, apply_disc
+            use num_utilities, only: con2dis, dis2con, round_with_tol, spline
             use VMEC_vars, only: flux_p_V, flux_t_V
             use HELENA_vars, only: flux_p_H, flux_t_H
             use X_vars, only: min_r_sol, max_r_sol
@@ -157,7 +156,6 @@ contains
             real(dp) :: tot_max_r_in_E_con(1)                                   ! tot_max_r_in in continuous E coords.
             real(dp) :: tot_min_r_in_E_dis                                      ! tot_min_r_in in discrete E coords., unrounded
             real(dp) :: tot_max_r_in_E_dis                                      ! tot_max_r_in in discrete E coords., unrounded
-            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -214,16 +212,10 @@ contains
             ierr = round_with_tol(tot_max_r_in_F_con,0._dp,1._dp)
             CHCKERR('')
             ! 3. continuous E coords
-            ierr = setup_interp_data(flux_F,[tot_min_r_in_F_con],&
-                &norm_interp_data,norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(flux_E,norm_interp_data,tot_min_r_in_E_con)
-            CHCKERR('')
-            ierr = setup_interp_data(flux_F,[tot_max_r_in_F_con],&
-                &norm_interp_data,norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(flux_E,norm_interp_data,tot_max_r_in_E_con)
-            CHCKERR('')
+            ierr = spline(flux_F,flux_E,[tot_min_r_in_F_con],&
+                &tot_min_r_in_E_con,ord=min(3,norm_disc_prec_eq))
+            ierr = spline(flux_F,flux_E,[tot_max_r_in_F_con],&
+                &tot_max_r_in_E_con,ord=min(3,norm_disc_prec_eq))
             ! 4. round with tolerance
             ierr = round_with_tol(tot_min_r_in_E_con,minval(flux_E),&
                 &maxval(flux_E))
@@ -640,7 +632,8 @@ contains
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X, X_grid_style
         use grid_vars, only: disc_type
-        use grid_utilities, only: coord_F2E, setup_interp_data, apply_disc
+        use grid_utilities, only: coord_F2E
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_grid_X'
         
@@ -651,7 +644,7 @@ contains
         integer, intent(in) :: X_limits(2)                                      !< min. and max. index of perturbation grid of this process
         
         ! local variables
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
+        integer :: id, jd                                                       ! counters
         
         ! initialize ierr
         ierr = 0
@@ -678,27 +671,27 @@ contains
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 
-                ! setup normal interpolation data
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
-                
                 ! interpolate
-                ierr = apply_disc(grid_eq%theta_E,norm_interp_data,&
-                    &grid_X%theta_E,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_eq%zeta_E,norm_interp_data,&
-                    &grid_X%zeta_E,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_eq%theta_F,norm_interp_data,&
-                    &grid_X%theta_F,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_eq%zeta_F,norm_interp_data,&
-                    &grid_X%zeta_F,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do jd = 1,grid_eq%n(2)
+                    do id = 1,grid_eq%n(1)
+                        ierr = spline(grid_eq%loc_r_F,grid_eq%theta_E(id,jd,:),&
+                            &grid_X%loc_r_F,grid_X%theta_E(id,jd,:),&
+                            &ord=min(3,norm_disc_prec_X))
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,grid_eq%zeta_E(id,jd,:),&
+                            &grid_X%loc_r_F,grid_X%zeta_E(id,jd,:),&
+                            &ord=min(3,norm_disc_prec_X))
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,grid_eq%theta_F(id,jd,:),&
+                            &grid_X%loc_r_F,grid_X%theta_F(id,jd,:),&
+                            &ord=min(3,norm_disc_prec_X))
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,grid_eq%zeta_F(id,jd,:),&
+                            &grid_X%loc_r_F,grid_X%zeta_F(id,jd,:),&
+                            &ord=min(3,norm_disc_prec_X))
+                        CHCKERR('')
+                    end do
+                end do
         end select
     end function setup_grid_X
     

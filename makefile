@@ -21,9 +21,13 @@ HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 1. XPS 9360
 NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
 #NETCDFF_DIR=$(COMPILE_DIR)#  2. ITER
 
+# PSPLINE
+PSPLINE_DIR=/opt/pspline/LINUX# 1. XPS 9360
+#PSPLINE_DIR=# 2. ITER
+
 # PETSC
 #PETSC_ARCH = debug-complex
-PETSC_ARCH = complex# 1. XPS 93600
+PETSC_ARCH = complex# 1. XPS 9360
 #PETSC_ARCH = complex# 2. ITER
 PETSC_DIR = /opt/petsc-3.7.6# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
@@ -47,7 +51,7 @@ SCALAPACK_LIB='-L/opt/scalapack-2.0.2/INSTALL/lib -lscalapack -llapack -lblas'# 
 SCALAPACK_INC=''#1. XPS 9360
 #SCALAPACK_INC='-I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include'#2. ITER
 
-LIB_INTERNAL = libdfftpack.a libfoul.a libbspline.a
+LIB_INTERNAL = libdfftpack.a libfoul.a
 
 ##############################################################################
 #   Other variables
@@ -88,6 +92,7 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   -L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
   -L$(NETCDFF_DIR)/lib -lnetcdff \
   -Wl,-R$(NETCDFF_DIR)/lib \
+  -L$(PSPLINE_DIR)/lib -lpspline \
   -L$(STRUMPACK_DIR)/lib -lstrumpack \
   $(SCALAPACK_LIB) \
   -Wl,-rpath,/opt/scalapack-2.0.2/INSTALL/lib \
@@ -99,6 +104,7 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   #-L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
   #-L$(NETCDFF_DIR)/lib -lnetcdff \
   #-Wl,-R$(NETCDFF_DIR)/lib \
+  -L$(PSPLINE_DIR)/lib -lpspline \
   #-L$(STRUMPACK_DIR)/lib -lstrumpack \
   #$(SCALAPACK_LIB)#2. ITER
   ##-lm -lstdc++ -lmpi_cxx# 2. ITER
@@ -180,9 +186,6 @@ libdfftpack.a: 	dfft.o
 libfoul.a: 	foul.o
 	ar -rcs libfoul.a foul.o
 
-libbspline.a: 	bspline_sub_module.o
-	ar -rcs libbspline.a bspline_sub_module.o
-
 %.o: %.f90
 	$(COMPILER) $(INCLUDE) $(COMP_FLAGS) -c $<
 
@@ -193,9 +196,6 @@ dfft.o: dfft.f
 	$(COMPILER) $(COMP_FLAGS_EX) -c $<
 
 foul.o: foul.f90
-	$(COMPILER) $(COMP_FLAGS_EX) -c $<
-
-bspline_sub_module.o: bspline_sub_module.f90
 	$(COMPILER) $(COMP_FLAGS_EX) -c $<
 
 clean:

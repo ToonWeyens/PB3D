@@ -57,8 +57,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.17_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.17_dp                           !< minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 2.18_dp                               !< version number
+    real(dp), parameter :: min_PB3D_version = 2.18_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else
@@ -98,7 +98,7 @@ module num_vars
     integer :: solver_SLEPC_style                                               !< style for solver (1: Krylov-Schur, 2: GD)
     integer :: POST_style                                                       !< style for POST (1: extended grid, 2: B-aligned grid)
     integer :: X_grid_style                                                     !< style for normal component of X grid (1: eq, 2: sol, 3: enriched)
-    integer :: V_interp_style                                                   !< style for V interpolation (1: finite difference, 2: spline)
+    integer :: V_interp_style                                                   !< style for V interpolation (1: spline)
     integer :: alpha_style                                                      !< style for alpha (1: one field line, many turns, 2: many field lines, one turn)
     integer :: max_it_slepc                                                     !< maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   !< whether to plot the q-profile or iota-profile with resonances

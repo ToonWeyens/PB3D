@@ -43,6 +43,14 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call writo('Test splines?')
+        if (get_log(.false.)) then
+            ierr = test_splines()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
+        
         call writo('Test interpolation?')
         if (get_log(.false.)) then
             ierr = test_interp()
@@ -96,6 +104,176 @@ contains
                 end if
         end select
     end function generic_tests
+    
+    !> Test splines.
+    !!
+    !! \return ierr
+    integer function test_splines() result(ierr)
+        use num_utilities, only: spline
+        use num_vars, only: tol_zero
+        
+        character(*), parameter :: rout_name = 'test_splines'
+        
+        ! local variables
+        integer :: kd, id
+        integer :: nx
+        integer :: nx_int
+        integer :: ord
+        integer :: max_deriv
+        integer :: bcs(2)                                                       ! boundary conditions
+        real(dp) :: bcs_val(2)                                                  ! value of derivative at boundary conditions
+        real(dp) :: extrap_fraction
+        real(dp), allocatable :: x(:)
+        real(dp), allocatable :: x_int(:)
+        real(dp), allocatable :: y(:,:)
+        real(dp), allocatable :: y_int(:)
+        logical :: ready
+        logical :: extrap
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=5) :: side_str(2)
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user input
+        call writo('testing splines')
+        call lvl_ud(1)
+        
+        ! set up function
+        nx = 10
+        allocate(x(nx))
+        allocate(y(nx,0:3))
+        do kd = 1,nx
+            x(kd) = (kd-1._dp)/(nx-1._dp)                                       ! 0..1
+            y(kd,0) = sin(2*pi*x(kd))
+            y(kd,1) = 2*pi*cos(2*pi*x(kd))
+            y(kd,2) = -(2*pi)**2*sin(2*pi*x(kd))
+            y(kd,3) = -(2*pi)**3*cos(2*pi*x(kd))
+        end do
+        
+        ! set up interpolated function
+        nx_int = 400
+        allocate(x_int(nx_int))
+        allocate(y_int(nx_int))
+        
+        ready = .false.
+        do while (.not.ready)
+            ! get order
+            call writo('order?')
+            call lvl_ud(1)
+            call writo('1: linear')
+            call writo('2: akima hermite')
+            call writo('3: cubic')
+            call lvl_ud(-1)
+            ord = get_int(lim_lo=1,lim_hi=3)
+            
+            ! get extrapolation fraction
+            call writo('test extrapolation?')
+            extrap = get_log(.false.)
+            if (extrap) then
+                call writo('Extrapolation fraction?')
+                extrap_fraction = get_real(lim_lo=0._dp,lim_hi=10._dp)
+            else
+                extrap_fraction = -tol_zero
+            end if
+            
+            side_str(1) = 'left'
+            side_str(2) = 'right'
+            if (ord.gt.1) then
+                do kd = 1,2
+                    call writo('boundary condition '//trim(side_str(kd))//&
+                        &' = ?')
+                    call lvl_ud(1)
+                    call writo('-1: periodic')
+                    call writo(' 0: not-a-knot')
+                    call writo(' 1: first derivative prescribed')
+                    call writo(' 2: second derivative prescribed')
+                    call lvl_ud(-1)
+                    bcs(kd) = get_int(lim_lo=-1,lim_hi=2)
+                    if (bcs(kd).eq.1 .or. bcs(kd).eq.2) then
+                        call writo('value of derivative of order '//&
+                            &trim(i2str(bcs(kd))))
+                        bcs_val(kd) = get_real()
+                    else
+                        bcs_val(kd) = 0._dp
+                    end if
+                end do
+            else
+                bcs = 0
+                bcs_val = 0._dp
+            end if
+            
+            select case (ord)
+                case (1:2)
+                    max_deriv = 1
+                case (3)
+                    max_deriv = 3
+            end select
+            
+            ! set up x_int
+            do kd = 1,nx_int
+                x_int(kd) = -extrap_fraction + &
+                    &(1+2*extrap_fraction)*(kd-1._dp)/(nx_int-1._dp)            ! 0..1 with possible extrapolation fraction
+            end do
+            
+            ! calculate spline and possibly plot
+            do id = 0,max_deriv
+                ierr = spline(x,y(:,0),x_int,y_int,ord=ord,deriv=id,bcs=bcs,&
+                    &bcs_val=bcs_val,extrap=extrap)                             ! use y(0)
+                CHCKERR('')
+                call plot_y(x,x_int,y(:,id),y_int,id)                           ! use y(id)
+            end do
+            
+            call writo('repeat?')
+            ready = .not.get_log(.true.)
+        end do
+        
+        call lvl_ud(-1)
+    contains
+        subroutine plot_y(x,x_int,y,y_int,deriv)
+            ! input / output
+            real(dp), intent(in) :: x(:)
+            real(dp), intent(in) :: x_int(:)
+            real(dp), intent(in) :: y(:)
+            real(dp), intent(in) :: y_int(:)
+            integer, intent(in) :: deriv
+            
+            ! local variables
+            integer :: nx, nx_int
+            real(dp) :: minmax_y(2)
+            real(dp), allocatable :: x_plot(:,:)
+            real(dp), allocatable :: y_plot(:,:)
+            character(len=max_str_ln), allocatable :: plot_names(:)
+            
+            ! set up plot variables
+            nx = size(x)
+            nx_int = size(x_int)
+            allocate(x_plot(max(nx,nx_int),2))                                  ! (x_int,x)
+            allocate(y_plot(max(nx,nx_int),2))                                  ! (y_int,y)
+            
+            ! x,y
+            x_plot(1:nx_int,1) = x_int
+            x_plot(nx_int+1:max(nx,nx_int),1) = x_int(nx_int)
+            y_plot(1:nx_int,1) = y_int
+            y_plot(nx_int+1:max(nx,nx_int),1) = y_int(nx_int)
+            
+            ! int x,y
+            x_plot(1:nx,2) = x
+            x_plot(nx+1:max(nx,nx_int),2) = x(nx)
+            y_plot(1:nx,2) = y
+            y_plot(nx+1:max(nx,nx_int),2) = y(nx)
+            
+            ! knots
+            minmax_y(1) = minval(y_plot(:,1:2))
+            minmax_y(2) = maxval(y_plot(:,1:2))
+            
+            ! plot
+            allocate(plot_names(2))
+            plot_names(1) = 'D'//trim(i2str(deriv))//'y_int'
+            plot_names(2) = 'D'//trim(i2str(deriv))//'y'
+            call print_ex_2D(plot_names,plot_names(1),y_plot,x=x_plot)
+        end subroutine plot_y
+    end function test_splines
     
     !> Test interpolation.
     !!

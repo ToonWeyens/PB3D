@@ -87,7 +87,17 @@ module grid_vars
     !!
     !! Operations currently supported:
     !!  - derivatives
+    !!
+    !! Operations that are deprecated:
     !!  - interpolation
+    !!
+    !! The problem with  interpolation the way it was implemented  here, is that
+    !! it was faulty: the routine searched  for an amount of nearest points, and
+    !! employed Lagrangian interpolation on these  points. However, there was no
+    !! guarantee of any continuity between different points.
+    !!
+    !! All interpolation should  now be done using the spline  routines from the
+    !! pspline library.
     !!
     !! \see    See   routines    setup_deriv_data()   and    setup_interp_data()
     !! in   grid_utilities    where   discretization    data   is    setup   and

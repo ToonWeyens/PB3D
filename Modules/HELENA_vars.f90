@@ -26,7 +26,7 @@ module HELENA_vars
     real(dp), allocatable :: pres_H(:,:)                                        !< pressure profile
     real(dp), allocatable :: q_saf_H(:,:)                                       !< safety factor
     real(dp), allocatable :: rot_t_H(:,:)                                       !< rotational transform
-    real(dp), allocatable :: RBphi_H(:)                                         !< \f$R B_\phi (= F) \f$
+    real(dp), allocatable :: RBphi_H(:,:)                                       !< \f$R B_\phi (= F) \f$
     real(dp), allocatable :: h_H_11(:,:)                                        !< upper metric factor \f$h_{11}\f$ (\c gem11)
     real(dp), allocatable :: h_H_12(:,:)                                        !< upper metric factor \f$h_{12}\f$ (\c gem12)
     real(dp), allocatable :: h_H_33(:,:)                                        !< upper metric factor \f$h_{32}\f$ (1 / \c gem12)

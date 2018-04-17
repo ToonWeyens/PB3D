@@ -9,7 +9,9 @@ module eq_ops
     use num_vars, only: pi, dp, max_str_ln, max_deriv
     use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
+#if ldebug
     use num_utilities, only: check_deriv
+#endif
     
     implicit none
     private
@@ -557,23 +559,23 @@ contains
                     CHCKERR('')
                 end do
                 
-#if ldebug
-                if (ltest) then
-                    call writo('Test calculation of D1 D2 h_H?')
-                    if(get_log(.false.)) then
-                        ierr = test_D12h_H(grid_eq,eq_2)
-                        CHCKERR('')
-                        call pause_prog
-                    end if
-                end if
-#endif
-                
                 ! calculate the inverse h_H of the metric factors g_H
                 call writo('Calculate h_H')
                 do id = 0,max_deriv
                     ierr = calc_inv_met(eq_2%h_E,eq_2%g_E,derivs(id))
                     CHCKERR('')
                 end do
+                
+#if ldebug
+                if (ltest) then
+                    call writo('Test calculation of D1 D2 g_H?')
+                    if(get_log(.false.)) then
+                        ierr = test_D12g_H(grid_eq,eq_2)
+                        CHCKERR('')
+                        call pause_prog
+                    end if
+                end if
+#endif
                 
                 ! export for VMEC port
                 if (export_HEL) then
@@ -727,19 +729,19 @@ contains
         use eq_vars, only: pres_0, R_0, psi_0, B_0, vac_perm
         !use eq_vars, only: max_flux_E
         use grid_vars, only: n_r_eq
-        use grid_utilities, only: setup_interp_data, apply_disc, nufft, &
-            &calc_XYZ_grid, setup_deriv_data
+        use grid_utilities, only: nufft, calc_XYZ_grid
         use HELENA_vars, only: nchi, R_H, Z_H, ias, RBphi_H, flux_p_H, &
             &flux_t_H, chi_H, RMtoG_H, BMtoG_H
         use X_vars, only: min_r_sol, max_r_sol
         use input_utilities, only: pause_prog, get_log, get_int, get_real
         use num_utilities, only: GCD, bubble_sort, order_per_fun, &
-            &shift_F, calc_int
+            &shift_F, calc_int, spline
         use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
             &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original, &
             &use_normalization
         use files_utilities, only: skip_comment, count_lines
-        use bspline_sub_module, only: db2ink, db2val, get_status_message
+        use EZspline_obj
+        use EZspline
         
         character(*), parameter :: rout_name = 'create_VMEC_input'
         
@@ -748,6 +750,7 @@ contains
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium quantities
         
         ! local variables
+        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
         integer :: id, jd, kd                                                   ! counters
         integer :: n_B                                                          ! nr. of points in Fourier series
         integer :: nfp                                                          ! scale factor for toroidal mode numbers
@@ -764,9 +767,9 @@ contains
         integer :: pert_type                                                    ! type of perturbation prescription
         integer :: max_n_B_output                                               ! max. nr. of modes written in output file (constant in VMEC)
         integer :: n_prop_B_tor                                                 ! n of angular poins in prop_B_tor
-        integer :: spline_init(3)                                               ! spline initialization parameter
         integer :: nr_m_max                                                     ! maximum nr. of poloidal mode numbers
         integer :: ncurr                                                        ! ncurr VMEC flag (0: prescribe iota, 1: prescribe tor. current)
+        integer :: bcs(2,2)                                                     ! boundary conditions
         integer, allocatable :: n_pert(:)                                       ! tor. mode numbers and pol. mode numbers for each of them
         integer, allocatable :: n_pert_copy(:)                                  ! copy of n_pert, for sorting
         integer, allocatable :: piv(:)                                          ! pivots for sorting
@@ -800,6 +803,7 @@ contains
         real(dp) :: I_tor_V(99)                                                 ! enclosed toroidal current for VMEC
         real(dp) :: I_tor_J(99)                                                 ! enclosed toroidal current for JOREK
         real(dp) :: norm_J(3)                                                   ! normalization factors for Jorek (R_geo, Z_geo, F0)
+        real(dp), allocatable :: psi_t(:)                                       ! normalized toroidal flux
         real(dp), allocatable :: FFp(:)                                         ! FF' in total grid
         real(dp), allocatable :: I_tor(:)                                       ! toroidal current within flux surfaces
         real(dp), allocatable :: norm_transf(:,:)                               ! transformation of normal coordinates between MISHKA and VMEC or JOREK
@@ -808,9 +812,6 @@ contains
         real(dp), allocatable :: RRint_loc(:)                                   ! local RRint
         real(dp), allocatable :: R_plot(:,:,:)                                  ! R for plotting of ripple map
         real(dp), allocatable :: Z_plot(:,:,:)                                  ! Z for plotting of ripple map
-        real(dp), allocatable :: spline_knots_R(:)                              ! knots of spline for R
-        real(dp), allocatable :: spline_knots_Z(:)                              ! knots of spline for Z
-        real(dp), allocatable :: spline_coeff(:,:)                              ! coefficients of spline
         real(dp), allocatable :: pert_map_R(:)                                  ! R of perturbation map
         real(dp), allocatable :: pert_map_Z(:)                                  ! Z of perturbation map
         real(dp), allocatable :: pert_map(:,:)                                  ! perturbation map
@@ -835,9 +836,6 @@ contains
         logical :: stel_sym                                                     ! whether there is stellarator symmetry
         logical :: change_max_n_B_output                                        ! whether to change max_n_B_output
         logical :: found                                                        ! whether something was found
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
-        type(disc_type) :: pol_interp_data                                      ! data for poloidal interpolation
 #if ldebug
         real(dp), allocatable :: BH_0_ALT(:,:)                                  ! reconstructed R and Z
 #endif
@@ -885,10 +883,8 @@ contains
         allocate(FFp(n_r_eq))
         allocate(RRint(n_r_eq))
         allocate(RRint_loc(nchi))                                               ! includes overlap, as necessary for integration
-        ierr = setup_deriv_data(flux_p_H(:,0)/(2*pi),&
-            &norm_deriv_data,1,norm_disc_prec_eq)                               ! derive in equilibrium poloidal flux_p_H/2pi
-        CHCKERR('')
-        ierr = apply_disc(RBphi_H**2*0.5_dp,norm_deriv_data,FFp)
+        ierr = spline(flux_p_H(:,0)/(2*pi),RBphi_H(:,0)**2*0.5_dp,&
+            &flux_p_H(:,0)/(2*pi),FFp,ord=norm_disc_prec_eq,deriv=1)
         CHCKERR('')
         do kd = 1,n_r_eq
             ierr = calc_int(R_H(:,kd)**2,chi_H,RRint_loc)
@@ -896,7 +892,6 @@ contains
             RRint(kd) = RRint_loc(nchi)
         end do
         if (ias.eq.0) RRint = 2*RRint
-        call norm_deriv_data%dealloc()
         
         ! set up toroidal current:
         ! This is the  toroidal current between neighbouring  flux surfaces (see
@@ -917,8 +912,8 @@ contains
         allocate(norm_transf(n_r_eq,2))
         norm_transf(:,1) = -flux_t_H(n_r_eq,0)/(2*pi*eq_1%q_saf_E(:,0))
         norm_transf(:,2) = flux_p_H(n_r_eq,0)/(2*pi)
-        I_tor = - (eq_1%pres_E(:,1)*RRint*eq_1%q_saf_E(:,0)/RBphi_H + &
-            &2*pi*FFp*eq_1%q_saf_E(:,0)/(RBphi_H*vac_perm))
+        I_tor = - (eq_1%pres_E(:,1)*RRint*eq_1%q_saf_E(:,0)/RBphi_H(:,0) + &
+            &2*pi*FFp*eq_1%q_saf_E(:,0)/(RBphi_H(:,0)*vac_perm))
         
         ! calculate total toroidal current
         allocate(I_tor_int(size(I_tor)))
@@ -1110,17 +1105,15 @@ contains
                 ! interpolate the proportionality  factor on the geometrical
                 ! poloidal angle used  here (as opposed to the  one in which
                 ! it was tabulated)
-                ierr = order_per_fun(prop_B_tor,prop_B_tor_ord,&
-                    &norm_disc_prec_eq,tol=0.5_dp*pi/n_prop_B_tor)              ! set appropriate tolerance: a quarter of a equidistant grid
+                ierr = order_per_fun(prop_B_tor,prop_B_tor_ord,1,&              ! overlap of 1 is enough for splines
+                    &tol=0.5_dp*pi/n_prop_B_tor)                                ! set appropriate tolerance: a quarter of a equidistant grid
                 CHCKERR('')
                 deallocate(prop_B_tor)
                 allocate(prop_B_tor_interp(n_B))
-                ierr = setup_interp_data(prop_B_tor_ord(:,1),theta_B,&
-                    &pol_interp_data,norm_disc_prec_eq/2*2,&
-                    &is_trigon=.true.)                                          ! need even order for trigonometric interpolation
-                ierr = apply_disc(prop_B_tor_ord(:,2),pol_interp_data,&
-                    &prop_B_tor_interp)
-                call pol_interp_data%dealloc()
+                ierr = spline(prop_B_tor_ord(:,1),prop_B_tor_ord(:,2),&
+                    &theta_B,prop_B_tor_interp,ord=norm_disc_prec_eq,&
+                    &bcs=[-1,-1])
+                CHCKERR('')
                 deallocate(prop_B_tor_ord)
                 if (grid_eq%n(2).ne.1) call writo('There should be only 1 &
                     &geodesical position, but there are '//&
@@ -1248,6 +1241,8 @@ contains
                         do kd = 1,n_pert_map(1)
                             read(HEL_pert_i,*) pert_map(kd,:)
                         end do
+                        
+                        ! plot map
                         allocate(R_plot(n_pert_map(1),n_pert_map(2),1))
                         allocate(Z_plot(n_pert_map(1),n_pert_map(2),1))
                         do kd = 1,n_pert_map(2)
@@ -1276,37 +1271,32 @@ contains
                             CHCKERR(err_msg)
                         end if
                         
-                        ! get 2-D spline interpolation coefficients
-                        allocate(spline_coeff(n_pert_map(1),n_pert_map(2)))
-                        allocate(spline_knots_R(n_pert_map(1)+&
-                            &norm_disc_prec_eq))
-                        allocate(spline_knots_Z(n_pert_map(2)+&
-                            &norm_disc_prec_eq))
+                        ! set up 2-D spline
                         allocate(pert_map_interp(n_b))
-                        call db2ink(pert_map_R,n_pert_map(1),&
-                            &pert_map_Z,n_pert_map(2),pert_map,&
-                            &norm_disc_prec_eq,norm_disc_prec_eq,&
-                            &0,spline_knots_R,spline_knots_Z,&
-                            &spline_coeff,ierr)
-                        err_msg = get_status_message(ierr)
-                        CHCKERR(err_msg)
-                        spline_init = 1
+                        bcs(:,1) = [0,0]                                        ! not a knot
+                        bcs(:,2) = [0,0]                                        ! not a knot
+                        call EZspline_init(f_spl,n_pert_map(1),n_pert_map(2),&
+                            &bcs(:,1),bcs(:,2),ierr)
+                        call EZspline_error(ierr)
+                        CHCKERR('')
                         
-                        ! get interpolated values
+                        ! set grid
+                        f_spl%x1 = pert_map_R
+                        f_spl%x2 = pert_map_Z
+                        
+                        ! set up 
+                        call EZspline_setup(f_spl,pert_map,ierr,&
+                            &exact_dim=.true.)                                  ! match exact dimensions, none of them old Fortran bullsh*t!
+                        call EZspline_error(ierr)
+                        CHCKERR('')
+                        
+                        ! interpolate
                         do id = 1,n_b
-                            call db2val(BH_0(id,1),BH_0(id,2),0,0,&
-                                &spline_knots_R,spline_knots_Z,&
-                                &n_pert_map(1),n_pert_map(2),&
-                                &norm_disc_prec_eq,norm_disc_prec_eq,&
-                                &spline_coeff,pert_map_interp(id),ierr,&
-                                &spline_init(1),spline_init(2),&
-                                &spline_init(3))
-                            err_msg = get_status_message(ierr)
-                            CHCKERR(err_msg)
+                            call EZspline_interp(f_spl,BH_0(id,1),BH_0(id,2),&
+                                &pert_map_interp(id),ierr)
+                            call EZspline_error(ierr)
+                            CHCKERR('')
                         end do
-                        deallocate(spline_coeff)
-                        deallocate(spline_knots_R)
-                        deallocate(spline_knots_Z)
                         call print_ex_2D('ripple','pert_map_interp',&
                             &pert_map_interp,x=theta_B,draw=.false.)
                         call draw_ex(['ripple'],'pert_map_interp',&
@@ -1695,40 +1685,42 @@ contains
         
         ! interpolate for VMEC (V) and Jorek (J) output
         s_VJ = [((kd-1._dp)/(size(s_VJ)-1),kd=1,size(s_VJ))]
-        ierr = setup_interp_data(&
-            &eq_1%flux_t_E(:,0)/eq_1%flux_t_E(grid_eq%n(3),0),s_VJ,&
-            &norm_interp_data,norm_disc_prec_eq)
-        CHCKERR('')
+        allocate(psi_t(grid_eq%n(3)))
+        psi_t = eq_1%flux_t_E(:,0)/eq_1%flux_t_E(grid_eq%n(3),0)
         do id = 0,1
-            ierr = apply_disc(eq_1%pres_E(:,id),norm_interp_data,pres_VJ(:,id))
+            ierr = spline(psi_t,eq_1%pres_E(:,id),s_VJ,pres_VJ(:,id),&
+                &ord=norm_disc_prec_eq)
             CHCKERR('')
         end do
         if (use_normalization) then
             pres_VJ = pres_VJ*pres_0
             pres_VJ(:,1) = pres_VJ(:,1) / psi_0
         end if
-        ierr = apply_disc(RBphi_H,norm_interp_data,F_VJ)
+        ierr = spline(psi_t,RBphi_H(:,0),s_VJ,F_VJ,ord=norm_disc_prec_eq)
         CHCKERR('')
         if (use_normalization) F_VJ = F_VJ * R_0*B_0
-        ierr = apply_disc(FFp,norm_interp_data,FFp_VJ)
+        ierr = spline(psi_t,FFp,s_VJ,FFp_VJ,ord=norm_disc_prec_eq)
         CHCKERR('')
         if (use_normalization) then
             FFp_VJ = FFp_VJ * (R_0*B_0)**2/psi_0
         end if
-        ierr = apply_disc(flux_p_H(:,0),norm_interp_data,flux_J)
+        ierr = spline(psi_t,flux_p_H(:,0),s_VJ,flux_J,ord=norm_disc_prec_eq)
         CHCKERR('')
         if (use_normalization) flux_J = flux_J*psi_0
-        ierr = apply_disc(eq_1%q_saf_E(:,0),norm_interp_data,q_saf_VJ)
+        ierr = spline(psi_t,eq_1%q_saf_E(:,0),s_VJ,q_saf_VJ,&
+            &ord=norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(-eq_1%rot_t_E(:,0),norm_interp_data,rot_T_V)
+        ierr = spline(psi_t,-eq_1%rot_t_E(:,0),s_VJ,rot_t_V,&
+            &ord=norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(I_tor*norm_transf(:,1),norm_interp_data,I_tor_V)
+        ierr = spline(psi_t,I_tor*norm_transf(:,1),s_VJ,I_tor_V,&
+            &ord=norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(I_tor*norm_transf(:,2),norm_interp_data,I_tor_J)
+        ierr = spline(psi_t,I_tor*norm_transf(:,2),s_VJ,I_tor_J,&
+            &ord=norm_disc_prec_eq)
         CHCKERR('')
         if (use_normalization) I_tor_V = I_tor_V * R_0*B_0/mu_0_original
         if (use_normalization) I_tor_J = I_tor_J * R_0*B_0/mu_0_original
-        call norm_interp_data%dealloc()
         
         ! output to VMEC input file
         open(HEL_export_i,STATUS='replace',FILE=trim(file_name),&
@@ -2389,7 +2381,7 @@ contains
         call eq_out%init(grid_out,setup_E=.false.,setup_F=.true.)
         
         ! for all derivatives
-        do id = 0,max_deriv
+        do id = 0,max_deriv+1
             ! pres_FD
             ierr = redistribute_var(eq%pres_FD(:,id),eq_out%pres_FD(:,id),&
                 &[grid%i_min,grid%i_max],[grid_out%i_min,grid_out%i_max])
@@ -2543,9 +2535,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv+1,'calc_RZL')
         CHCKERR('')
+#endif
         
         ! calculate the variables R,Z and their derivatives
         ierr = fourier2real(R_V_c(:,grid_eq%i_min:grid_eq%i_max,deriv(1)),&
@@ -2598,9 +2592,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_g_C')
         CHCKERR('')
+#endif
         
         ! initialize
         eq%g_C(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
@@ -2647,9 +2643,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_g_V')
         CHCKERR('')
+#endif
         
         ierr = calc_g(eq%g_C,eq%T_VC,eq%g_E,deriv,max_deriv)
         CHCKERR('')
@@ -2678,8 +2676,9 @@ contains
     integer function calc_g_H_ind(grid_eq,eq,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
         use HELENA_vars, only: ias, nchi, R_H, Z_H, chi_H, h_H_33
-        use num_utilities, only: c
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use num_utilities, only: c, spline
+        use EZspline_obj
+        use EZspline
         
         character(*), parameter :: rout_name = 'calc_g_H_ind'
         
@@ -2689,66 +2688,59 @@ contains
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
+        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: jd                                                           ! counter
-        integer :: lper(2)                                                      ! periodicity flag for derivation
+        integer :: id, jd, kd, ld                                               ! counters
+        integer :: bcs(2,2)                                                     ! boundary conditions
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
         
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_g_H')
         CHCKERR('')
+#endif
         
-        ! set up periodicity flag
+        ! set up bondary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
-            lper = [2,3]                                                        ! even half periodic (even - odd)
+            bcs(:,1) = [0,0]                                                    ! not-a-knot
         else
-            lper = [1,1]                                                        ! full periodic
+            bcs(:,1) = [-1,-1]                                                  ! periodic
         end if
+        bcs(:,2) = [0,0]
         
         ! initialize
         eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
         
-        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
-            !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        else if (sum(deriv).eq.0) then                                          ! no derivatives
+        if (sum(deriv).eq.0) then                                               ! no derivatives
             ! initialize variables
             allocate(Rchi(nchi,grid_eq%loc_n_r),Rpsi(nchi,grid_eq%loc_n_r))
             allocate(Zchi(nchi,grid_eq%loc_n_r),Zpsi(nchi,grid_eq%loc_n_r))
             
             ! normal derivatives
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+2)
-            CHCKERR('')
-            ierr = apply_disc(R_H(:,grid_eq%i_min:grid_eq%i_max),&
-                &norm_deriv_data,Rpsi,2)
-            CHCKERR('')
-            ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
-                &norm_deriv_data,Zpsi,2)
-            CHCKERR('')
+            do id = 1,grid_eq%n(1)
+                ierr = spline(grid_eq%loc_r_E,&
+                    &R_H(id,grid_eq%i_min:grid_eq%i_max),grid_eq%loc_r_E,&
+                    &Rpsi(id,:),ord=norm_disc_prec_eq,deriv=1)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_E,&
+                    &Z_H(id,grid_eq%i_min:grid_eq%i_max),grid_eq%loc_r_E,&
+                    &Zpsi(id,:),ord=norm_disc_prec_eq,deriv=1)
+                CHCKERR('')
+            end do
             
             ! poloidal derivatives for full / even functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+2,&
-                &lper(1))
-            CHCKERR('')
-            ierr = apply_disc(R_H(:,grid_eq%i_min:grid_eq%i_max),&
-                &ang_deriv_data,Rchi,1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
-            
-            ! poloidal derivatives for full / odd functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+2,&
-                &lper(2))
-            CHCKERR('')
-            ierr = apply_disc(Z_H(:,grid_eq%i_min:grid_eq%i_max),&
-                &ang_deriv_data,Zchi,1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
+            do kd = 1,grid_eq%loc_n_r
+                ierr = spline(chi_H,R_H(:,grid_eq%i_min-1+kd),chi_H,&
+                    &Rchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1))
+                CHCKERR('')
+                ierr = spline(chi_H,Z_H(:,grid_eq%i_min-1+kd),chi_H,&
+                    &Zchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1))
+                CHCKERR('')
+            end do
             
             ! set up g_H
             do jd = 1,grid_eq%n(2)
@@ -2762,88 +2754,50 @@ contains
             
             ! clean up
             deallocate(Zchi,Rchi,Zpsi,Rpsi)
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            ! normal derivatives
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+        else if (deriv(3).ne.0) then                                            ! axisymmetry: deriv. in tor. coord. is zero
+            !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (deriv(1).le.2 .and. deriv(2).le.2) then
+            ! initialize 2-D cubic spline
+            call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
+                &bcs(:,1),bcs(:,2),ierr) 
+            call EZspline_error(ierr)
             CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%g_E(:,:,:,:,1,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            ! normal derivatives
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,:,0,0,0),norm_deriv_data,&
-                &eq%g_E(:,:,:,:,2,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            ! poloidal derivatives for full / even functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
-                &lper(1))
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,1,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,1,0,1,0),1)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,4,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,4,0,1,0),1)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,6,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,6,0,1,0),1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
             
-            ! poloidal derivatives for full / odd functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,1,norm_disc_prec_eq+1,&
-                &lper(2))
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,2,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,2,0,1,0),1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            ! poloidal derivatives for full / even functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,2,norm_disc_prec_eq,&
-                &lper(1))
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,1,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,1,0,2,0),1)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,4,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,4,0,2,0),1)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,6,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,6,0,2,0),1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
             
-            ! poloidal derivatives for full / odd functions
-            ierr = setup_deriv_data(chi_H,ang_deriv_data,2,norm_disc_prec_eq,&
-                &lper(2))
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,2,0,0,0),ang_deriv_data,&
-                &eq%g_E(:,:,:,2,0,2,0),1)
-            CHCKERR('')
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            ! normal derivatives
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(eq%g_E(:,:,:,:,0,1,0),norm_deriv_data,&
-                &eq%g_E(:,:,:,:,1,1,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
+            ! set grid
+            f_spl%x1 = chi_H
+            f_spl%x2 = grid_eq%loc_r_E
+            
+            do jd = 1,grid_eq%n(2)
+                do ld = 1,size(eq%g_E,4)
+                    ! set up 
+                    call EZspline_setup(f_spl,eq%g_E(:,jd,:,ld,0,0,0),ierr,&
+                        &exact_dim=.true.)                                      ! match exact dimensions, none of them old Fortran bullsh*t!
+                    call EZspline_error(ierr)
+                    CHCKERR('')
+                    
+                    ! derivate
+                    call EZspline_derivative(f_spl,deriv(1),deriv(2),&
+                        &grid_eq%n(1),grid_eq%loc_n_r,chi_H,grid_eq%loc_r_E,&
+                        &eq%g_E(:,jd,:,ld,deriv(1),deriv(2),0),ierr) 
+                    call EZspline_error(ierr)
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! free
+            call EZspline_free(f_spl,ierr)
+            call EZspline_error(ierr)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
                 &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
                 &) not supported'
             CHCKERR(err_msg)
+        end if
+        if (deriv(3).eq.0) then
+            call plot_HDF5(['g_E'],'g_E_'//trim(i2str(deriv(1)))//'_'//&
+                &trim(i2str(deriv(2))),eq%g_E(:,:,:,:,deriv(1),deriv(2),0))
         end if
     end function calc_g_H_ind
     !> \private array version
@@ -2880,9 +2834,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_g_F')
         CHCKERR('')
+#endif
         
         ! calculate g_F
         ierr = calc_g(eq%g_E,eq%T_FE,eq%g_F,deriv,max_deriv)
@@ -2923,9 +2879,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_J_V')
         CHCKERR('')
+#endif
         
         ! initialize
         eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -2960,10 +2918,9 @@ contains
     
     !> \private individual version
     integer function calc_jac_H_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
-        use num_vars, only: norm_disc_prec_eq
-        use num_utilities, only: spline3
-        use HELENA_vars, only: ias, h_H_33, RBphi_H
-        use grid_utilities, only: setup_deriv_data, apply_disc
+        use HELENA_vars, only: ias, h_H_33, RBphi_H, chi_H
+        use EZspline_obj
+        use EZspline
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -2974,85 +2931,69 @@ contains
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
-        integer :: jd, kd                                                       ! counters
-        integer :: lper                                                         ! periodicity flag for derivation
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivatives
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivatives
+        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
+        integer :: jd, kd                                                       ! counters
+        integer :: bcs(2,2)                                                     ! boundary conditions
         
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_jac_H')
         CHCKERR('')
+#endif
         
-        ! set up periodicity flag
+        ! set up boundary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
-            lper = 2                                                            ! even half periodic
+            bcs(:,1) = [0,0]                                                    ! not-a-knot
         else
-            lper = 1                                                            ! full periodic
+            bcs(:,1) = [-1,-1]                                                  ! periodic
         end if
+        bcs(:,2) = [0,0]
         
         ! calculate determinant
-        if (deriv(3).ne.0) then                                                 ! axisymmetry: deriv. in tor. coord. is zero
-            eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
-        else if (sum(deriv).eq.0) then                                          ! no derivatives
+        if (sum(deriv).eq.0) then                                               ! no derivatives
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     eq_2%jac_E(:,jd,kd,0,0,0) = eq_1%q_saf_E(kd,0)/&
                         &(h_H_33(:,grid_eq%i_min-1+kd)*&
-                        &RBphi_H(grid_eq%i_min-1+kd))
+                        &RBphi_H(grid_eq%i_min-1+kd,0))
                 end do
             end do
-        else if (deriv(1).eq.1 .and. deriv(2).eq.0) then                        ! derivative in norm. coord.
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
+        else if (deriv(3).ne.0) then                                            ! axisymmetry: deriv. in tor. coord. is zero
+            eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
+        else if (deriv(1).le.2 .and. deriv(2).le.2) then
+            ! initialize 2-D cubic spline
+            call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
+                &bcs(:,1),bcs(:,2),ierr) 
+            call EZspline_error(ierr)
             CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,1,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.2 .and. deriv(2).eq.0) then                        ! 2nd derivative in norm. coord.
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,2,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,0,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,2,0,0),3)
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.1) then                        ! derivative in pol. coord.
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,1,norm_disc_prec_eq+1,lper)             ! use extra precision to later calculate mixed derivatives
-                    CHCKERR('')
-                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
-                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,1,0))
-                    CHCKERR('')
-                end do
+            
+            
+            ! set grid
+            f_spl%x1 = chi_H
+            f_spl%x2 = grid_eq%loc_r_E
+            
+            do jd = 1,grid_eq%n(2)
+                ! set up 
+                call EZspline_setup(f_spl,eq_2%jac_E(:,jd,:,0,0,0),ierr,&
+                    &exact_dim=.true.)                                          ! match exact dimensions, none of them old Fortran bullsh*t!
+                call EZspline_error(ierr)
+                CHCKERR('')
+                
+                ! derivate
+                call EZspline_derivative(f_spl,deriv(1),deriv(2),grid_eq%n(1),&
+                    &grid_eq%loc_n_r,chi_H,grid_eq%loc_r_E,&
+                    &eq_2%jac_E(:,jd,:,deriv(1),deriv(2),0),ierr) 
+                call EZspline_error(ierr)
+                CHCKERR('')
             end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.0 .and. deriv(2).eq.2) then                        ! 2nd derivative in pol. coord.
-            do kd = 1,grid_eq%loc_n_r
-                do jd = 1,grid_eq%n(2)
-                    ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                        &ang_deriv_data,2,norm_disc_prec_eq,lper)
-                    CHCKERR('')
-                    ierr = apply_disc(eq_2%jac_E(:,jd,kd,0,0,0),&
-                        &ang_deriv_data,eq_2%jac_E(:,jd,kd,0,2,0))
-                    CHCKERR('')
-                end do
-            end do
-            call ang_deriv_data%dealloc()
-        else if (deriv(1).eq.1 .and. deriv(2).eq.1) then                        ! mixed derivative in norm. and pol. coord.
-            ierr = setup_deriv_data(grid_eq%loc_r_E,norm_deriv_data,1,&
-                &norm_disc_prec_eq+1)                                           ! use extra precision to later calculate mixed derivatives
-            CHCKERR('')
-            ierr = apply_disc(eq_2%jac_E(:,:,:,0,1,0),norm_deriv_data,&
-                &eq_2%jac_E(:,:,:,1,1,0),3) 
-            CHCKERR('')
-            call norm_deriv_data%dealloc()
+            
+            ! free
+            call EZspline_free(f_spl,ierr)
+            call EZspline_error(ierr)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
@@ -3096,9 +3037,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_J_F')
         CHCKERR('')
+#endif
         
         ! initialize
         eq%jac_F(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
@@ -3138,9 +3081,11 @@ contains
         type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_T_VC')
         CHCKERR('')
+#endif
         
         ! initialize
         eq%T_VC(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
@@ -3209,9 +3154,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_T_VF')
         CHCKERR('')
+#endif
         
         ! set up dims
         dims = [grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r]
@@ -3399,9 +3346,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_T_HF')
         CHCKERR('')
+#endif
         
         ! set up dims
         dims = [grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r]
@@ -3825,7 +3774,7 @@ contains
     !!
     !! This is done using the formula's from \cite Weyens3D
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
-        use num_utilities, only: c, spline3
+        use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq, eq_style
         use HELENA_vars, only: RBphi_H
@@ -3880,7 +3829,6 @@ contains
         real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
         real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
-        integer :: istat                                                        ! status
         integer :: jd                                                           ! counter
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
 #endif
@@ -3949,12 +3897,8 @@ contains
                 eq_2%sigma = 1._dp/vac_perm*&
                     &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
             case (2)                                                            ! HELENA
-                ierr = spline3(norm_disc_prec_eq,grid_eq%loc_r_E,&
-                    &RBphi_H(grid_eq%i_min:grid_eq%i_max),&
-                    &grid_eq%loc_r_E,dynew=eq_2%sigma(1,1,:))
-                CHCKERR('')
                 do kd = 1,grid_eq%loc_n_r
-                    eq_2%sigma(:,:,kd) = -eq_2%sigma(1,1,kd)
+                    eq_2%sigma(:,:,kd) = -RBphi_H(kd+grid_eq%i_min-1,1)
                 end do
         end select
         do kd = 1,grid_eq%loc_n_r
@@ -3969,8 +3913,8 @@ contains
             call lvl_ud(1)
             
             ! trim equilibrium grid
-            istat = trim_grid(grid_eq,grid_trim,norm_id)
-            CHCKSTT
+            ierr = trim_grid(grid_eq,grid_trim,norm_id)
+            CHCKERR('')
             
             ! allocate variables
             allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -3981,8 +3925,8 @@ contains
             allocate(Z_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
             
             ! calculate grid
-            istat = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
-            CHCKSTT
+            ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
+            CHCKERR('')
             
             ! point parallel angle
             if (use_pol_flux_F) then
@@ -3994,10 +3938,10 @@ contains
             ! get derived sigma
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
-                    istat = spline3(norm_disc_prec_eq,ang_par_F(:,jd,kd),&
-                        &eq_2%sigma(:,jd,kd),ang_par_F(:,jd,kd),&
-                        &dynew=D3sigma(:,jd,kd))
-                    CHCKSTT
+                    ierr = spline(ang_par_F(:,jd,kd),eq_2%sigma(:,jd,kd),&
+                        &ang_par_F(:,jd,kd),D3sigma(:,jd,kd),&
+                        &ord=norm_disc_prec_eq,deriv=1)
+                    CHCKERR('')
                 end do
             end do
             
@@ -4012,9 +3956,9 @@ contains
             ! depends on the normal coordinate and the geodesic coordinate.
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
-                    istat = calc_int(D3sigma_ALT(:,jd,kd),ang_par_F(:,jd,kd),&
+                    ierr = calc_int(D3sigma_ALT(:,jd,kd),ang_par_F(:,jd,kd),&
                         &sigma_ALT(:,jd,kd))
-                    CHCKSTT
+                    CHCKERR('')
                 end do
                 sigma_ALT(:,:,kd) = eq_2%sigma(1,1,kd) + sigma_ALT(:,:,kd)
             end do
@@ -5641,18 +5585,18 @@ contains
         call writo('Test complete')
     end function test_T_EF
     
-    !> Tests whether \f$ \frac{\partial^2}{\partial u_i \partial u_j} h_\text{H}
+    !> Tests whether \f$ \frac{\partial^2}{\partial u_i \partial u_j} g_\text{H}
     !! \f$ is calculated correctly.
     !!
     !! \note Debug version only
     !!
     !! \return ierr
-    integer function test_D12h_H(grid_eq,eq) result(ierr)
-        use grid_utilities, only: trim_grid, setup_deriv_data, apply_disc
-        use num_utilities, only: c
+    integer function test_D12g_H(grid_eq,eq) result(ierr)
+        use grid_utilities, only: trim_grid
+        use num_utilities, only: c, spline
         use num_vars, only: norm_disc_prec_eq
         
-        character(*), parameter :: rout_name = 'test_D12h_H'
+        character(*), parameter :: rout_name = 'test_D12g_H'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
@@ -5660,9 +5604,8 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, jd, kd, ld                                               ! counters
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
-        type(disc_type) :: ang_deriv_data                                       ! data for angular derivative
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
         integer :: tot_dim(3), loc_offset(3)                                    ! total dimensions and local offset
@@ -5672,7 +5615,7 @@ contains
         ierr = 0
         
         ! output
-        call writo('Going to test whether D1 D2 h_H is calculated correctly')
+        call writo('Going to test whether D1 D2 g_H is calculated correctly')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
@@ -5686,35 +5629,36 @@ contains
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
         
-        ! calculate D1 D2 h_H alternatively
-        do kd = norm_id(1),norm_id(2)
-            do jd = 1,grid_trim%n(2)
-                ierr = setup_deriv_data(grid_eq%theta_E(:,jd,kd),&
-                    &ang_deriv_data,1,norm_disc_prec_eq)
-                CHCKERR('')
-                ierr = apply_disc(eq%h_E(:,jd,kd,:,1,0,0),&
-                    &ang_deriv_data,res(:,jd,kd-norm_id(1)+1,:),1)
+        ! calculate D1 D2 g_H alternatively
+        do ld = 1,6
+            do kd = norm_id(1),norm_id(2)
+                do jd = 1,grid_trim%n(2)
+                    ierr = spline(grid_eq%theta_E(:,jd,kd),&
+                        &eq%g_E(:,jd,kd,ld,1,0,0),grid_eq%theta_E(:,jd,kd),&
+                        &res(:,jd,kd-norm_id(1)+1,ld),ord=norm_disc_prec_eq,&
+                        &deriv=1)
+                    CHCKERR('')
+                end do
             end do
         end do
-        call ang_deriv_data%dealloc()
         
         ! set up plot variables for calculated values
         do id = 1,3
             do kd = 1,3
                 ! user output
-                call writo('Testing h_H('//trim(i2str(kd))//','//&
+                call writo('Testing g_H('//trim(i2str(kd))//','//&
                     &trim(i2str(id))//')')
                 call lvl_ud(1)
                 
                 ! set some variables
-                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//&
+                file_name = 'TEST_D12g_H_'//trim(i2str(kd))//'_'//&
                     &trim(i2str(id))
-                description = 'Testing calculated with given value for D12h_H('&
+                description = 'Testing calculated with given value for D12g_H('&
                     &//trim(i2str(kd))//','//trim(i2str(id))//')'
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &eq%h_E(:,:,norm_id(1):norm_id(2),&
+                    &eq%g_E(:,:,norm_id(1):norm_id(2),&
                     &c([kd,id],.true.),1,1,0),file_name,tot_dim,loc_offset,&
                     &description,output_message=.true.)
                 
@@ -5728,7 +5672,7 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
-    end function test_D12h_H
+    end function test_D12g_H
     
     !> Performs  tests  on \f$  \mathcal{J}_\text{F}\f$.
     !!
@@ -5826,7 +5770,7 @@ contains
                     do jd = 1,grid_trim%n(2)
                         res(:,jd,kd-norm_id(1)+1) = eq_1%q_saf_E(kd,0)/&
                             &(h_H_33(:,kd+grid_eq%i_min-1)*&
-                            &RBphi_H(kd+grid_eq%i_min-1))                       ! h_H_33 = 1/R^2 and RBphi_H = F are tabulated in eq. grid
+                            &RBphi_H(kd+grid_eq%i_min-1,0))                     ! h_H_33 = 1/R^2 and RBphi_H = F are tabulated in eq. grid
                     end do
                 end do
         end select
@@ -6177,7 +6121,7 @@ contains
     !!
     !! \return ierr
     integer function test_p(grid_eq,eq_1,eq_2) result(ierr)
-        use num_utilities, only: c, spline3
+        use num_utilities, only: c, spline
         use grid_utilities, only: trim_grid
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq
@@ -6304,13 +6248,14 @@ contains
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2))
             do jd = 1,grid_trim%n(2)
                 do id = 1,grid_trim%n(1)
-                    ierr = spline3(norm_disc_prec_eq,grid_trim%loc_r_E,&
+                    ierr = spline(grid_trim%loc_r_E,&
                         &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
-                        &RBphi_H(norm_id_f(1):norm_id_f(2))+&
+                        &RBphi_H(norm_id_f(1):norm_id_f(2),0)+&
                         &eq_1%q_saf_E(norm_id(1):norm_id(2),0)*&
                         &h_H_11(id,norm_id_f(1):norm_id_f(2))/&
-                        &RBphi_H(norm_id_f(1):norm_id_f(2)),&
-                        &grid_trim%loc_r_E,dynew=res(id,jd,:,2))
+                        &RBphi_H(norm_id_f(1):norm_id_f(2),0),&
+                        &grid_trim%loc_r_E,res(id,jd,:,2),&
+                        &ord=norm_disc_prec_eq,deriv=1)
                     CHCKERR('')
                 end do
             end do
@@ -6338,15 +6283,16 @@ contains
                 &(eq_2%jac_FD(:,:,norm_id(1):norm_id(2),0,0,0)**2)
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
-                    ierr = spline3(norm_disc_prec_eq,grid_eq%theta_E(:,jd,kd),&
+                    ierr = spline(grid_eq%theta_E(:,jd,kd),&
                         &h_H_12(:,kd+grid_eq%i_min-1),grid_eq%theta_E(:,jd,kd),&
-                        &dynew=res(:,jd,kd-norm_id(1)+1,2))
+                        &res(:,jd,kd-norm_id(1)+1,2),&
+                        &ord=norm_disc_prec_eq,deriv=1)
                     CHCKERR('')
                 end do
                 res(:,:,kd-norm_id(1)+1,2) = &
-                    &-eq_1%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1) * &
+                    &-eq_1%q_saf_E(kd,0)/RBphi_H(kd+grid_eq%i_min-1,0) * &
                     &res(:,:,kd-norm_id(1)+1,2) + &
-                    &RBphi_H(kd+grid_eq%i_min-1) * &
+                    &RBphi_H(kd+grid_eq%i_min-1,0) * &
                     &eq_1%q_saf_E(kd,1)
             end do
             

@@ -9,7 +9,9 @@ module eq_utilities
     use num_vars, only: pi, dp, max_str_ln, max_deriv
     use grid_vars, only: grid_type, disc_type
     use eq_vars, only: eq_1_type, eq_2_type
+#if ldebug
     use num_utilities, only: check_deriv
+#endif
     
     implicit none
     private
@@ -403,9 +405,11 @@ contains
         ! initialize ierr
         ierr = 0
         
+#if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_g')
         CHCKERR('')
+#endif
         
         ! set ml
         m1 = deriv(1)
@@ -532,10 +536,12 @@ contains
             deriv_A = 0
         end if
         
+#if ldebug
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
         ierr = check_deriv(deriv_A + sum(deriv_B),max_deriv,'transf_deriv')
         CHCKERR('')
+#endif
         
         ! detect first deriv. in the B coord. system that needs to be exchanged,
         ! with derivs in the A coord. system going from B coord. 1 to B coord. 2
@@ -701,10 +707,12 @@ contains
             deriv_A = 0
         end if
         
+#if ldebug
         ! check the derivatives requested
         ! (every B deriv. needs all the A derivs. -> sum(deriv_B) needed)
         ierr = check_deriv([deriv_A+deriv_B,0,0],max_deriv,'transf_deriv')
         CHCKERR('')
+#endif
         
         ! calculate the  derivative in coord.  deriv_id_B of coord. system  B of
         ! one order lower than requested here

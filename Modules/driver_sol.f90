@@ -20,7 +20,7 @@ module driver_sol
     
     ! global variables
 #if ldebug
-    logical :: debug_run_driver_sol = .false.                                   !< debug information for run_driver_sol \ldebug
+    logical :: debug_run_driver_sol = .true.                                   !< debug information for run_driver_sol \ldebug
 #endif
     
 contains
@@ -72,17 +72,9 @@ contains
         type(grid_type) :: grid_X_sol                                           ! perturbation grid with solution normal part
         type(X_2_type) :: X_rdst                                                ! redistributed X
         type(X_2_type) :: X_sol                                                 ! interpolated X
-        integer :: pmone                                                        ! plus (increasing r_F) or minus (decreasing r_F) one
-        integer :: min_nm_X                                                     ! minimal n (tor. flux) or m (pol. flux)
-        integer :: kd, ld                                                       ! counters
-        integer :: n_mod_tot                                                    ! total number of modes
-        integer :: norm_range_X(2)                                              ! normal range in X grid of total mode
-        integer :: norm_range_sol(2)                                            ! normal range in sol grid of total mode
         integer :: sol_limits(2)                                                ! min. and max. index of sol grid for this process
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         real(dp), allocatable :: r_F_sol(:)                                     ! normal points in solution grid
-        complex(dp), allocatable :: V_X(:,:,:)                                  ! PV or KV for total mode
-        complex(dp), allocatable :: ser_var_loc(:)                              ! local serial variable
         logical :: do_vac_ops                                                   ! whether specific calculations for vacuum are necessary
         character(len=max_str_ln) :: err_msg                                    ! error message
         
@@ -299,16 +291,13 @@ contains
         type(X_2_type), intent(inout), target :: X_o                            !< interpolated tensorial perturbation variable
         
         ! local variables
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation X->sol
-        integer :: id, jd, kd, md                                               ! counter
+        integer :: kd                                                           ! counter
         integer :: k, m                                                         ! counters for mode numbers
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: n_mod_tot                                                    ! total amount of modes
         integer :: norm_disc_prec_loc                                           ! local precision
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
         real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
-        real(dp), allocatable :: spline_knots(:,:)                              ! knots of spline
-        real(dp), allocatable :: spline_coeff(:,:)                              ! coefficients of spline
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         logical :: extrap                                                       ! whether extrapolation is used
@@ -334,10 +323,7 @@ contains
         
         ! set extrapolation
         select case (V_interp_style)
-            case (1)                                                            ! finite differences
-                !extrap = .false.
-                extrap = .true.
-            case (2)                                                            ! splines
+            case (1)                                                            ! splines
                 extrap = .true.
         end select
         
@@ -426,60 +412,41 @@ contains
                 norm_disc_prec_loc = min(kdl_i(2)-kdl_i(1),&
                     &norm_disc_prec_sol)
                 
-                ! prepare interpolation
-                select case (V_interp_style)
-                    case (1)                                                    ! finite differences
-                        ! set up normal interpolation factors
-                        ierr = setup_interp_data(r_i_loc,r_o_loc,&
-                            &norm_interp_data,norm_disc_prec_loc,&
-                            &extrap=.true.)
-                        CHCKERR('')
-                    case (2)                                                    ! splines
-                        allocate(spline_coeff(size(r_i_loc),2))
-                        allocate(spline_knots(size(r_i_loc)+norm_disc_prec_loc,&
-                            &2))
-                end select
-                
                 if (calc_this(1)) then
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                     
                     V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                     
                     V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                     
                     V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                 end if
                 
                 if (calc_this(2)) then
                     V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                     
 #if ldebug
-                    !if (debug_run_driver_sol) then
+                    if (debug_run_driver_sol) then
                         !call writo('For [k,m] = ['//&
                             !&trim(i2str(mds_o%sec(k,1)))//','//&
                             !&trim(i2str(mds_o%sec(m,1)))//']:')
@@ -501,27 +468,15 @@ contains
                         !!call print_ex_2D(['V_i','V_o'],'IM_V',&
                             !!&ip(V_plot(:,1:2)),x=rp(V_plot(:,3:4)))
                         !deallocate(V_plot)
-                    !end if
+                    end if
 #endif
                     
                     V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_loc(V_i,V_o,norm_interp_data,&
-                        &spline_knots,spline_coeff,norm_disc_prec_loc,extrap,&
-                        &V_interp_style)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
+                        &norm_disc_prec_loc,extrap)
                     CHCKERR('')
                 end if
-                
-                ! clean up
-                select case (V_interp_style)
-                    case (1)                                                    ! finite differences
-                        if (norm_disc_prec_loc.ge.1) then
-                            call norm_interp_data%dealloc()
-                        end if
-                    case (2)                                                    ! splines
-                        deallocate(spline_knots)
-                        deallocate(spline_coeff)
-                end select
             end do
         end do
         
@@ -542,76 +497,45 @@ contains
         nullify(r_i_loc,r_o_loc)
         nullify(V_i,V_o)
     contains
-        !> \private Interpolation for a mode pair
+        !> \private Interpolation for a mode pair using splines.
         !!
-        !! The  specific variables  for  a style,  such  as \c  norm_interp_data
-        !! always have to be passed, also when using another style, but they can
-        !! be empty.
-        integer function interp_V_loc(V_i,V_o,norm_interp_data,spline_knots,&
-            &spline_coeff,norm_disc_prec,extrap,style) result(ierr)
+        !! The normal discretization precision is  limited to order 3 because of
+        !! the cubic splines.
+        integer function interp_V_spline(V_i,V_o,r_i,r_o,norm_disc_prec,&
+            &extrap) result(ierr)
             
-            use grid_utilities, only: apply_disc
-            use bspline_sub_module, only: db1ink, db1val, get_status_message
+            use num_utilities, only: spline
             
-            character(*), parameter :: rout_name = 'interp_V_loc'
+            character(*), parameter :: rout_name = 'interp_V_spline'
             
             ! input / output
             complex(dp), intent(in) :: V_i(:,:,:)                               ! input tensorial metric variable for a mode combinations
-            complex(dp), intent(inout) :: V_o(:,:,:)                            ! output tensorial metric variable for a mode combinations
-            type(disc_type) :: norm_interp_data                                 ! normal interpolation data
-            real(dp), intent(inout) :: spline_knots(:,:)                        ! knots of spline
-            real(dp), intent(inout) :: spline_coeff(:,:)                        ! coefficients of spline
+            complex(dp), intent(out) :: V_o(:,:,:)                              ! output tensorial metric variable for a mode combinations
+            real(dp), intent(in) :: r_i(:)                                      ! input r
+            real(dp), intent(in) :: r_o(:)                                      ! output r
             integer, intent(in) :: norm_disc_prec                               ! normal discretization
             logical, intent(in) :: extrap                                       ! extrapolation possible
-            integer, intent(in) :: style                                        ! style for V_interp
             
             ! local variables
-            integer :: id, jd, kd, md                                           ! counters
-            integer :: spline_init(2)                                           ! spline initialization parameter
-            real(dp) :: V_loc(2)                                                ! local PV or KV value
+            integer :: id, jd, kd                                               ! counters
             
             ! initialize ierr
             ierr = 0
             
             if (norm_disc_prec.ge.1) then                                       ! interpolate
-                select case (style)
-                    case (1)                                                    ! finite differences
-                        ierr = apply_disc(V_i,norm_interp_data,V_o,3)
+                do jd = 1,size(V_o,2)
+                    do id = 1,size(V_o,1)
+                        ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                            &ord=min(3,norm_disc_prec),extrap=extrap)
                         CHCKERR('')
-                    case (2)                                                    ! splines
-                    do jd = 1,size(V_o,2)
-                        do id = 1,size(V_o,1)
-                            call db1ink(r_i_loc,size(r_i_loc),rp(V_i(id,jd,:)),&
-                                &norm_disc_prec,0,spline_knots(:,1),&
-                                &spline_coeff(:,1),ierr)
-                            err_msg = get_status_message(ierr)
-                            CHCKERR(err_msg)
-                            call db1ink(r_i_loc,size(r_i_loc),ip(V_i(id,jd,:)),&
-                                &norm_disc_prec,0,spline_knots(:,2),&
-                                &spline_coeff(:,2),ierr)
-                            err_msg = get_status_message(ierr)
-                            CHCKERR(err_msg)
-                            spline_init = 1
-                            do kd = 1,size(r_o_loc)
-                                do md = 1,2
-                                    call db1val(r_o_loc(kd),0,&
-                                        &spline_knots(:,md),size(r_i_loc),&
-                                        &norm_disc_prec,spline_coeff(:,md),&
-                                        &V_loc(md),ierr,spline_init(md),&
-                                        &extrap=extrap)
-                                    err_msg = get_status_message(ierr)
-                                    CHCKERR(err_msg)
-                                end do
-                                V_o(id,jd,kd) = V_loc(1) + iu*V_loc(2)
-                            end do
-                        end do
                     end do
-                end select
+                end do
             else                                                                ! just copy
-                do kd = 1,kdl_o(2)-kdl_o(1)+1
+                write(*,*) '!!!! COPYING !!!'
+                do kd = 1,size(V_o,3)
                     V_o(:,:,kd) = V_i(:,:,1)
                 end do
             end if
-        end function interp_V_loc
+        end function interp_V_spline
     end function interp_V
 end module driver_sol
