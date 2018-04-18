@@ -216,7 +216,6 @@ driver_sol.o : \
     rich_ops.o \
     input_utilities.o \
     MPI_utilities.o \
-    bspline_sub_module.o \
 
 driver_POST.o : \
     num_vars.o \
@@ -334,7 +333,6 @@ eq_ops.o : \
     eq_utilities.o \
     X_utilities.o \
     rich_vars.o \
-    bspline_sub_module.o \
 
 eq_utilities.o : \
     str_utilities.o \
@@ -503,7 +501,6 @@ num_utilities.o : \
     num_vars.o \
     messages.o \
     str_utilities.o \
-    bspline_sub_module.o \
 
 num_ops.o : \
     num_vars.o \
@@ -550,8 +547,6 @@ str_utilities.o : \
 num_vars.o : \
 
 foul.o : \
-
-bspline_sub_module.o : \
 
 dtorh.o : \
     num_vars.o \

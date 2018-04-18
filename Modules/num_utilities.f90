@@ -1985,36 +1985,38 @@ contains
         
         ! local variables
         real(dp), allocatable :: ynew_loc(:,:)                                  ! local ynew
-        real(dp) :: bcs_val_loc(2)                                              ! local bcs_val
         
         ! set up local variables
         allocate(ynew_loc(size(ynew),2))
         
         ! call real version for real part
         if (present(bcs_val)) then
-            bcs_val_loc = rp(bcs_val)
+            ierr = spline_real(x,rp(y),xnew,ynew_loc(:,1),ord,deriv,bcs,&
+                &bcs_val=rp(bcs_val),extrap=extrap)
+            CHCKERR('')
         else
-            bcs_val_loc = 0._dp
+            ierr = spline_real(x,rp(y),xnew,ynew_loc(:,1),ord,deriv,bcs,&
+                &extrap=extrap)
+            CHCKERR('')
         end if
-        ierr = spline_real(x,rp(y),xnew,ynew_loc(:,1),ord,deriv,bcs,&
-            &bcs_val=bcs_val_loc,extrap=extrap)
-        CHCKERR('')
         
         ! call real version for complex part
         if (present(bcs_val)) then
-            bcs_val_loc = ip(bcs_val)
+            ierr = spline_real(x,ip(y),xnew,ynew_loc(:,2),ord,deriv,bcs,&
+                &bcs_val=ip(bcs_val),extrap=extrap)
+            CHCKERR('')
         else
-            bcs_val_loc = 0._dp
+            ierr = spline_real(x,ip(y),xnew,ynew_loc(:,2),ord,deriv,bcs,&
+                &extrap=extrap)
+            CHCKERR('')
         end if
-        ierr = spline_real(x,ip(y),xnew,ynew_loc(:,2),ord,deriv,bcs,&
-            &bcs_val=bcs_val_loc,extrap=extrap)
-        CHCKERR('')
         
         ! save
         ynew = ynew_loc(:,1) + iu*ynew_loc(:,2)
     end function spline_complex
     
-    !> Initialize utilities for fast future reference, depending on program style
+    !> \public  Initialize utilities  for  fast future  reference, depending  on
+    !! program style.
     !!
     !! Utilities initialized:
     !!  - derivatives

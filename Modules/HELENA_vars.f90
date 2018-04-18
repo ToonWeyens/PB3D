@@ -8,7 +8,7 @@ module HELENA_vars
     use output_ops
     use messages
     use num_vars, only: dp, max_str_ln
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use X_vars, only: X_1_type, X_2_type
     
     implicit none

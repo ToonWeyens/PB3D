@@ -8,14 +8,13 @@ module grid_utilities
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, iu
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
 
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
-        &calc_int_vol, copy_grid, trim_grid, untrim_grid, setup_deriv_data, &
-        &setup_interp_data, apply_disc, calc_n_par_X_rich, calc_vec_comp, &
-        &nufft, find_compr_range, calc_arc_angle, calc_tor_diff
+        &calc_int_vol, copy_grid, trim_grid, untrim_grid, calc_n_par_X_rich, &
+        &calc_vec_comp, nufft, find_compr_range, calc_arc_angle, calc_tor_diff
 #if ldebug
     public debug_calc_int_vol, debug_calc_vec_comp
 #endif
@@ -80,83 +79,6 @@ module grid_utilities
         module procedure calc_eqd_grid_3D
     end interface
     
-    !> \public Set up the factors for the derivative calculation.
-    !!
-    !! This is done through  a matrix \c A using finite  differences of order \c
-    !! ord with precision \c prec, by which is meant that the order of the error
-    !! is at least \f$\sim \Delta^{\texttt{prec}+1}\f$.
-    !! 
-    !! Afterwards, the matrix \c A has to  be multiplied with the variable to be
-    !! derived to obtain the requested derivative.
-    !! 
-    !! For a particular order and precision, the number of different points that
-    !! have to be combined is <tt>ord+prec</tt>, however, as it is better to use
-    !! symmetric  expressions, this  number is  possibly aumented  by one.  This
-    !! number is saved in \c n_loc.
-    !!
-    !! The  index  \c  kd  is  then  defined  to  go  from  <tt>-(n_loc-1)/2  ..
-    !! (n_loc-1)/2</tt>,  which is  translated  to local  coordinates by  adding
-    !! <tt>(n_loc+1)/2</tt>  and to  total coordinates  by adding  generally the
-    !! index in total coordinates \c i where  the local problem is to be set up,
-    !! but capping  it by <tt>(n_loc+1)/2</tt> and  <tt>n-(n_loc-1)/2</tt>, i.e.
-    !! by using
-    !!
-    !!   <tt>k_tot = kd + max((n_loc+1)/2,min(id,n-(n_loc-1)/2))</tt>,
-    !!
-    !! so that these never go out of bounds <tt>1 .. n</tt>.
-    !!
-    !! The local matrix element "mat_loc" is then set up as follows:
-    !!  \f[ \left[\begin{array}{ccccc}
-    !!      1 & 1 & \ldots & 1 & 1 \\
-    !!      \left(\Delta^{i-2}_i\right) & \left(\Delta^{i-1}_i\right) & 0 &
-    !!      \left(\Delta^{i+1}_i\right) & \left(\Delta^{i+1}_i\right) \\
-    !!      \frac{\left(\Delta^{i-2}_i\right)^2}{2!} &
-    !!      \frac{\left(\Delta^{i-1}_i\right)^2}{2!} & 0 &
-    !!      \frac{\left(\Delta^{i+1}_i\right)^2}{2!} &
-    !!      \frac{\left(\Delta^{i+1}_i\right)^2}{2!} \\
-    !!      \frac{\left(\Delta^{i-2}_i\right)^3}{3!} &
-    !!      \frac{\left(\Delta^{i-1}_i\right)^2}{3!} & 0 &
-    !!      \frac{\left(\Delta^{i+1}_i\right)^3}{3!} &
-    !!      \frac{\left(\Delta^{i+1}_i\right)^3}{3!} \\
-    !!      \ldots & \ldots  & \vdots & \ldots & \ldots \\
-    !!  \end{array}\right]\f]
-    !! for bulk matrices <tt>((n_loc+1)/2 <= i <= n-(n_loc-1)/2)</tt>, with
-    !!  \f[\Delta^j_i = x\left(j\right)-x\left(i\right). \f]
-    !! For other elements, this is shifted, e.g.:
-    !!
-    !!  <tt>mat_loc(j,k) = (x(k_tot)-X(i))^(j-1) </tt>
-    !!
-    !! where  <tt>j =  1..n_loc</tt> and <tt>k  = -(n_mod-1)/2..(n_mod-1)/2</tt>
-    !! and \c k_tot is defined above.
-    !!
-    !! This  system  of  equations  \c  D  can be  solved  by  relating  to  the
-    !! Vandermonde matrix \c V
-    !!  \f[ D = \text{Diag}\left(\frac{1}{0!},\frac{1}{1!},...,\frac{1}{m!}\right) V^T \f]
-    !! and solving  it using  the specific  formula's, so  that the  solution is
-    !! given  by  row  number  \c  ord,  multiplied  by  <tt>(ord!)</tt>.  Here,
-    !! \f$m\f$ = \c n_loc
-    !! 
-    !! Finally,  there is  an option  to consider  the input  data as  periodic,
-    !! through the flag \c lper:
-    !!  * 0: no periodicity [def]
-    !!  * 1: full period periodicity \f$f(x) = f(x+2\pi)\f$, with the last point
-    !!  assumed to lie at the end of the full period,
-    !!  * 2: even half period periodicity  \f$f(x) = f(2\pi-x)\f$, with the last
-    !!  point assumed to lie at the middle of the full period,
-    !!  * 3: odd half period periodicity  \f$f(x) = -f(2\pi-x)\f$, with the last
-    !! point assumed to lie at the middle of the full period,
-    !!
-    !! where a  hypothetical \f$\left[0\ldots 2\pi\right]\f$ period  was assumed
-    !! for the sake of illustration.
-    !!
-    !! \return ierr
-    interface setup_deriv_data
-        !> \public
-        module procedure setup_deriv_data_eqd
-        !> \public
-        module procedure setup_deriv_data_reg
-    end interface
-    
     !> \public Calculates the toroidal difference  for a magnitude calculated on
     !! three toroidal points: two extremities and one in the middle.
     !!
@@ -189,32 +111,6 @@ module grid_utilities
         module procedure calc_tor_diff_0D
         !> \public
         module procedure calc_tor_diff_2D
-    end interface
-    
-    !> \public Applies the discretization  data calculated in setup_deriv_data()
-    !! or setup_interp_data() to calculate the  derivative or interpolation in a
-    !! dimension \c disc_dim.
-    !!
-    !! \note setup_interp_data() has been deprecated.
-    !!
-    !! \return ierr
-    interface apply_disc
-        !> \public
-        module procedure apply_disc_4D_real
-        !> \public
-        module procedure apply_disc_4D_complex
-        !> \public
-        module procedure apply_disc_3D_real
-        !> \public
-        module procedure apply_disc_3D_complex
-        !> \public
-        module procedure apply_disc_2D_real
-        !> \public
-        module procedure apply_disc_2D_complex
-        !> \public
-        module procedure apply_disc_1D_real
-        !> \public
-        module procedure apply_disc_1D_complex
     end interface
     
 contains
@@ -291,12 +187,13 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use num_ops, only: calc_zero_HH
             use VMEC_vars, only: mnmax_V
+            use num_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
             ! local variables
+            integer :: id                                                       ! counter
             real(dp), pointer :: loc_r_F(:) => null()                           ! loc_r in F coords.
-            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             real(dp), allocatable :: theta_E_guess(:,:)                         ! guess for theta_E for a flux surface
             real(dp), allocatable :: theta_E_guess_3D(:,:,:)                    ! guess for theta_E
             
@@ -317,18 +214,15 @@ contains
             allocate(L_V_c_loc(mnmax_V,dims(3)))
             allocate(L_V_s_loc(mnmax_V,dims(3)))
             
-            ! set up interpolation data
-            ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            
             ! interpolate L_V_c and L_V_s at requested normal points r_F
-            ierr = apply_disc(L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),&
-                &norm_interp_data,L_V_c_loc,2)
-            CHCKERR('')
-            ierr = apply_disc(L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),&
-                &norm_interp_data,L_V_s_loc,2)
-            CHCKERR('')
+            do id = 1,mnmax_V
+                ierr = spline(loc_r_F,L_V_c(id,grid_eq%i_min:grid_eq%i_max,0),&
+                    &r_F,L_V_c_loc(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(loc_r_F,L_V_s(id,grid_eq%i_min:grid_eq%i_max,0),&
+                    &r_F,L_V_s_loc(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+            end do
             
             ! set up guess
             allocate(theta_E_guess(dims(1),dims(2)))
@@ -361,7 +255,6 @@ contains
             
             ! clean up
             nullify(loc_r_F)
-            call norm_interp_data%dealloc()
         end function coord_F2E_VMEC
         
         ! function  that  returns  f  =  theta_F  -  theta_V  -  lambda  or  its
@@ -402,6 +295,7 @@ contains
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -417,7 +311,6 @@ contains
         integer :: n_r                                                          ! dimension of the grid
         real(dp), pointer :: loc_r_E(:) => null()                               ! loc_r in E coords.
         real(dp), pointer :: loc_r_F(:) => null()                               ! loc_r in F coords.
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -446,18 +339,12 @@ contains
             loc_r_F => grid_eq%loc_r_F
         end if
         
-        ! set up interpolation data
-        ierr = setup_interp_data(loc_r_F,r_F,norm_interp_data,&
-            &norm_disc_prec_eq)
-        CHCKERR('')
-        
         ! convert normal position
-        ierr = apply_disc(loc_r_E,norm_interp_data,r_E)
+        ierr = spline(loc_r_F,loc_r_E,r_F,r_E,ord=norm_disc_prec_eq)
         CHCKERR('')
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
-        call norm_interp_data%dealloc()
     end function coord_F2E_r
     
     !> version with r, theta and zeta
@@ -523,14 +410,15 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: mnmax_V, L_V_c, L_V_s, is_asym_V
+            use num_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
             ! local variables
+            integer :: id                                                       ! counter
             real(dp), allocatable :: L_V_c_loc(:,:), L_V_s_loc(:,:)             ! local version of L_V_c and L_V_s
             real(dp), allocatable :: lam(:,:,:)                                 ! lambda
             real(dp), pointer :: loc_r_E(:) => null()                           ! loc_r in E coords.
-            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             
             ! initialize ierr
             ierr = 0
@@ -550,18 +438,15 @@ contains
             allocate(L_V_s_loc(mnmax_V,dims(3)))
             allocate(lam(dims(1),dims(2),dims(3)))
             
-            ! set up interpolation data
-            ierr = setup_interp_data(loc_r_E,r_E,norm_interp_data,&
-                &norm_disc_prec_eq)
-            CHCKERR('')
-            
             ! interpolate L_V_c and L_V_s at requested normal points r_E
-            ierr = apply_disc(L_V_c(:,grid_eq%i_min:grid_eq%i_max,0),&
-                &norm_interp_data,L_V_c_loc,2)
-            CHCKERR('')
-            ierr = apply_disc(L_V_s(:,grid_eq%i_min:grid_eq%i_max,0),&
-                &norm_interp_data,L_V_s_loc,2)
-            CHCKERR('')
+            do id = 1,mnmax_V
+                ierr = spline(loc_r_E,L_V_c(id,grid_eq%i_min:grid_eq%i_max,0),&
+                    &r_E,L_V_c_loc(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(loc_r_E,L_V_s(id,grid_eq%i_min:grid_eq%i_max,0),&
+                    &r_E,L_V_s_loc(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+            end do
             
             ! calculate lambda
             ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_E,zeta_E,lam,&
@@ -574,13 +459,13 @@ contains
             
             ! clean up
             nullify(loc_r_E)
-            call norm_interp_data%dealloc()
         end function coord_E2F_VMEC
     end function coord_E2F_rtz
     !> version with only r
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -596,7 +481,6 @@ contains
         integer :: n_r                                                          ! dimension of the grid
         real(dp), pointer :: loc_r_E(:) => null()                               ! loc_r in E coords.
         real(dp), pointer :: loc_r_F(:) => null()                               ! loc_r in F coords.
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -625,18 +509,12 @@ contains
             loc_r_F => grid_eq%loc_r_F
         end if
         
-        ! set up interpolation data
-        ierr = setup_interp_data(loc_r_E,r_E,norm_interp_data,&
-            &norm_disc_prec_eq)
-        CHCKERR('')
-        
         ! convert normal position
-        ierr = apply_disc(loc_r_F,norm_interp_data,r_F)
+        ierr = spline(loc_r_E,loc_r_F,r_E,r_F,ord=norm_disc_prec_eq)
         CHCKERR('')
         
         ! clean up
         nullify(loc_r_E,loc_r_F)
-        call norm_interp_data%dealloc()
     end function coord_E2F_r
 
     !> \private 3-D version
@@ -742,178 +620,6 @@ contains
         ! update var
         var = var_3D(:,1,1)
     end function calc_eqd_grid_1D
-    
-    !> \private equidistant version
-    integer function setup_deriv_data_eqd(step,n,A,ord,prec,lper) result(ierr)
-        use num_utilities, only: fac, solve_vand
-        
-        character(*), parameter :: rout_name = 'setup_deriv_data_eqd'
-        
-        ! input / output
-        real(dp), intent(in) :: step                                            !< step size
-        integer, intent(in) :: n                                                !< problem size
-        type(disc_type), intent(inout) :: A                                     !< derivation data
-        integer, intent(in) :: ord                                              !< order of derivative
-        integer, intent(in) :: prec                                             !< precision
-        integer, intent(in), optional :: lper                                   !< periodicity flag
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        real(dp), allocatable :: x(:)                                           ! dummy x
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up dummy x
-        allocate(x(n))
-        do id = 1,n
-            x(id) = id*step
-        end do
-        
-        ! call regular version
-        ierr = setup_deriv_data_reg(x,A,ord,prec,lper)
-        CHCKERR('')
-    end function setup_deriv_data_eqd
-    !> \private regular version
-    integer function setup_deriv_data_reg(x,A,ord,prec,lper) result(ierr)
-        use num_utilities, only: fac, solve_vand
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'setup_deriv_data_reg'
-        
-        ! input / output
-        real(dp), intent(in) :: x(:)                                            !< independent variable
-        type(disc_type), intent(inout) :: A                                     !< discretization mat
-        integer, intent(in) :: ord                                              !< order of derivative
-        integer, intent(in) :: prec                                             !< precision
-        integer, intent(in), optional :: lper                                   !< periodicity flag
-        
-        ! local variables
-        integer :: n                                                            ! size of x
-        integer :: id, kd                                                       ! counters
-        integer :: kd_tot                                                       ! kd in total index
-        integer :: n_loc                                                        ! local size of problem to solve
-        integer :: lper_loc                                                     ! local lper
-        real(dp) :: delta_x                                                     ! dixplacement due to wrapping in fundamental period
-        real(dp) :: x_loc                                                       ! local x
-        real(dp), allocatable :: mat_loc(:)                                     ! elements of local Vandermonde matrix
-        real(dp), allocatable :: rhs_loc(:)                                     ! local right-hand side
-        real(dp), allocatable :: sol_loc(:)                                     ! local right-hand side
-        logical, allocatable :: odd_sym(:)                                      ! whether function value is taken from odd symmetric part
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set n_loc and n
-        n_loc = prec+ord+1
-        if (mod(n_loc,2).eq.0) n_loc = n_loc + 1                                ! add one point if even
-        n = size(x)
-        
-        ! set local lper
-        lper_loc = 0
-        if (present(lper)) lper_loc = lper
-        
-        ! tests
-        if (prec.lt.1) then
-            ierr = 1
-            err_msg = 'precision has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (ord.lt.1) then
-            ierr = 1
-            err_msg = 'order has to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        if (n.lt.2*n_loc) then
-            ierr = 1
-            err_msg = 'need at least '//trim(i2str(2*n_loc))//' points in grid'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set variables
-        allocate(mat_loc(n_loc))
-        allocate(rhs_loc(n_loc))
-        allocate(sol_loc(n_loc))
-        allocate(odd_sym(n_loc))
-        ierr = A%init(n,n_loc)
-        CHCKERR('')
-        
-        ! iterate over all x values
-        do id = 1,n
-            ! calculate elements of local matrix and save index
-            odd_sym = .false.
-            do kd = -(n_loc-1)/2,(n_loc-1)/2
-                delta_x = 0._dp
-                select case (lper_loc)
-                    case (0)                                                    ! no periodicity
-                        kd_tot = kd+max((n_loc+1)/2,min(id,n-(n_loc-1)/2))
-                        mat_loc(kd+(n_loc+1)/2) = x(kd_tot)-x(id)
-                        A%id(id,kd+(n_loc+1)/2) = &
-                            &max(1,min(id-(n_loc-1)/2,n-n_loc+1)) + &
-                            &kd+(n_loc+1)/2-1
-                    case (1)                                                    ! full period periodicity
-                        kd_tot = calc_kd_tot(id,kd,n)
-                        delta_x = (kd_tot-(kd+id))/(1-n) * (x(n)-x(1))          ! displacement due to kd_tot wrapping
-                        x_loc = x(kd_tot)                                       ! position in fundamental period
-                        mat_loc(kd+(n_loc+1)/2) = x_loc-x(id) + delta_x         ! add wrapping displacement
-                        A%id(id,kd+(n_loc+1)/2) = kd_tot
-                    case (2:3)                                                  ! half period periodicity
-                        kd_tot = calc_kd_tot(id,kd,2*n-1)
-                        delta_x = (kd_tot-(kd+id))/(2-2*n) * 2*(x(n)-x(1))      ! displacement due to kd_tot wrapping
-                        if (kd_tot.le.n) then                                   ! position in fundamental period
-                            x_loc = x(kd_tot)
-                        else                                                    ! half period symmetry
-                            if (lper_loc.eq.3) odd_sym(kd+(n_loc+1)/2) = .true. ! odd
-                            kd_tot = 2*n-kd_tot
-                            x_loc = 2*x(n)-x(kd_tot)
-                        end if
-                        mat_loc(kd+(n_loc+1)/2) = x_loc-x(id) + delta_x
-                        A%id(id,kd+(n_loc+1)/2) = kd_tot
-                    case default
-                        ierr = 1
-                        err_msg = 'No style "'//trim(i2str(lper_loc))//&
-                            &'" for lper'
-                        CHCKERR(err_msg)
-                end select
-            end do
-            
-            ! solve Vandermonde system
-            rhs_loc = 0._dp
-            rhs_loc(ord+1) = 1._dp                                              ! looking for derivative of this order
-            call solve_vand(n_loc,mat_loc,rhs_loc,sol_loc,transp=.true.)
-            where (odd_sym) sol_loc = -sol_loc                                  ! odd symmetry was taken for function value
-            
-            ! save in total matrix A
-            A%dat(id,:) = sol_loc*fac(ord)
-        end do
-    contains
-        !> \private  Calculate  kd in  total  index,  depending on  whether  the
-        !! function is periodic or not:
-        !!
-        !!  - not periodic: limit kd_tot such that 1 < id+kd < n.
-        !!  - periodic: make use of the fact  that points 1 and n correspond, so
-        !!  that kd_tot = modulo(id+kd,n-1) + 1, e.g.:
-        !!       -1 -> n-2
-        !!        0 -> n-1
-        !!        1 -> 1
-        !!          ⋮
-        !!      n-1 -> n-1
-        !!        n -> 1
-        !!      n+1 -> 2
-        !!  A displacement equal  to kd_tot-(id+kd) divided by  1-n is therefore
-        !!  used.
-        !!
-        !! \note  For periodic  functions, the  total size  of the  grid, \c  n,
-        !! comprises the entire  range, i.e. for half periodic  functions, it is
-        !! equal to \f$2n-1\f$ of the main routine.
-        integer function calc_kd_tot(id,kd,n) result(res)
-            ! input / output
-            integer, intent(in) :: id, kd, n
-            
-            res = modulo(kd+id-1,n-1) + 1
-        end function calc_kd_tot
-    end function setup_deriv_data_reg
 
     !> \private 2-D version
     integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
@@ -1057,277 +763,6 @@ contains
         v_mag = v_com_loc(:,:,:,1,1)
     end function calc_tor_diff_0D
     
-    !> 4-D real version
-    integer function apply_disc_4D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_4D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:,:,:)                                    !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        real(dp), intent(inout) :: dvar(:,:,:,:)                                !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: n                                                            ! size of variable
-        integer :: id, jd                                                       ! counter
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (disc_dim.lt.1 .or. disc_dim.gt.4) then
-            err_msg = 'invalid dimension of derivative '//trim(i2str(disc_dim))
-            CHCKERR(err_msg)
-        end if
-        n = size(dvar,disc_dim)
-        if (n.ne.disc_data%n) then
-            err_msg = 'variables are not compatible'
-            CHCKERR(err_msg)
-        end if
-        
-        ! initialize output
-        dvar = 0._dp
-        
-        ! multiply the matrices
-        select case (disc_dim)
-            case (1)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(id,:,:,:) = dvar(id,:,:,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(disc_data%id(id,jd),:,:,:)
-                    end do
-                end do
-            case (2)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,id,:,:) = dvar(:,id,:,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,disc_data%id(id,jd),:,:)
-                    end do
-                end do
-            case (3)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,:,id,:) = dvar(:,:,id,:) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,:,disc_data%id(id,jd),:)
-                    end do
-                end do
-            case (4)
-                do id = 1,n
-                    do jd = 1,disc_data%n_loc
-                        dvar(:,:,:,id) = dvar(:,:,:,id) + &
-                            &disc_data%dat(id,jd)*&
-                            &var(:,:,:,disc_data%id(id,jd))
-                    end do
-                end do
-            case default
-                ierr = 1
-                err_msg = 'dimension of discretization operation '//&
-                    &trim(i2str(disc_dim))//'impossible'
-                CHCKERR(err_msg)
-        end select
-    end function apply_disc_4D_real
-    !> 4-D complex version
-    integer function apply_disc_4D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_4D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:,:,:)                                 !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        complex(dp), intent(inout) :: dvar(:,:,:,:)                             !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),size(dvar,4)))
-        
-        ! call the real version for the real and imaginary part separately
-        ierr = apply_disc_4D_real(rp(var),disc_data,dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc
-        ierr = apply_disc_4D_real(ip(var),disc_data,dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar + iu*dvar_loc
-    end function apply_disc_4D_complex
-    !> 3-D real version
-    integer function apply_disc_3D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_3D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:,:)                                      !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        real(dp), intent(inout) :: dvar(:,:,:)                                  !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,:,1)
-    end function apply_disc_3D_real
-    !> 3-D complex version
-    integer function apply_disc_3D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_3D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:,:)                                   !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        complex(dp), intent(inout) :: dvar(:,:,:)                               !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),size(dvar,3),1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,:,1)
-    end function apply_disc_3D_complex
-    !> 2-D real version
-    integer function apply_disc_2D_real(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_2D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:,:)                                        !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        real(dp), intent(inout) :: dvar(:,:)                                    !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,1,1)
-    end function apply_disc_2D_real
-    !> 2-D complex version
-    integer function apply_disc_2D_complex(var,disc_data,dvar,disc_dim) &
-        &result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:,:)                                     !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        complex(dp), intent(inout) :: dvar(:,:)                                 !< operated variable
-        integer, intent(in) :: disc_dim                                         !< dimension in which to discretization operation
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),size(dvar,2),1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1]),disc_data,&
-            &dvar_loc,disc_dim)
-        CHCKERR('')
-        dvar = dvar_loc(:,:,1,1)
-    end function apply_disc_2D_complex
-    !> 1-D real version
-    integer function apply_disc_1D_real(var,disc_data,dvar) result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_1D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: var(:)                                          !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        real(dp), intent(inout) :: dvar(:)                                      !< operated variable
-        
-        ! local variables
-        real(dp), allocatable :: dvar_loc(:,:,:,:)                              ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),1,1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_real(reshape(var,[shape(var),1,1,1]),disc_data,&
-            &dvar_loc,1)
-        CHCKERR('')
-        dvar = dvar_loc(:,1,1,1)
-    end function apply_disc_1D_real
-    !> 1-D complex version
-    integer function apply_disc_1D_complex(var,disc_data,dvar) result(ierr)
-        use grid_vars, only: disc_type
-        
-        character(*), parameter :: rout_name = 'apply_disc_1D_complex'
-        
-        ! input / output
-        complex(dp), intent(in) :: var(:)                                       !< variable to be operated on
-        type(disc_type), intent(in) :: disc_data                                !< \c disc_data calculated in grid_utilities.setup_deriv_data() or setup_interp_data()
-        complex(dp), intent(inout) :: dvar(:)                                   !< operated variable
-        
-        ! local variables
-        complex(dp), allocatable :: dvar_loc(:,:,:,:)                           ! local dvar
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set up local dvar
-        allocate(dvar_loc(size(dvar,1),1,1,1))
-        
-        ! call the 4D version
-        ierr = apply_disc_4D_complex(reshape(var,[shape(var),1,1,1]),&
-            &disc_data,dvar_loc,1)
-        CHCKERR('')
-        dvar = dvar_loc(:,1,1,1)
-    end function apply_disc_1D_complex
-    
     !> Calculates \f$X\f$, \f$Y\f$ and \f$Z\f$ on a grid \c grid_XYZ, determined
     !! through its E(quilibrium) coordinates.
     !!
@@ -1430,6 +865,7 @@ contains
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
                 &mnmax_V, is_asym_V
+            use num_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -1441,11 +877,11 @@ contains
             real(dp), intent(inout), optional :: R(:,:,:)                       ! R of grid
             
             ! local variables
+            integer :: id                                                       ! counter
             real(dp), allocatable :: R_V_c_int(:,:), R_V_s_int(:,:)             ! interpolated version of R_V_c and R_V_s
             real(dp), allocatable :: Z_V_c_int(:,:), Z_V_s_int(:,:)             ! interpolated version of Z_V_c and Z_V_s
             real(dp), allocatable :: L_V_c_int(:,:), L_V_s_int(:,:)             ! interpolated version of L_V_c and L_V_s
             real(dp), allocatable :: R_loc(:,:,:)                               ! R in Cylindrical coordinates
-            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
             character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
@@ -1468,29 +904,29 @@ contains
                 allocate(L_V_s_int(mnmax_V,grid_XYZ%loc_n_r))
             end if
             
-            ! setup normal interpolation data
-            ierr = setup_interp_data(grid_eq%r_E,grid_XYZ%loc_r_E,&
-                &norm_interp_data,norm_disc_prec_eq)
-            CHCKERR('')
-            
             ! interpolate VMEC tables
-            ierr = apply_disc(R_V_c(:,:,0),norm_interp_data,R_V_c_int,2)
-            CHCKERR('')
-            ierr = apply_disc(R_V_s(:,:,0),norm_interp_data,R_V_s_int,2)
-            CHCKERR('')
-            ierr = apply_disc(Z_V_c(:,:,0),norm_interp_data,Z_V_c_int,2)
-            CHCKERR('')
-            ierr = apply_disc(Z_V_s(:,:,0),norm_interp_data,Z_V_s_int,2)
-            CHCKERR('')
-            if (present(L)) then
-                ierr = apply_disc(L_V_c(:,:,0),norm_interp_data,L_V_c_int,2)
+            do id = 1,mnmax_V
+                ierr = spline(grid_eq%r_E,R_V_c(id,:,0),grid_XYZ%loc_r_E,&
+                    &R_V_c_int(id,:),ord=norm_disc_prec_eq)
                 CHCKERR('')
-                ierr = apply_disc(L_V_s(:,:,0),norm_interp_data,L_V_s_int,2)
+                ierr = spline(grid_eq%r_E,R_V_s(id,:,0),grid_XYZ%loc_r_E,&
+                    &R_V_s_int(id,:),ord=norm_disc_prec_eq)
                 CHCKERR('')
-            end if
-            
-            ! clean up
-            call norm_interp_data%dealloc()
+                ierr = spline(grid_eq%r_E,Z_V_c(id,:,0),grid_XYZ%loc_r_E,&
+                    &Z_V_c_int(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%r_E,Z_V_s(id,:,0),grid_XYZ%loc_r_E,&
+                    &Z_V_s_int(id,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                if (present(L)) then
+                    ierr = spline(grid_eq%r_E,L_V_c(id,:,0),grid_XYZ%loc_r_E,&
+                        &L_V_c_int(id,:),ord=norm_disc_prec_eq)
+                    CHCKERR('')
+                    ierr = spline(grid_eq%r_E,L_V_s(id,:,0),grid_XYZ%loc_r_E,&
+                        &L_V_s_int(id,:),ord=norm_disc_prec_eq)
+                    CHCKERR('')
+                end if
+            end do
             
             ! allocate local R
             allocate(R_loc(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
@@ -1526,6 +962,7 @@ contains
             &result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
             use num_vars, only: norm_disc_prec_eq
+            use num_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -1538,14 +975,25 @@ contains
             ! local variables
             integer :: id, jd, kd                                               ! counters
             integer :: pmone                                                    ! plus or minus one
+            integer :: bcs(2,3)                                                 ! boundary conditions (theta(even), theta(odd), r)
+            real(dp) :: bcs_val(2,3)                                            ! values for boundary conditions
             real(dp), allocatable :: R_H_int(:,:), Z_H_int(:,:)                 ! R and Z at interpolated normal value
             real(dp), allocatable :: R_loc(:,:,:)                               ! R in Cylindrical coordinates
             real(dp) :: theta_loc                                               ! local copy of theta_E
-            type(disc_type) :: norm_interp_data                                 ! data for normal interpolation
-            type(disc_type) :: pol_interp_data                                  ! data for poloidal interpolation
             
             ! initialize ierr
             ierr = 0
+            
+            ! set up boundary conditions
+            if (ias.eq.0) then                                                  ! top-bottom symmetric
+                bcs(:,1) = [1,1]                                                ! theta(even): zero first derivative
+                bcs(:,2) = [2,2]                                                ! theta(odd): zero first derivative
+            else
+                bcs(:,1) = [-1,-1]                                              ! theta(even): periodic
+                bcs(:,2) = [-1,-1]                                              ! theta(odd): periodic
+            end if
+            bcs(:,3) = [0,0]                                                    ! r: not-a-knot
+            bcs_val = 0._dp
             
             ! allocate local R
             allocate(R_loc(grid_XYZ%n(1),grid_XYZ%n(2),grid_XYZ%loc_n_r))
@@ -1554,17 +1002,18 @@ contains
             allocate(R_H_int(nchi,grid_XYZ%loc_n_r))
             allocate(Z_H_int(nchi,grid_XYZ%loc_n_r))
             
-            ! set up interpolation data
-            ierr = setup_interp_data(grid_eq%r_E,grid_XYZ%loc_r_E,&
-                &norm_interp_data,norm_disc_prec_eq)
-            CHCKERR('')
-            
             ! interpolate HELENA output  R_H and Z_H for  every requested normal
             ! point
-            ierr = apply_disc(R_H,norm_interp_data,R_H_int,2)
-            CHCKERR('')
-            ierr = apply_disc(Z_H,norm_interp_data,Z_H_int,2)
-            CHCKERR('')
+            do id = 1,nchi
+                ierr = spline(grid_eq%r_E,R_H(id,:),grid_XYZ%loc_r_E,&
+                    &R_H_int(id,:),ord=norm_disc_prec_eq,bcs=bcs(:,3),&
+                    &bcs_val=bcs_val(:,3))
+                CHCKERR('')
+                ierr = spline(grid_eq%r_E,Z_H(id,:),grid_XYZ%loc_r_E,&
+                    &Z_H_int(id,:),ord=norm_disc_prec_eq,bcs=bcs(:,3),&
+                    &bcs_val=bcs_val(:,3))
+                CHCKERR('')
+            end do
             
             ! Note:  R_H and  Z_H  are not  adapted to  the  parallel grid,  but
             ! tabulated in the original HELENA poloidal grid.
@@ -1597,17 +1046,14 @@ contains
                             pmone = 1
                         end if
                         
-                        ! set up interpolation data
-                        ierr = setup_interp_data(chi_H,[theta_loc],&
-                            &pol_interp_data,norm_disc_prec_eq)                 ! use same precision as normal discretization
-                        CHCKERR('')
-                        
                         ! interpolate  the HELENA  variables poloidally
-                        ierr = apply_disc(R_H_int(:,kd),pol_interp_data,&
-                            &R_loc(id:id,jd,kd))
+                        ierr = spline(chi_H,R_H_int(:,kd),[theta_loc],&
+                            &R_loc(id:id,jd,kd),ord=norm_disc_prec_eq,&
+                            &bcs=bcs(:,1),bcs_val=bcs_val(:,1))                 ! even
                         CHCKERR('')
-                        ierr = apply_disc(pmone*Z_H_int(:,kd),pol_interp_data,&
-                            &Z(id:id,jd,kd))
+                        ierr = spline(chi_H,pmone*Z_H_int(:,kd),[theta_loc],&
+                            &Z(id:id,jd,kd),ord=norm_disc_prec_eq,&
+                            &bcs=bcs(:,2),bcs_val=bcs_val(:,2))                 ! odd
                         CHCKERR('')
                     end do
                 end do
@@ -1621,8 +1067,6 @@ contains
             
             ! deallocate
             deallocate(R_loc)
-            call norm_interp_data%dealloc()
-            call pol_interp_data%dealloc()
         end function calc_XYZ_grid_HEL
     end function calc_XYZ_grid
     
@@ -2158,217 +1602,6 @@ contains
         deallocate(Jf,transf_J,transf_J_tot)
     end function calc_int_vol
     
-    !> Set up  the factors for  the interpolation calculation  in a matrix  \c A
-    !! using a polynomial order \c ord.
-    !!
-    !! This  is  done using  Barycentric  Lagrangian  polynomials, which  are  a
-    !! computationally  more  advantageous  way  of  expressing  the  Lagrangian
-    !! interpolating polynomial:
-    !! \f[\begin{aligned}
-    !!   L(x) &= \left. \sum_{j=0}^N \frac{w_j f_j}{x-x_j} \right/
-    !!      \sum_{j=0}^N \frac{w_j}{x-x_j} , \ \text{with} \\
-    !!   w_j &= \left.1 \right/ l'(x_j) , \ \text{where} \\
-    !!   l(x) &= \prod_{i=0}^N (x-x_i) , \ \text{so that} \\
-    !!   l'(x_j) &= \prod_{j\ne i} (x_j-x_i) \ .
-    !!  \end{aligned}\f]
-    !! <https://people.maths.ox.ac.uk/trefethen/barycentric.pdf>, 02/05/2016.
-    !! 
-    !! The optimal range  of grid points \c x around  the interpolation point \c
-    !! x_interp is first calculated, after which the weight functions \c w_j are
-    !! calculated  for  each of  the  interpolation  points, multiplied  by  \f$
-    !! \frac{1}{x-x_j}\f$.
-    !!
-    !! The result is scaled by the sum of all, and this is tabulated.
-    !!
-    !! Optionally, this  routine can  do trigonometric interpolation  instead of
-    !! polynomial, which results in using \f$\sin\left(\frac{x-x_j}{2}\right)\f$
-    !! instead of \f$(x-x_j)\f$.
-    !! <https://en.wikipedia.org/wiki/Trigonometric_interpolation>, 01/09/2016.
-    !!
-    !! Currently, this only works for an odd  number of points, as there is also
-    !! an odd number of constraints.
-    !!
-    !! \remark Trigonometric  interpolation can be  used to resample  a periodic
-    !! function  that  has been  sampled  on  an  irregular  grid, in  order  to
-    !! calculate  the fourier  transform with  a FFT,  which requires  a regular
-    !! grid. In this case, a full \f$2\pi\f$ period is assumed.
-    !! 
-    !! \remark The fact that  this is can be done can be  seen by realizing that
-    !! trigonometric interpolation  can also  be written  in Lagrange  form, and
-    !! subsequently  in  barycentric  Lagrange  form.  There  is  an  additional
-    !! factor  \f$\frac{1}{2}\f$  in \f$l'(x_j)\f$,  due  to  the derivation  of
-    !! \f$\sin\left(\frac{x-x_k}{2}\right)\f$ but this cancels  as it is present
-    !! in both enumerator and denominator.
-    !!
-    !! \note  To  avoid  numerical  problems, the  factors  \f$(x_j-x_i)\f$  are
-    !! divided by  a characteristic length \c  len, equal to the  average length
-    !! of  the  working  interval.  This  scales both  the  enumerator  and  the
-    !! denominator by \f$\texttt{len}^N\f$, which therefore cancel. Also, if the
-    !! interpolation point  \c x_interp is within  a tiny tolerance of  the grid
-    !! points \c x, the machinery is bypassed to avoid unstabilities.
-    !!
-    !! \note
-    !!  -# This routine is deprecated, as it does not guarantee any continuity.
-    !!  Use the spline routines instead.
-    !!  -# Optionally  also a normalization length  can be provided so  that the
-    !!  individual terms in the interpolation do not blow up. This can be useful
-    !!  for example for interpolation with many points.
-    !! 
-    !! \return ierr
-    integer function setup_interp_data(x,x_interp,A,ord,is_trigon,norm_len,&
-        &tol,extrap) result(ierr)
-        use grid_vars, only: disc_type
-        use num_utilities, only: con2dis
-        
-        character(*), parameter :: rout_name = 'setup_interp_data'
-        
-        ! input / output
-        real(dp), intent(in) :: x(:)                                            !< independent variable of tabulated magnitude
-        real(dp), intent(in) :: x_interp(:)                                     !< values of \c x at which to interpolate
-        type(disc_type), intent(inout) :: A                                     !< interpolation \c mat
-        integer, intent(in) :: ord                                              !< order of derivative
-        logical, intent(in), optional :: is_trigon                              !< trigonometric interpolation
-        real(dp), intent(in), optional :: norm_len                              !< custom normalization length
-        real(dp), intent(in), optional :: tol                                   !< tolerance
-        logical, intent(in), optional :: extrap                                 !< allow extrapolation
-        
-        ! local variables
-        integer :: id, jd, kd                                                   ! counters
-        integer :: n                                                            ! size of x_interp
-        integer :: n_loc                                                        ! nr. of points used for interpolation locally
-        real(dp) :: len                                                         ! interval length
-        real(dp) :: x_interp_disc                                               ! discrete index of current x_interp
-        real(dp) :: tol_loc                                                     ! tolerance
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: weight(:)                                      ! weights w_j
-        real(dp) :: weight_loc                                                  ! local weight factor
-        logical :: is_trigon_loc                                                ! local is_trigon
-        logical :: extrap_loc                                                   ! local extrap
-        logical :: extrap_id                                                    ! extrapolating for this id
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! deprecated warning
-        call writo('Using deprecated routine "setup_interp_data". Use &
-            &splines instead',warning=.true.)
-        
-        ! set local is_trigon, tolerance and extrap
-        is_trigon_loc = .false.
-        if (present(is_trigon)) is_trigon_loc = is_trigon
-        tol_loc = 1.E-8_dp
-        if (present(tol)) tol_loc = tol
-        extrap_loc = .false.
-        if (present(extrap)) extrap_loc = extrap
-        
-        ! tests
-        if (ord.lt.0) then
-            ierr = 1
-            err_msg = 'order has to be at least 0 (constant)'
-            CHCKERR(err_msg)
-        else if (ord+1.gt.size(x)) then
-            ierr = 1
-            err_msg = 'order can be at most size(x)-1 = '//&
-                &trim(i2str(size(x)-1))
-            CHCKERR(err_msg)
-        end if
-        if (is_trigon_loc .and. mod(ord,2).ne.0) then
-            ierr = 1
-            err_msg = 'Need an even order, so that there is an odd number of &
-                &points'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set n_loc and n
-        n_loc = ord+1
-        n = size(x_interp)
-        
-        ! set variables
-        allocate(weight(n_loc))
-        ierr = A%init(n,n_loc)
-        CHCKERR('')
-        
-        ! iterate over all x_interp values
-        do id = 1,n
-            ! find the base of the interpolation value
-            extrap_id = .false.
-            if (x_interp(id).lt.minval(x)) then
-                x_interp_disc = minloc(x,1)*1._dp
-                extrap_id = .true.
-            else if (x_interp(id).gt.maxval(x)) then
-                x_interp_disc = maxloc(x,1)*1._dp
-                extrap_id = .true.
-            else
-                ierr = con2dis(x_interp(id),x_interp_disc,x)
-                CHCKERR('')
-            end if
-            if (extrap_id .and. .not.extrap_loc) then
-                ierr = 1
-                err_msg = 'Extrapolation needed at point x='//&
-                    &trim(r2str(x_interp(id)))//' but not allowed'
-                CHCKERR(err_msg)
-            end if
-            
-            ! set up start id
-            if (n_loc.lt.size(x)) then
-                A%id(id,1) = ceiling(x_interp_disc-n_loc*0.5_dp)                ! get minimum of bounding indices
-                A%id(id,1) = max(1,min(A%id(id,1),size(x)-n_loc+1))             ! limit to lie within x
-            else
-                A%id(id,1) = 1                                                  ! all values of x are used
-            end if
-            
-            ! check for (near) exact match
-            if (mod(x_interp_disc,1._dp).lt.tol_loc .and. .not.extrap_id) then
-                ! directly set the correct index to 1
-                A%dat(id,:) = 0._dp
-                A%dat(id,nint(x_interp_disc)-A%id(id,1)+1) = 1._dp
-            else
-                if (n_loc.gt.1) then
-                    ! calculate w_j/(x-x_j)
-                    len = (x(A%id(id,1)+n_loc-1) - x(A%id(id,1)))/n_loc
-                    if (is_trigon_loc) len = sin(len/2)                         ! take sines
-                    if (present(norm_len)) len = norm_len
-                    
-                    ! set up the interp. coeffs. due to each of the points used
-                    weight = 1._dp
-                    do jd = 1,n_loc
-                        do kd = 1,n_loc
-                            ! basis of local weight
-                            if (kd.ne.jd) then                                  ! skip k = j
-                                ! calculate l'(x_j) = product_k.ne.j (x_j-x_k)
-                                weight_loc = &
-                                    &x(A%id(id,1)-1+jd)-x(A%id(id,1)-1+kd)
-                            else
-                                ! multiply additionally by (x_interp - x_j)
-                                weight_loc = x_interp(id)-x(A%id(id,1)-1+jd)
-                            end if
-                            
-                            ! modification of local weight
-                            if (is_trigon_loc) weight_loc = sin(weight_loc/2)   ! take sines
-                            weight_loc = weight_loc/len                         ! normalize
-                            
-                            ! including modified local weight
-                            weight(jd) = weight(jd) * weight_loc
-                        end do
-                    end do
-                    
-                    ! invert
-                    weight = 1._dp/weight
-                    
-                    ! scale by sum and save in A
-                    A%dat(id,:) = weight/sum(weight)
-                else
-                    A%dat(id,:) = 1._dp
-                end if
-            end if
-        end do
-        
-        ! complete id
-        do jd = 2,n_loc
-            A%id(:,jd) = A%id(:,1)-1+jd
-        end do
-    end function setup_interp_data
-    
     !> Trim a grid, removing any overlap between the different regions.
     !! 
     !! by default, the routine assumes a symmetric ghost region and cuts as many
@@ -2619,13 +1852,12 @@ contains
         &v_mag,base_name,max_transf,v_flux_tor,v_flux_pol,XYZ,compare_tor_pos) &
         &result(ierr)
         
-        use grid_vars, only: disc_type
         use eq_vars, only: eq_1_type, eq_2_type, max_flux_F
         use eq_utilities, only: calc_inv_met
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
             &use_normalization, rank, tol_zero, RZ_0, &
             &compare_tor_pos_glob => compare_tor_pos
-        use num_utilities, only: c, calc_int, order_per_fun
+        use num_utilities, only: c, calc_int, order_per_fun, spline
         use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
@@ -2650,7 +1882,7 @@ contains
         ! local variables
         type(grid_type) :: grid_trim                                            ! trimmed plot grid
         integer :: max_transf_loc                                               ! local max_transf
-        integer :: id, jd, kd                                                   ! counter
+        integer :: id, jd, kd, ld                                               ! counters
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
         integer :: c_loc                                                        ! local c
@@ -2676,9 +1908,6 @@ contains
         real(dp), allocatable :: T_BA(:,:,:,:,:,:,:), T_AB(:,:,:,:,:,:,:)       ! transformation matrices from A to B
         real(dp), allocatable :: D1R(:,:,:), D2R(:,:,:)                         ! dR/dpsi, dR/dtheta in HELENA coords.
         real(dp), allocatable :: D1Z(:,:,:), D2Z(:,:,:)                         ! dZ/dpsi, dZ/dtheta in HELENA coords.
-        type(disc_type) :: norm_deriv_data                                      ! data for normal derivation
-        type(disc_type) :: pol_deriv_data                                       ! data for poloidal derivation
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! initialize ierr
         ierr = 0
@@ -2707,11 +1936,6 @@ contains
         
         ! trim plot grid
         ierr = trim_grid(grid,grid_trim,norm_id)
-        CHCKERR('')
-        
-        ! setup normal interpolation data for equilibrium grid
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid%loc_r_F,&
-            &norm_interp_data,norm_disc_prec)
         CHCKERR('')
         
         ! set up X, Y, Z and R in grid
@@ -2894,8 +2118,11 @@ contains
         call lvl_ud(1)
         T_BA = 0._dp
         T_AB = 0._dp
-        ierr = apply_disc(eq_1%q_saf_FD(:,0:1),norm_interp_data,q_saf,1)
-        CHCKERR('')
+        do id = 0,1
+            ierr = spline(grid_eq%loc_r_F,eq_1%q_saf_FD(:,id),grid%loc_r_F,&
+                &q_saf(:,id),ord=norm_disc_prec)
+            CHCKERR('')
+        end do
         c_loc = c([1,1],.false.)
         if (use_pol_flux_F) then
             T_BA(:,:,:,c_loc,0,0,0) = -grid%theta_F
@@ -3065,9 +2292,14 @@ contains
             else
 #endif
                 ! multiply angular contravariant coordinates by Jacobian
-                ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),norm_interp_data,&
-                    &jac,3)
-                CHCKERR('')
+                do jd = 1,grid_eq%n(2)
+                    do id = 1,grid_eq%n(1)
+                        ierr = spline(grid_eq%loc_r_F,&
+                            &eq_2%jac_FD(id,jd,:,0,0,0),grid%loc_r_F,&
+                            &jac(id,jd,:),ord=norm_disc_prec)
+                        CHCKERR('')
+                    end do
+                end do
                 if (use_normalization) jac = jac*R_0/B_0
                 v_com(:,:,:,2,2) = v_com(:,:,:,2,2)*jac
                 v_com(:,:,:,3,2) = v_com(:,:,:,3,2)*jac
@@ -3239,12 +2471,20 @@ contains
         ! skipped, i.e. v_temp is not overwritten after step 2.
         call writo('Equilibrium coordinates')
         call lvl_ud(1)
-        ierr = apply_disc(eq_2%T_FE(:,:,:,:,0,0,0),norm_interp_data,&
-            &T_AB(:,:,:,:,0,0,0),3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%T_EF(:,:,:,:,0,0,0),norm_interp_data,&
-            &T_BA(:,:,:,:,0,0,0),3)
-        CHCKERR('')
+        do ld = 1,9
+            do jd = 1,grid_eq%n(2)
+                do id = 1,grid_eq%n(1)
+                    ierr = spline(grid_eq%loc_r_F,&
+                        &eq_2%T_FE(id,jd,:,ld,0,0,0),grid%loc_r_F,&
+                        &T_AB(id,jd,:,ld,0,0,0),ord=norm_disc_prec)
+                    CHCKERR('')
+                    ierr = spline(grid_eq%loc_r_F,&
+                        &eq_2%T_EF(id,jd,:,ld,0,0,0),grid%loc_r_F,&
+                        &T_BA(id,jd,:,ld,0,0,0),ord=norm_disc_prec)
+                    CHCKERR('')
+                end do
+            end do
+        end do
         v_com = 0._dp
         do jd = 1,3
             do id = 1,3
@@ -3366,9 +2606,16 @@ contains
         T_AB = 0._dp
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ierr = apply_disc(eq_2%T_VC(:,:,:,:,0,0,0),norm_interp_data,&
-                    &T_AB(:,:,:,:,0,0,0),3)
-                CHCKERR('')
+                do ld = 1,9
+                    do jd = 1,grid_eq%n(2)
+                        do id = 1,grid_eq%n(1)
+                            ierr = spline(grid_eq%loc_r_F,&
+                                &eq_2%T_VC(id,jd,:,ld,0,0,0),grid%loc_r_F,&
+                                &T_AB(id,jd,:,ld,0,0,0),ord=norm_disc_prec)
+                            CHCKERR('')
+                        end do
+                    end do
+                end do
             case (2)                                                            ! HELENA
                 ! setup D1R and D2R, and same thing for Z
                 ! (use untrimmed grid, with ghost region)
@@ -3376,26 +2623,28 @@ contains
                 allocate(D2R(grid%n(1),grid%n(2),grid%loc_n_r))
                 allocate(D1Z(grid%n(1),grid%n(2),grid%loc_n_r))
                 allocate(D2Z(grid%n(1),grid%n(2),grid%loc_n_r))
-                ierr = setup_deriv_data(grid%loc_r_E,norm_deriv_data,1,&
-                    &norm_disc_prec)
-                CHCKERR('')
-                ierr = apply_disc(XYZR(:,:,:,4)/norm_len,norm_deriv_data,D1R,3)
-                CHCKERR('')
-                ierr = apply_disc(XYZR(:,:,:,3)/norm_len,norm_deriv_data,D1Z,3)
-                CHCKERR('')
-                call norm_deriv_data%dealloc()
+                do jd = 1,grid%n(2)
+                    do id = 1,grid%n(1)
+                        ierr = spline(grid%loc_r_E,XYZR(id,jd,:,4)/norm_len,&
+                            &grid%loc_r_E,D1R(id,jd,:),ord=norm_disc_prec,&
+                            &deriv=1)
+                        CHCKERR('')
+                        ierr = spline(grid%loc_r_E,XYZR(id,jd,:,3)/norm_len,&
+                            &grid%loc_r_E,D1Z(id,jd,:),ord=norm_disc_prec,&
+                            &deriv=1)
+                        CHCKERR('')
+                    end do
+                end do
                 do kd = 1,grid%loc_n_r
                     do jd = 1,grid%n(2)
-                        ierr = setup_deriv_data(grid%theta_E(:,jd,kd),&
-                            &pol_deriv_data,1,norm_disc_prec)
+                        ierr = spline(grid%theta_E(:,jd,kd),&
+                            &XYZR(:,jd,kd,4)/norm_len,grid%theta_E(:,jd,kd),&
+                            &D2R(:,jd,kd),ord=norm_disc_prec,deriv=1)
                         CHCKERR('')
-                        ierr = apply_disc(XYZR(:,jd,kd,4)/norm_len,&
-                            &pol_deriv_data,D2R(:,jd,kd))
+                        ierr = spline(grid%theta_E(:,jd,kd),&
+                            &XYZR(:,jd,kd,3)/norm_len,grid%theta_E(:,jd,kd),&
+                            &D2Z(:,jd,kd),ord=norm_disc_prec,deriv=1)
                         CHCKERR('')
-                        ierr = apply_disc(XYZR(:,jd,kd,3)/norm_len,&
-                            &pol_deriv_data,D2Z(:,jd,kd))
-                        CHCKERR('')
-                        call pol_deriv_data%dealloc()
                     end do
                 end do
                 T_AB(:,:,:,c([1,1],.false.),0,0,0) = D1R
@@ -3595,7 +2844,6 @@ contains
         call lvl_ud(-1)
         
         ! clean up
-        call norm_interp_data%dealloc()
         call grid_trim%dealloc()
     end function  calc_vec_comp
     
@@ -3645,7 +2893,7 @@ contains
     !!
     !! \return ierr
     integer function nufft(x,f,f_F,plot_name) result(ierr)
-        use num_utilities, only: order_per_fun
+        use num_utilities, only: order_per_fun, spline
         
         character(*), parameter :: rout_name = 'nufft'
         
@@ -3658,7 +2906,6 @@ contains
         ! local variables
         integer :: m_F                                                          ! nr. of modes
         integer :: n_x                                                          ! nr. of points
-        integer :: interp_ord = 4                                               ! order of interpolation
         integer :: id                                                           ! counter
         logical :: print_log = .false.                                          ! print log plot as well
         real(dp), allocatable :: x_loc(:)                                       ! local x, extended
@@ -3666,7 +2913,6 @@ contains
         real(dp), allocatable :: f_loc(:)                                       ! local f, extended
         real(dp), allocatable :: f_int(:)                                       ! interpolated f, later Fourier modes
         character(len=max_str_ln) :: plot_title(2)                              ! name of plot
-        type(disc_type) :: trigon_interp_data                                   ! data for non-equidistant sampling fourier coefficients
         
         ! tests
         if (size(x).ne.size(f)) then
@@ -3678,24 +2924,21 @@ contains
             CHCKERR('x is not a fundamental interval')
         end if
         
-        ! create local x and  f that go from <0 to <2pi,  with enough points for
-        ! full order precision
-        ierr = order_per_fun(x,f,x_loc,f_loc,interp_ord)
+        ! create local x and f that go from <0 to <2pi, where 1 point overlap is
+        ! enough for pspline
+        ierr = order_per_fun(x,f,x_loc,f_loc,1)
         CHCKERR('')
         
         ! set local f and interpolate
         n_x = size(x)
         allocate(f_int(n_x))
-        ierr = setup_interp_data(x_loc,[((id-1._dp)/n_x*2*pi,id=1,n_x)],&
-            &trigon_interp_data,interp_ord,is_trigon=.true.)
-        CHCKERR('')
-        ierr = apply_disc(f_loc,trigon_interp_data,f_int)
+        ierr = spline(x_loc,f_loc,[((id-1._dp)/n_x*2*pi,id=1,n_x)],f_int,&
+            &ord=3,bcs=[-1,-1])
         CHCKERR('')
         
         ! clean up
         deallocate(x_loc)
         deallocate(f_loc)
-        call trigon_interp_data%dealloc()
         
         !!do id = 1,n_x
             !!f_int(id) = -4._dp+&

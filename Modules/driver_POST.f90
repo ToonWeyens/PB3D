@@ -8,7 +8,7 @@ module driver_POST
     use output_ops
     use messages
     use num_vars, only: max_str_ln, dp, iu, pi
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, modes_type, &
         &mds_X, mds_sol
@@ -73,8 +73,7 @@ contains
     !!
     !! \return ierr
     integer function init_POST() result(ierr)
-        use grid_vars, only: disc_type, &
-            &alpha, n_alpha, min_alpha, max_alpha, n_r_sol
+        use grid_vars, only: alpha, n_alpha, min_alpha, max_alpha, n_r_sol
         use num_vars, only: POST_style, eq_style, rank, plot_magn_grid, &
             &plot_resonance, plot_flux_q, eq_jobs_lims, plot_grid_style, &
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
@@ -89,8 +88,7 @@ contains
         use vac_ops, only: vac_pot_plot
         use X_ops, only: init_modes, setup_modes, resonance_plot, calc_res_surf
         use grid_ops, only: calc_norm_range, magn_grid_plot
-        use grid_utilities, only: setup_interp_data, apply_disc, &
-            &calc_eqd_grid
+        use grid_utilities, only: calc_eqd_grid
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
         use MPI_utilities, only: wait_MPI
@@ -366,6 +364,8 @@ contains
                         &trim(i2str(size(sol%val)))//' finished')
                     
                     ! vacuum plots if requested
+                    write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+                    plot_vac_pot = .false.
                     if (plot_vac_pot) then
                         ! user output
                         call writo('Start vacuum plot for this solution')
@@ -535,11 +535,9 @@ contains
             &POST_output_sol, POST_style, compare_tor_pos, plot_E_rec
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
-        use grid_vars, only: disc_type
         use eq_ops, only: calc_eq, calc_T_HF, B_plot, J_plot, &
             &kappa_plot, delta_r_plot
         use eq_utilities, only: calc_inv_met
-        use grid_utilities, only: setup_interp_data, apply_disc
         use X_ops, only: calc_X
         use sol_ops, only: plot_sol_vec, decompose_energy
         use HELENA_ops, only: interp_HEL_on_grid
@@ -1177,7 +1175,8 @@ contains
     integer function setup_out_grids(grids_out,XYZ_eq,XYZ_sol) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style
-        use grid_utilities, only: extend_grid_F, setup_interp_data, apply_disc
+        use num_utilities, only: spline
+        use grid_utilities, only: extend_grid_F
         use PB3D_ops, only: reconstruct_PB3D_grid
         use num_vars, only: rank, n_procs
 #if ldebug
@@ -1194,9 +1193,8 @@ contains
         ! local variables
         type(grid_type) :: grid_eq                                              ! equilibrium grid
         type(grid_type) :: grid_X                                               ! perturbation grid
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation eq->X
         integer :: n_theta                                                      ! nr. of points in theta for extended grid
-        integer :: id                                                           ! counter
+        integer :: id, jd, ld                                                   ! counters
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         real(dp) :: lim_theta(2)                                                ! theta limits
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
@@ -1277,28 +1275,35 @@ contains
                         grids_out(2)%zeta_F = grids_out(1)%zeta_F
                         grids_out(2)%zeta_E = grids_out(1)%zeta_E
                     case (2,3)                                                  ! solution or enriched
-                        ! normal interpolation data
-                        ierr = setup_interp_data(grids_out(1)%loc_r_F,&
-                            &grids_out(2)%loc_r_F,norm_interp_data,&
-                            &norm_disc_prec_X)
-                        CHCKERR('')
-                        
                         ! interpolate angular variables
-                        ierr = apply_disc(grids_out(1)%theta_F,&
-                                &norm_interp_data,grids_out(2)%theta_F,3)
-                        CHCKERR('')
-                        ierr = apply_disc(grids_out(1)%theta_E,&
-                                &norm_interp_data,grids_out(2)%theta_E,3)
-                        CHCKERR('')
-                        ierr = apply_disc(grids_out(1)%zeta_F,&
-                                &norm_interp_data,grids_out(2)%zeta_F,3)
-                        CHCKERR('')
-                        ierr = apply_disc(grids_out(1)%zeta_E,&
-                                &norm_interp_data,grids_out(2)%zeta_E,3)
-                        CHCKERR('')
-                        
-                        ! clean up
-                        call norm_interp_data%dealloc()
+                        do jd = 1,grids_out(1)%n(2)
+                            do id = 1,grids_out(1)%n(1)
+                                ierr = spline(grids_out(1)%loc_r_F,&
+                                    &grids_out(1)%theta_F(id,jd,:),&
+                                    &grids_out(2)%loc_r_F,&
+                                    &grids_out(2)%theta_F(id,jd,:),&
+                                    &ord=norm_disc_prec_X)
+                                CHCKERR('')
+                                ierr = spline(grids_out(1)%loc_r_F,&
+                                    &grids_out(1)%theta_E(id,jd,:),&
+                                    &grids_out(2)%loc_r_F,&
+                                    &grids_out(2)%theta_E(id,jd,:),&
+                                    &ord=norm_disc_prec_X)
+                                CHCKERR('')
+                                ierr = spline(grids_out(1)%loc_r_F,&
+                                    &grids_out(1)%zeta_F(id,jd,:),&
+                                    &grids_out(2)%loc_r_F,&
+                                    &grids_out(2)%zeta_F(id,jd,:),&
+                                    &ord=norm_disc_prec_X)
+                                CHCKERR('')
+                                ierr = spline(grids_out(1)%loc_r_F,&
+                                    &grids_out(1)%zeta_E(id,jd,:),&
+                                    &grids_out(2)%loc_r_F,&
+                                    &grids_out(2)%zeta_E(id,jd,:),&
+                                    &ord=norm_disc_prec_X)
+                                CHCKERR('')
+                            end do
+                        end do
                 end select
                 call lvl_ud(-1)
                 
@@ -1355,16 +1360,16 @@ contains
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
                 ! setup normal interpolation data
-                ierr = setup_interp_data(grids_out(2)%loc_r_F,&
-                    &grids_out(3)%loc_r_F,norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
-                
-                ! interpolate
-                ierr = apply_disc(XYZ_X,norm_interp_data,XYZ_sol,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do ld = 1,3
+                    do jd = 1,grids_out(2)%n(2)
+                        do id = 1,grids_out(2)%n(1)
+                            ierr = spline(grids_out(2)%loc_r_F,&
+                                &XYZ_X(id,jd,:,ld),grids_out(3)%loc_r_F,&
+                                &XYZ_sol(id,jd,:,ld),ord=norm_disc_prec_X)
+                            CHCKERR('')
+                        end do
+                    end do
+                end do
             case (2)                                                            ! solution
                 XYZ_sol = XYZ_X
         end select

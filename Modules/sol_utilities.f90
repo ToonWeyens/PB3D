@@ -8,7 +8,7 @@ module sol_utilities
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, modes_type
     use sol_vars, only: sol_type
@@ -66,7 +66,6 @@ contains
         
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
         use num_utilities, only: con2dis, spline
-        use grid_utilities, only: setup_interp_data, apply_disc
 #if ldebug
         use num_utilities, only: calc_int
 #endif
@@ -92,7 +91,7 @@ contains
         integer :: n_t                                                          ! number of time points
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
-        integer :: id, kd, ld                                                   ! counter
+        integer :: id, jd, kd, ld                                               ! counters
         integer :: kdl(2)                                                       ! kd limits
         integer :: ld_loc                                                       ! local ld
         logical :: deriv_loc                                                    ! local copy of deriv
@@ -110,7 +109,6 @@ contains
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
         real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at perturbation grid
         real(dp), allocatable :: S(:,:,:), inv_J(:,:,:)                         ! S and 1/J, interpolated at perturbation grid
-        type(disc_type) :: norm_interp_data(2)                                  ! data for normal interpolation (eq->X, eq->sol)
 #if ldebug
         real(dp), allocatable :: sol_vec_ALT(:)                                 ! sol_vec calculated from Dsol_vec in solution grid
 #endif
@@ -186,30 +184,29 @@ contains
                 ! do nothing
         end select
         
-        ! setup normal interpolation data for eq grid to X grid
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-            &norm_interp_data(1),norm_disc_prec_sol)
-        CHCKERR('')
-        ! setup normal interpolation data for X grid to sol grid
-        ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data(2),norm_disc_prec_sol)
-        CHCKERR('')
-        
         ! interpolate eq->X
         if (use_pol_flux_F) then
-            ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data(1),jq)
+            ierr = spline(grid_eq%loc_r_F,eq_1%q_saf_FD(:,0),grid_X%loc_r_F,jq,&
+                &ord=norm_disc_prec_sol)
             CHCKERR('')
         else
-            ierr = apply_disc(eq_1%rot_T_FD(:,0),norm_interp_data(1),jq)
+            ierr = spline(grid_eq%loc_r_F,eq_1%rot_t_FD(:,0),grid_X%loc_r_F,jq,&
+                &ord=norm_disc_prec_sol)
             CHCKERR('')
         end if
-        ierr = apply_disc(eq_2%S,norm_interp_data(1),S,3)
-        CHCKERR('')
-        if ((XUQ_style.eq.3 .or. XUQ_style.eq.4)) then
-            ierr = apply_disc(1._dp/eq_2%jac_FD(:,:,:,0,0,0),&
-                &norm_interp_data(1),inv_J,3)
-            CHCKERR('')
-        end if
+        do jd = 1,grid_eq%n(2)
+            do id = 1,grid_eq%n(1)
+                ierr = spline(grid_eq%loc_r_F,eq_2%S(id,jd,:),&
+                    &grid_X%loc_r_F,S(id,jd,:),ord=norm_disc_prec_sol)
+                CHCKERR('')
+                if ((XUQ_style.eq.3 .or. XUQ_style.eq.4)) then
+                    ierr = spline(grid_eq%loc_r_F,&
+                        &1._dp/eq_2%jac_FD(id,jd,:,0,0,0),grid_X%loc_r_F,&
+                        &inv_J(id,jd,:),ord=norm_disc_prec_sol)
+                    CHCKERR('')
+                end if
+            end do
+        end do
         
         ! initialize XUQ
         XUQ = 0._dp
@@ -244,7 +241,8 @@ contains
                     ierr = spline(grid_sol%r_F(kdl(1):kdl(2)),&
                         &sol_vec_tot(ld_loc,kdl(1):kdl(2)),&
                         &grid_sol%r_F(kdl(1):kdl(2)),Dsol_vec_loc,&
-                        &ord=min(norm_disc_prec_sol,3),deriv=1)
+                        &ord=norm_disc_prec_sol,deriv=1)
+                    CHCKERR('')
                 end if
                 Dsol_vec_tot(ld_loc,kdl(1):kdl(2)) = Dsol_vec_loc
                 
@@ -278,10 +276,10 @@ contains
                     deallocate(sol_vec_ALT)
                 end do
             end if
-            call plot_HDF5(['Re','Im'],'sol_vec',reshape(&
-                &[rp(sol_vec_tot),ip(sol_vec_tot)],[shape(sol_vec_tot),1,2]))
-            call plot_HDF5(['Re','Im'],'Dsol_vec',reshape(&
-                &[rp(Dsol_vec_tot),ip(Dsol_vec_tot)],[shape(Dsol_vec_tot),1,2]))
+            !call plot_HDF5(['Re','Im'],'sol_vec',reshape(&
+                !&[rp(sol_vec_tot),ip(sol_vec_tot)],[shape(sol_vec_tot),1,2]))
+            !call plot_HDF5(['Re','Im'],'Dsol_vec',reshape(&
+                !&[rp(Dsol_vec_tot),ip(Dsol_vec_tot)],[shape(Dsol_vec_tot),1,2]))
 #endif
             
             ! convert back to local solution vector
@@ -364,12 +362,22 @@ contains
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
                     ! interpolate X->sol
-                    ierr = apply_disc(expon,norm_interp_data(2),expon_sol,3)
-                    CHCKERR('')
-                    ierr = apply_disc(fac_0,norm_interp_data(2),fac_0_sol,3)
-                    CHCKERR('')
-                    ierr = apply_disc(fac_1,norm_interp_data(2),fac_1_sol,3)
-                    CHCKERR('')
+                    do jd = 1,grid_X%n(2)
+                        do id = 1,grid_X%n(1)
+                            ierr = spline(grid_X%loc_r_F,expon(id,jd,:),&
+                                &grid_sol%loc_r_F,expon_sol(id,jd,:),&
+                                &ord=norm_disc_prec_sol)
+                            CHCKERR('')
+                            ierr = spline(grid_X%loc_r_F,fac_0(id,jd,:),&
+                                &grid_sol%loc_r_F,fac_0_sol(id,jd,:),&
+                                &ord=norm_disc_prec_sol)
+                            CHCKERR('')
+                            ierr = spline(grid_X%loc_r_F,fac_1(id,jd,:),&
+                                &grid_sol%loc_r_F,fac_1_sol(id,jd,:),&
+                                &ord=norm_disc_prec_sol)
+                            CHCKERR('')
+                        end do
+                    end do
                 case (2)                                                        ! solution
                     ! point
                     expon_sol => expon
@@ -394,9 +402,6 @@ contains
         end do Fourier
         
         ! clean up
-        do id = 1,2
-            call norm_interp_data(id)%dealloc()
-        end do
         select case (X_grid_style) 
             case (1,3)                                                          ! equilibrium or enriched
                 allocate(expon_sol(grid_X%n(1),grid_X%n(2),grid_sol%loc_n_r))

@@ -8,7 +8,7 @@ module sol_ops
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi, rank
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, modes_type
     use sol_vars, only: sol_type
@@ -116,15 +116,13 @@ contains
             &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_eq, &
             &norm_disc_prec_X, norm_disc_prec_sol, use_normalization, &
             &X_grid_style
-        use grid_utilities, only: trim_grid, calc_vec_comp, setup_interp_data, &
-            &apply_disc
+        use grid_utilities, only: trim_grid, calc_vec_comp
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
-        use num_utilities, only: c
+        use num_utilities, only: c, spline
         use MPI_utilities, only: get_ser_var
 #if ldebug
         use num_vars, only: use_pol_flux_F
-        use grid_utilities, only: setup_deriv_data
 #endif
         
         character(*), parameter :: rout_name = 'plot_sol_vec'
@@ -146,7 +144,7 @@ contains
         type(grid_type) :: grid_out                                             ! output grid (see description)
         type(grid_type) :: grid_out_trim                                        ! trimmed output grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, kd, td                                               ! counters
+        integer :: id, jd, jd2, kd, td                                          ! counters
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
@@ -174,9 +172,7 @@ contains
         character(len=max_str_ln) :: file_name(2)                               ! name of file
         character(len=max_str_ln) :: description(2)                             ! description
         character(len=2) :: sol_name                                            ! name of solution vector ('xi' or 'Q')
-        type(disc_type) :: norm_interp_data(2)                                  ! data for normal interpolation (eq->sol, X->sol)
 #if ldebug
-        type(disc_type) :: norm_deriv_data                                      ! normal derivative data
         integer :: nm                                                           ! n (pol. flux) or m (tor. flux)
         integer :: ld                                                           ! counter
         real(dp), allocatable :: Dq_saf(:)                                      ! norm. deriv. of q_saf interpolated on solution grid
@@ -253,14 +249,6 @@ contains
             col = 1                                                             ! no collection
         end if
         
-        ! setup normal interpolation data eq->sol and X->sol
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data(1),norm_disc_prec_eq)
-        CHCKERR('')
-        ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data(2),norm_disc_prec_X)
-        CHCKERR('')
-        
         ! set up output grid
         ierr = grid_out%init([grid_eq%n(1:2),grid_sol%n(3)],&
             &i_lim=[grid_sol%i_min,grid_sol%i_max],divided=grid_sol%divided)
@@ -272,18 +260,26 @@ contains
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
                 ! interpolate X->sol
-                ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
-                    grid_out%theta_F,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_X%theta_E,norm_interp_data(2),&
-                    grid_out%theta_E,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
-                    grid_out%zeta_F,3)
-                CHCKERR('')
-                ierr = apply_disc(grid_X%zeta_E,norm_interp_data(2),&
-                    grid_out%zeta_E,3)
-                CHCKERR('')
+                do jd = 1,grid_X%n(2)
+                    do id = 1,grid_X%n(1)
+                        ierr = spline(grid_X%loc_r_F,grid_X%theta_F(id,jd,:),&
+                            &grid_sol%loc_r_F,grid_out%theta_F(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_X%loc_r_F,grid_X%theta_E(id,jd,:),&
+                            &grid_sol%loc_r_F,grid_out%theta_E(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_X%loc_r_F,grid_X%zeta_F(id,jd,:),&
+                            &grid_sol%loc_r_F,grid_out%zeta_F(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_X%loc_r_F,grid_X%zeta_E(id,jd,:),&
+                            &grid_sol%loc_r_F,grid_out%zeta_E(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                    end do
+                end do
             case (2)                                                            ! solution
                 ! copy
                 grid_out%theta_F = grid_X%theta_F
@@ -334,28 +330,40 @@ contains
 #endif
         
         ! interpolate eq->sol
-        ierr = apply_disc(eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0),&
-            &norm_interp_data(1),h12,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
-            &norm_interp_data(1),h22,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0),&
-            &norm_interp_data(1),h23,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0),&
-            &norm_interp_data(1),g13,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
-            &norm_interp_data(1),g33,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),&
-            &norm_interp_data(1),jac_FD_int,3)
-        CHCKERR('')
+        do jd = 1,grid_eq%n(2)
+            do id = 1,grid_eq%n(1)
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%h_FD(id,jd,:,c([1,2],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &h12(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%h_FD(id,jd,:,c([2,2],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &h22(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%h_FD(id,jd,:,c([2,3],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &h23(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &g13(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%g_FD(id,jd,:,c([3,3],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &g33(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%jac_FD(id,jd,:,0,0,0),grid_sol%loc_r_F,&
+                    &jac_FD_int(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+            end do
+        end do
 #if ldebug
-        ierr = apply_disc(eq_1%q_saf_FD(:,1),norm_interp_data(1),Dq_saf)
+        ierr = spline(grid_eq%loc_r_F,eq_1%q_saf_FD(:,1),grid_sol%loc_r_F,&
+            &Dq_saf,ord=norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(eq_1%rot_t_FD(:,1),norm_interp_data(1),Drot_t)
+        ierr = spline(grid_eq%loc_r_F,eq_1%rot_t_FD(:,1),grid_sol%loc_r_F,&
+            &Drot_t,ord=norm_disc_prec_eq)
         CHCKERR('')
 #endif
         
@@ -498,12 +506,17 @@ contains
                     &product(n_t)))
                 
                 ! derive the X vector
-                ierr = setup_deriv_data(grid_out%loc_r_F,norm_deriv_data,1,&
-                    &norm_disc_prec_sol)
-                CHCKERR('')
-                ierr = apply_disc(f_plot(:,:,:,:,1),norm_deriv_data,U_inf,3)
-                CHCKERR('')
-                call norm_deriv_data%dealloc()
+                do ld = 1,product(n_t)
+                    do jd2 = 1,grid_out%n(2)
+                        do id = 1,grid_out%n(1)
+                            ierr = spline(grid_out%loc_r_F,&
+                                &f_plot(id,jd2,:,ld,1),grid_out%loc_r_F,&
+                                &U_inf(id,jd2,:,ld),ord=norm_disc_prec_eq,&
+                                &deriv=1)
+                            CHCKERR('')
+                        end do
+                    end do
+                end do
                 
                 ! set up dummy variable Theta^alpha + q' theta and nm
                 allocate(U_inf_prop(grid_out%n(1),grid_out%n(2),&
@@ -601,9 +614,6 @@ contains
         end do
         
         ! clean up
-        do id = 1,2
-            call norm_interp_data(id)%dealloc()
-        end do
         call grid_out%dealloc()
         call grid_out_trim%dealloc()
         
@@ -1114,15 +1124,11 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, rank, &
             &eq_job_nr, eq_jobs_lims, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c
-        use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid, &
-            &setup_interp_data, apply_disc
+        use num_utilities, only: c, spline
+        use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
         use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ
-#if ldebug
-        use grid_utilities, only: setup_deriv_data, apply_disc
-#endif
         
         character(*), parameter :: rout_name = 'calc_E'
         
@@ -1148,7 +1154,6 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: loc_dim(3)                                                   ! local dimension
         type(grid_type) :: grid_sol_trim                                        ! trimmed sol grid
-        type(disc_type) :: norm_interp_data(2)                                  ! data for normal interpolation (eq->sol, X->sol)
         real(dp), allocatable :: h22(:,:,:), g33(:,:,:), J(:,:,:)               ! interpolated h_FD(2,2), g_FD(3,3) and J_FD
         real(dp), allocatable :: kappa_n(:,:,:), kappa_g(:,:,:)                 ! interpolated kappa_n and kappa_g
         real(dp), allocatable :: sigma(:,:,:)                                   ! interpolated sigma
@@ -1163,7 +1168,6 @@ contains
         real(dp), allocatable :: S(:,:,:)                                       ! interpolated S
         complex(dp), allocatable :: DU(:,:,:)                                   ! D_par U
         complex(dp), allocatable :: DU_ALT(:,:,:)                               ! DU calculated from U
-        type(disc_type) :: ang_1_deriv_data                                     ! deriv data for ang_1
 #endif
         
         ! set loc_dim
@@ -1207,44 +1211,53 @@ contains
         J = 0._dp
 #endif
         
-        ! setup normal interpolation data eq->sol and X->sol
-        ierr = setup_interp_data(grid_eq%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data(1),norm_disc_prec_eq)
-        CHCKERR('')
-        ierr = setup_interp_data(grid_X%loc_r_F,grid_sol%loc_r_F,&
-            &norm_interp_data(2),norm_disc_prec_X)
-        CHCKERR('')
-        
         ! interpolate eq->sol
-        ierr = apply_disc(eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0),&
-            &norm_interp_data(1),h22,3)
+        do jd = 1,grid_eq%n(2)
+            do id = 1,grid_eq%n(1)
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%h_FD(id,jd,:,c([2,2],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &h22(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%g_FD(id,jd,:,c([3,3],.true.),0,0,0),grid_sol%loc_r_F,&
+                    &g33(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%jac_FD(id,jd,:,0,0,0),grid_sol%loc_r_F,&
+                    &J(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%kappa_n(id,jd,:),grid_sol%loc_r_F,&
+                    &kappa_n(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%kappa_g(id,jd,:),grid_sol%loc_r_F,&
+                    &kappa_g(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+                ierr = spline(grid_eq%loc_r_F,&
+                    &eq_2%sigma(id,jd,:),grid_sol%loc_r_F,&
+                    &sigma(id,jd,:),ord=norm_disc_prec_eq)
+                CHCKERR('')
+#if ldebug
+                if (debug_calc_E) then
+                    ierr = spline(grid_eq%loc_r_F,&
+                        &eq_2%S(id,jd,:),grid_sol%loc_r_F,&
+                        &S(id,jd,:),ord=norm_disc_prec_eq)
+                    CHCKERR('')
+                end if
+#endif
+            end do
+        end do
+        ierr = spline(grid_eq%loc_r_F,eq_1%pres_FD(:,1),grid_sol%loc_r_F,&
+            &D2p(1,1,:),ord=norm_disc_prec_eq)
         CHCKERR('')
-        ierr = apply_disc(eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0),&
-            &norm_interp_data(1),g33,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%jac_FD(:,:,:,0,0,0),&
-            &norm_interp_data(1),J,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%kappa_n,norm_interp_data(1),kappa_n,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%kappa_g,norm_interp_data(1),kappa_g,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_2%sigma,norm_interp_data(1),sigma,3)
-        CHCKERR('')
-        ierr = apply_disc(eq_1%pres_FD(:,1),norm_interp_data(1),D2p(1,1,:))
-        CHCKERR('')
-        ierr = apply_disc(eq_1%rho,norm_interp_data(1),rho(1,1,:))
+        ierr = spline(grid_eq%loc_r_F,eq_1%rho,grid_sol%loc_r_F,&
+            &rho(1,1,:),ord=norm_disc_prec_eq)
         CHCKERR('')
         do kd = 1,loc_dim(3)
             D2p(:,:,kd) = D2p(1,1,kd)
             rho(:,:,kd) = rho(1,1,kd)
         end do
-#if ldebug
-        if (debug_calc_E) then
-            ierr = apply_disc(eq_2%S,norm_interp_data(1),S,3)
-            CHCKERR('')
-        end if
-#endif
         
         ! set angles and norm
         select case (X_grid_style)
@@ -1252,24 +1265,40 @@ contains
                 ! interpolate X->sol
                 if (B_aligned) then
                     if (use_pol_flux_F) then
-                        ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
-                            ang_1,3)
-                        CHCKERR('')
+                        do jd = 1,grid_eq%n(2)
+                            do id = 1,grid_eq%n(1)
+                                ierr = spline(grid_X%loc_r_F,&
+                                    &grid_X%theta_F(id,jd,:),grid_sol%loc_r_F,&
+                                    &ang_1(id,jd,:),ord=norm_disc_prec_X)
+                                CHCKERR('')
+                            end do
+                        end do
                     else
-                        ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
-                            ang_1,3)
-                        CHCKERR('')
+                        do jd = 1,grid_eq%n(2)
+                            do id = 1,grid_eq%n(1)
+                                ierr = spline(grid_X%loc_r_F,&
+                                    &grid_X%zeta_F(id,jd,:),grid_sol%loc_r_F,&
+                                    &ang_1(id,jd,:),ord=norm_disc_prec_X)
+                                CHCKERR('')
+                            end do
+                        end do
                     end if
                     do jd = 1,n_alpha
                         ang_2(:,jd,:) = alpha(jd)
                     end do
                 else
-                    ierr = apply_disc(grid_X%theta_F,norm_interp_data(2),&
-                        ang_1,3)
-                    CHCKERR('')
-                    ierr = apply_disc(grid_X%zeta_F,norm_interp_data(2),&
-                        ang_2,3)
-                    CHCKERR('')
+                    do jd = 1,grid_eq%n(2)
+                        do id = 1,grid_eq%n(1)
+                            ierr = spline(grid_X%loc_r_F,&
+                                &grid_X%theta_F(id,jd,:),grid_sol%loc_r_F,&
+                                &ang_1(id,jd,:),ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_X%loc_r_F,&
+                                &grid_X%zeta_F(id,jd,:),grid_sol%loc_r_F,&
+                                &ang_2(id,jd,:),ord=norm_disc_prec_X)
+                            CHCKERR('')
+                        end do
+                    end do
                 end if
             case (2)                                                            ! solution
                 ! copy
@@ -1358,15 +1387,11 @@ contains
             ! derive
             do kd = 1,loc_dim(3)
                 do jd = 1,loc_dim(2)
-                    ierr = setup_deriv_data(ang_1(:,jd,kd),ang_1_deriv_data,1,&
-                        &norm_disc_prec_sol)
-                    CHCKERR('')
-                    ierr = apply_disc(XUQ(:,jd,kd,2),ang_1_deriv_data,&
-                        &DU_ALT(:,jd,kd))
+                    ierr = spline(ang_1(:,jd,kd),XUQ(:,jd,kd,2),ang_1(:,jd,kd),&
+                        &DU_ALT(:,jd,kd),ord=norm_disc_prec_sol,deriv=1)
                     CHCKERR('')
                 end do
             end do
-            call ang_1_deriv_data%dealloc()
             
             ! plot real part
             call plot_HDF5('RE U','TEST_RE_U_'//&
@@ -1439,9 +1464,6 @@ contains
         end do
         
         ! clean up
-        do id = 1,2
-            call norm_interp_data(id)%dealloc()
-        end do
         call grid_sol_trim%dealloc()
     end function calc_E
     

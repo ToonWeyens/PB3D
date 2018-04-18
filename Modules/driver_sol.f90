@@ -8,7 +8,7 @@ module driver_sol
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln, iu
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use X_vars, only: X_2_type, modes_type, &
         &mds_X, mds_sol
     use vac_vars, only: vac_type
@@ -20,7 +20,9 @@ module driver_sol
     
     ! global variables
 #if ldebug
-    logical :: debug_run_driver_sol = .true.                                   !< debug information for run_driver_sol \ldebug
+    logical :: debug_run_driver_sol = .false.                                   !< debug information for run_driver_sol \ldebug
+    logical :: debug_interp_V = .false.                                         !< debug information for interp_v \ldebug
+    integer :: n_interp_V_spline_copies                                         !< number of times a copy was done in interp_V_spline
 #endif
     
 contains
@@ -50,7 +52,7 @@ contains
         use rich_vars, only: rich_lvl
         use rich_ops, only: calc_rich_ex
         use vac_ops, only: calc_vac_res, print_output_vac
-        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
+        use grid_utilities, only: trim_grid
         use X_ops, only: setup_modes, redistribute_output_X
 #if ldebug
         use X_ops, only: print_debug_X_2
@@ -275,8 +277,7 @@ contains
     integer function interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o) result(ierr)
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use num_vars, only: V_interp_style, norm_disc_prec_sol
-        use grid_utilities, only: setup_interp_data
+        use num_vars, only: V_interp_style, rank
         use eq_vars, only: max_flux_F
         use num_utilities, only: c
         
@@ -295,7 +296,6 @@ contains
         integer :: k, m                                                         ! counters for mode numbers
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: n_mod_tot                                                    ! total amount of modes
-        integer :: norm_disc_prec_loc                                           ! local precision
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
         real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
@@ -342,6 +342,7 @@ contains
         allocate(norm_ext_i(n_mod_tot,n_mod_tot))
         km_id = 0
         norm_ext_i = 0
+        n_interp_V_spline_copies = 0
 #endif
         do m = 1,n_mod_tot
             do k = 1,n_mod_tot
@@ -390,59 +391,54 @@ contains
                 r_i_loc => grid_i%loc_r_F(kdl_i(1):kdl_i(2))
                 r_o_loc => grid_o%loc_r_F(kdl_o(1):kdl_o(2))
                 
-#if ldebug
-                km_id = km_id + 1
-                r_loc_tot(:,km_id,1) = [r_i_loc(1),r_i_loc(size(r_i_loc))]
-                r_loc_tot(:,km_id,2) = [r_o_loc(1),r_o_loc(size(r_o_loc))]
-                r_loc_tot(:,km_id,3) = km_id
-                norm_ext_i(k,m) = size(r_i_loc)
-#endif
-                
                 ! check whether mode combination needs to be calculated
                 calc_this(1) = is_necessary_X(.true.,&
                     &[mds_o%sec(k,1),mds_o%sec(m,1)])
                 calc_this(2) = is_necessary_X(.false.,&
                     &[mds_o%sec(k,1),mds_o%sec(m,1)])
                 
+#if ldebug
+                km_id = km_id + 1
+                r_loc_tot(:,km_id,1) = [r_i_loc(1),r_i_loc(size(r_i_loc))]
+                r_loc_tot(:,km_id,2) = [r_o_loc(1),r_o_loc(size(r_o_loc))]
+                r_loc_tot(:,km_id,3) = km_id
+                norm_ext_i(k,m) = size(r_i_loc)
+                if (debug_interp_V) write(*,*) 'k, m', k, m, 'of', n_mod_tot, &
+                        &'with calc_this = ', calc_this
+#endif
+                
                 ! set up c_loc
                 c_loc(1) = c([mds_o%sec(k,4),mds_o%sec(m,4)],.true.,n_mod_X)
                 c_loc(2) = c([mds_o%sec(k,4),mds_o%sec(m,4)],.false.,n_mod_X)
                 
-                ! set precision
-                norm_disc_prec_loc = min(kdl_i(2)-kdl_i(1),&
-                    &norm_disc_prec_sol)
-                
                 if (calc_this(1)) then
+                    !if (k.gt.70) debug_interp_V = .true.
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
+                    !debug_interp_V = .false.
                     
                     V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
                     
                     V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
                     
                     V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
                 end if
                 
                 if (calc_this(2)) then
                     V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
                     
 #if ldebug
@@ -473,23 +469,27 @@ contains
                     
                     V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,&
-                        &norm_disc_prec_loc,extrap)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
                 end if
             end do
         end do
         
 #if ldebug
-        call print_ex_2D([''],'r_i_loc',&
+        if (n_interp_V_spline_copies.gt.0) call writo('Copy was performed '//&
+            &trim(i2str(n_interp_V_spline_copies))//&
+            &' times in interp_V_spline',warning=.true.)
+        call print_ex_2D([''],'r_i_loc_'//trim(i2str(rank)),&
             &r_loc_tot(:,1:km_id,1)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
             &draw=.false.)
-        call draw_ex([''],'r_i_loc',km_id,1,.false.)
-        call print_ex_2D([''],'r_o_loc',&
+        call draw_ex([''],'r_i_loc_'//trim(i2str(rank)),km_id,1,.false.,&
+            &ex_plot_style=1)
+        call print_ex_2D([''],'r_o_loc_'//trim(i2str(rank)),&
             &r_loc_tot(:,1:km_id,2)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
             &draw=.false.)
-        call draw_ex([''],'r_o_loc',km_id,1,.false.)
-        call plot_HDF5('normal extent','norm_ext_i',1._dp*&
+        call draw_ex([''],'r_o_loc_'//trim(i2str(rank)),km_id,1,.false.,&
+            &ex_plot_style=1)
+        call plot_HDF5('normal extent','norm_ext_i_'//trim(i2str(rank)),1._dp*&
             &reshape(norm_ext_i*1._dp,[n_mod_tot,n_mod_tot,1]))
 #endif
         
@@ -498,11 +498,7 @@ contains
         nullify(V_i,V_o)
     contains
         !> \private Interpolation for a mode pair using splines.
-        !!
-        !! The normal discretization precision is  limited to order 3 because of
-        !! the cubic splines.
-        integer function interp_V_spline(V_i,V_o,r_i,r_o,norm_disc_prec,&
-            &extrap) result(ierr)
+        integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap) result(ierr)
             
             use num_utilities, only: spline
             
@@ -513,29 +509,114 @@ contains
             complex(dp), intent(out) :: V_o(:,:,:)                              ! output tensorial metric variable for a mode combinations
             real(dp), intent(in) :: r_i(:)                                      ! input r
             real(dp), intent(in) :: r_o(:)                                      ! output r
-            integer, intent(in) :: norm_disc_prec                               ! normal discretization
             logical, intent(in) :: extrap                                       ! extrapolation possible
             
             ! local variables
             integer :: id, jd, kd                                               ! counters
+            character(len=max_str_ln) :: err_msg                                ! error message
             
             ! initialize ierr
             ierr = 0
             
-            if (norm_disc_prec.ge.1) then                                       ! interpolate
-                do jd = 1,size(V_o,2)
-                    do id = 1,size(V_o,1)
-                        ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                            &ord=min(3,norm_disc_prec),extrap=extrap)
-                        CHCKERR('')
-                    end do
-                end do
-            else                                                                ! just copy
-                write(*,*) '!!!! COPYING !!!'
-                do kd = 1,size(V_o,3)
-                    V_o(:,:,kd) = V_i(:,:,1)
-                end do
+#if ldebug
+            ! test sizes
+            if (size(r_i).ne.size(V_i,3)) then
+                ierr = 1
+                err_msg = 'r_i and V_i are not compatible'
+                CHCKERR(err_msg)
             end if
+            if (size(r_o).ne.size(V_o,3)) then
+                ierr = 1
+                err_msg = 'r_o and V_o are not compatible'
+                CHCKERR(err_msg)
+            end if
+            if (size(V_i,1).ne.size(V_o,1) .or. size(V_i,2).ne.size(V_o,2)) then
+                ierr = 1
+                err_msg = 'V_i and V_o are not compatible'
+                CHCKERR(err_msg)
+            end if
+#endif
+            
+            ! interpolate depending on normal size
+            select case (size(r_i))
+                case (1)                                                        ! copy directly
+#if ldebug
+                    n_interp_V_spline_copies = n_interp_V_spline_copies + 1
+#endif
+                    do kd = 1,size(V_o,3)
+                        V_o(:,:,kd) = V_i(:,:,1)
+                    end do
+                case (2:3)                                                      ! linear
+                    do jd = 1,size(V_i,2)
+                        do id = 1,size(V_i,1)
+                            ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                                &ord=1,extrap=extrap)
+                            CHCKERR('')
+                        end do
+                    end do
+                case (4:)                                                       ! spline
+                    do jd = 1,size(V_i,2)
+                        do id = 1,size(V_i,1)
+                            ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                                &ord=3,extrap=extrap)
+                            CHCKERR('')
+                        end do
+                    end do
+#if ldebug
+                case default
+                    ierr = 1
+                    CHCKERR('Need more than 0 points')
+#endif
+            end select
+            
+#if ldebug
+            ! visualize
+            do jd = 1,size(V_i,2)
+                do id = 1,size(V_i,1)
+                    if (debug_interp_V) then
+                        write(*,*) '    id,jd', id, jd
+                        call plot_comp('real part',r_i,rp(V_i(id,jd,:)),&
+                            &r_o,rp(V_o(id,jd,:)))
+                        call plot_comp('imaginary part',r_i,ip(V_i(id,jd,:)),&
+                            &r_o,ip(V_o(id,jd,:)))
+                    end if
+                end do
+            end do
+#endif
         end function interp_V_spline
+        
+#if ldebug
+        !> \private Plot to compare interpolation to original variables
+        subroutine plot_comp(plot_name,x_i,y_i,x_o,y_o)
+            ! input / output
+            character(len=*), intent(in) :: plot_name                           ! name of plot
+            real(dp), intent(in) :: x_i(:)                                      ! x input
+            real(dp), intent(in) :: y_i(:)                                      ! y input
+            real(dp), intent(in) :: x_o(:)                                      ! x output
+            real(dp), intent(in) :: y_o(:)                                      ! y output
+            
+            ! local variables
+            real(dp), allocatable :: x_plot(:,:)                                ! x for plot
+            real(dp), allocatable :: y_plot(:,:)                                ! y for plot
+            character(len=max_str_ln) :: var_names(2)                           ! variable names
+            
+            allocate(x_plot(max(size(x_i),size(x_o)),2))
+            allocate(y_plot(max(size(x_i),size(x_o)),2))
+            
+            x_plot(1:size(x_i),1) = x_i
+            x_plot(size(x_i):size(x_plot,1),1) = x_i(size(x_i))
+            x_plot(1:size(x_o),2) = x_o
+            x_plot(size(x_o):size(x_plot,1),2) = x_o(size(x_o))
+            
+            y_plot(1:size(x_i),1) = y_i(:)
+            y_plot(size(x_i):size(y_plot,1),1) = y_i(size(x_i))
+            y_plot(1:size(x_o),2) = y_o(:)
+            y_plot(size(x_o):size(y_plot,1),2) = y_o(size(x_o))
+            
+            var_names(1) = 'input '//plot_name
+            var_names(2) = 'output '//plot_name
+            call print_ex_2D(var_names,'',y_plot,x=x_plot)
+        end subroutine plot_comp
+#endif
     end function interp_V
 end module driver_sol

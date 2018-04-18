@@ -7,7 +7,7 @@ module eq_utilities
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, max_deriv
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
 #if ldebug
     use num_utilities, only: check_deriv

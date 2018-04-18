@@ -7,7 +7,7 @@ module grid_ops
     use output_ops
     use messages
     use num_vars, only: dp, pi, max_str_ln
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type
 
     implicit none
@@ -213,9 +213,9 @@ contains
             CHCKERR('')
             ! 3. continuous E coords
             ierr = spline(flux_F,flux_E,[tot_min_r_in_F_con],&
-                &tot_min_r_in_E_con,ord=min(3,norm_disc_prec_eq))
+                &tot_min_r_in_E_con,ord=norm_disc_prec_eq)
             ierr = spline(flux_F,flux_E,[tot_max_r_in_F_con],&
-                &tot_max_r_in_E_con,ord=min(3,norm_disc_prec_eq))
+                &tot_max_r_in_E_con,ord=norm_disc_prec_eq)
             ! 4. round with tolerance
             ierr = round_with_tol(tot_min_r_in_E_con,minval(flux_E),&
                 &maxval(flux_E))
@@ -256,9 +256,13 @@ contains
             ! increase lower limits for processes that are not first
             if (rank.gt.0) eq_limits(1) = eq_limits(1)+1
             
-            ! ghost regions of width 2*norm_disc_prec_eq
-            eq_limits(1) = max(eq_limits(1)-2*norm_disc_prec_eq,1)
-            eq_limits(2) = min(eq_limits(2)+2*norm_disc_prec_eq,n_r_eq)
+            ! ghost regions of width 4*norm_disc_prec_eq
+            ! Note: When finite differences were used, a factor of 2 was enough,
+            ! but it  looks like for  splines it has to  be higher. Even  for 4,
+            ! there is some slight discrepancy...  This should be looked into in
+            ! the future.
+            eq_limits(1) = max(eq_limits(1)-4*norm_disc_prec_eq,1)
+            eq_limits(2) = min(eq_limits(2)+4*norm_disc_prec_eq,n_r_eq)
         end subroutine calc_norm_range_PB3D_eq
         
         !> \public PB3D perturbation version
@@ -308,12 +312,18 @@ contains
                     allocate(r_F_X(n_r_eq))
                     r_F_X = r_F_eq
                     X_limits = eq_limits
+                    
+                    ! output
+                    call writo('Using the equilibrium grid')
                 case (2)                                                        ! solution
                     ! calculate solution
                     allocate(r_F_X(n_r_sol))
                     ierr = calc_norm_range_PB3D_sol(sol_limits=X_limits,&
                         &r_F_sol=r_F_X)
                     CHCKERR('')
+                    
+                    ! output
+                    call writo('Using the solution grid')
                 case (3)                                                        ! enriched
                     ! decide extra divisions for each interval
                     allocate(div(size(r_F_eq)-1))
@@ -351,6 +361,17 @@ contains
                         call draw_ex(['eq','X '],'r_F_X',2,1,&
                             &.false.)
                     end if
+                    
+                    ! output
+                    call writo('Enriching the equilibrium grid to have jq &
+                        &change not more than '//trim(r2strt(max_njq_change)))
+                    call lvl_ud(1)
+                    if (any(div.gt.0)) then
+                        call writo('Added '//trim(i2str(sum(div)))//' points')
+                    else
+                        call writo('But it was not necessary to  add points')
+                    end if
+                    call lvl_ud(-1)
             end select
         end function calc_norm_range_PB3D_X
         
@@ -631,7 +652,6 @@ contains
     !! \return ierr
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X, X_grid_style
-        use grid_vars, only: disc_type
         use grid_utilities, only: coord_F2E
         use num_utilities, only: spline
         
@@ -676,19 +696,19 @@ contains
                     do id = 1,grid_eq%n(1)
                         ierr = spline(grid_eq%loc_r_F,grid_eq%theta_E(id,jd,:),&
                             &grid_X%loc_r_F,grid_X%theta_E(id,jd,:),&
-                            &ord=min(3,norm_disc_prec_X))
+                            &ord=norm_disc_prec_X)
                         CHCKERR('')
                         ierr = spline(grid_eq%loc_r_F,grid_eq%zeta_E(id,jd,:),&
                             &grid_X%loc_r_F,grid_X%zeta_E(id,jd,:),&
-                            &ord=min(3,norm_disc_prec_X))
+                            &ord=norm_disc_prec_X)
                         CHCKERR('')
                         ierr = spline(grid_eq%loc_r_F,grid_eq%theta_F(id,jd,:),&
                             &grid_X%loc_r_F,grid_X%theta_F(id,jd,:),&
-                            &ord=min(3,norm_disc_prec_X))
+                            &ord=norm_disc_prec_X)
                         CHCKERR('')
                         ierr = spline(grid_eq%loc_r_F,grid_eq%zeta_F(id,jd,:),&
                             &grid_X%loc_r_F,grid_X%zeta_F(id,jd,:),&
-                            &ord=min(3,norm_disc_prec_X))
+                            &ord=norm_disc_prec_X)
                         CHCKERR('')
                     end do
                 end do

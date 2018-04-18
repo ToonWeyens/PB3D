@@ -1254,7 +1254,8 @@ contains
         
         ! local variables
         integer :: id, kd                                                       ! counters
-        integer :: bcs(2)                                                       ! boundary condition
+        integer :: bcs(2,3)                                                     ! boundary conditions (theta(even), theta(odd), r)
+        real(dp) :: bcs_val(2,3)                                                ! values for boundary conditions
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         real(dp), allocatable :: jac(:,:)                                       ! jac as defined above
@@ -1283,28 +1284,34 @@ contains
             
             ! set up boundary conditions
             if (ias.eq.0) then                                                  ! top-bottom symmetric
-                bcs = [0,0]                                                     ! not-a-knot
+                bcs(:,1) = [1,1]                                                ! theta(even): zero first derivative
+                bcs(:,2) = [2,2]                                                ! theta(odd): zero first derivative
             else
-                bcs = [-1,-1]                                                   ! periodic
+                bcs(:,1) = [-1,-1]                                              ! theta(even): periodic
+                bcs(:,2) = [-1,-1]                                              ! theta(odd): periodic
             end if
+            bcs(:,3) = [0,0]                                                    ! r: not-a-knot
+            bcs_val = 0._dp
             
             ! calculate derivatives
             do id = 1,nchi
                 ierr = spline(flux_p_H(:,0)/(2*pi),R_H(id,:),&
                     &flux_p_H(:,0)/(2*pi),Rpsi(id,:),ord=norm_disc_prec_eq,&
-                    &deriv=1)
+                    &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
                 CHCKERR('')
                 ierr = spline(flux_p_H(:,0)/(2*pi),Z_H(id,:),&
                     &flux_p_H(:,0)/(2*pi),Zpsi(id,:),ord=norm_disc_prec_eq,&
-                    &deriv=1)
+                    &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
                 CHCKERR('')
             end do
             do kd = 1,n_r_eq
                 ierr = spline(chi_H,R_H(:,kd),chi_H,Rchi(:,kd),&
-                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs)
+                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1),&
+                    &bcs_val=bcs_val(:,1))                                      ! even
                 CHCKERR('')
                 ierr = spline(chi_H,Z_H(:,kd),chi_H,Zchi(:,kd),&
-                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs)
+                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,2),&
+                    &bcs_val=bcs_val(:,2))                                      ! odd
                 CHCKERR('')
             end do
             
@@ -1387,23 +1394,25 @@ contains
             allocate(tempvar(nchi,1,n_r_eq,4))
             ierr = spline(flux_p_H(:,0)/(2*pi),RBphi_H(:,0),&
                 &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,1),ord=norm_disc_prec_eq,&
-                &deriv=1)
+                &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
             CHCKERR('')
             ierr = spline(flux_p_H(:,0)/(2*pi),pres_H(:,0),&
                 &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,2),ord=norm_disc_prec_eq,&
-                &deriv=1)
+                &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
             CHCKERR('')
             do id = 1,nchi
                 tempvar(id,1,:,1:2) = tempvar(1,1,:,1:2)
                 ierr = spline(flux_p_H(:,0)/(2*pi),&
                     &q_saf_H(:,0)/RBphi_H(:,0)*h_H_11(id,:),&
                     &flux_p_H(:,0)/(2*pi),tempvar(id,1,:,3),&
-                    &ord=norm_disc_prec_eq,deriv=1)
+                    &ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,3),&
+                    &bcs_val=bcs_val(:,3))
                 CHCKERR('')
             end do
             do kd = 1,n_r_eq
                 ierr = spline(chi_H,q_saf_H(kd,0)/RBphi_H(kd,0)*h_H_12(:,kd),&
-                    &chi_H,tempvar(:,1,kd,4),ord=norm_disc_prec_eq,deriv=1)
+                    &chi_H,tempvar(:,1,kd,4),ord=norm_disc_prec_eq,deriv=1,&
+                    &bcs=bcs(:,2),bcs_val=bcs_val(:,2))                         ! odd
                 CHCKERR('')
             end do
             

@@ -1271,3 +1271,16 @@ ITER Organization
 * Fixed bug in 'test_harm_cont_H' where the real part was used twice.
 * The derivatives of HELENA quantities now happen with 2-D splines, with periodic boundary conditions for top-bottom asymmetric equilbria and not-a-knot conditions for the symmetric ones. This is less accurate but should not pose a problem. The system with lper in 'setup_deriv_data' is therefore not used anymore.
 * 'test_D12h_H' has been changed to 'test_D12g_H'.
+
+## 2.19:
+* VMEC TESTS DON'T WORK YET, BUT HELENA SHOULD BE FINE.
+* THERE IS A SLIGHT DISCREPANCY BETWEEN USING MULTIPLE NUMBERS OF PROCESSES. THIS NUMBER DECREASES WHEN LARGER GHOST REGIONS ARE USED IN EQUILIBRIUM NORMAL RANGE.
+* The issue of boundary conditions for spline inerpolation of HELENA quantities that are top-bottom symmetric has been cleared up: symmetric quantities have first derivative equal to zero and asymmetric ones second derivative equal to zero. This works only for HELENA grids, so a test has been added to 'calc_eq' in debug mode.
+* This makes 'setup_deriv_data' redundant as well. 'setup_interp_data' was already deprecated in 2.18.
+* 'disc_type' is now not longer used, as well as 'apply_disc'. Everything is done with splines.
+* 'interp_V_spline' now uses either linear or spline, or direct copy.
+* 'interp_V' now has a test, which can be used with 'debug_interp_V'.
+* Small bug fix in 'spline' for complex quantities where the wrong warning was displayed.
+* Change default max_njq_change to 0.49 because it turns out that being under 0.5 is very advantageous while at the same time not adding too many points in typical cases.
+* Fixed bug in 'calc_vec_comp' where ld iterated over 9.
+* Implemented limit to Jacobians to avoid zero.

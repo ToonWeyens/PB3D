@@ -23,6 +23,18 @@
     </tr>
     </table>
     
+    \section faq_problems common problems
+    
+    <table>
+    <caption id="faq_problems_tab">Table 2. common problems</caption>
+    <tr>
+        <th> problem </th><th> solution </th>
+    </tr>
+    <tr>
+        <td>unphysical eigenvector</td> <td> For coarse equilbrium grids and/or strongly varying safety factors, and when using the fast version (i.e. with \c n_mod_X), it is possible that the resonating mode number range varies too quickly, leading to inaccurate interpolation of tensorial perturbation quantities in the solution grid. Try using \c X_grid_style 3, where enrichment of the equilibrium grid is used to set up the perturbation grid. If this does not help, additionally lower \c max_njq_change from its default value. </td>
+    </tr>
+    </table>
+    
     
 */
     \latexonly

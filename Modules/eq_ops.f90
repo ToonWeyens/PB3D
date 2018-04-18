@@ -7,7 +7,7 @@ module eq_ops
     use output_ops
     use messages
     use num_vars, only: pi, dp, max_str_ln, max_deriv
-    use grid_vars, only: grid_type, disc_type
+    use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
 #if ldebug
     use num_utilities, only: check_deriv
@@ -280,7 +280,6 @@ contains
     integer function calc_eq_1(grid_eq,eq) result(ierr)
         use num_vars, only: eq_style, rho_style, use_normalization, &
             &use_pol_flux_E, use_pol_flux_F
-        use grid_utilities, only: apply_disc
         use eq_vars, only: rho_0
         use num_utilities, only: derivs
         use eq_utilities, only: calc_F_derivs
@@ -402,7 +401,7 @@ contains
     end function calc_eq_1
     !> \private metric version
     integer function calc_eq_2(grid_eq,eq_1,eq_2,dealloc_vars) result(ierr)
-        use num_vars, only: eq_style, export_HEL
+        use num_vars, only: eq_style, export_HEL, tol_zero
         use num_utilities, only: derivs, c
         use eq_utilities, only: calc_inv_met, calc_F_derivs
         use VMEC_utilities, only: calc_trigon_factors
@@ -410,6 +409,7 @@ contains
         use num_vars, only: ltest
         use input_utilities, only: get_log, pause_prog
         use HELENA_ops, only: test_metrics_H, test_harm_cont_H
+        use HELENA_vars, only: chi_H
 #endif
         
         character(*), parameter :: rout_name = 'calc_eq_2'
@@ -421,9 +421,10 @@ contains
         logical, intent(in), optional :: dealloc_vars                           !< deallocate variables on the fly after writing
         
         ! local variables
-        integer :: id
+        integer :: id, jd, kd                                                   ! counters
         integer :: pmone                                                        ! plus or minus one
         logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -528,6 +529,31 @@ contains
                 end if
             case (2)                                                            ! HELENA
 #if ldebug
+                ! Check whether poloidal grid is indeed chi_H
+                ! If not,  the boundary  conditions used in  the splines  of the
+                ! following routines are not correct.
+                ! A  solution to  this problem  would be  to set  up the  HELENA
+                ! variables  in  a  full  periodic  grid,  even  when  they  are
+                ! top-bottom symmetric.
+                do kd = 1,grid_eq%loc_n_r
+                    do jd = 1,grid_eq%n(2)
+                        do id = 1,grid_eq%n(1)
+                            if (abs(grid_eq%theta_E(id,jd,kd)-chi_H(id)).gt.&
+                                &tol_zero) then
+                                ierr = 1
+                                err_msg = 'theta_E is not identical to chi_H'
+                                CHCKERR(err_msg)
+                            end if
+                            if (abs(grid_eq%zeta_E(id,jd,kd)-0._dp).gt.&
+                                &tol_zero) then
+                                ierr = 1
+                                err_msg = 'zeta_E is not identical to 0'
+                                CHCKERR(err_msg)
+                            end if
+                        end do
+                    end do
+                end do
+                
                 if (ltest) then
                     call writo('Test consistency of metric factors?')
                     if(get_log(.false.,ind=.true.)) then
@@ -568,9 +594,9 @@ contains
                 
 #if ldebug
                 if (ltest) then
-                    call writo('Test calculation of D1 D2 g_H?')
+                    call writo('Test calculation of D1 D2 h_H?')
                     if(get_log(.false.)) then
-                        ierr = test_D12g_H(grid_eq,eq_2)
+                        ierr = test_D12h_H(grid_eq,eq_2)
                         CHCKERR('')
                         call pause_prog
                     end if
@@ -644,12 +670,11 @@ contains
             CHCKERR('')
         end do
         
-        !!! limit Jacobian to small value to avoid infinities
-        !!if (maxval(eq_2%jac_F(:,:,:,0,0,0)).gt.0._dp) then
-            !!eq_2%jac_F(:,:,:,0,0,0) = max(eq_2%jac_F(:,:,:,0,0,0),tol_zero)
-        !!else
-            !!eq_2%jac_F(:,:,:,0,0,0) = min(eq_2%jac_F(:,:,:,0,0,0),-tol_zero)
-        !!end if
+        ! limit Jacobians to small value to avoid infinities
+        eq_2%jac_F(:,:,:,0,0,0) = sign(&
+            &max(tol_zero,abs(eq_2%jac_F(:,:,:,0,0,0))),eq_2%jac_F(:,:,:,0,0,0))
+        eq_2%jac_E(:,:,:,0,0,0) = sign(&
+            &max(tol_zero,abs(eq_2%jac_E(:,:,:,0,0,0))),eq_2%jac_E(:,:,:,0,0,0))
         
         ! possibly deallocate
         if (dealloc_vars_loc) then
@@ -2688,10 +2713,12 @@ contains
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
-        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
+        type(EZspline2_r8) :: f_spl(2)                                          ! spline object for interpolation, even and odd
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd, ld                                               ! counters
-        integer :: bcs(2,2)                                                     ! boundary conditions
+        integer :: bcs(2,3)                                                     ! boundary conditions (theta(even), theta(odd), r)
+        integer :: bc_ld(6)                                                     ! boundary condition type for each metric element
+        real(dp) :: bcs_val(2,3)                                                ! values for boundary conditions
         real(dp), allocatable :: Rchi(:,:), Rpsi(:,:)                           ! chi and psi derivatives of R
         real(dp), allocatable :: Zchi(:,:), Zpsi(:,:)                           ! chi and psi derivatives of Z
         
@@ -2704,13 +2731,19 @@ contains
         CHCKERR('')
 #endif
         
-        ! set up bondary conditions
+        ! set up boundary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
-            bcs(:,1) = [0,0]                                                    ! not-a-knot
+            bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
+            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
         else
-            bcs(:,1) = [-1,-1]                                                  ! periodic
+            bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
+            bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic
         end if
-        bcs(:,2) = [0,0]
+        bcs(:,3) = [0,0]                                                        ! r: not-a-knot
+        bcs_val = 0._dp
+        
+        ! boundary condition type for each metric element
+        bc_ld = [1,2,0,1,0,1]                                                   ! 1: even, 2: odd, 0: zero
         
         ! initialize
         eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0._dp
@@ -2724,21 +2757,25 @@ contains
             do id = 1,grid_eq%n(1)
                 ierr = spline(grid_eq%loc_r_E,&
                     &R_H(id,grid_eq%i_min:grid_eq%i_max),grid_eq%loc_r_E,&
-                    &Rpsi(id,:),ord=norm_disc_prec_eq,deriv=1)
+                    &Rpsi(id,:),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,3),&
+                    &bcs_val=bcs_val(:,3))
                 CHCKERR('')
                 ierr = spline(grid_eq%loc_r_E,&
                     &Z_H(id,grid_eq%i_min:grid_eq%i_max),grid_eq%loc_r_E,&
-                    &Zpsi(id,:),ord=norm_disc_prec_eq,deriv=1)
+                    &Zpsi(id,:),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,3),&
+                    &bcs_val=bcs_val(:,3))
                 CHCKERR('')
             end do
             
-            ! poloidal derivatives for full / even functions
+            ! poloidal derivatives
             do kd = 1,grid_eq%loc_n_r
                 ierr = spline(chi_H,R_H(:,grid_eq%i_min-1+kd),chi_H,&
-                    &Rchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1))
+                    &Rchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1),&
+                    &bcs_val=bcs_val(:,1))                                      ! even
                 CHCKERR('')
                 ierr = spline(chi_H,Z_H(:,grid_eq%i_min-1+kd),chi_H,&
-                    &Zchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,1))
+                    &Zchi(:,kd),ord=norm_disc_prec_eq,deriv=1,bcs=bcs(:,2),&
+                    &bcs_val=bcs_val(:,2))                                      ! odd
                 CHCKERR('')
             end do
             
@@ -2757,47 +2794,57 @@ contains
         else if (deriv(3).ne.0) then                                            ! axisymmetry: deriv. in tor. coord. is zero
             !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
-            ! initialize 2-D cubic spline
-            call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
-                &bcs(:,1),bcs(:,2),ierr) 
-            call EZspline_error(ierr)
-            CHCKERR('')
+            ! initialize 2-D cubic spline for even (1) and odd (2) quantities
+            do ld = 1,2
+                call EZspline_init(f_spl(ld),grid_eq%n(1),grid_eq%loc_n_r,&
+                    &bcs(:,ld),bcs(:,3),ierr) 
+                call EZspline_error(ierr)
+                CHCKERR('')
+                
+                ! set grid
+                f_spl(ld)%x1 = chi_H
+                f_spl(ld)%x2 = grid_eq%loc_r_E
+                
+                ! set boundary conditions
+                f_spl(ld)%bcval1min = bcs_val(1,ld)
+                f_spl(ld)%bcval1max = bcs_val(2,ld)
+                f_spl(ld)%bcval2min = bcs_val(1,3)
+                f_spl(ld)%bcval2max = bcs_val(2,3)
+            end do
             
-            
-            ! set grid
-            f_spl%x1 = chi_H
-            f_spl%x2 = grid_eq%loc_r_E
-            
-            do jd = 1,grid_eq%n(2)
-                do ld = 1,size(eq%g_E,4)
+            do ld = 1,6
+                do jd = 1,grid_eq%n(2)
+                    if (bc_ld(ld).eq.0) cycle                                   ! quantity is zero
+                    
                     ! set up 
-                    call EZspline_setup(f_spl,eq%g_E(:,jd,:,ld,0,0,0),ierr,&
-                        &exact_dim=.true.)                                      ! match exact dimensions, none of them old Fortran bullsh*t!
+                    call EZspline_setup(f_spl(bc_ld(ld)),&
+                        &eq%g_E(:,jd,:,ld,0,0,0),ierr,exact_dim=.true.)         ! match exact dimensions, none of them old Fortran bullsh*t!
                     call EZspline_error(ierr)
                     CHCKERR('')
                     
                     ! derivate
-                    call EZspline_derivative(f_spl,deriv(1),deriv(2),&
-                        &grid_eq%n(1),grid_eq%loc_n_r,chi_H,grid_eq%loc_r_E,&
-                        &eq%g_E(:,jd,:,ld,deriv(1),deriv(2),0),ierr) 
+                    ! Note:  deriv  is the  other  way  around because  poloidal
+                    ! indices come before normal
+                    call EZspline_derivative(f_spl(bc_ld(ld)),deriv(2),&
+                        &deriv(1),grid_eq%n(1),grid_eq%loc_n_r,chi_H,&
+                        &grid_eq%loc_r_E,eq%g_E(:,jd,:,ld,deriv(1),deriv(2),0),&
+                        &ierr) 
                     call EZspline_error(ierr)
                     CHCKERR('')
                 end do
             end do
             
             ! free
-            call EZspline_free(f_spl,ierr)
-            call EZspline_error(ierr)
+            do ld = 1,2
+                call EZspline_free(f_spl(ld),ierr)
+                call EZspline_error(ierr)
+            end do
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&
                 &trim(i2str(deriv(2)))//','//trim(i2str(deriv(3)))//'&
                 &) not supported'
             CHCKERR(err_msg)
-        end if
-        if (deriv(3).eq.0) then
-            call plot_HDF5(['g_E'],'g_E_'//trim(i2str(deriv(1)))//'_'//&
-                &trim(i2str(deriv(2))),eq%g_E(:,:,:,:,deriv(1),deriv(2),0))
         end if
     end function calc_g_H_ind
     !> \private array version
@@ -2934,7 +2981,8 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
         integer :: jd, kd                                                       ! counters
-        integer :: bcs(2,2)                                                     ! boundary conditions
+        integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), r)
+        real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
         
         ! initialize ierr
         ierr = 0
@@ -2947,11 +2995,12 @@ contains
         
         ! set up boundary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
-            bcs(:,1) = [0,0]                                                    ! not-a-knot
+            bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
         else
             bcs(:,1) = [-1,-1]                                                  ! periodic
         end if
-        bcs(:,2) = [0,0]
+        bcs(:,2) = [0,0]                                                        ! r: not-a-knot
+        bcs_val = 0._dp
         
         ! calculate determinant
         if (sum(deriv).eq.0) then                                               ! no derivatives
@@ -2976,6 +3025,12 @@ contains
             f_spl%x1 = chi_H
             f_spl%x2 = grid_eq%loc_r_E
             
+            ! set boundary conditions
+            f_spl%bcval1min = bcs_val(1,1)
+            f_spl%bcval1max = bcs_val(2,1)
+            f_spl%bcval2min = bcs_val(1,2)
+            f_spl%bcval2max = bcs_val(2,2)
+            
             do jd = 1,grid_eq%n(2)
                 ! set up 
                 call EZspline_setup(f_spl,eq_2%jac_E(:,jd,:,0,0,0),ierr,&
@@ -2984,7 +3039,9 @@ contains
                 CHCKERR('')
                 
                 ! derivate
-                call EZspline_derivative(f_spl,deriv(1),deriv(2),grid_eq%n(1),&
+                ! Note: deriv is  the other way around  because poloidal indices
+                ! come before normal
+                call EZspline_derivative(f_spl,deriv(2),deriv(1),grid_eq%n(1),&
                     &grid_eq%loc_n_r,chi_H,grid_eq%loc_r_E,&
                     &eq_2%jac_E(:,jd,:,deriv(1),deriv(2),0),ierr) 
                 call EZspline_error(ierr)
@@ -5585,18 +5642,19 @@ contains
         call writo('Test complete')
     end function test_T_EF
     
-    !> Tests whether \f$ \frac{\partial^2}{\partial u_i \partial u_j} g_\text{H}
+    !> Tests whether \f$ \frac{\partial^2}{\partial u_i \partial u_j} h_\text{H}
     !! \f$ is calculated correctly.
     !!
     !! \note Debug version only
     !!
     !! \return ierr
-    integer function test_D12g_H(grid_eq,eq) result(ierr)
+    integer function test_D12h_H(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
         use num_utilities, only: c, spline
         use num_vars, only: norm_disc_prec_eq
+        use HELENA_vars, only: ias
         
-        character(*), parameter :: rout_name = 'test_D12g_H'
+        character(*), parameter :: rout_name = 'test_D12h_H'
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
@@ -5605,6 +5663,9 @@ contains
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: id, jd, kd, ld                                               ! counters
+        integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), theta(odd))
+        integer :: bc_ld(6)                                                     ! boundary condition type for each metric element
+        real(dp) :: bcs_val(2,3)                                                ! values for boundary conditions
         real(dp), allocatable :: res(:,:,:,:)                                   ! result variable
         character(len=max_str_ln) :: file_name                                  ! name of plot file
         character(len=max_str_ln) :: description                                ! description of plot
@@ -5615,7 +5676,7 @@ contains
         ierr = 0
         
         ! output
-        call writo('Going to test whether D1 D2 g_H is calculated correctly')
+        call writo('Going to test whether D1 D2 h_H is calculated correctly')
         call lvl_ud(1)
         
         ! trim extended grid into plot grid
@@ -5629,14 +5690,30 @@ contains
         tot_dim = [grid_trim%n(1),grid_trim%n(2),grid_trim%n(3)]
         loc_offset = [0,0,grid_trim%i_min-1]
         
-        ! calculate D1 D2 g_H alternatively
+        ! set up boundary conditions
+        if (ias.eq.0) then                                                      ! top-bottom symmetric
+            bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
+            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
+        else
+            bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
+            bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic
+        end if
+        bcs_val = 0._dp
+        
+        ! boundary condition type for each metric element
+        bc_ld = [1,2,0,1,0,1]                                                   ! 1: even, 2: odd, 0: zero
+        
+        ! calculate D1 D2 h_H alternatively
         do ld = 1,6
             do kd = norm_id(1),norm_id(2)
                 do jd = 1,grid_trim%n(2)
+                    if (bc_ld(ld).eq.0) cycle                                   ! quantity is zero
+                    
                     ierr = spline(grid_eq%theta_E(:,jd,kd),&
-                        &eq%g_E(:,jd,kd,ld,1,0,0),grid_eq%theta_E(:,jd,kd),&
+                        &eq%h_E(:,jd,kd,ld,0,1,0),grid_eq%theta_E(:,jd,kd),&
                         &res(:,jd,kd-norm_id(1)+1,ld),ord=norm_disc_prec_eq,&
-                        &deriv=1)
+                        &deriv=1,bcs=bcs(:,bc_ld(ld)),&
+                        &bcs_val=bcs_val(:,bc_ld(ld)))
                     CHCKERR('')
                 end do
             end do
@@ -5646,19 +5723,19 @@ contains
         do id = 1,3
             do kd = 1,3
                 ! user output
-                call writo('Testing g_H('//trim(i2str(kd))//','//&
+                call writo('Testing h_H('//trim(i2str(kd))//','//&
                     &trim(i2str(id))//')')
                 call lvl_ud(1)
                 
                 ! set some variables
-                file_name = 'TEST_D12g_H_'//trim(i2str(kd))//'_'//&
+                file_name = 'TEST_D12h_H_'//trim(i2str(kd))//'_'//&
                     &trim(i2str(id))
-                description = 'Testing calculated with given value for D12g_H('&
+                description = 'Testing calculated with given value for D12h_H('&
                     &//trim(i2str(kd))//','//trim(i2str(id))//')'
                 
                 ! plot difference
                 call plot_diff_HDF5(res(:,:,:,c([kd,id],.true.)),&
-                    &eq%g_E(:,:,norm_id(1):norm_id(2),&
+                    &eq%h_E(:,:,norm_id(1):norm_id(2),&
                     &c([kd,id],.true.),1,1,0),file_name,tot_dim,loc_offset,&
                     &description,output_message=.true.)
                 
@@ -5672,7 +5749,7 @@ contains
         ! user output
         call lvl_ud(-1)
         call writo('Test complete')
-    end function test_D12g_H
+    end function test_D12h_H
     
     !> Performs  tests  on \f$  \mathcal{J}_\text{F}\f$.
     !!

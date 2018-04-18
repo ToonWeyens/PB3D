@@ -8,7 +8,7 @@ module X_ops
     use output_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, max_name_ln, pi
-    use grid_vars, onlY: grid_type, disc_type
+    use grid_vars, onlY: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type, modes_type
 
@@ -1059,9 +1059,9 @@ contains
     integer function setup_modes(mds,grid_eq,grid,plot_nm) result(ierr)
         use num_vars, only: use_pol_flux_F, rank
         use X_vars, only: n_mod_X, min_n_X, max_n_X, min_m_X, max_m_X
-        use grid_vars, only: disc_type
-        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
+        use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_modes'
         
@@ -1074,7 +1074,6 @@ contains
         ! local variables
         type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
         type(grid_type) :: grid_trim                                            ! trimmed version of perturbation grid
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
         real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
         real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
@@ -1115,24 +1114,19 @@ contains
         lim_nm_X(3,:) = min_m_X*1._dp
         lim_nm_X(4,:) = max_m_X*1._dp
         
-        ! setup normal interpolation data
-        ierr = setup_interp_data(grid_eq_trim%r_F,grid_trim%r_F,&
-            &norm_interp_data,1)
-        CHCKERR('')
-        
         ! interpolate
         allocate(lim_nm_X_interp(4,grid_trim%n(3)))
-        ierr = apply_disc(lim_nm_X,norm_interp_data,lim_nm_X_interp,2)
-        CHCKERR('')
+        do id = 1,4
+            ierr = spline(grid_eq_trim%r_F,lim_nm_X(id,:),grid_trim%r_F,&
+                &lim_nm_X_interp(id,:),ord=1)                                   ! linear interpolation to preserve form
+            CHCKERR('')
+        end do
         
         !!! For non-monotonous tests:
         !!lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3)) = &
             !!&2*lim_nm_X_interp(3,grid_trim%n(3)*0.7) - &
             !!&lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3))
         !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
-        
-        ! clean up
-        call norm_interp_data%dealloc()
         
         ! set up normal tabulation values
         allocate(mds%r_F(grid_trim%n(3)))
@@ -1633,7 +1627,7 @@ contains
         use num_vars, only: use_pol_flux_F, norm_disc_prec_eq
         use eq_vars, only: max_flux_F, max_flux_F
         use num_ops, only: calc_zero_Zhang
-        use grid_utilities, only: trim_grid, setup_interp_data, apply_disc
+        use grid_utilities, only: trim_grid
         use MPI_utilities, only: get_ser_var
         
         character(*), parameter :: rout_name = 'calc_res_surf'
@@ -1648,7 +1642,6 @@ contains
         
         ! local variables (also used in child functions)
         real(dp) :: nmfrac_fun                                                  ! fraction m/n or n/m to determine resonant flux surface
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! local variables (not to be used in child functions)
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
@@ -1762,12 +1755,13 @@ contains
         
         ! clean up
         call grid_eq_trim%dealloc()
-        call norm_interp_data%dealloc()
     contains
         ! Returns q-m/n or  iota-n/m in Flux coordinates, used to  solve for q =
         ! m/n or iota = n/m.
         !> \private
         real(dp) function jq_fun(pt) result(res)
+            use num_utilities, only: spline
+            
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
             
@@ -1787,13 +1781,9 @@ contains
             
             ! check whether to interpolate or extrapolate
             if (pt.ge.x_min .and. pt.le.x_max) then                             ! point requested within range
-                ! setup interpolation data
-                ierr = setup_interp_data(grid_eq_trim%r_F,[pt],&
-                    &norm_interp_data,norm_disc_prec_eq)
-                CHCKERR('')
                 ! interpolate
-                ierr = apply_disc(jq_tot-nmfrac_fun,norm_interp_data,&
-                    &res_loc)
+                ierr = spline(grid_eq_trim%r_F,jq_tot-nmfrac_fun,[pt],res_loc,&
+                    &ord=norm_disc_prec_eq)
                 CHCKERR('')
                 ! copy
                 res = res_loc(1)
@@ -2094,12 +2084,9 @@ contains
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, &
             &norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c
+        use num_utilities, only: c, spline
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
-        use grid_vars, only: disc_type
-        use grid_utilities, only: setup_deriv_data, setup_interp_data, &
-            &apply_disc
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -2115,10 +2102,7 @@ contains
         
         ! local variables
         integer :: id, jd, kd, ld                                               ! counters
-        type(disc_type) :: par_deriv_data                                       ! data for parallel derivative
-        type(disc_type) :: geo_deriv_data                                       ! data for geodesic derivative
         integer :: T_size                                                       ! 2 for VMEC and 1 for HELENA
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! Jacobian
         real(dp), pointer :: J(:,:,:)                                           ! Jacobian
@@ -2264,15 +2248,12 @@ contains
                 if (grid_eq%n(2).gt.norm_disc_prec_X+3) then                    ! need enough terms
                     do kd = 1,grid_eq%loc_n_r
                         do id = 1,grid_eq%n(1)
-                            ierr = setup_deriv_data(ang_geo_F(id,:,kd),&
-                                &geo_deriv_data,1,norm_disc_prec_X+1)           ! higher precision because other derivative will be taken later
-                            CHCKERR('')
-                            ierr = apply_disc(Theta_3(id,:,kd),&
-                                &geo_deriv_data,D1Theta_3(id,:,kd))
+                            ierr = spline(ang_geo_F(id,:,kd),Theta_3(id,:,kd),&
+                                &ang_geo_F(id,:,kd),D1Theta_3(id,:,kd),&
+                                &ord=norm_disc_prec_X,deriv=1)
                             CHCKERR('')
                         end do
                     end do
-                    call geo_deriv_data%dealloc()
                 else
                     D1Theta_3 = 0._dp
                 end if
@@ -2280,15 +2261,12 @@ contains
                 if (grid_eq%n(1).gt.norm_disc_prec_X+3) then                    ! need enough terms
                     do kd = 1,grid_eq%loc_n_r
                         do jd = 1,grid_eq%n(2)
-                            ierr = setup_deriv_data(ang_par_F(:,jd,kd),&
-                                &par_deriv_data,1,norm_disc_prec_X+1)           ! higher precision because other derivative will be taken later
-                            CHCKERR('')
-                            ierr = apply_disc(Theta_3(:,jd,kd),&
-                                &par_deriv_data,D3Theta_3(:,jd,kd))
+                            ierr = spline(ang_par_F(:,jd,kd),Theta_3(:,jd,kd),&
+                                &ang_par_F(:,jd,kd),D3Theta_3(:,jd,kd),&
+                                &ord=norm_disc_prec_X,deriv=1)
                             CHCKERR('')
                         end do
                     end do
-                    call par_deriv_data%dealloc()
                 else
                     D3Theta_3 = 0._dp
                 end if
@@ -2336,31 +2314,43 @@ contains
                 T5_X => T5
                 T6_X => T6
             case (2,3)                                                          ! solution or enriched
-                ! setup normal interpolation data
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
-                
                 ! interpolate
-                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
+                ierr = spline(grid_eq%loc_r_F,eq_1%q_saf_FD(:,0),&
+                    &grid_X%loc_r_F,q_saf,ord=norm_disc_prec_X)
                 CHCKERR('')
-                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
+                ierr = spline(grid_eq%loc_r_F,eq_1%rot_t_FD(:,0),&
+                    &grid_X%loc_r_F,rot_t,ord=norm_disc_prec_X)
                 CHCKERR('')
-                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T3,norm_interp_data,T3_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T4,norm_interp_data,T4_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T5,norm_interp_data,T5_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T6,norm_interp_data,T6_X,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do ld = 1,T_size
+                    do jd = 1,grid_X%n(2)
+                        do id = 1,grid_X%n(1)
+                            ierr = spline(grid_eq%loc_r_F,T1(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T1_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_eq%loc_r_F,T2(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T2_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_eq%loc_r_F,T3(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T3_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_eq%loc_r_F,T4(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T4_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_eq%loc_r_F,T5(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T5_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                            ierr = spline(grid_eq%loc_r_F,T6(id,jd,:,ld),&
+                                &grid_X%loc_r_F,T6_X(id,jd,:,ld),&
+                                &ord=norm_disc_prec_X)
+                            CHCKERR('')
+                        end do
+                    end do
+                end do
         end select
         
         ! set up n_frac
@@ -2464,25 +2454,20 @@ contains
                 end if
                 ! set up helper variable for derivative
                 ! numerically derive U_0 and U_1
-                do kd = 1,grid_X%loc_n_r
-                    do jd = 1,grid_X%n(2)
-                        ! set up parallel derivative data
-                        ierr = setup_deriv_data(ang_par_F(:,jd,kd),&
-                            &par_deriv_data,1,norm_disc_prec_X+1)               ! higher precision because previous derivative
-                        CHCKERR('')
-                        
-                        ! calculate DX%U_0
-                        ierr = apply_disc(X%U_0(:,jd,kd,:),par_deriv_data,&
-                            &X%DU_0(:,jd,kd,:),1)
-                        CHCKERR('')
-                        
-                        ! calculate DX%U_1
-                        ierr = apply_disc(X%U_1(:,jd,kd,:),par_deriv_data,&
-                            &X%DU_1(:,jd,kd,:),1)
-                        CHCKERR('')
+                do ld = 1,X%n_mod
+                    do kd = 1,grid_X%loc_n_r
+                        do jd = 1,grid_X%n(2)
+                            ierr = spline(ang_par_F(:,jd,kd),X%U_0(:,jd,kd,ld),&
+                                &ang_par_F(:,jd,kd),X%DU_0(:,jd,kd,ld),&
+                                &ord=norm_disc_prec_X,deriv=1)
+                            CHCKERR('')
+                            ierr = spline(ang_par_F(:,jd,kd),X%U_1(:,jd,kd,ld),&
+                                &ang_par_F(:,jd,kd),X%DU_1(:,jd,kd,ld),&
+                                &ord=norm_disc_prec_X,deriv=1)
+                            CHCKERR('')
+                        end do
                     end do
                 end do
-                call par_deriv_data%dealloc()
         end select
         
         ! add second part of derivatives ~ n_frac
@@ -2550,18 +2535,16 @@ contains
             
             ! loop over all modes
             do ld = 1,X%n_mod
-                ! loop over all normal points
+                ! derivate numerically
                 do kd = 1,grid_X%loc_n_r
-                    ! derive numerically
                     do jd = 1,grid_X%n(2)
-                        ierr = setup_deriv_data(ang_par_F(:,jd,kd),&
-                            &par_deriv_data,1,norm_disc_prec_X+1)
+                        ierr = spline(ang_par_F(:,jd,kd),X%U_0(:,jd,kd,ld),&
+                            &ang_par_F(:,jd,kd),DU_0(:,jd,kd),&
+                            &ord=norm_disc_prec_X,deriv=1)
                         CHCKERR('')
-                        ierr = apply_disc(X%U_0(:,jd,kd,ld),par_deriv_data,&
-                            &DU_0(:,jd,kd))
-                        CHCKERR('')
-                        ierr = apply_disc(X%U_1(:,jd,kd,ld),par_deriv_data,&
-                            &DU_1(:,jd,kd))
+                        ierr = spline(ang_par_F(:,jd,kd),X%U_1(:,jd,kd,ld),&
+                            &ang_par_F(:,jd,kd),DU_1(:,jd,kd),&
+                            &ord=norm_disc_prec_X,deriv=1)
                         CHCKERR('')
                     end do
                 end do
@@ -2602,7 +2585,6 @@ contains
                 call plot_diff_HDF5(ip(DU_1),ip(X%DU_1(:,:,:,ld)),&
                     &file_name,descr=description,output_message=.true.)
             end do
-            call par_deriv_data%dealloc()
             
             ! user output
             call lvl_ud(-1)
@@ -2651,11 +2633,9 @@ contains
         &result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c
+        use num_utilities, only: c, spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use grid_vars, only: disc_type
-        use grid_utilities, only: setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_PV'
         
@@ -2670,10 +2650,10 @@ contains
         integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
         
         ! local variables
-        integer :: m, k, kd                                                     ! counters
+        integer :: m, k                                                         ! counters
+        integer :: id, jd, kd                                                   ! counters
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! jacobian
         real(dp), pointer :: J(:,:,:)                                           ! jac
@@ -2748,29 +2728,37 @@ contains
                 T4_X => T4
                 T5_X => T5
             case (2,3)                                                          ! solution or enriched
-                ! setup normal interpolation data
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
-                
                 ! interpolate
-                ierr = apply_disc(eq_1%q_saf_FD(:,0),norm_interp_data,q_saf)
+                ierr = spline(grid_eq%loc_r_F,eq_1%q_saf_FD(:,0),&
+                    &grid_X%loc_r_F,q_saf,ord=norm_disc_prec_X)
                 CHCKERR('')
-                ierr = apply_disc(eq_1%rot_t_FD(:,0),norm_interp_data,rot_t)
+                ierr = spline(grid_eq%loc_r_F,eq_1%rot_t_FD(:,0),&
+                    &grid_X%loc_r_F,rot_t,ord=norm_disc_prec_X)
                 CHCKERR('')
-                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T3,norm_interp_data,T3_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T4,norm_interp_data,T4_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T5,norm_interp_data,T5_X,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do jd = 1,grid_X%n(2)
+                    do id = 1,grid_X%n(1)
+                        ierr = spline(grid_eq%loc_r_F,T1(id,jd,:),&
+                            &grid_X%loc_r_F,T1_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,T2(id,jd,:),&
+                            &grid_X%loc_r_F,T2_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,T3(id,jd,:),&
+                            &grid_X%loc_r_F,T3_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,T4(id,jd,:),&
+                            &grid_X%loc_r_F,T4_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,T5(id,jd,:),&
+                            &grid_X%loc_r_F,T5_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                    end do
+                end do
         end select
         
         ! set up fac_n and fac_m
@@ -2877,11 +2865,9 @@ contains
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: K_style, norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c
+        use num_utilities, only: c, spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use grid_vars, only: disc_type
-        use grid_utilities, only: setup_interp_data, apply_disc
         
         character(*), parameter :: rout_name = 'calc_KV'
         
@@ -2896,10 +2882,10 @@ contains
         integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
         
         ! local variables
-        integer :: m, k, kd                                                     ! counters
+        integer :: m, k                                                         ! counters
+        integer :: id, jd, kd                                                   ! counters
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! jacobian
         real(dp), pointer :: J(:,:,:)                                           ! jac
@@ -2945,19 +2931,19 @@ contains
                 T1_X => T1
                 T2_X => T2
             case (2,3)                                                          ! solution or enriched
-                ! setup normal interpolation data
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
-                
                 ! interpolate
-                ierr = apply_disc(T1,norm_interp_data,T1_X,3)
-                CHCKERR('')
-                ierr = apply_disc(T2,norm_interp_data,T2_X,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do jd = 1,grid_X%n(2)
+                    do id = 1,grid_X%n(1)
+                        ierr = spline(grid_eq%loc_r_F,T1(id,jd,:),&
+                            &grid_X%loc_r_F,T1_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                        ierr = spline(grid_eq%loc_r_F,T2(id,jd,:),&
+                            &grid_X%loc_r_F,T2_X(id,jd,:),&
+                            &ord=norm_disc_prec_X)
+                        CHCKERR('')
+                    end do
+                end do
         end select
         
         ! loop over all modes
@@ -3084,10 +3070,8 @@ contains
             &alpha_style, X_grid_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use num_utilities, only: c
-        use grid_vars, only: min_par_X, max_par_X, n_alpha, &
-            &disc_type
-        use grid_utilities, only: setup_interp_data, apply_disc
+        use num_utilities, only: c, spline
+        use grid_vars, only: min_par_X, max_par_X, n_alpha
         use rich_vars, only: rich_lvl
         
         character(*), parameter :: rout_name = 'calc_magn_ints'
@@ -3104,7 +3088,7 @@ contains
         ! local variables, not used in subroutines
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         integer :: k, m                                                         ! counters
-        integer :: kd                                                           ! counter
+        integer :: id, jd, kd                                                   ! counters
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: c_tot(2)                                                     ! total c for symmetric and asymmetric variables
         integer :: prev_style_loc                                               ! local prev_style
@@ -3113,7 +3097,6 @@ contains
         real(dp), allocatable :: step_size(:,:)                                 ! step size for every field line and normal point
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         complex(dp), allocatable :: V_int_work(:,:)                             ! work V_int
-        type(disc_type) :: norm_interp_data                                     ! data for normal interpolation
         
         ! local variables, also used in subroutines
         integer :: nr_int_regions                                               ! nr. of integration regions
@@ -3144,19 +3127,17 @@ contains
                 ! point
                 J => eq%jac_FD(:,:,:,0,0,0)
             case (2,3)                                                          ! solution or enriched
-                allocate(J(grid_X%n(1),grid_X%n(2),grid_X%loc_n_r))
-                
-                ! setup normal interpolation data
-                ierr = setup_interp_data(grid_eq%loc_r_F,grid_X%loc_r_F,&
-                    &norm_interp_data,norm_disc_prec_X)
-                CHCKERR('')
+                ! allocate
+                allocate(J(grid_eq%n(1),grid_eq%n(2),grid_X%loc_n_r))
                 
                 ! interpolate
-                ierr = apply_disc(eq%jac_FD(:,:,:,0,0,0),norm_interp_data,J,3)
-                CHCKERR('')
-                
-                ! clean up
-                call norm_interp_data%dealloc()
+                do jd = 1,grid_X%n(2)
+                    do id = 1,grid_X%n(1)
+                        ierr = spline(grid_eq%loc_r_F,eq%jac_FD(id,jd,:,0,0,0),&
+                            &grid_X%loc_r_F,J(id,jd,:),ord=norm_disc_prec_X)
+                        CHCKERR('')
+                    end do
+                end do
         end select
         
         ! set up parallel angle in flux coordinates

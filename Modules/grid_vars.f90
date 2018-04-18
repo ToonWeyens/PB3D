@@ -83,37 +83,6 @@ module grid_vars
         procedure :: dealloc => dealloc_grid
     end type
     
-    !> type for data of discretization operations.
-    !!
-    !! Operations currently supported:
-    !!  - derivatives
-    !!
-    !! Operations that are deprecated:
-    !!  - interpolation
-    !!
-    !! The problem with  interpolation the way it was implemented  here, is that
-    !! it was faulty: the routine searched  for an amount of nearest points, and
-    !! employed Lagrangian interpolation on these  points. However, there was no
-    !! guarantee of any continuity between different points.
-    !!
-    !! All interpolation should  now be done using the spline  routines from the
-    !! pspline library.
-    !!
-    !! \see    See   routines    setup_deriv_data()   and    setup_interp_data()
-    !! in   grid_utilities    where   discretization    data   is    setup   and
-    !! grid_utilities.apply_disc() where it is used.
-    type, public :: disc_type
-        integer :: n                                                            !< total size of discretization variables
-        integer :: n_loc                                                        !< local size of discretization variables
-        real(dp), allocatable :: dat(:,:)                                       !< nonzero elements of matrix corresponding to discretization
-        integer, allocatable :: id(:,:)                                         !< indices data in \c dat
-    contains
-        !> initialize
-        procedure :: init => init_disc
-        !> deallocate
-        procedure :: dealloc => dealloc_disc
-    end type
-    
 contains
     !> \public Initializes a new grid.
     !!
@@ -316,81 +285,4 @@ contains
         if (associated(grid_i%zeta_E)) grid_o%zeta_E = grid_i%zeta_E
         if (associated(grid_i%zeta_F)) grid_o%zeta_F = grid_i%zeta_F
     end function copy_grid
-    
-    !> \public Initialize discretization variable, possibly overwriting.
-    !!
-    !! \return ierr
-    integer function init_disc(disc,n,n_loc) result(ierr)
-        character(*), parameter :: rout_name = 'init_disc'
-        
-        ! input / output
-        class(disc_type), intent(inout) :: disc                                 !< discretization variable
-        integer, intent(in) :: n                                                !< total size of discretization
-        integer, intent(in) :: n_loc                                            !< local size of discretization
-        
-        ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-#if ldebug
-        logical :: was_allocated                                                ! whether disc was allocated
-#endif
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! tests
-        if (n.lt.1 .or. n_loc.lt.1) then
-            ierr = 1
-            err_msg = 'n and n_loc need to be at least 1'
-            CHCKERR(err_msg)
-        end if
-        
-#if ldebug
-        ! set up was_allocated
-        if (allocated(disc%dat)) then
-            was_allocated = .true.
-        else
-            was_allocated = .false.
-        end if
-#endif
-        
-        ! (re)allocate
-        if (allocated(disc%dat)) deallocate(disc%dat)
-        if (allocated(disc%id)) deallocate(disc%id)
-        allocate(disc%dat(n,n_loc))
-        allocate(disc%id(n,n_loc))
-        disc%dat = 0._dp
-        disc%id = 0
-        
-        ! set n, n_loc
-        disc%n = n
-        disc%n_loc = n_loc
-        
-#if ldebug
-        ! increment n_alloc_discs if it wasn't allocated
-        if (.not.was_allocated) then
-            n_alloc_discs = n_alloc_discs + 1
-        end if
-#endif
-    end function init_disc
-    
-    !> \public Deallocate discretization variable type
-    subroutine dealloc_disc(disc)
-        ! input / output
-        class(disc_type), intent(inout) :: disc                                 !< discretization variable to be deallocated
-        
-        ! deallocate allocatable variables
-        call dealloc_disc_final(disc)
-        
-#if ldebug
-        ! decrement n_alloc_discs
-        n_alloc_discs = n_alloc_discs - 1
-#endif
-    contains
-        ! Note: intent(out) automatically deallocates the variable
-        !> \private
-        subroutine dealloc_disc_final(disc)
-            ! input / output
-            type(disc_type), intent(out) :: disc                                ! disc to be deallocated
-        end subroutine dealloc_disc_final
-    end subroutine dealloc_disc
 end module grid_vars

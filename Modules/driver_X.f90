@@ -119,9 +119,12 @@ contains
             eq_limits = [grid_eq%i_min,grid_eq%i_max]
             
             ! calculate normal range
+            call writo('Set up perturbation normal range')
+            call lvl_ud(1)
             ierr = calc_norm_range('PB3D_X',eq_limits=eq_limits,&
                 &X_limits=X_limits,r_F_eq=grid_eq%r_F,r_F_X=r_F_X,jq=jq_ser)
             CHCKERR('')
+            call lvl_ud(-1)
             
             ! clean up
             nullify(jq)

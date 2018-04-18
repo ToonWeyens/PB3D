@@ -120,6 +120,9 @@ contains
             relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
             max_nr_backtracks_HH = 20                                           ! standard nr. of backtracks
             ex_plot_style = 1                                                   ! GNUPlot
+            norm_disc_prec_eq = 3                                               ! cubic precision for normal discretization of equilibrium
+            norm_disc_prec_X = 3                                                ! cubic precision for normal discretization of perturbation
+            norm_disc_prec_sol = 3                                              ! cubic precision for normal discretization of solution
             
             ! select depending on program style
             select case (prog_style)
@@ -315,9 +318,6 @@ contains
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
-            norm_disc_prec_eq = 3                                               ! cubic precision for normal discretization of equilibrium
-            norm_disc_prec_X = 3                                                ! cubic precision for normal discretization of perturbation
-            norm_disc_prec_sol = 3                                              ! cubic precision for normal discretization of solution
             norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
@@ -334,7 +334,7 @@ contains
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             X_grid_style = huge(1)                                              ! nonsensible value to check for user overwriting
             V_interp_style = 1                                                  ! use splines
-            max_njq_change = 1._dp                                              ! maximum change of 1 for n q (pol. flux) or n iota (tor. flux)
+            max_njq_change = 0.49_dp                                            ! maximum change of just under 0.5 for n q (pol. flux) or n iota (tor. flux)
         end subroutine default_input_PB3D
         
         ! POST version
@@ -355,7 +355,6 @@ contains
             plot_sol_Q = .true.                                                 ! plot magnetic perturbation of solution
             plot_E_rec = .true.                                                 ! plot energy reconstruction
             plot_vac_pot = .true.                                               ! plot vacuum potential
-            norm_disc_prec_sol = 1                                              ! precision 1 normal discretization of solution
             POST_style = 1                                                      ! process on extended plot grid
             write(*,*) '!!!!!! min and max need to take into account normalization'
             min_Rvac_plot = 0.1*R_0                                             ! minimum R of vacuum plot
@@ -401,7 +400,10 @@ contains
         !   (for style 2, a warning should be displayed)
         !   for HELENA (eq_style 1), only poloidal flux can be used.
         !   norm_disc_prec_eq has to  be 3 because cubics are  the maximum order
-        !   for splines and derivatives of order 3 are needed.
+        !   for splines  and derivatives of  order 3 are needed  for equilibrium
+        !   quantities.
+        !   The other  normal discretization  precisions can  be lower,  but not
+        !   higher.
         !> \private
         integer function adapt_run_PB3D() result(ierr)
             use num_vars, only: eq_style
@@ -448,9 +450,19 @@ contains
                     &warning=.true.)
             end if
             if (norm_disc_prec_eq.ne.3) then
-                norm_disc_prec_eq = 3
-                call writo('can only use norm_disc_prec_eq = 3 currently',&
-                    &warning=.true.)
+                ierr =1
+                err_msg = 'can only use norm_disc_prec_eq = 3 currently'
+                CHCKERR(err_msg)
+            end if
+            if (norm_disc_prec_X.lt.1 .or. norm_disc_prec_X.gt.3) then
+                ierr =1
+                err_msg = 'norm_disc_prec_X has to be between 1 and 3'
+                CHCKERR(err_msg)
+            end if
+            if (norm_disc_prec_sol.lt.1 .or. norm_disc_prec_sol.gt.3) then
+                ierr =1
+                err_msg = 'norm_disc_prec_sol has to be between 1 and 3'
+                CHCKERR(err_msg)
             end if
         end function adapt_run_PB3D
         

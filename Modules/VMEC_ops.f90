@@ -33,8 +33,6 @@ contains
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
         use num_utilities, only: calc_int, spline
         use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
-        use grid_vars, only: disc_type
-        use grid_utilities, only: apply_disc
         
         character(*), parameter :: rout_name = 'read_VMEC'
         
