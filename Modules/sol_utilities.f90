@@ -51,6 +51,11 @@ module sol_utilities
     !! The output grid,  furthermore, has the angular part  corresponding to the
     !! equilibrium grid, and the normal part to the solution grid.
     !!
+    !! \note  There vectorial  perturbation variables  are interpolated  without
+    !! regard for the  secondary mode ranges. This is only  a good approximation
+    !! if all the secondary modes decay to  zero at the ends of their ranges. If
+    !! not, a technique using mds%sec has to be used, such as in interp_v().
+    !!
     !! \return ierr
     interface calc_XUQ
         !> \public
@@ -92,18 +97,15 @@ contains
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: id, jd, kd, ld                                               ! counters
-        integer :: kdl(2)                                                       ! kd limits
-        integer :: ld_loc                                                       ! local ld
         logical :: deriv_loc                                                    ! local copy of deriv
         character(len=max_str_ln) :: err_msg                                    ! error message
         complex(dp) :: sqrt_sol_val_norm                                        ! normalized sqrt(sol_val)
         complex(dp), pointer :: fac_0_sol(:,:,:), fac_1_sol(:,:,:)              ! fac_0 and fac_1 interpolated in solution grid
         complex(dp), allocatable, target :: fac_0(:,:,:), fac_1(:,:,:)          ! factor to be multiplied with X and DX in perturbation grid
         complex(dp), allocatable :: XUQ_loc(:,:)                                ! complex XUQ without time at a normal point
-        complex(dp), allocatable :: sol_vec_tot(:,:)                            ! total solution vector in solution grid
+        complex(dp), allocatable :: sol_vec(:,:)                                ! total solution vector in solution grid
+        complex(dp), allocatable :: sol_vec_tot(:,:,:)                          ! total solution vector in solution grid and derivatives
         complex(dp), allocatable :: Dsol_vec(:,:)                               ! normal derivative of sol_vec in solution grid
-        complex(dp), allocatable :: Dsol_vec_tot(:,:)                           ! total normal derivative of sol_vec in solution grid
-        complex(dp), allocatable :: Dsol_vec_loc(:)                             ! local Dsol_vec_tot in solution grid
         real(dp), pointer :: expon_sol(:,:,:)                                   ! expon in solution grid
         real(dp), allocatable, target :: expon(:,:,:)                           ! exponent in perturbation grid
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
@@ -217,37 +219,15 @@ contains
         ! variable 'sec'.
         if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
             ! set up variables
-            allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r))
-            allocate(Dsol_vec_tot(n_mod_tot,grid_sol%loc_n_r))
+            allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r,0:1))
             sol_vec_tot = 0._dp
-            Dsol_vec_tot = 0._dp
             
-            ! convert to total solution vector
-            ierr = calc_tot_sol_vec(mds,grid_sol%i_min,sol%vec(:,:,X_id),&
-                &sol_vec_tot)
-            CHCKERR('')
-            
-            ! derivate
-            do ld = 1,size(mds%sec,1)
-                ! prepare
-                ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                kdl = [mds%sec(ld,2),mds%sec(ld,3)]-grid_sol%i_min+1            ! normal range in solution vector
-                kdl = max(1,min(kdl,grid_sol%loc_n_r))                          ! limit to sol_vec_loc range
-                allocate(Dsol_vec_loc(kdl(2)-kdl(1)+1))
-                Dsol_vec_loc = 0._dp
-                
-                ! derivative
-                if (kdl(2)-kdl(1).gt.norm_disc_prec_sol) then                   ! only calculate if enough points
-                    ierr = spline(grid_sol%r_F(kdl(1):kdl(2)),&
-                        &sol_vec_tot(ld_loc,kdl(1):kdl(2)),&
-                        &grid_sol%r_F(kdl(1):kdl(2)),Dsol_vec_loc,&
-                        &ord=norm_disc_prec_sol,deriv=1)
-                    CHCKERR('')
-                end if
-                Dsol_vec_tot(ld_loc,kdl(1):kdl(2)) = Dsol_vec_loc
-                
-                ! clean up
-                deallocate(Dsol_vec_loc)
+            ! convert to total solution vector and derivate
+            do id = 0,1
+                ierr = calc_tot_sol_vec(mds,grid_sol,sol%vec(:,:,X_id),&
+                    &sol_vec,deriv=id)
+                CHCKERR('')
+                sol_vec_tot(:,:,id) = sol_vec
             end do
             
 #if ldebug
@@ -257,37 +237,34 @@ contains
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
                     allocate(sol_vec_ALT(1:grid_sol%loc_n_r))
-                    ierr = calc_int(rp(Dsol_vec_tot(ld,:)),&
+                    ierr = calc_int(rp(sol_vec_tot(ld,:,1)),&
                         &grid_sol%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
-                        &[rp(sol_vec_tot(ld,:)),sol_vec_ALT],&
+                        &[rp(sol_vec_tot(ld,:,0)),sol_vec_ALT],&
                         &[grid_sol%loc_n_r,2]),x=reshape(&
                         &grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
                         &[grid_sol%loc_n_r,1]))
-                    ierr = calc_int(ip(Dsol_vec_tot(ld,:)),&
+                    ierr = calc_int(ip(sol_vec_tot(ld,:,1)),&
                         &grid_sol%loc_r_F,sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
-                        &[ip(sol_vec_tot(ld,:)),sol_vec_ALT],&
+                        &[ip(sol_vec_tot(ld,:,0)),sol_vec_ALT],&
                         &[grid_sol%loc_n_r,2]),x=reshape(&
                         &grid_sol%loc_r_F(1:grid_sol%loc_n_r),&
                         &[grid_sol%loc_n_r,1]))
                     deallocate(sol_vec_ALT)
                 end do
             end if
-            !call plot_HDF5(['Re','Im'],'sol_vec',reshape(&
-                !&[rp(sol_vec_tot),ip(sol_vec_tot)],[shape(sol_vec_tot),1,2]))
-            !call plot_HDF5(['Re','Im'],'Dsol_vec',reshape(&
-                !&[rp(Dsol_vec_tot),ip(Dsol_vec_tot)],[shape(Dsol_vec_tot),1,2]))
 #endif
             
             ! convert back to local solution vector
-            ierr = calc_loc_sol_vec(mds,grid_sol%i_min,Dsol_vec_tot,Dsol_vec)
+            ierr = calc_loc_sol_vec(mds,grid_sol%i_min,sol_vec_tot(:,:,1),&
+                &Dsol_vec)
             CHCKERR('')
             
             ! clean up
-            deallocate(sol_vec_tot,Dsol_vec_tot)
+            deallocate(sol_vec,sol_vec_tot)
         else
             Dsol_vec = 0._dp
         end if
@@ -468,24 +445,26 @@ contains
     !!
     !! If the output variable is not allocated, it is done here.
     !!
-    !! \note If the  lowest limits of the  grid is not 1  (e.g. <tt>grid%i_min =
-    !! 1</tt>, corresponding  to \c sol_vec_tot,  for first process),  the input
-    !! variable \c i_min should be set appropriately. For a full grid, it should
-    !! be set to 1.
+    !! Optionally  a  derivative  can  be requested,  depending  on  the  normal
+    !! discretization order.
+    !!
+    !! \note Need to provide the grid in which mds is tabulated.
     !!
     !! \return ierr
-    integer function calc_tot_sol_vec(mds,i_min,sol_vec_loc,sol_vec_tot) &
-        &result(ierr)
-        use num_vars, only: X_style
+    integer function calc_tot_sol_vec(mds,grid_sol,sol_vec_loc,sol_vec_tot,&
+        &deriv) result(ierr)
+        use num_vars, only: X_style, norm_disc_prec_sol
         use X_vars, only: n_mod_X
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
         
         ! input / output
         type(modes_type), intent(in) :: mds                                     !< general modes variables
-        integer, intent(in) :: i_min                                            !< \c i_min of grid in which variables are tabulated
+        type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         complex(dp), intent(in) :: sol_vec_loc(:,:)                             !< solution vector for local resonating modes
         complex(dp), intent(inout), allocatable :: sol_vec_tot(:,:)             !< solution vector for all possible resonating modes
+        integer, intent(in), optional :: deriv                                  !< order of derivative
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -495,12 +474,44 @@ contains
         integer :: kdl(2)                                                       ! kd limits
         integer :: ld_loc                                                       ! local ld
         integer :: n_r                                                          ! normal size of variables
+        integer :: deriv_loc                                                    ! local derivative
+        integer :: max_deriv                                                    ! maximum derivative
+        integer :: min_range                                                    ! minimum range for derivative
+        complex(dp), allocatable :: Dsol_vec_loc(:)                             ! local Dsol_vec_tot in solution grid
+        
+        ! initialize ierr
+        ierr = 0
         
         ! set n_r
         n_r = size(sol_vec_loc,2)
         
-        ! initialize ierr
-        ierr = 0
+        ! set local derivative
+        deriv_loc = 0
+        if (present(deriv)) deriv_loc = deriv
+        
+        ! test
+        select case (norm_disc_prec_sol)
+            case (1)                                                            ! linear
+                max_deriv = 1
+                min_range = 2
+            case (2)                                                            ! Akita hermite
+                max_deriv = 1
+                min_range = 4
+            case (3)                                                            ! spline
+                max_deriv = 3
+                min_range = 4
+            case default
+                ierr = 1
+                err_msg = 'normal discretization precision for solution &
+                    &cannot be higher than 3 or lower than 0'
+                CHCKERR(err_msg)
+        end select
+        if (deriv_loc.lt.0 .or. deriv_loc.gt.max_deriv) then
+            ierr = 1
+            err_msg = 'deriv must be between 0 and '//trim(i2str(max_deriv))//&
+                &' for normal discretization '//trim(i2str(norm_disc_prec_sol))
+            CHCKERR(err_msg)
+        endif
         
         ! operations depending on X style
         select case (X_style)
@@ -517,7 +528,18 @@ contains
                 else
                     allocate(sol_vec_tot(size(sol_vec_loc,1),n_r))
                 end if
-                sol_vec_tot = sol_vec_loc
+                
+                ! copy or derivate
+                if (deriv_loc.eq.0) then                                        ! copy
+                    sol_vec_tot = sol_vec_loc
+                else                                                            ! derivate
+                    do ld = 1,size(sol_vec_tot,1)
+                        ierr = spline(grid_sol%r_F,sol_vec_loc(ld,:),&
+                            &grid_sol%r_F,sol_vec_tot(ld,:),&
+                            &ord=norm_disc_prec_sol,deriv=deriv_loc)
+                        CHCKERR('')
+                    end do
+                end if
             case (2)                                                            ! fast
                 ! set local and total nr. of modes
                 n_mod_loc = n_mod_X
@@ -536,14 +558,30 @@ contains
                     allocate(sol_vec_tot(n_mod_tot,n_r))
                 end if
                 
-                ! track all possible modes and copy
+                ! track all possible modes and copy or derivate
                 sol_vec_tot = 0._dp
                 do ld = 1,size(mds%sec,1)
                     ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-i_min+1                 ! range in sol_vec_loc
+                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-grid_sol%i_min+1        ! normal range in solution vector
                     kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
-                    sol_vec_tot(ld_loc,kdl(1):kdl(2)) = &
-                        &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2))
+                    if (deriv_loc.eq.0) then
+                        sol_vec_tot(ld_loc,kdl(1):kdl(2)) = &
+                            &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2))
+                    else
+                        allocate(Dsol_vec_loc(kdl(2)-kdl(1)+1))
+                        Dsol_vec_loc = 0._dp
+                        
+                        if (kdl(2)-kdl(1)+1.ge.min_range) then                  ! only calculate if enough points
+                            ierr = spline(grid_sol%r_F(kdl(1):kdl(2)),&
+                                &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2)),&
+                                &grid_sol%r_F(kdl(1):kdl(2)),Dsol_vec_loc,&
+                                &ord=norm_disc_prec_sol,deriv=deriv_loc)
+                            CHCKERR('')
+                        end if
+                        sol_vec_tot(ld_loc,kdl(1):kdl(2)) = Dsol_vec_loc
+                        
+                        deallocate(Dsol_vec_loc)
+                    end if
                 end do
         end select
     end function calc_tot_sol_vec

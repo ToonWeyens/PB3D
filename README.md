@@ -1284,3 +1284,10 @@ ITER Organization
 * Change default max_njq_change to 0.49 because it turns out that being under 0.5 is very advantageous while at the same time not adding too many points in typical cases.
 * Fixed bug in 'calc_vec_comp' where ld iterated over 9.
 * Implemented limit to Jacobians to avoid zero.
+
+## 2.20:
+* THERE IS A PROBLEM WITH THE CURVATURE THAT IS NOT ACCURATE AND ALLOWS FOR FAKE BALLOONING MODES.
+* norm_disc_prec_sol cannot be passed through the POST input file any more, because it will be overwritten in 'reconstruct_PB3D_in'.
+* 'calc_tot_sol_vec' now optionally also calculates derivatives, so 'calc_XUQ' does not have to do this anymore.
+* For debug, the output of the solution vector is also plot in 'plot_harmonics'.
+* Fixed small bug in calculation of ellipticity and triangularity of HELENA equilibria.

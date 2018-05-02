@@ -76,8 +76,8 @@ contains
             &max_njq_change
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
-            &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, norm_disc_prec_sol, &
-            &plot_size, PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
+            &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_size, &
+            &PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
             &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
             &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
             &plot_grid_style, max_tot_mem, ex_plot_style, plot_vac_pot, &
@@ -460,7 +460,7 @@ contains
                 CHCKERR(err_msg)
             end if
             if (norm_disc_prec_sol.lt.1 .or. norm_disc_prec_sol.gt.3) then
-                ierr =1
+                ierr = 1
                 err_msg = 'norm_disc_prec_sol has to be between 1 and 3'
                 CHCKERR(err_msg)
             end if

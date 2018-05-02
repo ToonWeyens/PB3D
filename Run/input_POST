@@ -9,7 +9,6 @@
     plot_B                  = .true.
     plot_J                  = .true.
     plot_kappa              = .false.
-    norm_disc_prec_sol      = 3
     n_zeta_plot             = 21
     min_zeta_plot           = 0.00
     max_zeta_plot           = 2.00

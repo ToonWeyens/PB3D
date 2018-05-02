@@ -4032,26 +4032,26 @@ contains
             ! plot sigma
             call plot_HDF5('sigma','TEST_sigma',&
                 &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
+                !&X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot shear
             call plot_HDF5('shear','TEST_shear',&
                 &eq_2%S(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
+                !&X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_n
             call plot_HDF5('kappa_n','TEST_kappa_n',&
                 &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
+                !&X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_g
             call plot_HDF5('kappa_g','TEST_kappa_g',&
                 &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
+                !&X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! clean up
             nullify(ang_par_F)

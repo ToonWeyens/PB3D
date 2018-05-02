@@ -112,6 +112,7 @@ contains
         real(dp) :: cpsurf                                                      ! poloidal flux on surface
         real(dp) :: ellip                                                       ! ellipticity
         real(dp) :: tria                                                        ! triangularity
+        real(dp) :: delta_RZ(2)                                                 ! R and Z range
         
         ! initialize ierr
         ierr = 0
@@ -252,10 +253,16 @@ contains
         
         ! calculate ellipticity and triangularity
         max_loc_Z = maxloc(Z_H)
-        ellip = (maxval(Z_H)-minval(Z_H))/(maxval(R_H)-minval(R_H))
+        delta_RZ(1) = maxval(R_H)-minval(R_H)
+        if (ias.eq.0) then
+            delta_RZ(2) = 2*maxval(Z_H)
+        else
+            delta_RZ(2) = maxval(Z_H)-minval(Z_H)
+        end if
+        ellip = delta_RZ(2)/delta_RZ(1)
         tria = ((maxval(R_H)+minval(R_H))*0.5_dp-&
             &R_H(max_loc_Z(1),max_loc_Z(2)))/&
-            &((maxval(Z_H)-minval(Z_H))*0.5_dp)
+            &(delta_RZ(2)*0.5_dp)
         call writo('Calculated ellipticity: '//trim(r2str(ellip)))
         call writo('Calculated triangularity: '//trim(r2str(tria)))
         
@@ -322,6 +329,7 @@ contains
         ! user output
         call writo('HELENA output given on '//trim(i2str(nchi))//&
             &' poloidal and '//trim(i2str(n_r_in))//' normal points')
+        if (ias.eq.0) call writo('The equilibrium is top-bottom symmetric')
         call lvl_ud(-1)
         call writo('Data from HELENA output succesfully read')
     end function read_HEL
