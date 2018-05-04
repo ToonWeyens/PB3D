@@ -1291,3 +1291,8 @@ ITER Organization
 * 'calc_tot_sol_vec' now optionally also calculates derivatives, so 'calc_XUQ' does not have to do this anymore.
 * For debug, the output of the solution vector is also plot in 'plot_harmonics'.
 * Fixed small bug in calculation of ellipticity and triangularity of HELENA equilibria.
+
+## 2.21:
+* TOP-BOTTOM ASYMMETRIC HELENA EQUILIBRIA NOW GIVE CORRECT RESULTS.
+* For HELENA, a new formulation for the curvature is vastly superior to the old formulation for the normal part. These new formula's don't make use of normal derivatives.
+* For VMEC, a similar but more complicated formalism can be used, based on the second derivative of the position vector r, but this is not yet done.

@@ -3834,7 +3834,7 @@ contains
         use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq, eq_style
-        use HELENA_vars, only: RBphi_H
+        use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias, nchi
 #if ldebug
         use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_vars, only: use_pol_flux_F
@@ -3849,7 +3849,13 @@ contains
         type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables
         
         ! local variables
-        integer :: kd                                                           ! counter
+        integer :: id, kd                                                       ! counters
+        integer :: kd_H                                                         ! kd in Helena tables
+        integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), theta(odd))
+        real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
+        real(dp), allocatable :: Rchi(:,:)                                      ! chi and chi^2 derivatives of R
+        real(dp), allocatable :: Zchi(:,:)                                      ! chi and chi^2 derivatives of Z
+        real(dp), allocatable :: denom(:)                                       ! dummy denominator
         ! submatrices
         ! jacobian
         real(dp), pointer :: J(:,:,:) => null()                                 ! jac
@@ -3928,25 +3934,76 @@ contains
         D13g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,1)
 #endif
         
+        ! set up boundary conditions
+        if (ias.eq.0) then                                                      ! top-bottom symmetric
+            bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
+            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
+        else
+            bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
+            bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic
+        end if
+        bcs_val = 0._dp
+        
         ! Calculate the shear S
         eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
         
-        ! Calculate the normal curvature kappa_n
-        do kd = 1,grid_eq%loc_n_r
-            eq_2%kappa_n(:,:,kd) = &
-                &vac_perm*J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
-                &1._dp/(2*h22(:,:,kd)) * ( &
-                &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D1J(:,:,kd)/J(:,:,kd) ) + &
-                &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D2J(:,:,kd)/J(:,:,kd) ) + &
-                &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
-                &2*D3J(:,:,kd)/J(:,:,kd) ) )
-        end do
-        
-        ! Calculate the geodesic curvature kappa_g
-        eq_2%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
-            &g13/g33*(0.5*D3g33/g33 - D3J/J)
+        ! Calculate the normal curvature kappa_n and geodesic curvature kappa_g
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                do kd = 1,grid_eq%loc_n_r
+                    eq_2%kappa_n(:,:,kd) = vac_perm*&
+                        &J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
+                        &1._dp/(2*h22(:,:,kd)) * ( &
+                        &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
+                        &2*D1J(:,:,kd)/J(:,:,kd) ) + &
+                        &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
+                        &2*D2J(:,:,kd)/J(:,:,kd) ) + &
+                        &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
+                        &2*D3J(:,:,kd)/J(:,:,kd) ) )
+                end do
+                eq_2%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
+                    &g13/g33*(0.5*D3g33/g33 - D3J/J)
+            case (2)                                                            ! HELENA
+                allocate(Rchi(nchi,1:2))
+                allocate(Zchi(nchi,1:2))
+                allocate(denom(nchi))
+                do kd = 1,grid_eq%loc_n_r
+                    kd_H = grid_eq%i_min-1+kd
+                    do id = 1,2
+                        ierr = spline(chi_H,R_H(:,kd_H),chi_H,Rchi(:,id),&
+                            &ord=3,deriv=id,bcs=bcs(:,1),bcs_val=bcs_val(:,1))  ! even
+                        CHCKERR('')
+                        ierr = spline(chi_H,Z_H(:,kd_H),chi_H,Zchi(:,id),&
+                            &ord=3,deriv=id,bcs=bcs(:,2),bcs_val=bcs_val(:,2))  ! odd
+                        CHCKERR('')
+                    end do
+                    denom = Rchi(:,1)**2 + Zchi(:,1)**2 + &
+                        &(q_saf_H(kd_H,0)*R_H(:,kd_H))**2
+                    eq_2%kappa_n(:,1,kd) = &
+                        &R_H(:,kd_H)*q_saf_H(kd_H,0)/RBphi_H(kd_H,0) * &
+                        &(Zchi(:,1)*Rchi(:,2) - Rchi(:,1)*Zchi(:,2) - &
+                        &Zchi(:,1)*q_saf_H(kd_H,0)**2*R_H(:,kd_H)) / &
+                        &(denom * (Rchi(:,1)**2 + Zchi(:,1)**2))
+                    eq_2%kappa_g(:,1,kd) = &
+                        &R_H(:,kd_H)*q_saf_H(kd_H,0) * &
+                        &(2*Rchi(:,1) * ( Rchi(:,1)**2 + Zchi(:,1)**2 ) + &
+                        &Rchi(:,1) * (q_saf_H(kd_H,0)*R_H(:,kd_H))**2 - &
+                        &R_H(:,kd_H) * &
+                        &(Rchi(:,1)*Rchi(:,2) + Zchi(:,1)*Zchi(:,2))) / &
+                        &(denom**2)
+                    if (.not.use_pol_flux_F) then
+                        eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) * &
+                            &q_saf_H(kd_H,0)
+                        eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) / &
+                            &q_saf_H(kd_H,0)
+                    end if
+                end do
+                do jd = 2,grid_eq%n(2)
+                    eq_2%kappa_n(:,jd,:) = eq_2%kappa_n(:,1,:)
+                    eq_2%kappa_g(:,jd,:) = eq_2%kappa_g(:,1,:)
+                end do
+                deallocate(Rchi, Zchi, denom)
+        end select
         
         ! Calculate the parallel current sigma
         select case (eq_style)

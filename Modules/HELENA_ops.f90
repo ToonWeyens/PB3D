@@ -1400,16 +1400,11 @@ contains
             !   3: D1 (q/F h_11) ,
             !   4: D2 (q/F h_12) .
             allocate(tempvar(nchi,1,n_r_eq,4))
-            ierr = spline(flux_p_H(:,0)/(2*pi),RBphi_H(:,0),&
-                &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,1),ord=norm_disc_prec_eq,&
-                &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
-            CHCKERR('')
-            ierr = spline(flux_p_H(:,0)/(2*pi),pres_H(:,0),&
-                &flux_p_H(:,0)/(2*pi),tempvar(1,1,:,2),ord=norm_disc_prec_eq,&
-                &deriv=1,bcs=bcs(:,3),bcs_val=bcs_val(:,3))
-            CHCKERR('')
+            do kd = 1,n_r_eq
+                tempvar(:,1,kd,1) = RBphi_H(kd,1)
+                tempvar(:,1,kd,2) = pres_H(kd,1)
+            end do
             do id = 1,nchi
-                tempvar(id,1,:,1:2) = tempvar(1,1,:,1:2)
                 ierr = spline(flux_p_H(:,0)/(2*pi),&
                     &q_saf_H(:,0)/RBphi_H(:,0)*h_H_11(id,:),&
                     &flux_p_H(:,0)/(2*pi),tempvar(id,1,:,3),&
