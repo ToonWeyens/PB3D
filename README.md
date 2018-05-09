@@ -1,29 +1,15 @@
 # PB3D
 
-*Peeling Ballooning in 3D*
+**Peeling Ballooning in 3D**
 
-Doctoral work by Toon Weyens
-Universidad Carlos III de Madrid
-Technische Universiteit Eindhoven
+by *Toon Weyens*
 ITER Organization
-2012-2017
+Eindhoven University of Technology
+Universidad Carlos III de Madrid
+2012-2018
 
-## To set up:
-1. git clone https://ToonWeyens@bitbucket.org/ToonWeyens/pb3d.git
-2. change PB3D_DIR in the makefile
-3. copy or add symbolic links to the output files (e.g. wout_cdxu or cbm18a)
-4. Install
-    * petsc
-    * slepc
-    * hdf5
-    * netcdf
-    * libstell
-    * StrumPack
-5. make all
-
-## To run
-1. Go to Run/
-1. run 'setup_Run.sh' and point to the folder.
+*The homepage can be found at <https://pb3d.github.io/>.*
+*Have a look at <https://pb3d.github.io/Doxygen/html/page_tutorial.html> for a tutorial.*
 
 ## Changelog
 
@@ -1306,3 +1292,7 @@ ITER Organization
 * Standardized the calculation of n_mod_tot to be the size of the secondary mode indices in the first dimension.
 * r_F is not saved in the modes variables any more, as it was never used.
 * 'v_interp_spline' is now in sol_utilities, and also used by 'calc_XUQ'.
+
+## 2.23:
+* Opened up source on Github.
+* Added licence.
