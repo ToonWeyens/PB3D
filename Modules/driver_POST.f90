@@ -730,7 +730,7 @@ contains
                     call lvl_ud(1)
                     
                     ! plot solution vector
-                    ierr = plot_sol_vec(mds_sol,grids(1),grids(2),grids(3),&
+                    ierr = plot_sol_vec(mds_X,mds_sol,grids(1),grids(2),grids(3),&
                         &eq_1,eq_2,X,sol,XYZ_sol,id,[plot_sol_xi,plot_sol_Q])
                     CHCKERR('')
                     
@@ -738,7 +738,7 @@ contains
                         ! user output
                         call writo('Decompose the energy into its terms')
                         call lvl_ud(1)
-                        ierr = decompose_energy(mds_sol,grids(1),grids(2),&
+                        ierr = decompose_energy(mds_X,mds_sol,grids(1),grids(2),&
                             &grids(3),eq_1,eq_2,X,sol,vac,id,&
                             &B_aligned=POST_style.eq.2,XYZ=XYZ_sol,&
                             &E_pot_int=E_pot_int(:,i_EV_out),&

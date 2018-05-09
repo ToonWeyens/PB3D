@@ -34,7 +34,6 @@ module X_vars
     !!
     !! These are set up in setup_nm_x().
     type, public :: modes_type
-        real(dp), allocatable :: r_F(:)                                         !< normal variable at which \c n, \c m and \c sec are tabulated
         integer, allocatable :: n(:,:)                                          !< \f$n\f$ for all modes, in total grid
         integer, allocatable :: m(:,:)                                          !< \f$m\f$ for all modes, in total grid
         integer, allocatable :: sec(:,:)                                        !< \c m or \c n for all possible modes, index and limits, in total grid

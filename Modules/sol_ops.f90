@@ -111,8 +111,9 @@ contains
     !! where \f$X_0\f$ is not determined but is common to all factors.
     !!
     !! \return ierr
-    integer function plot_sol_vec(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
-        &sol,XYZ,X_id,plot_var) result(ierr)
+    integer function plot_sol_vec(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+        &eq_2,X,sol,XYZ,X_id,plot_var) result(ierr)
+        
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
             &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_eq, &
             &norm_disc_prec_X, norm_disc_prec_sol, use_normalization, &
@@ -129,6 +130,7 @@ contains
         character(*), parameter :: rout_name = 'plot_sol_vec'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_X                                   !< general modes variables in perturbation grid
         type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
@@ -396,21 +398,21 @@ contains
             ! file name and description
             select case (jd)
                 case (1)                                                        ! plasma perturbation
-                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
-                        &X,sol,X_id,1,time,f_plot(:,:,:,:,1))
+                    ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+                        &eq_2,X,sol,X_id,1,time,f_plot(:,:,:,:,1))
                     CHCKERR('')
-                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
-                        &X,sol,X_id,2,time,f_plot(:,:,:,:,2))
+                    ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+                        &eq_2,X,sol,X_id,2,time,f_plot(:,:,:,:,2))
                     CHCKERR('')
                     sol_name = 'xi'
                     file_name(1) = trim(i2str(X_id))//'_sol_X'
                     file_name(2) = trim(i2str(X_id))//'_sol_U'
                 case (2)                                                        ! magnetic perturbation
-                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
-                        &X,sol,X_id,3,time,f_plot(:,:,:,:,1))
+                    ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+                        &eq_2,X,sol,X_id,3,time,f_plot(:,:,:,:,1))
                     CHCKERR('')
-                    ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,&
-                        &X,sol,X_id,4,time,f_plot(:,:,:,:,2))
+                    ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
+                        &eq_2,X,sol,X_id,4,time,f_plot(:,:,:,:,2))
                     CHCKERR('')
                     sol_name = 'Q'
                     file_name(1) = trim(i2str(X_id))//'_sol_Qn'
@@ -637,7 +639,7 @@ contains
         character(*), parameter :: rout_name = 'plot_harmonics'
         
         ! input / output
-        type(modes_type), intent(in) :: mds                                     !< general modes variables
+        type(modes_type), intent(in) :: mds                                     !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
         type(sol_type), intent(in) :: sol                                       !< solution variables
         integer, intent(in) :: X_id                                             !< nr. of Eigenvalue (for output name)
@@ -681,7 +683,7 @@ contains
         ! set up local and total nr.  of modes, which can be different for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        n_mod_tot = size(mds%sec,1)
         min_nm_X = minval(mds%sec(:,1),1)
         
         ! set up serial sol_vec on master
@@ -967,8 +969,9 @@ contains
     !! compared with the eigenvalue.
     !!
     !! \return ierr
-    integer function decompose_energy(mds_sol,grid_eq,grid_X,grid_sol,eq_1,&
-        &eq_2,X,sol,vac,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) result(ierr)
+    integer function decompose_energy(mds_X,mds_sol,grid_eq,grid_X,grid_sol,&
+        &eq_1,eq_2,X,sol,vac,X_id,B_aligned,XYZ,E_pot_int,E_kin_int) &
+        &result(ierr)
         
         use grid_utilities, only: trim_grid
         use num_vars, only: no_plots, eq_job_nr, eq_jobs_lims, eq_job_nr
@@ -976,6 +979,7 @@ contains
         character(*), parameter :: rout_name = 'decompose_energy'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_X                                   !< general modes variables in pertubation grid
         type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
@@ -1024,8 +1028,8 @@ contains
         call lvl_ud(1)
         
         ! calculate for this parallel job
-        ierr = calc_E(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,vac,&
-            &B_aligned,X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
+        ierr = calc_E(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
+            &vac,B_aligned,X_id,E_pot,E_kin,E_pot_int_loc,E_kin_int_loc)
         CHCKERR('')
         
         ! add to totals if requested
@@ -1180,8 +1184,8 @@ contains
     !! \note see explanation of routine in decompose_energy().
     !!
     !! \return ierr
-    integer function calc_E(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-        &vac,B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
+    integer function calc_E(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
+        &sol,vac,B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
             &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, rank, &
@@ -1196,6 +1200,7 @@ contains
         character(*), parameter :: rout_name = 'calc_E'
         
         ! input / output
+        type(modes_type), intent(in) :: mds_X                                   !< general modes variables in perturbation grid
         type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
@@ -1263,8 +1268,8 @@ contains
             allocate(S(loc_dim(1),loc_dim(2),loc_dim(3)))
             
             ! calculate D_par U
-            ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-                &X_id,2,0._dp,DU,deriv=.true.)
+            ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
+                &sol,X_id,2,0._dp,DU,deriv=.true.)
             CHCKERR('')
         end if
 #endif
@@ -1383,8 +1388,8 @@ contains
         
         ! calculate X, U, Q_n and Q_g
         do kd = 1,4
-            ierr = calc_XUQ(mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,sol,&
-                &X_id,kd,0._dp,XUQ(:,:,:,kd))
+            ierr = calc_XUQ(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,eq_2,X,&
+                &sol,X_id,kd,0._dp,XUQ(:,:,:,kd))
             CHCKERR('')
         end do
         

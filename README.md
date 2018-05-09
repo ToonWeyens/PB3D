@@ -1296,3 +1296,13 @@ ITER Organization
 * TOP-BOTTOM ASYMMETRIC HELENA EQUILIBRIA NOW GIVE CORRECT RESULTS.
 * For HELENA, a new formulation for the curvature is vastly superior to the old formulation for the normal part. These new formula's don't make use of normal derivatives.
 * For VMEC, a similar but more complicated formalism can be used, based on the second derivative of the position vector r, but this is not yet done.
+
+## 2.22:
+* TOP-BOTTOM ASYMMETRIC HELENA EQUILIBRIA HAS BEEN IMPROVED TO BETTER ENERGY RECONSTRUCTION.
+* Fixed bug in driver_X, where modes were set up when jumping to solution.
+* Implemented a test to invert top-bottom asymmetric HELENA equilibria through run-time argument --invert_top_bottom_H.
+* Fixed bug in clean up of 'calc_XUQ'.
+* 'calc_XUQ' has been rewritten and now takes into account the normal ranges, and it requires solution as well as perturbation modes variables. These are passed through the calling routines.
+* Standardized the calculation of n_mod_tot to be the size of the secondary mode indices in the first dimension.
+* r_F is not saved in the modes variables any more, as it was never used.
+* 'v_interp_spline' is now in sol_utilities, and also used by 'calc_XUQ'.

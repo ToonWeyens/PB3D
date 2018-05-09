@@ -249,7 +249,7 @@ contains
             &plot_VMEC_modes, EV_guess, ex_plot_style, solver_SLEPC_style, &
             &pert_mult_factor_POST, POST_output_full, POST_output_sol, &
             &tol_norm, max_it_slepc, plot_vac_pot, plot_size, &
-            &max_tot_mem, max_X_mem, &
+            &max_tot_mem, max_X_mem, invert_top_bottom_H, &
             &do_execute_command_line, print_mem_usage, &
             &rich_restart_lvl, &
             &PB3D_name, &
@@ -356,6 +356,9 @@ contains
                         &ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(plot_VMEC_modes,1,MPI_LOGICAL,0,&
+                        &MPI_Comm_world,ierr)
+                    CHCKERR(err_msg)
+                    call MPI_Bcast(invert_top_bottom_H,1,MPI_LOGICAL,0,&
                         &MPI_Comm_world,ierr)
                     CHCKERR(err_msg)
                     call MPI_Bcast(min_n_par_X,1,MPI_INTEGER,0,MPI_Comm_world,&

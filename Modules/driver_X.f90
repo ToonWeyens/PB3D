@@ -151,12 +151,6 @@ contains
                     CHCKERR('')
             end select
             
-            ! initialize modes and set up
-            ierr = init_modes(grid_eq,eq_1)
-            CHCKERR('')
-            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.false.)
-            CHCKERR('')
-            
             ! X_1
             if (eq_style.eq.2) then                                             ! HELENA
                 ierr = reconstruct_PB3D_X_1(mds_X,grid_X,X_1,'X_1')

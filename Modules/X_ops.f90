@@ -1129,8 +1129,6 @@ contains
         !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
         
         ! set up normal tabulation values
-        allocate(mds%r_F(grid_trim%n(3)))
-        mds%r_F = grid_trim%r_F
         allocate(ind_tot(grid_trim%n(3)*n_mod_X,4))                             ! not quite absolute maximum but should never be reached
         allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
         
@@ -3517,7 +3515,7 @@ contains
         
         ! set local n_mod and allocate integrated quantities
         min_nm_X = minval(mds%sec(:,1),1)
-        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        n_mod_tot = size(mds%sec,1)
         allocate(U(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
             &0:1))
         allocate(DU(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
@@ -3662,7 +3660,7 @@ contains
         
         ! set local n_mod and allocate integrated quantities
         min_nm_X = minval(mds%sec(:,1),1)
-        n_mod_tot = maxval(mds%sec(:,1),1)-minval(mds%sec(:,1),1)+1
+        n_mod_tot = size(mds%sec,1)
         allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
             &grid_trim%n(2),0:2))
         allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&

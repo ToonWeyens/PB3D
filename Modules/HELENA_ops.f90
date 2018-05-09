@@ -81,7 +81,8 @@ contains
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero
+        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero, &
+            &invert_top_bottom_H
         use num_utilities, only: calc_int, spline
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
             &nchi, chi_H, ias, RBphi_H, R_H, Z_H, RMtoG_H, BMtoG_H
@@ -113,6 +114,9 @@ contains
         real(dp) :: ellip                                                       ! ellipticity
         real(dp) :: tria                                                        ! triangularity
         real(dp) :: delta_RZ(2)                                                 ! R and Z range
+#if ldebug
+        real(dp), allocatable :: inv_loc(:)                                     ! used to invert top-bottom
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -213,12 +217,12 @@ contains
         read(eq_i,*,IOSTAT=ierr) DF0, DFe                                       ! derivatives of R B_phi on axis and surface
         CHCKERR(err_msg)
         
-        allocate(vx(nchi))                                                      ! R B_phi
+        allocate(vx(nchi))
         read(eq_i,*,IOSTAT=ierr) (vx(id),id=1,nchi_loc)                         ! R on surface
         CHCKERR(err_msg)
         if (ias.ne.0) vx(nchi) = vx(1)
         
-        allocate(vy(nchi))                                                      ! R B_phi
+        allocate(vy(nchi))
         read(eq_i,*,IOSTAT=ierr) (vy(id),id=1,nchi_loc)                         ! Z on surface
         CHCKERR(err_msg)
         if (ias.ne.0) vy(nchi) = vy(1)
@@ -246,6 +250,36 @@ contains
         Z_H(:,1) = 0._dp                                                        ! first normal point is degenerate, 0
         if (ias.ne.0) R_H(nchi,:) = R_H(1,:)
         if (ias.ne.0) Z_H(nchi,:) = Z_H(1,:)
+#if ldebug
+        if (invert_top_bottom_H .and. ias.ne.0) then
+            call print_ex_2D('boundary','RZ',Z_H(:,n_r_in),&
+                &x=R_H(:,n_r_in),draw=.false.)
+            call draw_ex(['boundary'],'RZ',1,1,.false.)
+            call writo('Inverting top and bottom to debug HELENA',&
+                &warning=.true.)
+            allocate(inv_loc(nchi))
+            ! chi_H
+            inv_loc = chi_H
+            chi_H = 2*pi-inv_loc(nchi:1:-1)
+            ! Z_H, R_H, h_H_11, h_H12, h_H_33
+            do kd = 1,n_r_in
+                inv_loc = Z_H(:,kd)
+                Z_H(:,kd) = -inv_loc(nchi:1:-1)
+                inv_loc = R_H(:,kd)
+                R_H(:,kd) = inv_loc(nchi:1:-1)
+                inv_loc = h_H_11(:,kd)
+                h_H_11(:,kd) = inv_loc(nchi:1:-1)
+                inv_loc = h_H_12(:,kd)
+                h_H_12(:,kd) = -inv_loc(nchi:1:-1)
+                inv_loc = h_H_33(:,kd)
+                h_H_33(:,kd) = inv_loc(nchi:1:-1)
+            end do
+            deallocate(inv_loc)
+            call print_ex_2D('boundary','RZ_inv_TB',Z_H(:,n_r_in),&
+                &x=R_H(:,n_r_in),draw=.false.)
+            call draw_ex(['boundary'],'RZ_inv_TB',1,1,.false.)
+        end if
+#endif
         
         ! set conversion factors
         RMtoG_H = radius/eps                                                    ! R_geo / R_mag
@@ -316,12 +350,12 @@ contains
         end if
         
         !!! To plot the cross-section
-        !!call print_ex_2D(['cross_section'],'cross_section',Z_H,x=R_H,&
+        !!call print_ex_2D(['cross_section'],'cross_section_H',Z_H,x=R_H,&
             !!&draw=.false.)
-        !!call draw_ex(['cross_section'],'cross_section',n_r_in,1,.false.)
-        !!call print_ex_2D(['cross_section_inv'],'cross_section_inv',&
+        !!call draw_ex(['cross_section'],'cross_section_H',n_r_in,1,.false.)
+        !!call print_ex_2D(['cross_section_inv'],'cross_section_inv_H',&
             !!&transpose(Z_H),x=transpose(R_H),draw=.false.)
-        !!call draw_ex(['cross_section_inv'],'cross_section_inv',nchi,1,.false.)
+        !!call draw_ex(['cross_section_inv'],'cross_section_inv_H',nchi,1,.false.)
        
         ! HELENA always uses the poloidal flux
         use_pol_flux_H = .true.

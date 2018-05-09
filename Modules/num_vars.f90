@@ -34,7 +34,7 @@ module num_vars
         &rich_restart_lvl, plot_size, jump_to_sol, compare_tor_pos, &
         &export_HEL, plot_VMEC_modes, ex_plot_style, pert_mult_factor_POST, &
         &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
-        &n_vac_plot, &
+        &n_vac_plot, invert_top_bottom_H, &
         &RZ_0, &
         &POST_output_full, POST_output_sol, &
         &shell_commands_i, mem_usage_i, output_EV_i, decomp_i, &
@@ -57,7 +57,7 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.21_dp                               !< version number
+    real(dp), parameter :: prog_version = 2.22_dp                               !< version number
     real(dp), parameter :: min_PB3D_version = 2.19_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
@@ -145,6 +145,7 @@ module num_vars
     logical :: jump_to_sol = .false.                                            !< jump to solution
     logical :: export_HEL = .false.                                             !< export HELENA
     logical :: plot_VMEC_modes = .false.                                        !< plot VMEC modes
+    logical :: invert_top_bottom_H = .false.                                    !< invert top and bottom for HELENA equilibria
     logical :: no_output = .false.                                              !< no output shown
     logical :: POST_output_full = .false.                                       !< POST has output on full grids
     logical :: POST_output_sol = .false.                                        !< POST has outputs of solution
