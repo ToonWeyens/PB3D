@@ -22,6 +22,7 @@
 !!  using  MPI does  not allow  for more  than 2GB.  This is  important for  the
 !!  HELENA  version  of PB3D  where  \c  X_2  variables  get larger  than  that.
 !!  <https://www.hdfgroup.org/HDF5/doc/UG/OldHtmlSource/UG_frame08TheFile.html>
+!!  - Have a look in Documentation/XDMF_HDF5.pdf for an example.
 !------------------------------------------------------------------------------!
 module HDF5_ops
 #include <PB3D_macros.h>

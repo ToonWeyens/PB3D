@@ -30,15 +30,14 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_sol, norm_disc_style_sol, &
             &BC_style, tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
-            &input_name, rich_restart_lvl, eq_style, relax_fac_HH, &
-            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
-            &plot_grid_style, def_relax_fac_HH, magn_int_style, K_style, &
-            &ex_plot_style, pert_mult_factor_POST, sol_n_procs, n_procs, &
-            &POST_output_full, POST_output_sol, EV_guess, solver_SLEPC_style, &
-            &plot_vac_pot, min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, &
-            &max_Zvac_plot, n_vac_plot, alpha_style, X_grid_style, &
-            &V_interp_style, max_njq_change
+            &input_name, rich_restart_lvl, eq_style, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
+            &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
+            &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST, &
+            &sol_n_procs, n_procs, POST_output_full, POST_output_sol, &
+            &EV_guess, solver_SLEPC_style, plot_vac_pot, min_Rvac_plot, &
+            &max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, n_vac_plot, &
+            &alpha_style, X_grid_style, max_njq_change
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
         use X_vars, only: min_r_sol, max_r_sol, n_mod_X, prim_X, min_sec_X, &
             &max_sec_X
@@ -69,20 +68,19 @@ contains
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
             &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
-            &rich_restart_lvl, min_n_par_X, relax_fac_HH, min_theta_plot, &
-            &max_theta_plot, min_zeta_plot, max_zeta_plot, alpha_style, &
-            &max_nr_backtracks_HH, magn_int_style, ex_plot_style, n_alpha, &
-            &solver_SLEPC_style, X_grid_style, V_interp_style, &
-            &max_njq_change
+            &rich_restart_lvl, min_n_par_X, min_theta_plot, max_theta_plot, &
+            &min_zeta_plot, max_zeta_plot, alpha_style, max_nr_backtracks_HH, &
+            &magn_int_style, ex_plot_style, n_alpha, solver_SLEPC_style, &
+            &X_grid_style, max_njq_change
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_size, &
-            &PB3D_rich_lvl, max_it_zero, tol_zero, relax_fac_HH, &
-            &min_theta_plot, max_theta_plot, min_zeta_plot, max_zeta_plot, &
-            &min_r_plot, max_r_plot, max_nr_backtracks_HH, POST_style, &
-            &plot_grid_style, max_tot_mem, ex_plot_style, plot_vac_pot, &
-            &pert_mult_factor_POST, min_Rvac_plot, max_Rvac_plot, &
-            &min_Zvac_plot, max_Zvac_plot, n_vac_plot
+            &PB3D_rich_lvl, max_it_zero, tol_zero, min_theta_plot, &
+            &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
+            &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
+            &max_tot_mem, ex_plot_style, plot_vac_pot, pert_mult_factor_POST, &
+            &min_Rvac_plot, max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, &
+            &n_vac_plot
         
         ! initialize ierr
         ierr = 0
@@ -117,7 +115,6 @@ contains
                     max_zeta_plot = min_zeta_plot                               ! max. toroidal plot angle [pi]
             end select
             plot_grid_style = 0                                                 ! normal plots on 3D geometry
-            relax_fac_HH = def_relax_fac_HH                                     ! default relaxation factor
             max_nr_backtracks_HH = 20                                           ! standard nr. of backtracks
             ex_plot_style = 1                                                   ! GNUPlot
             norm_disc_prec_eq = 3                                               ! cubic precision for normal discretization of equilibrium
@@ -333,7 +330,6 @@ contains
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
             X_grid_style = huge(1)                                              ! nonsensible value to check for user overwriting
-            V_interp_style = 1                                                  ! use splines
             max_njq_change = 0.49_dp                                            ! maximum change of just under 0.5 for n q (pol. flux) or n iota (tor. flux)
         end subroutine default_input_PB3D
         
@@ -437,11 +433,6 @@ contains
                 ierr = 1
                 err_msg = 'magn_int_style has to be 1 (trapezoidal) or 2 &
                     &(Simpson 3/8 rule)'
-                CHCKERR(err_msg)
-            end if
-            if (V_interp_style.ne.1) then
-                ierr = 1
-                err_msg = 'V_interp_style has to be 1 (splines)'
                 CHCKERR(err_msg)
             end if
             if (eq_style.eq.2 .and. .not.use_pol_flux_F) then
@@ -984,18 +975,11 @@ contains
         
         ! Checks whether the variables concerning finding zeros are correct:
         !   max_it_zero has to be at least 2,
-        !   relax_fac_HH has to be larger than 0.
         !> \private
         subroutine adapt_zero
             if (max_it_zero.lt.1) then
                 max_it_zero = 2
                 call writo('max_it_zero has been increased to 2',warning=.true.)
-            end if
-            if (relax_fac_HH.lt.0) then
-                relax_fac_HH = def_relax_fac_HH
-                call writo('reset relax_fac_HH to '//&
-                    &trim(r2strt(def_relax_fac_HH))&
-                    &//' as it should be larger than 0',warning=.true.)
             end if
         end subroutine adapt_zero
         
@@ -1191,8 +1175,7 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol, X_grid_style, V_interp_style, &
-            &max_njq_change
+            &norm_disc_style_sol, X_grid_style, max_njq_change
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
@@ -1627,16 +1610,16 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [18]
+        in_1D_loc%loc_i_max = [17]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(18))
+        allocate(in_1D_loc%p(17))
         in_1D_loc%p = [prim_X*1._dp,n_mod_X*1._dp,min_sec_X*1._dp,&
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
             &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp,&
-            &X_grid_style*1._dp,V_interp_style*1._dp,min_alpha*1._dp,&
-            &max_alpha*1._dp,n_alpha*1._dp,max_njq_change]
+            &X_grid_style*1._dp,min_alpha*1._dp,max_alpha*1._dp,n_alpha*1._dp,&
+            &max_njq_change]
         
         ! misc_sol
         in_1D_loc => in_1D(id); id = id+1
