@@ -116,7 +116,6 @@ contains
         real(dp), allocatable :: y_int(:)
         logical :: ready
         logical :: extrap
-        character(len=max_str_ln) :: err_msg                                    ! error message
         character(len=5) :: side_str(2)
         
         ! initialize ierr

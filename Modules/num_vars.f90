@@ -14,17 +14,16 @@ module num_vars
         &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
         &eq_jobs_lims, eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
-        &X_style, X_grid_style, V_interp_style, matrix_SLEPC_style, &
-        &plot_resonance, plot_magn_grid, plot_B, plot_J, plot_flux_q, &
-        &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_vac_pot, &
-        &ltest, use_pol_flux_E, use_pol_flux_F, use_normalization, EV_BC, &
-        &tol_SLEPC, max_it_slepc, norm_disc_prec_eq, K_style, EV_guess, &
-        &norm_disc_prec_X, norm_disc_prec_sol, norm_disc_style_sol, &
+        &X_style, X_grid_style, matrix_SLEPC_style, plot_resonance, &
+        &plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, plot_sol_xi, &
+        &plot_sol_Q, plot_E_rec, plot_vac_pot, ltest, use_pol_flux_E, &
+        &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
+        &norm_disc_prec_eq, K_style, EV_guess, norm_disc_prec_X, &
+        &norm_disc_prec_sol, norm_disc_style_sol, &
         &POST_style, alpha_style, magn_int_style, solver_SLEPC_style, &
         &max_njq_change, &
         &max_it_rich, tol_rich, max_it_zero, max_nr_backtracks_HH, &
-        &relax_fac_HH, tol_zero, &
-        &tol_norm, def_relax_fac_HH, &
+        &tol_zero, tol_norm, &
         &ex_max_size, eq_name, &
         &no_plots, no_output, plot_dir, script_dir, data_dir, n_theta_plot, &
         &n_zeta_plot, min_theta_plot, max_theta_plot, min_zeta_plot, &
@@ -42,10 +41,10 @@ module num_vars
         &prop_B_tor_i
 
     ! technical variables
-    !integer, parameter :: dp = kind(1.d0)                                       ! double precision
-    !integer, parameter :: qp = selected_real_kind (32)                          ! quadruple precision
+    !integer, parameter :: dp = kind(1.d0)                                       !< double precision
+    !integer, parameter :: qp = selected_real_kind (32)                          !< quadruple precision
     integer, parameter :: dp = REAL64                                           !< double precision
-    !integer, parameter :: qp = REAL128                                          ! quadruple precision
+    !integer, parameter :: qp = REAL128                                          !< quadruple precision
     integer, parameter :: dpi = INT64                                           !< double precision
     real(dp), parameter :: weight_dp = 0.008                                    !< size of double precision in kB
     integer, parameter :: max_str_ln = 120                                      !< maximum length of strings
@@ -57,8 +56,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.23_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.19_dp                           !< minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 2.24_dp                               !< version number
+    real(dp), parameter :: min_PB3D_version = 2.24_dp                           !< minimum PB3D version for POST
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else
@@ -98,7 +97,6 @@ module num_vars
     integer :: solver_SLEPC_style                                               !< style for solver (1: Krylov-Schur, 2: GD)
     integer :: POST_style                                                       !< style for POST (1: extended grid, 2: B-aligned grid)
     integer :: X_grid_style                                                     !< style for normal component of X grid (1: eq, 2: sol, 3: enriched)
-    integer :: V_interp_style                                                   !< style for V interpolation (1: spline)
     integer :: alpha_style                                                      !< style for alpha (1: one field line, many turns, 2: many field lines, one turn)
     integer :: max_it_slepc                                                     !< maximum nr. of iterations for SLEPC
     logical :: plot_resonance                                                   !< whether to plot the q-profile or iota-profile with resonances
@@ -132,8 +130,6 @@ module num_vars
     ! concerning finding the magnetic field lines
     integer :: max_it_zero                                                      !< maximum number of iterations to find zeros
     integer :: max_nr_backtracks_HH                                             !< maximum number of backtracks for Householder, relax. factors
-    real(dp), parameter :: def_relax_fac_HH = 0.5                               !< default \c relax_fac_HH (can be chosen higher for higher orders)
-    real(dp) :: relax_fac_HH                                                    !< standard relaxation factor for Householder iterations
     real(dp) :: tol_zero                                                        !< tolerance for zeros
     real(dp) :: tol_norm                                                        !< tolerance for normal range (normalized to 0..1)
 

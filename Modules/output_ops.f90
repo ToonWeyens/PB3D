@@ -17,17 +17,17 @@ module output_ops
     public print_ex_2D, print_ex_3D, draw_ex, plot_HDF5, plot_diff_HDF5
     
     ! global variables
-    integer :: temp_id(2) = 1                                                   ! will be appended to temporary data and script files
+    integer :: temp_id(2) = 1                                                   !< \private will be appended to temporary data and script files
     character(len=9) :: line_clrs(20) = [&
         &'"#7297E6"','"#67EB84"','"#F97A6D"','"#F9C96D"','"#1D4599"',&
         &'"#11AD34"','"#E62B17"','"#E69F17"','"#2F3F60"','"#2F6C3D"',&
         &'"#8F463F"','"#8F743F"','"#031A49"','"#025214"','"#6D0D03"',&
-        &'"#6D4903"','"#A9BDE6"','"#A6EBB5"','"#F9B7B0"','"#F9E0B0"']           ! line colors, from <https://github.com/Gnuplotting/gnuplot-palettes>
-    character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          ! line style without little space in line connecting points
+        &'"#6D4903"','"#A9BDE6"','"#A6EBB5"','"#F9B7B0"','"#F9E0B0"']           !< \private line colors, from <https://github.com/Gnuplotting/gnuplot-palettes>
+    character(len=max_str_ln) :: line_style = 'lt 1 lw 1 pt 7 ps 0.5;'          !< \private line style without little space in line connecting points
 #if ldebug
-    character(len=0) :: err_output_str = ''                                     ! string with error output
+    character(len=0) :: err_output_str = ''                                     !< \private string with error output
 #else
-    character(len=14) :: err_output_str = ' 2> /dev/null'                       ! string with error output (/dev/null)
+    character(len=14) :: err_output_str = ' 2> /dev/null'                       !< \private string with error output (/dev/null)
 #endif
     
     ! interfaces

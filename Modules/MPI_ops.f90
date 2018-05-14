@@ -238,8 +238,8 @@ contains
     !! \return ierr
     integer function broadcast_input_opts() result(ierr)
         use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
-            &max_it_rich, relax_fac_HH, tol_zero, n_procs, n_sol_requested, &
-            &tol_rich, max_nr_backtracks_HH, sol_n_procs, &
+            &max_it_rich, tol_zero, n_procs, n_sol_requested, tol_rich, &
+            &max_nr_backtracks_HH, sol_n_procs, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
             &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, no_plots, &
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
@@ -295,9 +295,6 @@ contains
             call MPI_Bcast(plot_J,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(plot_resonance,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(relax_fac_HH,1,MPI_DOUBLE_PRECISION,0,&
-                &MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(tol_zero,1,MPI_DOUBLE_PRECISION,0,MPI_Comm_world,&
                 &ierr)
