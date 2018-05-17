@@ -13,6 +13,13 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.25:
+* 2-D VMEC now works as well as 2-D HELENA, including energy reconstruction.
+* `L_E` and `T_FE` are no longer deallocated, as it is necessary for the calculation of derived quantities.
+* Rewrote `calc_derived_q` to calculate the curvatures without making use of normal derivatives.
+* Rewrote `calc_derived_q` for VMEC to calculate the local shear directly from VMEC output to avoid numerical problems.
+* Fixed bug in `plot_sol_vec` where trigonometric factors were not copied to output grid for VMEC.
+
 ## 2.24:
 * Removed .backup.
 * Reordered changelog using vim magic from <https://vi.stackexchange.com/a/15123>.
@@ -33,11 +40,11 @@ by *Toon Weyens* (2012-2018)
 * TOP-BOTTOM ASYMMETRIC HELENA EQUILIBRIA HAS BEEN IMPROVED TO BETTER ENERGY RECONSTRUCTION.
 * Fixed bug in driver_X, where modes were set up when jumping to solution.
 * Implemented a test to invert top-bottom asymmetric HELENA equilibria through run-time argument --invert_top_bottom_H.
-* Fixed bug in clean up of 'calc_XUQ'.
-* 'calc_XUQ' has been rewritten and now takes into account the normal ranges, and it requires solution as well as perturbation modes variables. These are passed through the calling routines.
+* Fixed bug in clean up of `calc_XUQ`.
+* `calc_XUQ` has been rewritten and now takes into account the normal ranges, and it requires solution as well as perturbation modes variables. These are passed through the calling routines.
 * Standardized the calculation of n_mod_tot to be the size of the secondary mode indices in the first dimension.
 * r_F is not saved in the modes variables any more, as it was never used.
-* 'v_interp_spline' is now in sol_utilities, and also used by 'calc_XUQ'.
+* `v_interp_spline` is now in sol_utilities, and also used by `calc_XUQ`.
 
 ## 2.21:
 * TOP-BOTTOM ASYMMETRIC HELENA EQUILIBRIA NOW GIVE CORRECT RESULTS.
@@ -46,22 +53,22 @@ by *Toon Weyens* (2012-2018)
 
 ## 2.20:
 * THERE IS A PROBLEM WITH THE CURVATURE THAT IS NOT ACCURATE AND ALLOWS FOR FAKE BALLOONING MODES.
-* norm_disc_prec_sol cannot be passed through the POST input file any more, because it will be overwritten in 'reconstruct_PB3D_in'.
-* 'calc_tot_sol_vec' now optionally also calculates derivatives, so 'calc_XUQ' does not have to do this anymore.
-* For debug, the output of the solution vector is also plot in 'plot_harmonics'.
+* norm_disc_prec_sol cannot be passed through the POST input file any more, because it will be overwritten in `reconstruct_PB3D_in`.
+* `calc_tot_sol_vec` now optionally also calculates derivatives, so `calc_XUQ` does not have to do this anymore.
+* For debug, the output of the solution vector is also plot in `plot_harmonics`.
 * Fixed small bug in calculation of ellipticity and triangularity of HELENA equilibria.
 
 ## 2.19:
 * VMEC TESTS DON'T WORK YET, BUT HELENA SHOULD BE FINE.
 * THERE IS A SLIGHT DISCREPANCY BETWEEN USING MULTIPLE NUMBERS OF PROCESSES. THIS NUMBER DECREASES WHEN LARGER GHOST REGIONS ARE USED IN EQUILIBRIUM NORMAL RANGE.
-* The issue of boundary conditions for spline inerpolation of HELENA quantities that are top-bottom symmetric has been cleared up: symmetric quantities have first derivative equal to zero and asymmetric ones second derivative equal to zero. This works only for HELENA grids, so a test has been added to 'calc_eq' in debug mode.
-* This makes 'setup_deriv_data' redundant as well. 'setup_interp_data' was already deprecated in 2.18.
-* 'disc_type' is now not longer used, as well as 'apply_disc'. Everything is done with splines.
-* 'interp_V_spline' now uses either linear or spline, or direct copy.
-* 'interp_V' now has a test, which can be used with 'debug_interp_V'.
-* Small bug fix in 'spline' for complex quantities where the wrong warning was displayed.
+* The issue of boundary conditions for spline inerpolation of HELENA quantities that are top-bottom symmetric has been cleared up: symmetric quantities have first derivative equal to zero and asymmetric ones second derivative equal to zero. This works only for HELENA grids, so a test has been added to `calc_eq` in debug mode.
+* This makes `setup_deriv_data` redundant as well. `setup_interp_data` was already deprecated in 2.18.
+* `disc_type` is now not longer used, as well as `apply_disc`. Everything is done with splines.
+* `interp_V_spline` now uses either linear or spline, or direct copy.
+* `interp_V` now has a test, which can be used with `debug_interp_V`.
+* Small bug fix in `spline` for complex quantities where the wrong warning was displayed.
 * Change default max_njq_change to 0.49 because it turns out that being under 0.5 is very advantageous while at the same time not adding too many points in typical cases.
-* Fixed bug in 'calc_vec_comp' where ld iterated over 9.
+* Fixed bug in `calc_vec_comp` where ld iterated over 9.
 * Implemented limit to Jacobians to avoid zero.
 
 ## 2.18:
@@ -70,7 +77,7 @@ by *Toon Weyens* (2012-2018)
 * VMEC HAS TO BE RECHECKED, FOR EXAMPLE WITH debug_calc_derived_q.
 * Replaced bspline_module by Princeton's NTCC pspline library, which is much more versatile.
 * Implemented a test "test_splines".
-* Implemented miminum value for detA in 'calc_inv_3D' to avoid division by zero.
+* Implemented miminum value for detA in `calc_inv_3D` to avoid division by zero.
 * RBphi in HELENA is now saved with derivatives.
 * HELENA and VMEC now use cubic splines for derivatives of flux quantities. Order 3 is necessary to reach the 2nd derivatives.
 * Fixed an unitialization bug in VMEC.
@@ -79,69 +86,69 @@ by *Toon Weyens* (2012-2018)
 * Default normal precision is now 3 for equilibrium, perturbation and solution.
 * Cleared up confusion about maximum derivative degrees: For metric factors, this is 2; For flux quantities, this is one higher, because the first derivative of some of them appear in the transformation matrices; For R, Z and lambda, this is also one higher because the first derivative is present in the g_C and h_C. For HELENA, the derivatives of R and Z happen separately.
 * norm_disc_prec_eq now has to be 3.
-* Fixed bug in 'test_harm_cont_H' where the real part was used twice.
-* The derivatives of HELENA quantities now happen with 2-D splines, with periodic boundary conditions for top-bottom asymmetric equilbria and not-a-knot conditions for the symmetric ones. This is less accurate but should not pose a problem. The system with lper in 'setup_deriv_data' is therefore not used anymore.
-* 'test_D12h_H' has been changed to 'test_D12g_H'.
+* Fixed bug in `test_harm_cont_H` where the real part was used twice.
+* The derivatives of HELENA quantities now happen with 2-D splines, with periodic boundary conditions for top-bottom asymmetric equilbria and not-a-knot conditions for the symmetric ones. This is less accurate but should not pose a problem. The system with lper in `setup_deriv_data` is therefore not used anymore.
+* `test_D12h_H` has been changed to `test_D12g_H`.
 
 ## 2.17:
 * INTERPOLATION ROUTINES ARE BAD: CONTINUITY IS NOT GUARANTEED. SPLINES ARE NECESSARY.
-* Fixed bug in 'extend_grid_F' where total r_E was not set.
-* Fixed bug in 'setup_grid_sol' where the perturbation grid was used wrongly as the equilibrium grid.
+* Fixed bug in `extend_grid_F` where total r_E was not set.
+* Fixed bug in `setup_grid_sol` where the perturbation grid was used wrongly as the equilibrium grid.
 * Fixed bug where in the solution grid, the Equilibrium coordinates were not set and thus not written to output and therefore not correctly used in the postprocessing.
-* In 'calc_norm_range' for POST, the perturbation limits are set explicitely to the solution limits for X_grid_style 2 (perturbation).
-* Fixed bug in 'calc_XUQ' where normal derivative was done on the whole normal grid, even for X_style 2 (fast). The appropriate subset is now taken.
+* In `calc_norm_range` for POST, the perturbation limits are set explicitely to the solution limits for X_grid_style 2 (perturbation).
+* Fixed bug in `calc_XUQ` where normal derivative was done on the whole normal grid, even for X_style 2 (fast). The appropriate subset is now taken.
 * Fixed bug in initialization of X_grid_style.
 
 ## 2.16:
 * PB3D WORKS WELL NOW, BUT NEEDS SOME DEBUGGING TO MAKE SURE. THE NEW X_grid_style 3 WORKS VERY FAST AND ACCURATELY.
 * POST NEEDS SOME MORE PROFOUND DEBUGGING, AND ALSO calc_E DOES NOT WORK YET.
 * Implemented new X_grid_style 3 (optimized) where the perturbation variable are tabulated in a modified copy of the equilibrium grid that has been enriched in places where the safety factor changes too fast. It only makes sense to use this with X_style 2 (fast).
-* Implemented new variable 'max_jq_change' that can be used with X_grid_style 3 (optimized) and X_style 2 (fast) to determine the maximum allowable change for the safety factor (pol. flux) or rotational transform (tor. flux) per normal grid point..
-* Fixed bug in 'redistribute_output_X' where complex variables were not correctly redistributed.
+* Implemented new variable `max_jq_change` that can be used with X_grid_style 3 (optimized) and X_style 2 (fast) to determine the maximum allowable change for the safety factor (pol. flux) or rotational transform (tor. flux) per normal grid point..
+* Fixed bug in `redistribute_output_X` where complex variables were not correctly redistributed.
 * Fixed bug in external Bokeh drawing where interactivity of plots was not correct.
-* Changed 'calc_norm_range' to make it more flexible and added PB3D_X.
+* Changed `calc_norm_range` to make it more flexible and added PB3D_X.
 
 ## 2.15:
 * USUABLE VERSION.
 * There is still a problem when the equilibrium grid is not fine enough to allow for real interpolation in X_grid style 1 (eq) with X_style 2 (fast).
 * A solution would be to define X_grid style 3 where the X grid is intermediary between the eq and the sol grid, in order to guarantee that the secondary mode range does not vary too fast in the normal direction.
 * Another possible solution would be to limit the actual number of modes of the solution to to a number lesser than n_mod_X and to throw away those modes that cannot be treated appropriately with interpolation.
-* Fixed bug in 'insert_block_mat' where k was used as index instead of m.
-* Rewrote 'print_debug_X_1' in the style of 'print_debug_X_2'.
-* 'setup_modes' now also plots the limits and the normal extent in debug mode.
-* Minimal normal extent for modes is now monitored in 'interp_V'.
-* For X_grid_style 1, 'init_modes' now sets the limits for the modes for the last normal point equal to the ones for the previous point, so that interpolation works better.
-* Added option to remove possible previously present arrs in 'print_HDF5_arrs', which is currently used only to print the solution grid and variables in case of X_grid_style 2.
+* Fixed bug in `insert_block_mat` where k was used as index instead of m.
+* Rewrote `print_debug_X_1` in the style of `print_debug_X_2`.
+* `setup_modes` now also plots the limits and the normal extent in debug mode.
+* Minimal normal extent for modes is now monitored in `interp_V`.
+* For X_grid_style 1, `init_modes` now sets the limits for the modes for the last normal point equal to the ones for the previous point, so that interpolation works better.
+* Added option to remove possible previously present arrs in `print_HDF5_arrs`, which is currently used only to print the solution grid and variables in case of X_grid_style 2.
 
 ## 2.14:
 * UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION FIXED, BUT STILL UNABLE TO REPRODUCE PREVIOUS RESULTS.
 * Changed way in which secondary modes are stored: The index is kept constant now for a certain mode.
-* 'setup_modes' has been adapted and now calculates the variable 'sec' which is part of the class 'modes' and which indicates the normal limits and table index of every mode. It also works for non-monotomous safety factors with possibly mulpiple ranges of same total mode.
+* `setup_modes` has been adapted and now calculates the variable `sec` which is part of the class `modes` and which indicates the normal limits and table index of every mode. It also works for non-monotomous safety factors with possibly mulpiple ranges of same total mode.
 * Also, the interpolation that is uses is now hard coded of precision 1 (i.e. linear). This is necessary to ensure that the mode ranges are consistent between the perturbation and solution grid for the case of X_grid_style 1.
 * Improved Bokeh external output plotting so that it is more easily legible and does not throw an error for more than 255 plots.
 * Debug information for X_1 and X_2 drivers are now procedures in X_ops, so they can be called externally as well as is done in solution driver.
 * The old debug information for X_2 is not available any more, as it has been superseded by the real X_2 debug information that is also valid for X_style fast.
-* 'setup_interp_data' now accepts extrapolation, and this is used for solution driver.
-* 'setup_interp_data' now also accepts precision 0, which means using the constant single value.
+* `setup_interp_data` now accepts extrapolation, and this is used for solution driver.
+* `setup_interp_data` now also accepts precision 0, which means using the constant single value.
 
 ## 2.13:
 * UNUSABLE VERSION: BUG IN INTERPOLATION OF INTEGRATED X_2 QUANTITIES FOR FAST VERSION.
 * Only quantities with same mode number (combination) can be interpolated between, which is currently not done.
 * Alpha variables are once again stored in HDF5, because they are needed in POST.
-* 'alpha' is now allocated in init_rich.
+* `alpha` is now allocated in init_rich.
 * For Richardson extrapolation, a bug is fixed when solution variables were set up to be used as guess: the grid has to be trimmed.
 * Output concerning which Richardson level used for POST is now more helpful.
 * The solution grid now again just a normal grid with 0 angular points. A local hybrid grid was implemented in driver_sol to interpolate for X_grid_style 2.
 * If energy reconstruction not requested, it is not plotted any more.
-* Implemented new option through 'V_interp_style' that allows the user to switch between 1 (finite difference, new default) and 2 (spline, previous default).
+* Implemented new option through `V_interp_style` that allows the user to switch between 1 (finite difference, new default) and 2 (spline, previous default).
 
 ## 2.12:
 * THIS VERSION HAS PB3D WORKING BUT NOT YET POST.
 * Fixed bug when using X_grid_style 2, where the normal interpolation in the solution driver was not done correctly because the last normal point was always chosen.
 * Fixed bug when using X_grid_style 2, where the solution grid was not correctly initialized.
-* 'n_X', 'm_X', 'sec_X_ind' and 'r_X' are now saved in a custom type 'modes_type'.
-* They are set in 'setup_modes' (formerly 'setup_nm_X'), of which 'init_modes' has been split off.
-* 'init_nm_X' now only sets up the minimum and maximum mode numbers, in the equilibrium grid.
+* `n_X`, `m_X`, `sec_X_ind` and `r_X` are now saved in a custom type `modes_type`.
+* They are set in `setup_modes` (formerly `setup_nm_X`), of which `init_modes` has been split off.
+* `init_nm_X` now only sets up the minimum and maximum mode numbers, in the equilibrium grid.
 * 'interpolate_nm_X' and 'restore_nm_X' have been removed as they are no longer needed.
 * Solution driver now also needs equilibrium grid to set up the solution modes.
 * 'calc_XUQ' still outputs XUQ in the solution grid, but now also possibly interpolates the perturbation quantities if X_grid_style is 1.

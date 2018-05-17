@@ -210,4 +210,5 @@ tag:
 
 finalize_version: clean PB3D POST tag
 	@echo "\n Now upload to git using 'git commit -a' and copy the README changes.\n"
+	@echo "\n Also, don't forget to create the documentation for this version.\n"
 	

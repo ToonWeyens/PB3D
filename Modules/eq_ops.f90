@@ -524,7 +524,6 @@ contains
                 
                 ! possibly deallocate
                 if (dealloc_vars_loc) then
-                    deallocate(eq_2%L_E)
                     deallocate(eq_2%g_C)
                 end if
             case (2)                                                            ! HELENA
@@ -688,7 +687,7 @@ contains
         ! possibly deallocate
         if (dealloc_vars_loc) then
             deallocate(eq_2%g_F,eq_2%h_F,eq_2%jac_F)
-            deallocate(eq_2%T_FE,eq_2%det_T_EF,eq_2%det_T_FE)
+            deallocate(eq_2%det_T_EF,eq_2%det_T_FE)
         end if
         
         ! Calculate derived metric quantities
@@ -3829,12 +3828,162 @@ contains
     !!  - geodesic curvature \c kappa_g
     !!  - parallel current \c sigma
     !!
-    !! This is done using the formula's from \cite Weyens3D
+    !! Naive implementations  of these quantities,  with the exception of  \c S,
+    !! give numerically very unfavorable results,  so special care must be taken
+    !! in this procedure.
+    !!
+    !! This is  an important  issue as these  derived equilbrium  quantities are
+    !! important building  blocks of  the perturbed potential  energy, including
+    !! the drivers of instabilities.
+    !! 
+    !! The curvature 
+    !! -------------
+    !!
+    !! This is  calculated using  the parallel derivative  of the  parallel unit
+    !! vector (i.e.  theta if  using poloidal  flux and  zeta if  using toroidal
+    !! flux).
+    !!
+    !! By  taking instead  the  derivative  of the  covariant  basis vector  and
+    !! realizing that  the difference with the  real curvature lies solely  in a
+    !! component along the parallel direction, which cancels out when taking the
+    !! normal or geodesic components, the situation becomes easier.
+    !!
+    !! Asuming  the poloidal  flux is  used as  normal coordinate,  the taks  is
+    !! therefore how to calculate
+    !!  \f$\frac{1}{\left|\vec{e}_\theta\right|^2} \frac{\partial}{\partial \theta} \vec{e}_\theta\f$.
+    !!
+    !! By  transforming both  the  derivative as  well as  the  basis vector  to
+    !! Equilibrium coordinates,  this can be  written as
+    !! 
+    !!  \f$\sum_{i=2,3} \sum_{j=2,3} \mathcal{T}_\text{F}^\text{E} \left(3,i\right))
+    !!      \frac{\partial}{\partial u^i_\text{E}} \left(
+    !!      \mathcal{T}_\text{F}^\text{E} \left(3,j\right) \vec{e}_{j,\text{E}}\right)\f$
+    !!
+    !! where   the   summations   only   run  over   the   angular   coordinates
+    !! because    \f$\vec{e}_\theta\f$   never    has   any    component   along
+    !! \f$\vec{e}_{\psi,\text{E}}\f$.
+    !!
+    !! This double summation formula can then be written as a matrix equation
+    !!
+    !!  \f$\begin{pmatrix}\mathcal{T}_\text{F}^\text{E}\left(3,2\right) &
+    !!      \mathcal{T}_\text{F}^\text{E}\left(3,3\right)\end{pmatrix}
+    !!      \left[
+    !!      \begin{pmatrix} \frac{\partial}{\partial u^2} \vec{e}_{2} &
+    !!          \frac{\partial}{\partial u^2} \vec{e}_{3} \\
+    !!          \frac{\partial}{\partial u^3} \vec{e}_{2} &
+    !!          \frac{\partial}{\partial u^3} \vec{e}_{3}\end{pmatrix}_\text{E}
+    !!      \begin{pmatrix}\mathcal{T}_\text{F}^\text{E}\left(3,2\right) \\
+    !!      \mathcal{T}_\text{F}^\text{E}\left(3,3\right)\end{pmatrix}
+    !!      +
+    !!      \begin{pmatrix}
+    !!          \frac{\partial}{\partial u^2} \mathcal{T}_\text{F}^\text{E}\left(3,2\right) &
+    !!          \frac{\partial}{\partial u^2} \mathcal{T}_\text{F}^\text{E}\left(3,3\right) \\
+    !!          \frac{\partial}{\partial u^3} \mathcal{T}_\text{F}^\text{E}\left(3,2\right) &
+    !!          \frac{\partial}{\partial u^3} \mathcal{T}_\text{F}^\text{E}\left(3,3\right)
+    !!      \end{pmatrix}
+    !!      \begin{pmatrix}\vec{e}_2 \\ \vec{e}_3\end{pmatrix}
+    !!      \right]\f$
+    !!
+    !! which can be represented shorthand as
+    !!  \f$\mathcal{T}_\text{F}^\text{E}\left(3,2:3\right) \left[
+    !!      \mathcal{D}\vec{e}_\text{E} \mathcal{T}_\text{F}^\text{E}\left(3,2:3\right)^T
+    !!      +\mathcal{D} \mathcal{T} \vec{e}_\text{E}^T \right]\f$
+    !!
+    !! It     is     relatively     easy     to    set     up     the     matrix
+    !! \f$\mathcal{D}\vec{e}_\text{E}\f$  as  a   function  of  covariant  basis
+    !! vectors in the Cylindrical coordinate system.
+    !! The  derivatives of  the  transformation matrix  itself  can likewise  be
+    !! found.
+    !!
+    !! The steps used in this routine are therefore
+    !!  -# Set up  \f$\mathcal{D}\vec{e}_\text{E}\f$, i.e. as a  function of the
+    !!  three cylindrical covariant basis vectors.
+    !!  -# Set up  correctcion by the derivatives of  the transformation matrix,
+    !!  with a single summation.
+    !!  -# Decompose the normal \f$\frac{\nabla \psi}{\left|\nabla\psi\right|^2}\f$
+    !!  and geodesic  vectors \f$\frac{\nabla \psi \times  \vec{B}}{B^2}\f$ as a
+    !!  function of the cylindrical contravariant basis vectors.
+    !!  -# Double summation to reduce term ~ \f$\mathcal{D}\vec{e}_\text{E}\f$
+    !!  and correction by single summation to reduce term ~
+    !!  \f$\mathcal{D}\mathcal{T}\f$.
+    !!  -# Dot these  for each of the four (actually  three because of symmetry)
+    !!  elements of \f$\mathcal{D}\vec{e}_\text{E}\f$.
+    !!  -# Divide by \f$\left|\vec{e}_\theta\right|^2\f$.
+    !!  -# Possibly correct for toroidal flux.
+    !! 
+    !! An advantage of using this formulation  is that no normal derivatives are
+    !! needed, so that nothing has to implicitely cancel out.
+    !!
+    !! The parallel current
+    !! --------------------
+    !!
+    !! The  parallel current  is calculated  with the help  of equation  3.26 of
+    !! \cite Weyens3D :
+    !!
+    !! \f$\sigma = \frac{\partial B_\psi}{\partial \alpha} - 
+    !!      \frac{\partial B_\alpha}{\partial \psi} -
+    !!      \mu_0 p' \mathcal{J} \frac{B_\alpha}{B_\theta}\f$
+    !! 
+    !! where care must be taken withi the normal derivative of \f$B_\alpha\f$.
+    !!
+    !! It is found that the best  way to perform this derivative is numerically,
+    !! directly on the VMEC output, without passing through the equation for the
+    !! magnetic field covariant components:
+    !! 
+    !! \f$B_i = \frac{g_{i,theta}}{\mathcal{J}}\f$
+    !!
+    !! In  debug  mode,  it  can  be  checked  whether  the  current  is  indeed
+    !! divergence-free, with the help of equation 3.33 of \cite Weyens3D.
+    !!
+    !! \f$ -2 p' \int_{\theta_0}^\theta \mathcal{J} \kappa_g \text{d}{\theta} = 
+    !!      \sigma\left(\theta\right) - \sigma_0\f$
+    !!
+    !!
+    !! The shear
+    !! --------
+    !!
+    !! The  local shear  \f$S\f$ is  calculated using  equation 3.22  from \cite
+    !! Weyens3D :
+    !!
+    !! \f$S = - \frac{1}{\mathcal{J}} \frac{\partial}{\partial \theta}
+    !!  \left(\frac{ h^{\psi\alpha}}{ h^{\psi \psi}}\right)\f$
+    !!
+    !! which  doesn't pose  any particular  problems as  there are  only angular
+    !! derivatives.
+    !!
+    !! \note
+    !!  -# If the toroidal flux is  used instead, the actual curvature obviously
+    !!  is  unchanged,  which  implies  that  the normal  component  has  to  be
+    !!  multiplied by  the safety factor  and the  geodesic component has  to be
+    !!  divided by it.
+    !!  -# The formulas for the normal and geodesic basis vectors for VMEC are
+    !!      * \f$\frac{\nabla \psi}{\left|\nabla\psi\right|^2} = 
+    !!          -\frac{\mathcal{J} \left(1 + \lambda_\theta\right)}
+    !!          {Z_\theta^2 + R_\theta^2 + \left(R_\zeta Z_\theta - R_\theta Z_\zeta \right)/R^2} \frac{1}{R}
+    !!          \left( -Z_\theta , R_\zeta Z_\theta - R_\theta Z_\zeta, R_\theta\right)_\text{C}\f$
+    !!      * \f$\frac{\nabla \psi \times  \vec{B}}{B^2} = 
+    !!          \frac{1}{g_{\theta\theta}}
+    !!          \left(P R_\theta - Q R_\zeta, -Q R^2, P Z_\theta - Q Z_\zeta\right)_\text{C}\f$
+    !!      *\f$Q = g_{\theta\theta} - q g_{\theta\alpha}\f$ (using right-handed
+    !!      flux \f$q_\text{F}\f$, which is the  inverse of the left-handed VMEC
+    !!      \f$q_\text{V}\f$)
+    !!      *\f$P = \frac{Q \lambda_\zeta - g_{\alpha\theta}}{1+\lambda_\theta}\f$
+    !!      (where the derivatives of \f$R\f$,  \f$Z\f$ and \f$\lambda\f$ are in
+    !!      VMEC coordinates).
+    !!  -# The formulas for the normal and geodesic basis vectors for HELENA are
+    !!      * \f$\frac{\nabla \psi}{\left|\nabla\psi\right|^2} = 
+    !!          -\frac{1}{Z_\theta^2 + R_\theta^2} \frac{q R}{F}
+    !!          \left( -Z_\theta , 0, R_\theta\right)_\text{C}\f$
+    !!      * \f$\frac{\nabla \psi \times  \vec{B}}{B^2} = 
+    !!          \frac{q R^2}{R_\theta^2 + Z_\theta^2 + q^2 R^2}
+    !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq, eq_style
-        use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias, nchi
+        use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias
+        use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
+        use VMEC_utilities, only: fourier2real
 #if ldebug
         use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_vars, only: use_pol_flux_F
@@ -3849,13 +3998,21 @@ contains
         type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables
         
         ! local variables
-        integer :: id, kd                                                       ! counters
+        integer :: id, jd, kd, ld                                               ! counters
         integer :: kd_H                                                         ! kd in Helena tables
         integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), theta(odd))
         real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
-        real(dp), allocatable :: Rchi(:,:)                                      ! chi and chi^2 derivatives of R
-        real(dp), allocatable :: Zchi(:,:)                                      ! chi and chi^2 derivatives of Z
-        real(dp), allocatable :: denom(:)                                       ! dummy denominator
+        real(dp), allocatable :: Rchi(:,:,:)                                    ! chi and chi^2 derivatives of R
+        real(dp), allocatable :: Zchi(:,:,:)                                    ! chi and chi^2 derivatives of Z
+        real(dp), allocatable :: dum1(:,:)                                      ! dummy variable
+        real(dp), allocatable :: dum2(:,:)                                      ! dummy variable
+        real(dp), allocatable :: de(:,:,:,:,:,:)                                ! derivs of cov. unit vector in E (space,deriv.,unitvec,output)
+        real(dp), allocatable :: D_de(:,:,:,:,:)                                ! derivs of transf. matrix in E (space,deriv.,output)
+        real(dp), allocatable :: kappa_C(:,:,:,:)                               ! curvature in covariatn Cylindrical coordinates
+        real(dp), allocatable :: b_n(:,:,:,:)                                   ! basis vector for normal coordinate
+        real(dp), allocatable :: b_g(:,:,:,:)                                   ! basis vector for geodesic coordinate
+        real(dp), allocatable :: B_V(:,:,:,:)                                   ! magnetic field in VMEC coordinates
+        real(dp), allocatable :: B_alpha(:,:,:)                                 ! B_alpha Flux coordinates
         ! submatrices
         ! jacobian
         real(dp), pointer :: J(:,:,:) => null()                                 ! jac
@@ -3892,7 +4049,6 @@ contains
         real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
         real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
-        integer :: jd                                                           ! counter
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
 #endif
         
@@ -3944,79 +4100,265 @@ contains
         end if
         bcs_val = 0._dp
         
-        ! Calculate the shear S
-        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
-        
         ! Calculate the normal curvature kappa_n and geodesic curvature kappa_g
+        allocate(de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,2,3))
+        allocate(D_de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,3))
+        allocate(b_n(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        allocate(b_g(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        de = 0._dp
+        D_de = 0._dp
+        b_n = 0._dp
+        b_g = 0._dp
         select case (eq_style)
             case (1)                                                            ! VMEC
+                ! 1.  calculate the  derivatives  of covariant  unit vectors  in
+                ! Equilibrium coordinates
+                
+                ! d/dtheta e_theta
+                de(:,:,:,1,1,1) = eq_2%R_E(:,:,:,0,2,0)                         ! ~ e_R
+                !de(:,:,:,1,1,2) = 0._dp                                         ! ~ e_phi
+                de(:,:,:,1,1,3) = eq_2%Z_E(:,:,:,0,2,0)                         ! ~ e_Z
+                
+                ! d/dzeta e_theta
+                de(:,:,:,2,1,1) = eq_2%R_E(:,:,:,0,1,1)                         ! ~ e_R
+                de(:,:,:,2,1,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)   ! ~ e_phi
+                de(:,:,:,2,1,3) = eq_2%Z_E(:,:,:,0,1,1)                         ! ~ e_Z
+                
+                ! d/dtheta e_zeta
+                de(:,:,:,1,2,1) = eq_2%R_E(:,:,:,0,1,1)                         ! ~ e_R
+                de(:,:,:,1,2,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)   ! ~ e_phi
+                de(:,:,:,1,2,3) = eq_2%Z_E(:,:,:,0,1,1)                         ! ~ e_Z
+                
+                ! d/dzeta e_zeta
+                de(:,:,:,2,2,1) = eq_2%R_E(:,:,:,0,0,2)-eq_2%R_E(:,:,:,0,0,0)   ! ~ e_R
+                de(:,:,:,2,2,2) = 2*eq_2%R_E(:,:,:,0,0,1)/eq_2%R_E(:,:,:,0,0,0) ! ~ e_phi
+                de(:,:,:,2,2,3) = eq_2%Z_E(:,:,:,0,0,2)                         ! ~ e_Z
+                
+                ! 2.   calculate  derivatives   of   transformation  matrix   in
+                ! Equilibrium coordinates
+                
+                ! ~d/dtheta
+                D_de(:,:,:,1,1) = eq_2%R_E(:,:,:,0,1,0)*&
+                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
+                    &eq_2%R_E(:,:,:,0,0,1)*&
+                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                    ! ~ e_R
+                D_de(:,:,:,1,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)       ! ~ e_phi
+                D_de(:,:,:,1,3) = eq_2%Z_E(:,:,:,0,1,0)*&
+                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
+                    &eq_2%Z_E(:,:,:,0,0,1)*&
+                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                    ! ~ e_Z
+                
+                ! ~d/dzeta
+                D_de(:,:,:,2,1) = eq_2%R_E(:,:,:,0,1,0)*&
+                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
+                    &eq_2%R_E(:,:,:,0,0,1)*&
+                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                    ! ~ e_R
+                D_de(:,:,:,2,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)       ! ~ e_phi
+                D_de(:,:,:,2,3) = eq_2%Z_E(:,:,:,0,1,0)*&
+                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
+                    &eq_2%Z_E(:,:,:,0,0,1)*&
+                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                    ! ~ e_Z
+                
+                ! 3.   Decompose  normal   and  geodesic   basis  vectors   into
+                ! contravariant cylindrical basis vectors.
+                
+                ! b_n
+                b_n(:,:,:,2) = (eq_2%R_E(:,:,:,0,0,1)*eq_2%Z_E(:,:,:,0,1,0) - &
+                    &eq_2%R_E(:,:,:,0,1,0)*eq_2%Z_E(:,:,:,0,0,1))               ! store RzetaZtheta - RthetaZeta
+                b_n(:,:,:,1) = &
+                    &-eq_2%jac_FD(:,:,:,0,0,0) * (1+eq_2%L_E(:,:,:,0,1,0)) / &
+                    &( (b_n(:,:,:,2)/eq_2%R_E(:,:,:,0,0,0))**2 + &
+                    &eq_2%R_E(:,:,:,0,1,0)**2 + eq_2%Z_E(:,:,:,0,1,0)**2 ) / &
+                    &eq_2%R_E(:,:,:,0,0,0)                                      ! set up common factor of all b_n
+                b_n(:,:,:,2) = b_n(:,:,:,1) * b_n(:,:,:,2)                      ! finalize b_n(2)
+                b_n(:,:,:,3) = b_n(:,:,:,1) * eq_2%R_E(:,:,:,0,1,0)             ! finalize b_n(3)
+                b_n(:,:,:,1) = -b_n(:,:,:,1) * eq_2%Z_E(:,:,:,0,1,0)            ! finalize b_n(1)
+                
+                ! b_g
                 do kd = 1,grid_eq%loc_n_r
-                    eq_2%kappa_n(:,:,kd) = vac_perm*&
-                        &J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
-                        &1._dp/(2*h22(:,:,kd)) * ( &
-                        &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
-                        &2*D1J(:,:,kd)/J(:,:,kd) ) + &
-                        &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
-                        &2*D2J(:,:,kd)/J(:,:,kd) ) + &
-                        &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
-                        &2*D3J(:,:,kd)/J(:,:,kd) ) )
+                    b_g(:,:,kd,2) = eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0) - &
+                        &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) * &
+                        &eq_1%q_saf_FD(kd,0)                                    ! store J(B_theta + B_alpha q)
+                    b_g(:,:,kd,1) = (b_g(:,:,kd,2)*eq_2%L_E(:,:,kd,0,0,1)-&
+                        &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0)) / &
+                        &(1+eq_2%L_E(:,:,kd,0,1,0))                             ! store J((B_theta + B_alpha q) L_zeta - B_alpha)/(1+L_theta)
                 end do
-                eq_2%kappa_g(:,:,:) = (0.5*D1g33/g33 - D1J/J) - &
-                    &g13/g33*(0.5*D3g33/g33 - D3J/J)
+                b_g(:,:,:,3) = b_g(:,:,:,1)*eq_2%Z_E(:,:,:,0,1,0) - &
+                    &b_g(:,:,:,2)*eq_2%Z_E(:,:,:,0,0,1)                         ! finalize b_g(3) (apart from pre-factor)
+                b_g(:,:,:,1) = b_g(:,:,:,1)*eq_2%R_E(:,:,:,0,1,0) - &
+                    &b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,1)                         ! finalize b_g(1) (apart from pre-factor)
+                b_g(:,:,:,2) = -b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,0)**2           ! finalize b_g(2) (apart from pre-factor)
+                do ld = 1,3
+                    b_g(:,:,:,ld) = b_g(:,:,:,ld) / &
+                        &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)                 ! prefactor 1/g_thetatheta
+                end do
             case (2)                                                            ! HELENA
-                allocate(Rchi(nchi,1:2))
-                allocate(Zchi(nchi,1:2))
-                allocate(denom(nchi))
+                ! 1.  calculate the  derivatives  of covariant  unit vectors  in
+                ! Equilibrium coordinates
+                allocate(Rchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
+                allocate(Zchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
                 do kd = 1,grid_eq%loc_n_r
                     kd_H = grid_eq%i_min-1+kd
                     do id = 1,2
-                        ierr = spline(chi_H,R_H(:,kd_H),chi_H,Rchi(:,id),&
+                        ierr = spline(chi_H,R_H(:,kd_H),chi_H,Rchi(:,kd,id),&
                             &ord=3,deriv=id,bcs=bcs(:,1),bcs_val=bcs_val(:,1))  ! even
                         CHCKERR('')
-                        ierr = spline(chi_H,Z_H(:,kd_H),chi_H,Zchi(:,id),&
+                        ierr = spline(chi_H,Z_H(:,kd_H),chi_H,Zchi(:,kd,id),&
                             &ord=3,deriv=id,bcs=bcs(:,2),bcs_val=bcs_val(:,2))  ! odd
                         CHCKERR('')
                     end do
-                    denom = Rchi(:,1)**2 + Zchi(:,1)**2 + &
-                        &(q_saf_H(kd_H,0)*R_H(:,kd_H))**2
-                    eq_2%kappa_n(:,1,kd) = &
-                        &R_H(:,kd_H)*q_saf_H(kd_H,0)/RBphi_H(kd_H,0) * &
-                        &(Zchi(:,1)*Rchi(:,2) - Rchi(:,1)*Zchi(:,2) - &
-                        &Zchi(:,1)*q_saf_H(kd_H,0)**2*R_H(:,kd_H)) / &
-                        &(denom * (Rchi(:,1)**2 + Zchi(:,1)**2))
-                    eq_2%kappa_g(:,1,kd) = &
-                        &R_H(:,kd_H)*q_saf_H(kd_H,0) * &
-                        &(2*Rchi(:,1) * ( Rchi(:,1)**2 + Zchi(:,1)**2 ) + &
-                        &Rchi(:,1) * (q_saf_H(kd_H,0)*R_H(:,kd_H))**2 - &
-                        &R_H(:,kd_H) * &
-                        &(Rchi(:,1)*Rchi(:,2) + Zchi(:,1)*Zchi(:,2))) / &
-                        &(denom**2)
-                    if (.not.use_pol_flux_F) then
-                        eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) * &
-                            &q_saf_H(kd_H,0)
-                        eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) / &
-                            &q_saf_H(kd_H,0)
-                    end if
                 end do
-                do jd = 2,grid_eq%n(2)
-                    eq_2%kappa_n(:,jd,:) = eq_2%kappa_n(:,1,:)
-                    eq_2%kappa_g(:,jd,:) = eq_2%kappa_g(:,1,:)
+                ! d/dtheta e_theta
+                de(:,1,:,1,1,1) = Rchi(:,:,2)                                   ! ~ e_R
+                !de(:,1,:,1,1,2) = 0._dp                                         ! ~ e_phi
+                de(:,1,:,1,1,3) = Zchi(:,:,2)                                   ! ~ e_Z
+                
+                ! d/dzeta e_theta
+                !de(:,1,:,2,1,1) = 0._dp                                         ! ~ e_R
+                de(:,1,:,2,1,2) = -Rchi(:,:,1)/&
+                    &R_H(:,grid_eq%i_min:grid_eq%i_max)                          ! ~ e_phi
+                !de(:,1,:,2,1,3) = 0._dp                                         ! ~ e_Z
+                
+                ! d/dtheta e_zeta
+                !de(:,1,:,1,2,1) = 0._dp                                         ! ~ e_R
+                de(:,1,:,1,2,2) = -Rchi(:,:,1)/&
+                    &R_H(:,grid_eq%i_min:grid_eq%i_max)                          ! ~ e_phi
+                !de(:,1,:,1,2,3) = 0._dp                                         ! ~ e_Z
+                
+                ! d/dzeta e_zeta
+                de(:,1,:,2,2,1) = -R_H(:,grid_eq%i_min:grid_eq%i_max)             ! ~ e_R
+                !de(:,1,:,2,2,2) = 0._dp                                         ! ~ e_phi
+                !de(:,1,:,2,2,3) = 0._dp                                         ! ~ e_Z
+                
+                ! 2.   calculate  derivatives   of   transformation  matrix   in
+                ! Equilibrium coordinates
+                D_de = 0._dp
+                
+                ! 3.   Decompose  normal   and  geodesic   basis  vectors   into
+                ! contravariant cylindrical basis vectors.
+                do jd = 1,grid_eq%n(2)
+                    ! auxiliary variables
+                    allocate(dum1(grid_eq%n(1),grid_eq%loc_n_r))                ! Rchi^2 + Zchi^2
+                    allocate(dum2(grid_eq%n(1),grid_eq%loc_n_r))                ! Rchi^2 + Zchi^2 + (qR)^2
+                    dum1 = Rchi(:,:,1)**2 + Zchi(:,:,1)**2
+                    do kd = 1,grid_eq%loc_n_r
+                        kd_H = grid_eq%i_min-1+kd
+                        dum2(:,kd) = dum1(:,kd) + &
+                            &(eq_1%q_saf_FD(kd,0)*R_H(:,kd_H))**2
+                    end do
+                    
+                    ! b_n
+                    b_n(:,jd,:,1) = R_H(:,grid_eq%i_min:grid_eq%i_max)*&
+                        &Zchi(:,:,1)/dum1
+                    b_n(:,jd,:,3) = -R_H(:,grid_eq%i_min:grid_eq%i_max)*&
+                        &Rchi(:,:,1)/dum1
+                    
+                    ! b_g
+                    b_g(:,jd,:,1) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
+                        &Rchi(:,:,1)/dum2
+                    b_g(:,jd,:,2) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
+                        &dum1/dum2
+                    b_g(:,jd,:,3) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
+                        &Zchi(:,:,1)/dum2
+                    
+                    ! clean up
+                    deallocate(dum1,dum2)
                 end do
-                deallocate(Rchi, Zchi, denom)
+                do kd = 1,grid_eq%loc_n_r
+                    kd_H = grid_eq%i_min-1+kd
+                    b_n(:,:,kd,:) = b_n(:,:,kd,:) * &
+                        &eq_1%q_saf_FD(kd,0)/RBphi_H(kd_H,0)
+                    b_g(:,:,kd,1:3:2) = b_g(:,:,kd,1:3:2) * eq_1%q_saf_FD(kd,0) ! not b_g(2)
+                end do
+                
+                ! clean up
+                deallocate(Rchi, Zchi)
         end select
+        
+        ! 4. double summation of de and correction with single summation of D_de
+        allocate(kappa_C(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        kappa_C = 0._dp
+        do ld = 1,3
+            do id = 1,2
+                do jd = 1,2
+                    kappa_C(:,:,:,ld) = kappa_C(:,:,:,ld) + &
+                        &de(:,:,:,id,jd,ld) * &
+                        &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0) * &
+                        &eq_2%T_FE(:,:,:,c([3,1+jd],.false.),0,0,0) 
+                end do
+                kappa_C(:,:,:,ld) = kappa_C(:,:,:,ld) + D_de(:,:,:,id,ld) * &
+                    &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0)
+            end do
+        end do
+        
+        ! 5. dot kappa and basis vectors
+        eq_2%kappa_n = 0._dp
+        eq_2%kappa_g = 0._dp
+        do ld = 1,3
+            eq_2%kappa_n = eq_2%kappa_n + kappa_C(:,:,:,ld) * b_n(:,:,:,ld)
+            eq_2%kappa_g = eq_2%kappa_g + kappa_C(:,:,:,ld) * b_g(:,:,:,ld)
+        end do
+        
+        ! 6. divide by |e_theta|^2
+        eq_2%kappa_n = eq_2%kappa_n / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        eq_2%kappa_g = eq_2%kappa_g / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        
+        ! 7. possibly correct for toroidal flux
+        if (.not.use_pol_flux_F) then
+            eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) * q_saf_H(kd_H,0)
+            eq_2%kappa_g(:,:,kd) = eq_2%kappa_g(:,:,kd) / q_saf_H(kd_H,0)
+        end if
+        
+        ! Calculate the shear S
+        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
         
         ! Calculate the parallel current sigma
         select case (eq_style)
             case (1)                                                            ! VMEC
-                eq_2%sigma = 1._dp/vac_perm*&
-                    &(D1g23 - D2g13 - (g23*D1J - g13*D2J)/J)/J
+                ! magnetic field in VMEC coordinates
+                allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
+                do id = 2,3                                                     ! only angular V components count for e_alpha
+                    ierr = fourier2real(&
+                        &B_V_sub_c(:,:,id),B_V_sub_s(:,:,id),&
+                        &grid_eq%trigon_factors,B_V(:,:,:,id),&
+                        &[.true.,is_asym_V])
+                    CHCKERR('')
+                end do
+                
+                ! transform them to Flux coord. system
+                allocate(B_alpha(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                B_alpha = 0._dp
+                do kd = 2,3
+                    B_alpha = B_alpha + B_V(:,:,:,kd) * &
+                        &eq_2%T_FE(:,:,:,c([1,kd],.false.),0,0,0)
+                end do
+                
+                !!! more elegant but less accurate alternative:
+                !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
+                    !!&eq_2%jac_FD(id,jd,:,0,0,0)
+                
+                ! derivate in normal direction
+                do jd = 1,grid_eq%n(2)
+                    do id = 1,grid_eq%n(1)
+                        ierr = spline(grid_eq%loc_r_F,B_alpha(id,jd,:),&
+                            &grid_eq%loc_r_F,eq_2%sigma(id,jd,:),&
+                            &ord=norm_disc_prec_eq,deriv=1)
+                        CHCKERR('')
+                    end do
+                end do
+                
+                ! contribute to sigma
+                eq_2%sigma = (D1g23 - g23*D1J/J)/J - eq_2%sigma
+                
+                !!! equally elegant but also inaccurate second alternative:
+                !!eq_2%sigma = (D1g23 - g23*D1J/J)/J - (D2g13 - g13*D2J/J)/J
             case (2)                                                            ! HELENA
                 do kd = 1,grid_eq%loc_n_r
                     eq_2%sigma(:,:,kd) = -RBphi_H(kd+grid_eq%i_min-1,1)
                 end do
         end select
         do kd = 1,grid_eq%loc_n_r
-            eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) - &
+            eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) / vac_perm - &
                 &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
         end do 
         
