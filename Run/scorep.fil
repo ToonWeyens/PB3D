@@ -1,6 +1,0 @@
-SCOREP_REGION_NAMES_BEGIN
-    EXCLUDE
-        __input_utilities_MOD_get_log
-        __input_utilities_MOD_get_real
-        __input_utilities_MOD_get_int
-SCOREP_REGION_NAMES_END

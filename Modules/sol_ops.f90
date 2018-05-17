@@ -117,7 +117,7 @@ contains
         use num_vars, only: no_plots, tol_zero, pert_mult_factor_POST, &
             &eq_job_nr, eq_jobs_lims, eq_job_nr, norm_disc_prec_eq, &
             &norm_disc_prec_X, norm_disc_prec_sol, use_normalization, &
-            &X_grid_style
+            &X_grid_style, eq_style
         use grid_utilities, only: trim_grid, calc_vec_comp
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
@@ -260,6 +260,10 @@ contains
         grid_out%r_E = grid_sol%r_E
         grid_out%loc_r_F = grid_sol%loc_r_F
         grid_out%loc_r_E = grid_sol%loc_r_E
+        if (eq_style.eq.1) allocate(grid_out%trigon_factors(&
+            &size(grid_X%trigon_factors,1),size(grid_X%trigon_factors,2),&
+            &size(grid_X%trigon_factors,3),grid_out%loc_n_r,&
+            &size(grid_X%trigon_factors,5)))                                    ! VMEC
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
                 ! interpolate X->sol
@@ -281,6 +285,18 @@ contains
                             &grid_sol%loc_r_F,grid_out%zeta_E(id,jd,:),&
                             &ord=norm_disc_prec_X)
                         CHCKERR('')
+                        if (eq_style.eq.1) then                                 ! VMEC
+                            do td = 1,size(grid_X%trigon_factors,5)
+                                do kd = 1,size(grid_X%trigon_factors,1)
+                                    ierr = spline(grid_X%loc_r_F,&
+                                        &grid_X%trigon_factors(kd,id,jd,:,td),&
+                                        &grid_sol%loc_r_F,&
+                                        &grid_out%trigon_factors&
+                                        &(kd,id,jd,:,td),ord=norm_disc_prec_X)
+                                    CHCKERR('')
+                                end do
+                            end do
+                        end if
                     end do
                 end do
             case (2)                                                            ! solution
