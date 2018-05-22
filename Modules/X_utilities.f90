@@ -13,7 +13,7 @@ module X_utilities
     
     private
     public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, calc_memory_X, &
-        &do_X
+        &do_X, trim_modes
     
     ! interfaces
     
@@ -287,4 +287,48 @@ contains
         
         call lvl_ud(-1)
     end function calc_memory_X
+
+    !> Limit input mode range to output mode range.
+    integer function trim_modes(mds_i,mds_o,id_lim_i,id_lim_o) result(ierr)
+        use X_vars, only: modes_type
+        
+        character(*), parameter :: rout_name = 'trim_modes'
+        
+        ! input / output
+        type(modes_type), intent(in) :: mds_i                                   !< general modes variables for input
+        type(modes_type), intent(in) :: mds_o                                   !< general modes variables for output
+        integer, intent(inout) :: id_lim_i(2)                                   !< limits on input modes
+        integer, intent(inout) :: id_lim_o(2)                                   !< limits on output modes
+        
+        ! local variables
+        integer :: m                                                            ! counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! find limits point where input modes and output modes coincide
+        ! (input grid should comprise output grid)
+        id_lim_o = [1,size(mds_o%sec,1)]
+        id_lim_i = [-1,-1]
+        do m = 1,size(mds_i%sec,1)
+            if (mds_i%sec(m,1).eq.mds_o%sec(id_lim_o(1),1)) then
+                id_lim_i(1) = m
+                exit
+            end if
+        end do
+        do m = size(mds_i%sec,1),1,-1
+            if (mds_i%sec(m,1).eq.mds_o%sec(id_lim_o(2),1)) then
+                id_lim_i(2) = m
+                exit
+            end if
+        end do
+        
+        ! test
+        if (any(id_lim_o.le.0)) then
+            ierr = 1
+            err_msg = 'Cannot find limits of input modes'
+            CHCKERR(err_msg)
+        end if
+    end function trim_modes
 end module X_utilities

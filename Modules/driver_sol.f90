@@ -275,7 +275,7 @@ contains
     !! setup_modes()  produces an  error if  less than  the full  range of  mode
     !! numbers is accurately present.
     integer function interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o) result(ierr)
-        use X_utilities, only: is_necessary_X
+        use X_utilities, only: is_necessary_X, trim_modes
         use X_vars, only: n_mod_X
         use num_vars, only: rank
         use eq_vars, only: max_flux_F
@@ -285,10 +285,10 @@ contains
         character(*), parameter :: rout_name = 'interp_V'
         
         ! input / output
-        type(modes_type), intent(in) :: mds_i                                   !< general modes variables for input
+        type(modes_type), intent(in), target :: mds_i                           !< general modes variables for input
         type(grid_type), intent(in) :: grid_i                                   !< grid at which \c X_i is tabulated
         type(X_2_type), intent(in), target :: X_i                               !< tensorial perturbation variable on input grid
-        type(modes_type), intent(in) :: mds_o                                   !< general modes variables for output
+        type(modes_type), intent(in), target :: mds_o                           !< general modes variables for output
         type(grid_type), intent(in) :: grid_o                                   !< grid at which \c X_o is interpolated
         type(X_2_type), intent(inout), target :: X_o                            !< interpolated tensorial perturbation variable
         
@@ -298,7 +298,9 @@ contains
         integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
         integer :: n_mod_tot                                                    ! total amount of modes
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
+        integer :: id_lim_i(2), id_lim_o(2)                                     ! limits on total modes
         real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
+        integer, pointer :: sec_i_loc(:,:), sec_o_loc(:,:)                      ! pointers to secondary mode variables
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         logical :: extrap = .true.                                              ! whether extrapolation is used
@@ -331,8 +333,15 @@ contains
         X_o%KV_1 = 0._dp
         X_o%KV_2 = 0._dp
         
+        ! limit input modes to output modes
+        ! (X grid should comprise sol grid)
+        ierr = trim_modes(mds_i,mds_o,id_lim_i,id_lim_o)
+        CHCKERR('')
+        sec_i_loc => mds_i%sec(id_lim_i(1):id_lim_i(2),:)
+        sec_o_loc => mds_o%sec(id_lim_o(1):id_lim_o(2),:)
+        
         ! select all mode number combinations of interpolated grid
-        n_mod_tot = size(mds_o%sec,1)
+        n_mod_tot = size(sec_o_loc,1)
 #if ldebug
         allocate(r_loc_tot(2,n_mod_tot**2,3))
         allocate(norm_ext_i(n_mod_tot,n_mod_tot))
@@ -342,20 +351,22 @@ contains
 #endif
         do m = 1,n_mod_tot
             do k = 1,n_mod_tot
-                ! test whether input and output grid are consistent
-                if (any(mds_i%sec(k,1:4:3).ne.mds_o%sec(k,1:4:3)) .or. &
-                    &any(mds_i%sec(m,1:4:3).ne.mds_o%sec(m,1:4:3))) then
+#if ldebug
+                ! test whether input and output mode numbers are consistent
+                if (sec_i_loc(k,1).ne.sec_o_loc(k,1) .or. &
+                    &sec_i_loc(m,1).ne.sec_o_loc(m,1)) then
                     ierr = 1
                     err_msg = 'For ('//trim(i2str(k))//','//trim(i2str(m))//&
                         &'), no consistency for modes in grid_i and grid_o'
                     CHCKERR(err_msg)
                 end if
+#endif
                 
                 ! set input and output grid normal limits for mode pair (k,m)
-                kdl_i(1) = max(mds_i%sec(k,2),mds_i%sec(m,2))
-                kdl_i(2) = min(mds_i%sec(k,3),mds_i%sec(m,3))
-                kdl_o(1) = max(mds_o%sec(k,2),mds_o%sec(m,2))
-                kdl_o(2) = min(mds_o%sec(k,3),mds_o%sec(m,3))
+                kdl_i(1) = max(sec_i_loc(k,2),sec_i_loc(m,2))
+                kdl_i(2) = min(sec_i_loc(k,3),sec_i_loc(m,3))
+                kdl_o(1) = max(sec_o_loc(k,2),sec_o_loc(m,2))
+                kdl_o(2) = min(sec_o_loc(k,3),sec_o_loc(m,3))
                 
                 ! limit to grid ranges
                 kdl_i(1) = max(kdl_i(1),grid_i%i_min)
@@ -389,9 +400,9 @@ contains
                 
                 ! check whether mode combination needs to be calculated
                 calc_this(1) = is_necessary_X(.true.,&
-                    &[mds_o%sec(k,1),mds_o%sec(m,1)])
+                    &[sec_o_loc(k,1),sec_o_loc(m,1)])
                 calc_this(2) = is_necessary_X(.false.,&
-                    &[mds_o%sec(k,1),mds_o%sec(m,1)])
+                    &[sec_o_loc(k,1),sec_o_loc(m,1)])
                 
 #if ldebug
                 km_id = km_id + 1
@@ -404,8 +415,8 @@ contains
 #endif
                 
                 ! set up c_loc
-                c_loc(1) = c([mds_o%sec(k,4),mds_o%sec(m,4)],.true.,n_mod_X)
-                c_loc(2) = c([mds_o%sec(k,4),mds_o%sec(m,4)],.false.,n_mod_X)
+                c_loc(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
+                c_loc(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
                 
                 if (calc_this(1)) then
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
@@ -443,8 +454,8 @@ contains
 #if ldebug
                     if (debug_run_driver_sol) then
                         !call writo('For [k,m] = ['//&
-                            !&trim(i2str(mds_o%sec(k,1)))//','//&
-                            !&trim(i2str(mds_o%sec(m,1)))//']:')
+                            !&trim(i2str(sec_o_loc(k,1)))//','//&
+                            !&trim(i2str(sec_o_loc(m,1)))//']:')
                         !allocate(V_plot(max(size(V_i,3),size(V_o,3)),4))
                         !V_plot(1:size(V_i,3),1) = V_i(1,1,:)
                         !V_plot(1:size(V_o,3),2) = V_o(1,1,:)
@@ -495,6 +506,7 @@ contains
         
         ! clean up
         nullify(r_i_loc,r_o_loc)
+        nullify(sec_i_loc,sec_o_loc)
         nullify(V_i,V_o)
     end function interp_V
 end module driver_sol

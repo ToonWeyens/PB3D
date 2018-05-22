@@ -1129,7 +1129,7 @@ contains
         !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
         
         ! set up normal tabulation values
-        allocate(ind_tot(grid_trim%n(3)*n_mod_X,4))                             ! not quite absolute maximum but should never be reached
+        allocate(ind_tot(-grid_trim%n(3)*n_mod_X:grid_trim%n(3)*n_mod_X,4))     ! not quite absolute maximum but should never be reached
         allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
         
         ! calculate n and m
@@ -1187,7 +1187,7 @@ contains
                         if (delta_ld.gt.0) then                                 ! mode number has increased
                             ind_tot(ind_cur(1),3) = kd - 1                      ! upper limit in normal range
                             ind_tot(ind_id+ld,:) = [ &
-                                &ind_tot(ind_cur(n_mod_X),1) + 1, &                   ! total mode number
+                                &ind_tot(ind_cur(n_mod_X),1) + 1, &             ! total mode number
                                 &kd, &                                          ! lower limit in normal range
                                 &0, &                                           ! initalize upper limit normal range
                                 &modulo(ind_tot(ind_id,4)+ld-1,n_mod_X) + 1]    ! index in tables, shifted and wrapped around
@@ -1227,7 +1227,10 @@ contains
             end do
             
             ! close last total modes
-            ind_tot(ind_id-n_mod_X+1:ind_id,3) = grid_trim%n(3)
+            do ld = 1,size(ind_cur)
+                ind_tot(ind_cur(ld),3) = grid_trim%n(3)
+            end do
+            write(*,*) 'ind_id', ind_id, 'vs', maxval(ind_cur)
             
             ! save in index information
             if ((use_pol_flux_F .and. id.eq.2) .or. &
@@ -1236,16 +1239,6 @@ contains
                 mds%sec = ind_tot(1:ind_id,:)
             end if
         end do
-        
-        ! test whether all modes have at least one normal position
-        if (minval(mds%sec(:,3)-mds%sec(:,2)+1).lt.1) then
-            ierr = 1
-            call writo('Mode '//&
-                &trim(i2str(minloc(mds%sec(:,3)-mds%sec(:,2),1)))//&
-                &' is not present in any flux surface')
-            err_msg = 'Aument number of modes or choose finer equilibrium'
-            CHCKERR(err_msg)
-        end if
         
         ! master plots output if requested
         if (rank.eq.0 .and. plot_nm_loc) then
@@ -1286,6 +1279,16 @@ contains
 #endif
             
             call lvl_ud(-1)
+        end if
+        
+        ! test whether all modes have at least one normal position
+        if (minval(mds%sec(:,3)-mds%sec(:,2)+1).lt.1) then
+            ierr = 1
+            call writo('Mode '//&
+                &trim(i2str(minloc(mds%sec(:,3)-mds%sec(:,2),1)))//&
+                &' is not present in any flux surface')
+            err_msg = 'Aument number of modes or choose finer equilibrium'
+            CHCKERR(err_msg)
         end if
         
         ! clean up
