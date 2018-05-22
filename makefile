@@ -205,10 +205,16 @@ code_stats:
 	cloc .
 	#@find . -name '*.f90' | xargs wc -l
 
-tag:
-	git tag -f -a $(PB3D_version) -m "version $(PB3D_version)"
+git-commit:
+	@echo "\n copy the README changes as commit message.\n"
+	git commit -a -S
 
-finalize_version: clean PB3D POST tag
-	@echo "\n Now upload to git using 'git commit -a' and copy the README changes.\n"
+git-tag:
+	git tag -s $(PB3D_version) -m "version $(PB3D_version)"
+
+git-push:
+	git push --follow-tags
+
+finalize_version: clean PB3D POST git-commit git-tag git-push
 	@echo "\n Also, don't forget to create the documentation for this version.\n"
 	
