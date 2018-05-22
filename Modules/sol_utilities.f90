@@ -67,6 +67,7 @@ contains
         
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
         use num_utilities, only: con2dis, spline
+        use X_utilities, only: trim_modes
 #if ldebug
         use eq_vars, only: max_flux_F
         use num_utilities, only: calc_int
@@ -75,8 +76,8 @@ contains
         character(*), parameter :: rout_name = 'calc_XUQ_arr'
         
         ! input / output
-        type(modes_type), intent(in) :: mds_X                                   !< general modes variables in perturbation grid
-        type(modes_type), intent(in) :: mds_sol                                 !< general modes variables in solution grid
+        type(modes_type), intent(in), target :: mds_X                           !< general modes variables in perturbation grid
+        type(modes_type), intent(in), target :: mds_sol                         !< general modes variables in solution grid
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid_X                                   !< perturbation grid
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
@@ -100,6 +101,8 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: XUQ_dims(4)                                                  ! dimensions of XUQ
         integer :: kdl_X(2), kdl_sol(2)                                         ! limits on normal index for a mode in X and sol grids
+        integer :: id_lim_X(2), id_lim_sol(2)                                   ! limits on total modes
+        integer, pointer :: sec_X_loc(:,:), sec_sol_loc(:,:)                    ! pointers to secondary mode variables
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent in solution grid
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
         real(dp), allocatable :: jq(:)                                          ! iota or q, interpolated at perturbation grid
@@ -127,18 +130,12 @@ contains
         ! set up dimensions
         n_t = size(time)
         XUQ_dims = shape(XUQ)
-        n_mod_tot = size(mds_X%sec,1)
         
         ! set up local copy of deriv
         deriv_loc = .false.
         if (present(deriv)) deriv_loc = deriv
         
         ! tests
-        if (size(mds_X%sec,1).ne.size(mds_sol%sec,1)) then
-            ierr = 1
-            err_msg = 'modes X and sol have inconsistent sizes'
-            CHCKERR(err_msg)
-        end if
         if (grid_eq%n(1).ne.grid_X%n(1) .or. grid_eq%n(2).ne.grid_X%n(2)) then
             ierr = 1
             err_msg = 'Grids need to be compatible'
@@ -148,6 +145,21 @@ contains
             &grid_sol%loc_n_r.ne.XUQ_dims(3) .or. n_t.ne.XUQ_dims(4)) then
             ierr = 1
             err_msg = 'XUQ needs to have the correct dimensions'
+            CHCKERR(err_msg)
+        end if
+        
+        ! limit input modes to output modes
+        ! (X grid should comprise sol grid)
+        ierr = trim_modes(mds_X,mds_sol,id_lim_X,id_lim_sol)
+        CHCKERR('')
+        sec_X_loc => mds_X%sec(id_lim_X(1):id_lim_X(2),:)
+        sec_sol_loc => mds_sol%sec(id_lim_sol(1):id_lim_sol(2),:)
+        
+        n_mod_tot = size(sec_X_loc,1)
+        
+        if (size(sec_X_loc,1).ne.size(sec_sol_loc,1)) then
+            ierr = 1
+            err_msg = 'modes X and sol have inconsistent sizes'
             CHCKERR(err_msg)
         end if
         
@@ -214,7 +226,7 @@ contains
                     call writo('For mode '//trim(i2str(m))//', testing &
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
-                    kdl_sol = mds_sol%sec(m,2:3)
+                    kdl_sol = sec_sol_loc(m,2:3)
                     allocate(sol_vec_ALT(1:kdl_sol(2)-kdl_sol(1)+1))
                     sol_vec_ALT = 0._dp
                     ierr = calc_int(rp(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),1)),&
@@ -272,7 +284,7 @@ contains
         ! iterate over all secondary modes
         do m = 1,n_mod_tot
             ! test
-            if (any(mds_X%sec(m,1:4:3).ne.mds_sol%sec(m,1:4:3))) then
+            if (sec_X_loc(m,1).ne.sec_sol_loc(m,1)) then
                 ierr = 1
                 err_msg = 'For mode '//trim(i2str(m))//&
                     &', no consistency for modes in grid_X and grid_sol'
@@ -280,8 +292,8 @@ contains
             end if
             
             ! set up and normal limits
-            kdl_X = mds_X%sec(m,2:3)
-            kdl_sol = mds_sol%sec(m,2:3)
+            kdl_X = sec_X_loc(m,2:3)
+            kdl_sol = sec_sol_loc(m,2:3)
             
             ! convert limits to local
             kdl_X = kdl_X - grid_X%i_min + 1
@@ -292,7 +304,7 @@ contains
             r_sol_loc => grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2))
             
             ! set up table index
-            ind = mds_sol%sec(m,4)
+            ind = sec_sol_loc(m,4)
             
             ! Set up multiplicative factors fac_0 and fac_1 which are used in
             ! XUQ = fac_0*X + fac_1*DX with fac_0 and fac_1:
@@ -319,8 +331,8 @@ contains
                 n_loc = mds_sol%n(kd_tot,ind)
                 m_loc = mds_sol%m(kd_tot,ind)
 #if ldebug
-                if (use_pol_flux_F .and. (m_loc.ne.mds_X%sec(m,1)) .or. &
-                    &(.not.use_pol_flux_F .and. (n_loc.ne.mds_X%sec(m,1)))) then
+                if (use_pol_flux_F .and. (m_loc.ne.sec_X_loc(m,1)) .or. &
+                    &(.not.use_pol_flux_F .and. (n_loc.ne.sec_X_loc(m,1)))) then
                     ierr = 1
                     err_msg = 'mode numbers not consistent'
                     CHCKERR(err_msg)
@@ -489,6 +501,7 @@ contains
         nullify(r_X_loc,r_sol_loc)
         nullify(theta_F,zeta_F)
         nullify(U0,U1)
+        nullify(sec_X_loc,sec_sol_loc)
     end function calc_XUQ_arr
     !> \private (time) individual version
     integer function calc_XUQ_ind(mds_X,mds_sol,grid_eq,grid_X,grid_sol,eq_1,&

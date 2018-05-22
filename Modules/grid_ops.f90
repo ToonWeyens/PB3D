@@ -328,7 +328,8 @@ contains
                     ! decide extra divisions for each interval
                     allocate(div(size(r_F_eq)-1))
                     do kd = 1,size(r_F_eq)-1
-                        div(kd) = floor(prim_X*(jq(kd+1)-jq(kd))/max_njq_change)
+                        div(kd) = &
+                            &floor(prim_X*abs(jq(kd+1)-jq(kd))/max_njq_change)
                     end do
                     
                     ! set up r_F_X with divisions

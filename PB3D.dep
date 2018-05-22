@@ -102,6 +102,7 @@ sol_utilities.o : \
     eq_vars.o \
     num_utilities.o \
     X_vars.o \
+    X_utilities.o \
     sol_vars.o \
     grid_utilities.o \
 
@@ -208,6 +209,7 @@ driver_sol.o : \
     eq_vars.o \
     vac_vars.o \
     X_vars.o \
+    X_utilities.o \
     X_ops.o \
     PB3D_ops.o \
     SLEPC_ops.o \

@@ -13,6 +13,13 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.27:
+* Fixed bug in `interp_V` where the fact that the perturbation grid encompasses the solution grid but does not necessarily coincide was forgotten.
+* This was done implementing a new procedure `trim_modes` in `X_utilities`.
+* A similar bug was fixed in `calc_XUQ`.
+* Fixed bug in `calc_norm_range_PB3D_X` where negative shear caused the procedure to break.
+* Fixed bug in `setup_modes` where the closing of the last modes was wrong when there had been a region of negative shear.
+
 ## 2.26:
 * Rewrote commit system.
 * Started signing commits and tags.
