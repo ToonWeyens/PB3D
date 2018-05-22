@@ -13,6 +13,10 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.26:
+* Rewrote commit system.
+* Started signing commits and tags.
+
 ## 2.25:
 * 2-D VMEC now works as well as 2-D HELENA, including energy reconstruction.
 * `L_E` and `T_FE` are no longer deallocated, as it is necessary for the calculation of derived quantities.
