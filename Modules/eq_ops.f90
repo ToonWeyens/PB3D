@@ -446,9 +446,9 @@ contains
         !   2:  HELENA
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! calculate  the  cylindrical  variables  R, Z  and  lambda  and
+                ! calculate  the   cylindrical  variables   R,  Z  and   λ  and
                 ! derivatives if not yet done
-                call writo('Calculate R,Z,L...')
+                call writo('Calculate R, Z, λ, ...')
                 if (.not.allocated(grid_eq%trigon_factors)) then
                     ierr = calc_trigon_factors(grid_eq%theta_E,grid_eq%zeta_E,&
                         &grid_eq%trigon_factors)

@@ -159,13 +159,17 @@ contains
                 &generalized Eigenvalue problem?')
             if (get_log(.false.)) then
                 call writo('Spectrum of A (true) or B (false)?')
+                call lvl_ud(1)
                 if (get_log(.true.)) then                                       ! A
+                    call writo('Testing spectrum of A')
                     ierr = setup_solver(X,A,PETSC_NULL_OBJECT,solver)
                     CHCKERR('')
                 else                                                            ! B
+                    call writo('Testing spectrum of B')
                     ierr = setup_solver(X,B,PETSC_NULL_OBJECT,solver)
                     CHCKERR('')
                 end if
+                call lvl_ud(-1)
             else
                 ierr = setup_solver(X,A,B,solver)
                 CHCKERR('')
@@ -270,7 +274,7 @@ contains
             !call MatDuplicate(mat,MAT_SHARE_NONZERO_PATTERN,mat_loc,ierr)
             !CHCKERR('failed to duplicate mat into mat_loc')
             
-            ! write to file
+            ! write real part to file
             !file_name = trim(data_dir)//'/'//trim(mat_name)//'_RE'
             file_name = trim(data_dir)//'/'//trim(mat_name)
             call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&

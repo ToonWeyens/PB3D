@@ -1076,19 +1076,23 @@ contains
         type(grid_type) :: grid_trim                                            ! trimmed version of perturbation grid
         real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
         real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
-        real(dp), allocatable :: x_plot(:,:)                                    ! x values of plot
+        real(dp), allocatable :: x_plot(:,:)                                    ! abscissa of plot
         integer, pointer :: nm_X(:,:)                                           ! either n or m
         integer :: id, ld, kd                                                   ! counters
         integer :: ld_loc                                                       ! shfited ld
+        integer :: n_mod_tot                                                    ! total number of modes
         integer :: ind_id                                                       ! current size of ind_tot
         integer :: ld_shift                                                     ! shift in table indices
         integer :: delta_ld                                                     ! change in total mode numbers
         integer, allocatable :: ind_cur(:)                                      ! current indices
         integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
-        character(len=max_str_ln) :: plot_titles(3)                             ! title for plots
+        character(len=max_str_ln), allocatable :: plot_titles(:)                ! title for plots
         character(len=max_str_ln) :: plot_name                                  ! file name for plots
         logical :: plot_nm_loc                                                  ! local plot_nm
         character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
+        real(dp), allocatable :: y_plot(:,:)                                    ! ordinate of plot
+#endif
         
         ! initialize ierr
         ierr = 0
@@ -1230,7 +1234,6 @@ contains
             do ld = 1,size(ind_cur)
                 ind_tot(ind_cur(ld),3) = grid_trim%n(3)
             end do
-            write(*,*) 'ind_id', ind_id, 'vs', maxval(ind_cur)
             
             ! save in index information
             if ((use_pol_flux_F .and. id.eq.2) .or. &
@@ -1245,12 +1248,16 @@ contains
             call writo('Plotting mode numbers')
             call lvl_ud(1)
             
+            ! total number of modes
+            n_mod_tot = size(mds%sec,1)
+            
             ! set up x values
             allocate(x_plot(grid_trim%n(3),n_mod_X))
             do ld = 1,n_mod_X
                 x_plot(:,ld) = grid_trim%r_F
             end do
             x_plot = x_plot*2*pi/max_flux_F
+            allocate(plot_titles(1))
             
             ! plot poloidal modes
             plot_titles(1) = 'poloidal mode numbers'
@@ -1265,17 +1272,34 @@ contains
             call print_ex_2D(plot_titles(1:1),plot_name,mds%n*1._dp,x=x_plot,&
                 &draw=.false.)
             call draw_ex(plot_titles(1:1),plot_name,n_mod_X,1,.false.)
-        
+            
+            ! clean up
+            deallocate(x_plot)
+            deallocate(plot_titles)
+            
 #if ldebug
             ! plot secondary limits
-            plot_titles(1) = 'lower limit'
-            plot_titles(2) = 'upper limit'
-            plot_titles(3) = 'normal extent'
+            allocate(x_plot(n_mod_tot,n_mod_tot+2))
+            allocate(y_plot(n_mod_tot,n_mod_tot+2))
+            allocate(plot_titles(n_mod_tot+2))
+            do ld = 1,n_mod_tot
+                x_plot(:,ld) = ld
+                y_plot(:,ld) = mds%sec(ld,2)                                    ! lower boundary
+                y_plot(n_mod_tot,ld) = mds%sec(ld,3)                            ! upper boundary
+                plot_titles(ld) = 'mode '//trim(i2str(mds%sec(ld,1)))
+            end do
+            x_plot(:,n_mod_tot+1) = x_plot(1,1:n_mod_tot)
+            y_plot(:,n_mod_tot+1) = mds%sec(:,1)                                ! mode number
+            plot_titles(n_mod_tot+1) = 'mode number'
+            x_plot(:,n_mod_tot+2) = x_plot(1,1:n_mod_tot)
+            y_plot(:,n_mod_tot+2) = mds%sec(:,4)                                ! index
+            plot_titles(n_mod_tot+2) = 'index'
             plot_name = 'modes_sec'
-            call print_ex_2D(plot_titles,plot_name,1._dp*reshape(&
-                &[mds%sec(:,2:3),mds%sec(:,3)-mds%sec(:,2)+1],&
-                &[size(mds%sec,1),3]),x=mds%sec(:,1:1)*1._dp,draw=.false.)
-            call draw_ex(plot_titles,plot_name,3,1,.false.)
+            call print_ex_2D(plot_titles,plot_name,y_plot,x=x_plot,draw=.false.)
+            call draw_ex(plot_titles,plot_name,n_mod_tot+2,1,.false.)
+            deallocate(x_plot)
+            deallocate(y_plot)
+            deallocate(plot_titles)
 #endif
             
             call lvl_ud(-1)

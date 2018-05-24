@@ -151,6 +151,16 @@ contains
                     CHCKERR('')
             end select
             
+            ! initialize modes and set up
+            ierr = init_modes(grid_eq,eq_1)
+            CHCKERR('')
+            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
+            CHCKERR('')
+            
+            ! tests
+            ierr = check_X_modes(grid_eq,eq_1)
+            CHCKERR('')
+            
             ! X_1
             if (eq_style.eq.2) then                                             ! HELENA
                 ierr = reconstruct_PB3D_X_1(mds_X,grid_X,X_1,'X_1')
@@ -218,8 +228,8 @@ contains
             &eq_2,eq_2_B)
         CHCKERR('')
         
-        ! setup nm and check the X modes if first Richardson level
-        if (rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
+        ! setup nm and check the X modes if restart Richardson level
+        if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
             ! initialize modes and set up
             ierr = init_modes(grid_eq,eq_1)
             CHCKERR('')
@@ -231,27 +241,21 @@ contains
             CHCKERR('')
         end if
         
-        ! jump to solution if  requested (assuming that integrated X_2 variables
-        ! are present in the HDF5 file)
-        if (rich_lvl.eq.rich_restart_lvl .and.  jump_to_sol) then
-            call writo('Skipping rest to jump to solution')
+        ! plot resonances if requested
+        if (plot_resonance .and. rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
+            ierr = resonance_plot(mds_X,grid_eq,eq_1)
+            CHCKERR('')
         else
-            ! plot resonances if requested
-            if (plot_resonance .and. rich_lvl.eq.1 .and. eq_job_nr.eq.1) then
-                ierr = resonance_plot(mds_X,grid_eq,eq_1)
-                CHCKERR('')
-            else
-                call writo('Resonance plot not requested')
-            end if
-            
-            ! Run vectorial part of driver
-            ierr = run_driver_X_1(grid_eq,grid_X,eq_1,eq_2,X_1)
-            CHCKERR('')
-            
-            ! Run Tensorial part of driver
-            ierr = run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B,X_1,X_2)
-            CHCKERR('')
+            call writo('Resonance plot not requested')
         end if
+        
+        ! Run vectorial part of driver
+        ierr = run_driver_X_1(grid_eq,grid_X,eq_1,eq_2,X_1)
+        CHCKERR('')
+        
+        ! Run Tensorial part of driver
+        ierr = run_driver_X_2(grid_eq_B,grid_X,grid_X_B,eq_1,eq_2_B,X_1,X_2)
+        CHCKERR('')
         
         ! clean up
         call writo('Clean up')
