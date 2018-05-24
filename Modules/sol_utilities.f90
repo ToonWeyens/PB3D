@@ -295,9 +295,18 @@ contains
             kdl_X = sec_X_loc(m,2:3)
             kdl_sol = sec_sol_loc(m,2:3)
             
+            ! limit to grid ranges
+            kdl_X(1) = max(kdl_X(1),grid_X%i_min)
+            kdl_X(2) = min(kdl_X(2),grid_X%i_max)
+            kdl_sol(1) = max(kdl_sol(1),grid_sol%i_min)
+            kdl_sol(2) = min(kdl_sol(2),grid_sol%i_max)
+            
             ! convert limits to local
             kdl_X = kdl_X - grid_X%i_min + 1
             kdl_sol = kdl_sol - grid_sol%i_min + 1
+            
+            ! cycle if mode does not exist anywhere
+            if (kdl_X(1).gt.kdl_X(2) .or. kdl_sol(1).gt.kdl_sol(2)) cycle
             
             ! get perturbation and solution normal ranges for this mode number
             r_X_loc => grid_X%loc_r_F(kdl_X(1):kdl_X(2))
@@ -872,9 +881,7 @@ contains
                 end if
             end do
         end do
-#endif
     contains
-#if ldebug
         !> \private Plot to compare interpolation to original variables
         subroutine plot_comp(plot_name,x_i,y_i,x_o,y_o)
             ! input / output

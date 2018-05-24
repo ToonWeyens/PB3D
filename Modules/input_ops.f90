@@ -1191,10 +1191,10 @@ contains
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
             &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
             &jac_V_s, mnmax_V, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
-            &flux_p_V, nfp_V
+            &flux_p_V, nfp_V, B_V_sub_c, B_V_sub_s
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, J_V_sup_int
+        use VMEC_vars, only: B_V_c, B_V_s, J_V_sup_int
 #endif
         
         character(*), parameter :: rout_name = 'print_output_in'
@@ -1425,7 +1425,6 @@ contains
                     &jac_V_s(:,in_limits(1):in_limits(2),:)],&
                     &[2*mnmax_V*n_r_eq*size(jac_V_c,3)])
                 
-#if ldebug
                 ! B_V_sub
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'B_V_sub'
@@ -1441,6 +1440,7 @@ contains
                     &B_V_sub_s(:,in_limits(1):in_limits(2),:)],&
                     &[2*mnmax_V*n_r_eq*3])
                 
+#if ldebug
                 ! B_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'B_V'

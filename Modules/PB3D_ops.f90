@@ -56,10 +56,11 @@ contains
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
             &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
-            &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, nfp_V
+            &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, &
+            &nfp_V, B_V_sub_c, B_V_sub_s
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
-        use VMEC_vars, only: B_V_sub_c, B_V_sub_s, B_V_c, B_V_s, J_V_sup_int
+        use VMEC_vars, only: B_V_c, B_V_s, J_V_sup_int
 #endif
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_in'
@@ -249,7 +250,6 @@ contains
                 jac_V_s = dum_4D(:,:,:,2)
                 call dealloc_var_1D(var_1D)
                 
-#if ldebug
                 ! B_V_sub
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'B_V_sub')
                 CHCKERR('')
@@ -260,6 +260,7 @@ contains
                 B_V_sub_s = dum_4D(:,:,:,2)
                 call dealloc_var_1D(var_1D)
                 
+#if ldebug
                 ! B_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'B_V')
                 CHCKERR('')

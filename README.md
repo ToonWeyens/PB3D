@@ -13,6 +13,12 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.29:
+* Fixed bug in `calc_XUQ' where for multiple MPI processes, the normal range was not limited for each mode to the current rank's range.
+* Fixed bug when solution modes were not calculated for Richardson restart.
+* Fixed multiple bugs that occured when not running in debug mode.
+* Vacuum is now completely bypassed, temporarily.
+
 ## 2.28:
 * Partly reverted changes in 2.22 where modes were not set up anymore when jumping to solution.
 * Now, the solution modes are set up in the solution driver.

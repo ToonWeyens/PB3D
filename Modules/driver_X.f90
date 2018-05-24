@@ -88,6 +88,7 @@ contains
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid for this process
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
+        real(dp), pointer :: r_F_eq(:)                                          ! pointer to r_F of grid_eq
         real(dp), pointer :: jq(:)                                              ! q_saf (pol. flux) or rot_t (tor. flux) in Flux variables
         real(dp), allocatable :: jq_ser(:)                                      ! serial jq
         
@@ -121,9 +122,11 @@ contains
             ! calculate normal range
             call writo('Set up perturbation normal range')
             call lvl_ud(1)
+            r_F_eq => grid_eq%r_F                                               ! needed for compiler bug on Intel 12.0.2
             ierr = calc_norm_range('PB3D_X',eq_limits=eq_limits,&
-                &X_limits=X_limits,r_F_eq=grid_eq%r_F,r_F_X=r_F_X,jq=jq_ser)
+                &X_limits=X_limits,r_F_eq=r_F_eq,r_F_X=r_F_X,jq=jq_ser)
             CHCKERR('')
+            nullify(r_F_eq)
             call lvl_ud(-1)
             
             ! clean up
