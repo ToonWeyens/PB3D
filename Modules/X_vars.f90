@@ -37,6 +37,9 @@ module X_vars
         integer, allocatable :: n(:,:)                                          !< \f$n\f$ for all modes, in total grid
         integer, allocatable :: m(:,:)                                          !< \f$m\f$ for all modes, in total grid
         integer, allocatable :: sec(:,:)                                        !< \c m or \c n for all possible modes, index and limits, in total grid
+    contains
+        !> deallocate
+        procedure :: dealloc => dealloc_mds
     end type
     
     !> vectorial perturbation type
@@ -403,6 +406,22 @@ contains
             nn_mod = product(lim_sec_X_loc(2,:)-lim_sec_X_loc(1,:)+1)
         end if
     end function set_nn_mod
+    
+    !> \public Deallocates modes variables
+    subroutine dealloc_mds(mds)
+        ! input / output
+        class(modes_type), intent(inout) :: mds                                 !< modes variables to be deallocated
+        
+        ! deallocate allocatable variables
+        call dealloc_mds_final(mds)
+    contains
+        ! Note: intent(out) automatically deallocates the variable
+        !> \private
+        subroutine dealloc_mds_final(mds)
+            ! input / output
+            type(modes_type), intent(out) :: mds                                ! modes variables to be deallocated
+        end subroutine dealloc_mds_final
+    end subroutine dealloc_mds
     
     !> \public Deallocates vectorial perturbation variables.
     subroutine dealloc_X_1(X)

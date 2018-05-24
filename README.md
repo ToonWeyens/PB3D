@@ -13,6 +13,16 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.28:
+* Partly reverted changes in 2.22 where modes were not set up anymore when jumping to solution.
+* Now, the solution modes are set up in the solution driver.
+* Furthermore, the perturbation modes, as well as the general mode variables are set up in the perturbation driver.
+* The secondary modes output in `setup_modes` is fancified.
+* Trigonometric factors are now also copied when copying a grid.
+* Implemented some of Holoborodko's formula's to calculate smoothing second finite differences in `calc_D2_smooth`.
+* The problem, however, is that the result lags behind for left-sided finite differences. The functionality is therefore not yet used and put in debug mode.
+* Fixed an important bug that was introduced in version 2.18 where the derivatives of R and Z for VMEC were not calculated to high enough accuracy.
+
 ## 2.27:
 * Fixed bug in `interp_V` where the fact that the perturbation grid encompasses the solution grid but does not necessarily coincide was forgotten.
 * This was done implementing a new procedure `trim_modes` in `X_utilities`.

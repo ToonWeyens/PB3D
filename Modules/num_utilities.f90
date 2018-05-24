@@ -16,7 +16,7 @@ module num_utilities
         &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, LCM, &
         &order_per_fun, shift_F, spline, solve_vand
 #if ldebug
-    public debug_con2dis_reg, debug_calc_coeff_fin_diff
+    public debug_con2dis_reg, debug_calc_coeff_fin_diff, calc_D2_smooth
 #endif
     
     ! global variables
@@ -2759,4 +2759,121 @@ contains
             end do
         end if
     end subroutine solve_vand
+    
+#if ldebug
+    !> \public   Calculate  second   derivative   with   smoothing  formula   by
+    !! Holoborodko, \cite holoborodko2008diff
+    !!
+    !! The formula used is
+    !!
+    !! \f$s\left(k\right) = \left[\left(2N-10\right)s\left(k+1\right) -
+    !!  \left(N+2k+3\right)s\left(k+2\right)\right]/\left(N-2k-1\right)\f$
+    !!
+    !! with \f$s\left(k>M\right) = 0\f$ and \f$\left(k=N\right) = 1\f$.
+    !!
+    !! for a given \f$N\f$.
+    !!
+    !! For \c style 1, central differences are used:
+    !!
+    !! \f$\frac{\partial^2 y}{\partial x^2} \approx \frac{1}{2^{N-3}} 
+    !!  \left(\sum_{k=1}^M \alpha_k \left(y_k + y_{-k} \right) -
+    !!  2 y_0 \sum_{k=1}^M \alpha_k \right)\f$
+    !!
+    !! and for \c style 2, backward differences:
+    !!
+    !! \f$\frac{\partial^2 y}{\partial x^2} \approx \frac{1}{2^{N-3}} 
+    !!  \left(\sum_{k=1}^M \beta_k \left(y_{-M+k} + y_{-M-k} \right) -
+    !!  2 y_{-M} \sum_{k=1}^M \beta_k \right)\f$
+    !!
+    !! with \f$\alpha_k\f$ and \f$\beta_k\f$ given by
+    !!
+    !! \f$\begin{aligned}
+    !!  \alpha_k &= \frac{4k^2 s_k}{\left(x_k-x_{-k}\right)^2} \\
+    !!  \beta_k &= \frac{4k^2 s_k}{\left(x_{-M+k}-x_{-M-k}\right)^2}
+    !! \end{aligned}\f$.
+    integer function calc_D2_smooth(fil_N,x,y,D2y,style) result(ierr)
+        character(*), parameter :: rout_name = 'calc_D2_smooth'
+        
+        ! input / output
+        integer, intent(in) :: fil_N                                            !< filter length (must be odd)
+        real(dp), intent(in) :: x(:)                                            !< input abscissa
+        real(dp), intent(in) :: y(:)                                            !< input ordinate
+        real(dp), intent(inout) :: D2y(:)                                       !< second derivative
+        integer, intent(in) :: style
+        
+        ! local variables
+        integer :: n                                                            ! size of arrays
+        integer :: id, kd                                                       ! counters
+        integer :: sym_M                                                        ! center of symmetry
+        real(dp), allocatable :: s(:)                                           ! coeffcients s
+        real(dp), allocatable :: ab(:)                                          ! alpha (style 1) or beta (style 2)
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! tests
+        if (fil_N.lt.5) then
+            ierr = 1
+            err_msg = 'filter length must be at least 5'
+            CHCKERR(err_msg)
+        end if
+        if (mod(fil_N,2).ne.1) then
+            ierr = 1
+            err_msg = 'filter length must be odd'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set size of arrays
+        sym_M = (fil_N-1)/2
+        n = size(x)
+        allocate(s(0:sym_M+1))
+        allocate(ab(sym_M))
+        
+        ! calculate coefficients s
+        s(sym_M+1) = 0._dp
+        s(sym_M) = 1._dp
+        do kd = sym_M-1,0,-1
+            s(kd) = ((2*fil_N-10)*s(kd+1) - (fil_N+2*kd+3)*s(kd+2)) / &
+                &(fil_N-2*kd-1)
+        end do
+        
+        ! calculate for all n-fil_N interior (style 1) or left (style 2) points
+        ! The second derivative at other points are set to zero.
+        select case (style)
+            case (1)                                                            ! central
+                D2y(1:sym_M) = 0._dp
+                D2y(n-sym_M+1:n) = 0._dp
+                do id = sym_M+1,n-sym_M
+                    ! calculate alpha
+                    do kd = 1,sym_M
+                        ab(kd) = 4*kd**2*s(kd)*(x(id+kd)-x(id-kd))**(-2)
+                    end do
+                    ! set D2y
+                    D2y(id) = sum(ab*(y(id+1:id+sym_M))) + &
+                        &sum(ab*y(id-1:id-sym_M:-1)) - &
+                        &2*y(id)*sum(ab)
+                end do
+            case (2)                                                            ! left
+                D2y(1:2*sym_M) = 0._dp
+                do id = 2*sym_M+1,n
+                    ! calculate beta
+                    do kd = 1,sym_M
+                        ab(kd) = 4*kd**2*s(kd)*(x(id+kd-sym_M)-x(id-kd-sym_M))**(-2)
+                    end do
+                    ! set D2y
+                    D2y(id) = sum(ab*(y(id+1-sym_M:id))) + &
+                        &sum(ab*y(id-1-sym_M:id-2*sym_M:-1)) - &
+                        &2*y(id-sym_M)*sum(ab)
+                end do
+            case default
+                err_msg = 'No style associated with '//trim(i2str(style))
+                ierr = 1
+                CHCKERR(err_msg)
+        end select
+        
+        ! rescale
+        D2y = D2y * 2._dp**(3._dp-fil_N)
+    end function calc_D2_smooth
+#endif
 end module num_utilities

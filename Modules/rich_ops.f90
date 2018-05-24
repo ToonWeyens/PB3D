@@ -29,7 +29,7 @@ contains
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_sol
         use X_ops, only: init_modes, setup_modes
-        use X_vars, only: mds_X, mds_sol
+        use X_vars, only: mds_sol
         use grid_vars, only: n_alpha, min_alpha, max_alpha, alpha
         use grid_utilities, only: calc_eqd_grid
         
@@ -137,10 +137,6 @@ contains
                         ierr = init_modes(grid_eq_B,eq)
                         CHCKERR('')
                         
-                        ! set up n and m variables for field-aligned X grid
-                        ierr = setup_modes(mds_X,grid_eq_B,grid_X_B)
-                        CHCKERR('')
-                        
                         ! set up n and m variables for sol grid
                         ierr = setup_modes(mds_sol,grid_eq_B,grid_sol)
                         CHCKERR('')
@@ -195,6 +191,7 @@ contains
                 end do
                 
                 ! clean up
+                call mds_sol%dealloc()
                 call grid_eq_B%dealloc()
                 call grid_sol%dealloc()
                 call eq%dealloc()

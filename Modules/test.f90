@@ -43,6 +43,13 @@ contains
         ! initialize ierr
         ierr = 0
         
+        call writo('Test smoothed second derivative?')
+        if (get_log(.false.)) then
+            ierr = test_calc_D2_smooth()
+            CHCKERR('')
+            call pause_prog
+        end if
+        
         call writo('Test splines?')
         if (get_log(.false.)) then
             ierr = test_splines()
@@ -92,7 +99,89 @@ contains
         end select
     end function generic_tests
     
-    !> Test splines.
+    !> Test calc_d2_smooth().
+    !!
+    !! \return ierr
+    integer function test_calc_D2_smooth() result(ierr)
+        use num_utilities, only: calc_D2_smooth
+        
+        character(*), parameter :: rout_name = 'test_calc_D2_smooth'
+        
+        ! local variables
+        integer :: kd
+        integer :: nx
+        integer :: fil_N
+        integer :: style
+        integer :: sym_M
+        real(dp), allocatable :: x(:)
+        real(dp), allocatable :: y(:,:)
+        real(dp), allocatable :: D2y(:)
+        logical :: ready
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! user input
+        call writo('testing Holoborodko''s smoothed second derivatives')
+        call lvl_ud(1)
+        
+        ! set up function
+        call writo('how many points?')
+        nx = get_int(lim_lo=20)
+        allocate(x(nx))
+        allocate(y(nx,0:2))
+        allocate(D2y(nx))
+        do kd = 1,nx
+            x(kd) = (kd-1._dp)/(nx-1._dp)                                       ! 0..1
+            y(kd,0) = sin(2*pi*x(kd))
+            y(kd,1) = 2*pi*cos(2*pi*x(kd))
+            y(kd,2) = -(2*pi)**2*sin(2*pi*x(kd))
+            !!y(kd,0) = x(kd)**3
+            !!y(kd,1) = 3._dp*x(kd)**2
+            !!y(kd,2) = 6._dp*x(kd)
+        end do
+        
+        ready = .false.
+        do while (.not.ready)
+            ! get filter length
+            call writo('filter length?')
+            fil_N = get_int(lim_lo=5,lim_hi=nx)
+            sym_M = (fil_N-1)/2
+            
+            ! get style
+            call writo('style?')
+            call lvl_ud(1)
+            call writo('1: central')
+            call writo('2: left')
+            call lvl_ud(-1)
+            style = get_int(lim_lo=1,lim_hi=2)
+            
+            ! calculate derivative
+            ierr = calc_D2_smooth(fil_N,x,y(:,0),D2y,style)
+            CHCKERR('')
+            
+            ! plot
+            call print_ex_2D(['y  ','D2y'],'',reshape([y(:,2),D2y],[nx,2]),&
+                &x=reshape(x,[nx,1]))
+            select case (style)
+                case (1)
+                    call print_ex_2D('y-D2y','',&
+                        &y(sym_M+1:nx-sym_M,2)-D2y(sym_M+1:nx-sym_M),&
+                        &x=x(sym_M+1:nx-sym_M))
+                case (2)
+                    call print_ex_2D('y-D2y','',&
+                        &y(2*sym_M+1:nx,2)-D2y(2*sym_M+1:nx),&
+                        &x=x(2*sym_M+1:nx))
+            end select
+            
+            call writo('repeat?')
+            ready = .not.get_log(.true.)
+        end do
+        
+        call lvl_ud(-1)
+    end function test_calc_D2_smooth
+    
+    !> Test spline().
     !!
     !! \return ierr
     integer function test_splines() result(ierr)

@@ -284,5 +284,11 @@ contains
         if (associated(grid_i%theta_F)) grid_o%theta_F = grid_i%theta_F
         if (associated(grid_i%zeta_E)) grid_o%zeta_E = grid_i%zeta_E
         if (associated(grid_i%zeta_F)) grid_o%zeta_F = grid_i%zeta_F
+        if (allocated(grid_i%trigon_factors)) then
+            allocate(grid_o%trigon_factors(size(grid_i%trigon_factors,1),&
+                &size(grid_i%trigon_factors,2),size(grid_i%trigon_factors,3),&
+                &size(grid_i%trigon_factors,4),size(grid_i%trigon_factors,5)))
+            grid_o%trigon_factors = grid_i%trigon_factors
+        end if
     end function copy_grid
 end module grid_vars
