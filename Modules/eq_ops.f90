@@ -3137,6 +3137,9 @@ contains
         type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
+        
+        ! initialize ierr
+        ierr = 0
 #if ldebug
         ! check the derivatives requested
         ierr = check_deriv(deriv,max_deriv,'calc_T_VC')
@@ -3980,13 +3983,12 @@ contains
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq, eq_style
+        use num_vars, only: norm_disc_prec_eq, eq_style, use_pol_flux_F
         use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias
         use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
         use VMEC_utilities, only: fourier2real
 #if ldebug
         use grid_utilities, only: trim_grid, calc_XYZ_grid
-        use num_vars, only: use_pol_flux_F
         use num_utilities, only: calc_int
 #endif
         

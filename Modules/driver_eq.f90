@@ -280,9 +280,10 @@ contains
                 CHCKERR('')
             end if
             
-            ! store vacuum variables
-            ierr = store_vac(grid_eq,eq_1,eq_2,vac)
-            CHCKERR('')
+            write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            !!! store vacuum variables
+            !!ierr = store_vac(grid_eq,eq_1,eq_2,vac)
+            !!cHCKERR('')
         end if
         
         ! set output variables

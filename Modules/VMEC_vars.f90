@@ -23,9 +23,9 @@ module VMEC_vars
         &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, jac_V_s, mnmax_V, &
         &mpol_V, ntor_V, mn_V, pres_V, rot_t_V, q_saf_V, is_asym_V, flux_t_V, &
         &flux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, &
-        &rmax_surf, aspr_V, beta_V
+        &rmax_surf, aspr_V, beta_V, B_V_sub_s, B_V_sub_c
 #if ldebug
-    public B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, J_V_sup_int
+    public B_V_c, B_V_s, J_V_sup_int
 #endif
     
     ! global variables
@@ -44,9 +44,9 @@ module VMEC_vars
     real(dp), allocatable :: L_V_s(:,:,:)                                       !< Coeff. of \f$\lambda\f$ in cosine series (HM) and norm. deriv.
     real(dp), allocatable :: jac_V_c(:,:,:)                                     !< Coeff. of \f$\mathcal{J}\f$ in sine series (HM and FM) and norm. deriv.
     real(dp), allocatable :: jac_V_s(:,:,:)                                     !< Coeff. of \f$\mathcal{J}\f$ in cosine series (HM and FM) and norm. deriv.
-#if ldebug
     real(dp), allocatable :: B_V_sub_c(:,:,:)                                   !< Coeff. of B_i in sine series (r,theta,phi) (FM) \ldebug
     real(dp), allocatable :: B_V_sub_s(:,:,:)                                   !< Coeff. of B_i in cosine series (r,theta,phi) (FM) \ldebug
+#if ldebug
     real(dp), allocatable :: B_V_c(:,:)                                         !< Coeff. of magnitude of B in sine series (HM and FM) \ldebug
     real(dp), allocatable :: B_V_s(:,:)                                         !< Coeff. of magnitude of B in cosine series (HM and FM) \ldebug
     real(dp), allocatable :: J_V_sup_int(:,:)                                   !< Integrated poloidal and toroidal current (FM) \ldebug
@@ -79,9 +79,9 @@ contains
         deallocate(L_V_s)
         deallocate(jac_V_c)
         deallocate(jac_V_s)
-#if ldebug
         deallocate(B_V_sub_c)
         deallocate(B_V_sub_s)
+#if ldebug
         deallocate(B_V_c)
         deallocate(B_V_s)
         deallocate(J_V_sup_int)

@@ -124,6 +124,10 @@ contains
                 ierr = trim_grid(grid_sol,grid_sol_trim)
                 CHCKERR('')
                 
+                ! set up modes
+                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_nm=.false.)
+                CHCKERR('')
+                
                 ! reconstruct solution on trimmed grid
                 ierr = reconstruct_PB3D_sol(mds_sol,grid_sol_trim,sol,'sol',&
                     &rich_lvl=rich_lvl-1)
@@ -305,12 +309,12 @@ contains
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         logical :: extrap = .true.                                              ! whether extrapolation is used
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: fcopy(6)                                                     ! interp_V_spline used copy
 #if ldebug
         integer :: km_id
         integer, allocatable :: norm_ext_i(:,:)                                 ! normal extent for input quantity mode combinations
         real(dp), allocatable :: r_loc_tot(:,:,:)                               ! r_i_loc and r_o_loc for all combinations
         !complex(dp), allocatable :: V_plot(:,:)                                 ! for debug plotting of interpolated V
-        logical :: fcopy                                                        ! interp_V_spline used copy
 #endif
         
         ! initialize ierr
@@ -418,38 +422,39 @@ contains
                 c_loc(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
                 c_loc(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
                 
+                fcopy = .false.
                 if (calc_this(1)) then
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(1))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                     
                     V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(2))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                     
                     V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(3))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                     
                     V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
                     V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(4))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                 end if
                 
                 if (calc_this(2)) then
                     V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(5))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                     
 #if ldebug
                     if (debug_run_driver_sol) then
@@ -479,10 +484,13 @@ contains
                     
                     V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
                     V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,fcopy)
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(6))
                     CHCKERR('')
-                    if (fcopy) n_ivs_copies = n_ivs_copies + 1
                 end if
+#if ldebug
+                n_ivs_copies = n_ivs_copies + count(fcopy)
+#endif
             end do
         end do
         
