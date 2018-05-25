@@ -13,8 +13,14 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.30:
+* Fixed important bug where `sigma` was calculated wrongly in `calc_derived_q` for VMEC when using multiple processes because the VMEC variables were wrongly used.
+* Restructered and debugged the Richardson extrapolation and jumping to solution options.
+* Fixed bug in `print_output_in` for HELENA where the array sizes for `h_H` were wrong.
+* Fixed some memory leaks.
+
 ## 2.29:
-* Fixed bug in `calc_XUQ' where for multiple MPI processes, the normal range was not limited for each mode to the current rank's range.
+* Fixed bug in `calc_XUQ` where for multiple MPI processes, the normal range was not limited for each mode to the current rank's range.
 * Fixed bug when solution modes were not calculated for Richardson restart.
 * Fixed multiple bugs that occured when not running in debug mode.
 * Vacuum is now completely bypassed, temporarily.

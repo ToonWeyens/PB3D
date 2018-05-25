@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.29
+!>  \version    2.30
 !!  \date       2012-2017
 !!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
@@ -69,9 +69,9 @@ program PB3D
     type(vac_type) :: vac                                                       ! vacuum variables
     type(sol_type) :: sol                                                       ! solution variables
     
-    !-------------------------------------------------------
-    !   Initialize some routines
-    !-------------------------------------------------------
+    !------------------------------!
+    !   Initialize some routines   !
+    !------------------------------!
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'PB3D'                                                          ! program name
@@ -82,9 +82,9 @@ program PB3D
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5
  
-    !-------------------------------------------------------
-    !   Read the user-provided input file and the VMEC output
-    !-------------------------------------------------------
+    !-----------------------------------------------------------------------!
+    !   Read the user-provided input file and the equilibrium code output   !
+    !-----------------------------------------------------------------------!
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
@@ -93,21 +93,22 @@ program PB3D
         CHCKERR
         ierr = open_input()                                                     ! open the input files
         CHCKERR
-        ierr = read_input_opts()                                                ! read input options ile
+        ierr = read_input_opts()                                                ! read input options file
         CHCKERR
-        if (rich_restart_lvl.eq.1) then
+        if (rich_restart_lvl.eq.1) then                                         ! start at first level
             ierr = read_input_eq()                                              ! read input equilibrium file
             CHCKERR
             ierr = calc_normalization_const()                                   ! set up normalization constants
             CHCKERR
             call normalize_input()                                              ! normalize the input
-        end if
-        ierr = open_output()                                                    ! open output file
-        CHCKERR
-        if (rich_restart_lvl.eq.1) then
+            ierr = open_output()                                                ! open output file
+            CHCKERR
             ierr = print_output_in('in')                                        ! print input outputs
             CHCKERR
             call dealloc_in()                                                   ! clean up input from equilibrium codes
+        else                                                                    ! restart at higher level
+            ierr = open_output()                                                ! open output file
+            CHCKERR
         end if
     end if
     ierr = broadcast_input_opts()                                               ! broadcast input options to other processors
@@ -118,9 +119,9 @@ program PB3D
     call lvl_ud(-1)
     
 #if ldebug
-    !-------------------------------------------------------
-    !   Do some tests
-    !-------------------------------------------------------
+    !-------------------!
+    !   Do some tests   !
+    !-------------------!
     if (ltest) then
         call start_time
         call writo('Generic Tests')
@@ -134,18 +135,18 @@ program PB3D
     end if
 #endif
     
-    !-------------------------------------------------------
-    !   Initialize Richardson Extrapolation Loop
-    !-------------------------------------------------------
+    !----------------------------------------------!
+    !   Initialize Richardson Extrapolation Loop   !
+    !----------------------------------------------!
     call start_time
     ierr = init_rich()
     CHCKERR
     call stop_time
     
     RICH: do while(do_rich())
-        !-------------------------------------------------------
-        !   Start Richardson level
-        !-------------------------------------------------------
+        !----------------------------!
+        !   Start Richardson level   !
+        !----------------------------!
         call start_time
         call writo('Richardson level '//trim(i2str(rich_lvl)))
         call lvl_ud(1)
@@ -156,9 +157,9 @@ program PB3D
         call lvl_ud(-1)
         
         PAR: do while(do_eq())
-            !-------------------------------------------------------
-            !   Main Driver: Equilibrium part
-            !-------------------------------------------------------
+            !-----------------------------------!
+            !   Main Driver: Equilibrium part   !
+            !-----------------------------------!
             call start_time
             call writo('Equilibrium driver'//trim(rich_info())//&
                 &trim(eq_info()))
@@ -170,9 +171,9 @@ program PB3D
             call writo('')
             call lvl_ud(-1)
             
-            !---------------------------------------------------
-            !   Main driver: Perturbation part
-            !---------------------------------------------------
+            !------------------------------------!
+            !   Main driver: Perturbation part   !
+            !------------------------------------!
             call start_time
             call writo('Perturbation driver'//trim(rich_info())//&
                 &trim(eq_info()))
@@ -186,9 +187,9 @@ program PB3D
             call lvl_ud(-1)
         end do PAR
         
-        !---------------------------------------------------
-        !   Main driver: Solution part
-        !---------------------------------------------------
+        !--------------------------------!
+        !   Main driver: Solution part   !
+        !--------------------------------!
         call start_time
         call writo('Solution driver'//trim(rich_info()))
         call lvl_ud(1)
@@ -204,16 +205,16 @@ program PB3D
         call stop_time
     end do RICH
     
-    !-------------------------------------------------------
-    !   Stop Richarson Extrapolation Loop
-    !-------------------------------------------------------
+    !---------------------------------------!
+    !   Stop Richarson Extrapolation Loop   !
+    !---------------------------------------!
     call start_time
     call term_rich()                                                            ! stop Richardson loop
     call stop_time
     
-    !-------------------------------------------------------
-    !   Clean up
-    !-------------------------------------------------------
+    !--------------!
+    !   Clean up   !
+    !--------------!
     call writo('Clean up')
     call lvl_ud(1)
     if (eq_style.eq.2) call eq_2%dealloc()

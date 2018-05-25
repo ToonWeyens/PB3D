@@ -203,6 +203,10 @@ contains
                     &X_sol)
                 CHCKERR('')
                 
+                ! clean up
+                call X_rdst%dealloc()
+                call grid_X_rdst%dealloc()
+                
                 call lvl_ud(-1)
             case (2)                                                            ! solution
                 ! user output

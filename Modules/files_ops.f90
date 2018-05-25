@@ -561,7 +561,7 @@ contains
         full_output_name = prog_name//'_'//trim(output_name)//'.txt'
         
         ! actions depending on Richardson restart level and program style
-        if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then
+        if (rich_restart_lvl.gt.1 .and. prog_style.eq.1) then                   ! PB3D restart
             ! append to existing file
             open(output_i,FILE=trim(full_output_name),STATUS='old',&
                 &POSITION='append',IOSTAT=ierr)
@@ -570,7 +570,7 @@ contains
             ! print message
             call writo('log output file "'//trim(full_output_name)//&
                 &'" reopened at number '//trim(i2str(output_i)))
-        else
+        else                                                                    ! POST or PB3D no restart
             ! open file after wiping it
             open(output_i,FILE=trim(full_output_name),STATUS='replace',&
                 &IOSTAT=ierr)

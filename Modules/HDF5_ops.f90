@@ -1261,18 +1261,20 @@ contains
         CHCKERR('Failed to disable error printing')
         call H5Gopen_f(HDF5_i,trim(head_name_loc),head_group_id,istat)
         group_exists = istat.eq.0
+        call H5Eset_auto_f(1,ierr)
         if (group_exists .and. remove_previous_arrs_loc) then
-            write(*,*) 'group', trim(head_name_loc), 'exists'
             call H5Ldelete_f(HDF5_i,trim(head_name_loc),ierr)
             CHCKERR('Failed to delete group')
             group_exists = .false.
-            write(*,*) 'DELETED'
+#if ldebug
+            if (debug_print_HDF5_arrs) call writo('group "'//&
+                &trim(head_name_loc)//'" existed and was deleted')
+#endif
         end if
         if (.not.group_exists) then                                             ! group does not exist
             call H5Gcreate_f(HDF5_i,trim(head_name_loc),head_group_id,ierr)
             CHCKERR('Failed to create group')
         end if
-        call H5Eset_auto_f(1,ierr)
         CHCKERR('Failed to enable error printing')
         
         ! user output

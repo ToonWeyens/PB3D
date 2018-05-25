@@ -1470,7 +1470,8 @@ contains
             
             if (n_EV_prev.gt.0) then
                 ! user output
-                call writo('Set '//trim(i2str(n_EV_prev))//' vectors as guess')
+                call writo('Set '//trim(i2str(n_EV_prev))//&
+                    &' vector(s) as guess')
                 
                 ! allocate guess vectors
                 allocate(guess_vec(n_EV_prev))
