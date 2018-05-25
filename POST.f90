@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.29
+!>  \version    2.30
 !!  \date       2012-2017
 !!  \copyright  GNU Public License.
 !------------------------------------------------------------------------------!
@@ -49,9 +49,9 @@ program POST
     ! local variables
     integer :: ierr                                                             ! error
     
-    !-------------------------------------------------------
-    !   Initialize some routines
-    !-------------------------------------------------------
+    !------------------------------!
+    !   Initialize some routines   !
+    !------------------------------!
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
     prog_name = 'POST'                                                          ! program name
@@ -62,9 +62,9 @@ program POST
     call init_time()                                                            ! initialize time
     call init_HDF5()                                                            ! initialize HDF5
  
-    !-------------------------------------------------------
-    !   Read the PB3D output
-    !-------------------------------------------------------
+    !--------------------------!
+    !   Read the PB3D output   !
+    !--------------------------!
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
@@ -89,9 +89,9 @@ program POST
     call lvl_ud(-1)
     
 #if ldebug
-    !-------------------------------------------------------
-    !   Do some tests
-    !-------------------------------------------------------
+    !-------------------!
+    !   Do some tests   !
+    !-------------------!
     if (ltest) then
         call start_time
         call writo('Generic Tests')
@@ -105,9 +105,9 @@ program POST
     end if
 #endif
     
-    !-------------------------------------------------------
-    !   Main driver
-    !-------------------------------------------------------
+    !-----------------!
+    !   Main driver   !
+    !-----------------!
     call start_time
     call writo('Initializing POST')
     call lvl_ud(1)
@@ -129,9 +129,9 @@ program POST
     end do PAR
     call stop_POST()
 
-    !-------------------------------------------------------
-    !   clean up
-    !-------------------------------------------------------
+    !--------------!
+    !   clean up   !
+    !--------------!
     call writo('Clean up')
     call lvl_ud(1)
     ierr = stop_MPI()

@@ -143,17 +143,6 @@ contains
                 &grid_limits=X_limits)
             CHCKERR('')
             
-            ! grid_X_B
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    grid_X_B => grid_X
-                case (2)                                                        ! HELENA
-                    allocate(grid_X_B)
-                    ierr = reconstruct_PB3D_grid(grid_X_B,'X_B',&
-                        &rich_lvl=rich_lvl)
-                    CHCKERR('')
-            end select
-            
             ! initialize modes and set up
             ierr = init_modes(grid_eq,eq_1)
             CHCKERR('')

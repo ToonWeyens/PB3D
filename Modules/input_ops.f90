@@ -1169,7 +1169,9 @@ contains
     !!  BC_style, \c EV_BC, \c EV_BC
     !!
     !! \return ierr
-    integer function print_output_in(data_name) result(ierr)
+    integer function print_output_in(data_name,remove_previous_arrs) &
+        &result(ierr)
+        
         use num_vars, only: eq_style, rho_style, prog_version, use_pol_flux_E, &
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
@@ -1201,6 +1203,7 @@ contains
         
         ! input / output
         character(len=*), intent(in) :: data_name                               !< name under which to store
+        logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
         type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
@@ -1594,7 +1597,7 @@ contains
                 allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
                 allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
                 in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [nchi,n_r_eq,4]
+                in_1D_loc%loc_i_max = [nchi,n_r_eq,3]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
                 allocate(in_1D_loc%p(3*nchi*n_r_eq))
@@ -1636,7 +1639,8 @@ contains
             &EV_style*1._dp,EV_BC]
         
         ! write
-        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name))
+        ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name),&
+            &remove_previous_arrs=remove_previous_arrs)
         CHCKERR('')
         
         ! clean up

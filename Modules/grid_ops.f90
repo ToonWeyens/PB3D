@@ -741,6 +741,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! output
+        call writo(trim(i2str(size(r_F_sol)))//' normal  points')
+        
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
                 ! create grid

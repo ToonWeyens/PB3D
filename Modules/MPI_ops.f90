@@ -174,19 +174,26 @@ contains
 #if ldebug
         ! information about allocated variables
         if (n_alloc_discs.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_discs = '//trim(i2str(n_alloc_discs)))
+            &', n_alloc_discs = '//trim(i2str(n_alloc_discs)),&
+            &persistent=.true.)
         if (n_alloc_grids.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_grids = '//trim(i2str(n_alloc_grids)))
+            &', n_alloc_grids = '//trim(i2str(n_alloc_grids)),&
+            &persistent=.true.)
         if (n_alloc_eq_1s.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_eq_1s = '//trim(i2str(n_alloc_eq_1s)))
+            &', n_alloc_eq_1s = '//trim(i2str(n_alloc_eq_1s)),&
+            &persistent=.true.)
         if (n_alloc_eq_2s.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_eq_2s = '//trim(i2str(n_alloc_eq_2s)))
+            &', n_alloc_eq_2s = '//trim(i2str(n_alloc_eq_2s)),&
+            &persistent=.true.)
         if (n_alloc_X_1s.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_X_1s = '//trim(i2str(n_alloc_X_1s)))
+            &', n_alloc_X_1s = '//trim(i2str(n_alloc_X_1s)),&
+            &persistent=.true.)
         if (n_alloc_X_2s.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_X_2s = '//trim(i2str(n_alloc_X_2s)))
+            &', n_alloc_X_2s = '//trim(i2str(n_alloc_X_2s)),&
+            &persistent=.true.)
         if (n_alloc_sols.ne.0) call writo('For rank '//trim(i2str(rank))//&
-            &', n_alloc_sols = '//trim(i2str(n_alloc_sols)))
+            &', n_alloc_sols = '//trim(i2str(n_alloc_sols)),&
+            &persistent=.true.)
         
         ! information about synchronization of wait_MPI
         ierr = get_ser_var([n_waits],ser_n_waits) 

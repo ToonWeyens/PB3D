@@ -1754,8 +1754,8 @@ contains
         write(HEL_export_i,"(A)") "!----- General Parameters -----"
         write(HEL_export_i,"(A)") "&INDATA"
         write(HEL_export_i,"(A)") "MGRID_FILE = 'NONE',"
-        write(HEL_export_i,"(A)") "PRECON_TYPE = 'NONE'"
-        write(HEL_export_i,"(A)") "PREC2D_THRESHOLD = 3.E-8"
+        write(HEL_export_i,"(A)") "PRECON_TYPE = 'GMRES'"
+        write(HEL_export_i,"(A)") "PREC2D_THRESHOLD = 1.E-9"
         write(HEL_export_i,"(A)") "DELT = 1.00E+00,"
         write(HEL_export_i,"(A)") "NS_ARRAY = 19, 39, 79, 159, 319"
         write(HEL_export_i,"(A)") "LRFP = F"
@@ -1764,8 +1764,8 @@ contains
         write(HEL_export_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))                ! -NTOR .. NTOR
         write(HEL_export_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))             ! 0 .. MPOL-1
         write(HEL_export_i,"(A)") "TCON0 = 1"
-        write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-10, 1.E-14, &
-            &2.000E-18, "
+        write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-8, 1.E-10, &
+            &5.000E-18,"
         write(HEL_export_i,"(A)") "NITER = 100000,"
         write(HEL_export_i,"(A)") "NSTEP = 200,"
         write(HEL_export_i,"(A)") "NFP = "//trim(i2str(nfp))
@@ -4321,7 +4321,8 @@ contains
                 allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
                 do id = 2,3                                                     ! only angular V components count for e_alpha
                     ierr = fourier2real(&
-                        &B_V_sub_c(:,:,id),B_V_sub_s(:,:,id),&
+                        &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
+                        &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
                         &grid_eq%trigon_factors,B_V(:,:,:,id),&
                         &[.true.,is_asym_V])
                     CHCKERR('')
@@ -4456,6 +4457,7 @@ contains
             
             ! clean up
             nullify(ang_par_F)
+            call grid_trim%dealloc()
             
             call lvl_ud(-1)
             call writo('Testing done')

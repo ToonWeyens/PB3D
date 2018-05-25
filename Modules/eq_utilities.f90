@@ -946,15 +946,25 @@ contains
     
     !> If this equilibrium job should be done, also increment \c eq_job_nr.
     logical function do_eq()
-        use num_vars, only: eq_jobs_lims, eq_job_nr
+        use num_vars, only: eq_jobs_lims, eq_job_nr, rich_restart_lvl, &
+            &jump_to_sol
+        use rich_vars, only: rich_lvl
         
         ! increment equilibrium job nr.
         eq_job_nr = eq_job_nr + 1
         
-        if (eq_job_nr.le.size(eq_jobs_lims,2)) then
-            do_eq = .true.
+        if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then                ! jumping to solution for restart level
+            if (eq_job_nr.eq.1) then
+                do_eq = .true.
+            else
+                do_eq = .false.
+            end if
         else
-            do_eq = .false.
+            if (eq_job_nr.le.size(eq_jobs_lims,2)) then                         ! normal behavior, not yet at last equilibrium job
+                do_eq = .true.
+            else                                                                ! normal behavior, at last equilibrium job
+                do_eq = .false.
+            end if
         end if
     end function do_eq
     

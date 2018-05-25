@@ -82,127 +82,127 @@ contains
         ierr = calc_eqd_grid(alpha,min_alpha*pi,max_alpha*pi,excl_last=.true.)
         CHCKERR('')
         
-        ! set variables
-        if (max_it_rich.gt.1) then                                              ! only when more than one level
-            if (rich_restart_lvl.gt.1) then
-                ! user output
-                call writo('reconstructing Richardson extrapolation variables')
+        ! Richardson restart
+        if (rich_restart_lvl.gt.1) then
+            ! user output
+            call writo('reconstructing Richardson extrapolation variables')
+            call lvl_ud(1)
+            
+            call writo('Prepare general variables')
+            call lvl_ud(1)
+            
+            ! use guess
+            use_guess = .true.
+            
+            ! set up grid names
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    grid_X_name = 'X'                                           ! grids are already field-aligned
+                    grid_eq_name = 'eq'                                         ! grids are already field-aligned
+                case (2)                                                        ! HELENA
+                    grid_X_name = 'X_B'                                         ! field-aligned grid is separate
+                    grid_eq_name = 'eq_B'                                       ! field-aligned grid is separate
+            end select
+            
+            ! reconstruct field-aligned equilibrium grid (for level 1)
+            ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_name),&
+                &rich_lvl=1)
+            CHCKERR('')
+            
+            ! reconstruct solution grid
+            ierr = reconstruct_PB3D_grid(grid_sol,'sol')
+            CHCKERR('')
+            
+            ! reconstruct flux equilibrium variables
+            ierr = reconstruct_PB3D_eq_1(grid_eq_B,eq,'eq_1')
+            CHCKERR('')
+            
+            call lvl_ud(-1)
+            
+            ! loop  over all  previous Richardson  levels using  rich_lvl as
+            ! counter
+            do rich_lvl = 1,rich_restart_lvl-1
+                call writo('Prepare variables for Richardson level '//&
+                    &trim(i2str(rich_lvl)))
                 call lvl_ud(1)
                 
-                call writo('Prepare general variables')
-                call lvl_ud(1)
-                
-                ! use guess
-                use_guess = .true.
-                
-                ! set up grid names
-                select case (eq_style)
-                    case (1)                                                    ! VMEC
-                        grid_X_name = 'X'                                       ! grids are already field-aligned
-                        grid_eq_name = 'eq'                                     ! grids are already field-aligned
-                    case (2)                                                    ! HELENA
-                        grid_X_name = 'X_B'                                     ! field-aligned grid is separate
-                        grid_eq_name = 'eq_B'                                   ! field-aligned grid is separate
-                end select
-                
-                ! reconstruct field-aligned equilibrium grid (for level 1)
-                ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_name),&
-                    &rich_lvl=1)
+                ! reconstruct field-aligned perturbation grid
+                ierr = reconstruct_PB3D_grid(grid_X_B,trim(grid_X_name),&
+                    &rich_lvl=rich_lvl)
                 CHCKERR('')
                 
-                ! reconstruct solution grid
-                ierr = reconstruct_PB3D_grid(grid_sol,'sol')
-                CHCKERR('')
+                if (rich_lvl.eq.1) then
+                    ! initialize global n and m variables
+                    ierr = init_modes(grid_eq_B,eq)
+                    CHCKERR('')
+                    
+                    ! set up n and m variables for sol grid
+                    ierr = setup_modes(mds_sol,grid_eq_B,grid_sol)
+                    CHCKERR('')
+                end if
                 
-                ! reconstruct flux equilibrium variables
-                ierr = reconstruct_PB3D_eq_1(grid_eq_B,eq,'eq_1')
+                ! reconstruct solution
+                ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
+                    &rich_lvl=rich_lvl)
                 CHCKERR('')
                 
                 call lvl_ud(-1)
                 
-                ! loop  over all  previous Richardson  levels using  rich_lvl as
-                ! counter
-                do rich_lvl = 1,rich_restart_lvl-1
-                    call writo('Prepare variables for Richardson level '//&
-                        &trim(i2str(rich_lvl)))
-                    call lvl_ud(1)
+                call writo('Recreate Richardson variables')
+                call lvl_ud(1)
+                
+                ! set x_axis_rich
+                if (rich_lvl.eq.1) then
+                    ! set up n_par_X for first rich_lvl
+                    n_par_X = grid_X_B%n(1)
                     
-                    ! reconstruct field-aligned perturbation grid
-                    ierr = reconstruct_PB3D_grid(grid_X_B,trim(grid_X_name),&
-                        &rich_lvl=rich_lvl)
-                    CHCKERR('')
-                    
-                    if (rich_lvl.eq.1) then
-                        ! initialize global n and m variables
-                        ierr = init_modes(grid_eq_B,eq)
-                        CHCKERR('')
-                        
-                        ! set up n and m variables for sol grid
-                        ierr = setup_modes(mds_sol,grid_eq_B,grid_sol)
-                        CHCKERR('')
+                    ! check it
+                    if (n_par_X.eq.min_n_par_X) then
+                        ! set x_axis_rich
+                        x_axis_rich(1,:) = min_n_par_X
+                    else
+                        ierr = 1
+                        err_msg = 'Saved variables started with &
+                            &min_n_par_X = '//trim(i2str(n_par_X))//&
+                            &' whereas here '//trim(i2str(min_n_par_X))//&
+                            &' is specified'
+                        CHCKERR(err_msg)
                     end if
-                    
-                    ! reconstruct solution
-                    ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
-                        &rich_lvl=rich_lvl)
-                    CHCKERR('')
-                    
-                    call lvl_ud(-1)
-                    
-                    call writo('Recreate Richardson variables')
-                    call lvl_ud(1)
+                else
+                    ! update n_par_X
+                    n_par_X = n_par_X*2-1
                     
                     ! set x_axis_rich
-                    if (rich_lvl.eq.1) then
-                        ! set up n_par_X for first rich_lvl
-                        n_par_X = grid_X_B%n(1)
-                        
-                        ! check it
-                        if (n_par_X.eq.min_n_par_X) then
-                            ! set x_axis_rich
-                            x_axis_rich(1,:) = min_n_par_X
-                        else
-                            ierr = 1
-                            err_msg = 'Saved variables started with &
-                                &min_n_par_X = '//trim(i2str(n_par_X))//&
-                                &' whereas here '//trim(i2str(min_n_par_X))//&
-                                &' is specified'
-                            CHCKERR(err_msg)
-                        end if
-                    else
-                        ! update n_par_X
-                        n_par_X = n_par_X*2-1
-                        
-                        ! set x_axis_rich
-                        x_axis_rich(rich_lvl,:) = x_axis_rich(rich_lvl-1,:)*2-1
-                    end if
-                    
-                    ! calculate Richardson extrapolation
-                    call calc_rich_ex(sol%val)
-                    
-                    ! update error variables
-                    call check_conv()
-                    
-                    ! clean up
-                    call grid_X_B%dealloc()
-                    call sol%dealloc()
-                    
-                    call lvl_ud(-1)
-                end do
+                    x_axis_rich(rich_lvl,:) = x_axis_rich(rich_lvl-1,:)*2-1
+                end if
+                
+                ! calculate Richardson extrapolation
+                call calc_rich_ex(sol%val)
+                
+                ! update error variables
+                call check_conv()
                 
                 ! clean up
-                call mds_sol%dealloc()
-                call grid_eq_B%dealloc()
-                call grid_sol%dealloc()
-                call eq%dealloc()
-                
-                ! set rich_lvl
-                rich_lvl = rich_restart_lvl
+                call grid_X_B%dealloc()
+                call sol%dealloc()
                 
                 call lvl_ud(-1)
-                call writo('Richardson extrapolation variables reconstructed')
-            end if
+            end do
             
+            ! clean up
+            call mds_sol%dealloc()
+            call grid_eq_B%dealloc()
+            call grid_sol%dealloc()
+            call eq%dealloc()
+            
+            ! set rich_lvl
+            rich_lvl = rich_restart_lvl
+            
+            call lvl_ud(-1)
+            call writo('Richardson extrapolation variables reconstructed')
+        end if
+        
+        if (max_it_rich.gt.1) then                                              ! only when more than one level
             call writo('Maximum number of iterations: '//&
                 &trim(i2str(max_it_rich)))
             call writo('Tolerance requested: '//trim(r2strt(tol_rich)))
@@ -342,6 +342,9 @@ contains
         ! initialize ierr
         ierr = 0
         
+        ! set use_guess to .false. if user sets no_guess
+        if (no_guess) use_guess = .false.
+        
         ! Calculate  total  number  of  parallel  points  for  the  solution  in
         ! Richardson loops
         if (rich_lvl.eq.1) then
@@ -359,42 +362,39 @@ contains
         if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
             call writo('Jumping straight to solution, no need to divide into &
                 &equilibrium jobs')
-            n_div = 1
-        else
-            ! Get local  n_par_X to divide  the equilibrium jobs. Note  that the
-            ! average  size of  eq_2  variables for  all  processes together  is
-            ! n_r_eq,  times the  number of  field lines,  the size  due to  the
-            ! dimensions  corresponding to  the derivatives,  and the  number of
-            ! variables (see  subroutine 'calc_memory_eq'  and 'calc_memory_X'),
-            ! while it is n_r_sol for the X_1 variables.
-            var_size_without_par(1) = n_r_eq
-            var_size_without_par(2) = n_r_sol
-            var_size_without_par = var_size_without_par * n_alpha
-            select case (eq_style)
-                case (1)                                                        ! VMEC
-                    ! divide equilibrium jobs
-                    ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
-                        &n_div)
-                    CHCKERR('')
-                case (2)                                                        ! HELENA
-                    ! divide equilibrium jobs
-                    ! Note: calculations  for first Richardson level  have to be
-                    ! done with a  single job, as this is  the calculation where
-                    ! the variables are calculated  that are interpolated in all
-                    ! levels.
-                    ierr = divide_eq_jobs(nchi,var_size_without_par,n_div,&
-                        &n_div_max=1,range_name='poloidal points in the &
-                        &axisymmetric HELENA cross-section')                    ! everything is tabulated on nchi poloidal points
-                    CHCKERR('')
-            end select
+            
+            return
         end if
+        
+        ! Get  local n_par_X  to  divide  the equilibrium  jobs.  Note that  the
+        ! average size of  eq_2 variables for all processes  together is n_r_eq,
+        ! times  the number  of  field lines,  the size  due  to the  dimensions
+        ! corresponding to  the derivatives,  and the  number of  variables (see
+        ! subroutine 'calc_memory_eq' and 'calc_memory_X'),  while it is n_r_sol
+        ! for the X_1 variables.
+        var_size_without_par(1) = n_r_eq
+        var_size_without_par(2) = n_r_sol
+        var_size_without_par = var_size_without_par * n_alpha
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! divide equilibrium jobs
+                ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
+                    &n_div)
+                CHCKERR('')
+            case (2)                                                            ! HELENA
+                ! divide equilibrium jobs
+                ! Note: calculations for first Richardson  level have to be done
+                ! with  a single  job,  as  this is  the  calculation where  the
+                ! variables are calculated that are interpolated in all levels.
+                ierr = divide_eq_jobs(nchi,var_size_without_par,n_div,&
+                    &n_div_max=1,range_name='poloidal points in the &
+                    &axisymmetric HELENA cross-section')                        ! everything is tabulated on nchi poloidal points
+                CHCKERR('')
+        end select
         
         ! calculate equilibrium job limits
         ierr = calc_eq_jobs_lims(n_par_X_loc,n_div)
         CHCKERR('')
-        
-        ! set use_guess to .false. if user sets no_guess
-        if (no_guess) use_guess = .false.
     end function start_rich_lvl
     
     !> Stop a Richardson level.
