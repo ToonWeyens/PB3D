@@ -746,8 +746,8 @@ contains
     !! new  file  to  translate  toroidal  magnetic  field  ripple  to  position
     !! perturbation.
     !!
-    !! \note Meaning of the indices of \c B_F, \c B_F_loc:
-    !!  - <tt>(pol modes, cos/sin)</tt> for \c B_F_loc
+    !! \note Meaning of the indices of \c B_F, \c B_F_dum:
+    !!  - <tt>(pol modes, cos/sin)</tt> for \c B_F_dum
     !!  - <tt>(tor_modes, pol modes, cos/sin (m theta), R/Z)</tt> for \c B_F
     integer function create_VMEC_input(grid_eq,eq_1) result(ierr)
         use eq_vars, only: pres_0, R_0, psi_0, B_0, vac_perm
@@ -766,6 +766,9 @@ contains
         use files_utilities, only: skip_comment, count_lines
         use EZspline_obj
         use EZspline
+#if ldebug
+        use num_vars, only: ltest
+#endif
         
         character(*), parameter :: rout_name = 'create_VMEC_input'
         
@@ -775,7 +778,7 @@ contains
         
         ! local variables
         type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, jd, kd, ld                                               ! counters
         integer :: n_B                                                          ! nr. of points in Fourier series
         integer :: nfp                                                          ! scale factor for toroidal mode numbers
         integer :: tot_nr_pert                                                  ! total number of perturbations combinations (N,M)
@@ -794,6 +797,7 @@ contains
         integer :: nr_m_max                                                     ! maximum nr. of poloidal mode numbers
         integer :: ncurr                                                        ! ncurr VMEC flag (0: prescribe iota, 1: prescribe tor. current)
         integer :: bcs(2,2)                                                     ! boundary conditions
+        integer :: m_range(2)                                                   ! range in poloidal modes
         integer, allocatable :: n_pert(:)                                       ! tor. mode numbers and pol. mode numbers for each of them
         integer, allocatable :: n_pert_copy(:)                                  ! copy of n_pert, for sorting
         integer, allocatable :: piv(:)                                          ! pivots for sorting
@@ -816,7 +820,6 @@ contains
         real(dp) :: mult_fac                                                    ! global multiplication factor
         real(dp) :: prop_B_tor_smooth                                           ! smoothing of prop_B_tor_interp via Fourier transform
         real(dp) :: RZ_B_0(2)                                                   ! origin of R and Z of boundary
-        real(dp) :: loc_F(0:1,2)                                                ! local trigonometric variable for holding cos and sin
         real(dp) :: s_VJ(99)                                                    ! normal coordinate s for writing
         real(dp) :: pres_VJ(99,0:1)                                             ! pressure for writing
         real(dp) :: rot_T_V(99)                                                 ! rotational transform for writing
@@ -847,7 +850,10 @@ contains
         real(dp), allocatable :: delta_copy(:,:,:)                              ! copy of delta, for sorting
         real(dp), allocatable :: BH_0(:,:)                                      ! R and Z at unperturbed bounday
         real(dp), allocatable :: B_F(:,:,:,:)                                   ! cos and sin Fourier components
-        real(dp), allocatable :: B_F_loc(:,:)                                   ! Local B_F
+        real(dp), allocatable :: B_F_copy(:,:,:,:)                              ! copy of B_F
+        real(dp), allocatable :: B_F_dum(:,:)                                   ! dummy B_F
+        real(dp), allocatable :: B_F_dum2(:,:)                                  ! other dummy B_F
+        real(dp), allocatable :: B_F_dum3(:,:)                                  ! other dummy B_F
         real(dp), allocatable :: theta_B(:)                                     ! geometric pol. angle
         real(dp), allocatable :: theta_geo(:,:,:)                               ! geometric pol. angle, for plotting
         real(dp), allocatable :: prop_B_tor(:,:)                                ! proportionality between delta B_tor and delta_norm
@@ -956,7 +962,6 @@ contains
         else                                                                    ! asymmetric (so nchi is aumented by one)
             n_B  = nchi-1                                                       ! -1 because of overlapping points at 0
         end if
-        nr_m_max = (n_B-1)/2
         allocate(BH_0(n_B,2))                                                   ! HELENA coords (no overlap at 0)
         allocate(theta_B(n_B))                                                  ! geometrical poloidal angle at boundary (overlap at 0)
         if (ias.eq.0) then                                                      ! symmetric
@@ -980,6 +985,25 @@ contains
             &trim(r2str(RZ_B_0(2)))//'m)')
         call lvl_ud(-1)
         
+#if ldebug
+        if (ltest) then
+            call writo('Test with circular tokamak?')
+            call lvl_ud(1)
+            if(get_log(.false.)) then
+                call writo('Testing with circular tokamak:')
+                call lvl_ud(1)
+                call writo('R = 3/2 + 1/2 cos(θ)')
+                call writo('Z =       1/2 sin(θ)')
+                call writo('with θ equidistant')
+                call lvl_ud(-1)
+                theta_B = [((id-1._dp)/n_B*2*pi,id=1,n_B)]
+                BH_0(:,1) = 1.5_dp + 0.5*cos(theta_B)
+                BH_0(:,2) = 0.5*sin(theta_B)
+            end if
+            call lvl_ud(-1)
+        end if
+#endif
+        
         ! plot with HDF5
         allocate(theta_geo(grid_eq%n(1),1,grid_eq%loc_n_r))
         do kd = 1,grid_eq%loc_n_r
@@ -998,11 +1022,6 @@ contains
             &descr='geometric poloidal angle used to create the VMEC &
             &input file')
         deallocate(XYZ_plot)
-        
-        !!! TEMPORARILY
-        !!write(*,*) 'TEMPORARILY CIRCULAR TOKAMAK !!!!!!!!!!!'
-        !!BH_0(:,1) = 1.5_dp + 0.5*cos(theta_B)
-        !!BH_0(:,2) = 0.5*sin(theta_B)
         
         ! plot R and Z
         plot_name(1) = 'RZ'
@@ -1055,7 +1074,7 @@ contains
         
         ! get input about equilibrium perturbation
         ! Note: negative  M values will  be converted  to negative N  values and
-        ! Possibly negative delta's.
+        ! Possibly negative delta's at the end.
         call writo('Do you want to perturb the equilibrium?')
         pert_eq = get_log(.false.)
         
@@ -1150,8 +1169,7 @@ contains
                     &get_real(lim_lo=0._dp,lim_hi=1._dp)
                 
                 ! calculate NUFFT
-                ierr = nufft(theta_B,prop_B_tor_interp,&
-                    &prop_B_tor_interp_F)
+                ierr = nufft(theta_B,prop_B_tor_interp,prop_B_tor_interp_F)
                 CHCKERR('')
                 deallocate(prop_B_tor_interp)
                 
@@ -1348,7 +1366,7 @@ contains
             
             ! set up n, m and delta
             allocate(n_pert(tot_nr_pert+1))
-            allocate(delta(tot_nr_pert+1,0:nr_m_max,2))
+            allocate(delta(tot_nr_pert+1,0:0,2))                                ! start with only M = 0
             delta = 0._dp
             nr_n = 0
             do jd = 1,tot_nr_pert
@@ -1392,13 +1410,6 @@ contains
                 ! has N = 0 been prescribed?
                 if (n_loc.eq.0) zero_N_pert = .true.
                 
-                ! possibly convert to positive M
-                if (m_loc.lt.0) then
-                    n_loc = -n_loc
-                    m_loc = -m_loc
-                    delta_loc(2) = -delta_loc(2)
-                end if
-                
                 ! bundle into n_pert
                 n_id = nr_n+1                                                   ! default new N in next index
                 do id = 1,nr_n
@@ -1408,24 +1419,44 @@ contains
                     nr_n = n_id                                                 ! increment number of N
                     n_pert(n_id) = n_loc                                        ! with value n_loc
                 end if
-                if (m_loc.gt.nr_m_max) then                                     ! enlarge delta
-                    allocate(delta_copy(tot_nr_pert+1,0:nr_m_max,2))
+                m_range = [lbound(delta,2),ubound(delta,2)]
+                if (m_loc.gt.m_range(1) .or. m_loc.lt.m_range(2)) then          ! enlarge delta
+                    allocate(delta_copy(tot_nr_pert+1,&
+                        &m_range(1):m_range(2),2))
                     delta_copy = delta
                     deallocate(delta)
-                    allocate(delta(tot_nr_pert+1,0:m_loc,2))
-                    delta(:,0:nr_m_max,:) = delta_copy
+                    allocate(delta(tot_nr_pert+1,&
+                        &min(m_range(1),m_loc):max(m_range(2),m_loc),2))
+                    delta = 0._dp
+                    delta(:,m_range(1):m_range(2),:) = delta_copy
                     deallocate(delta_copy)
-                    nr_m_max = m_loc
                 end if
                 delta(n_id,m_loc,:) = delta(n_id,m_loc,:) + delta_loc           ! and perturbation amplitude for cos and sin with value delta_loc
+                
+#if ldebug
+                if (debug_create_VMEC_input) then
+                    call writo('perturbation '//trim(i2str(jd))//&
+                        &' at position '//trim(i2str(n_id))//', adding ('//&
+                        &trim(r2strt(delta(n_id,m_loc,1)))//', '//&
+                        &trim(r2strt(delta(n_id,m_loc,2)))//') at (n,m) = ('//&
+                        &trim(i2str(n_loc))//', '//trim(i2str(m_loc))//')')
+                    call lvl_ud(1)
+                    do kd = lbound(delta,2),ubound(delta,2)
+                        call writo('delta ('//trim(i2str(kd))//') = ('//&
+                            &trim(r2strt(delta(n_id,kd,1)))//', '//&
+                            &trim(r2strt(delta(n_id,kd,2)))//')')
+                    end do
+                    call lvl_ud(-1)
+                end if
+#endif
             end do
             
             if (pert_type.eq.1 .or. pert_type.eq.3) close(HEL_pert_i)
             
             ! ask for global rescaling
-            ! Note: This  is only valid if R(theta=0) is  the place with the    
+            ! Note: This  is only valid if R(θ=0) is  the place with the    
             ! maximum perturbation
-            max_pert_on_axis = sum(delta(:,:,1))
+            max_pert_on_axis = sum(sqrt(sum(delta**2,3)))
             select case (pert_style)
                 case (1)                                                        ! plasma boundary position
                     call writo('Maximum absolute perturbation on axis: '//&
@@ -1458,9 +1489,13 @@ contains
         call lvl_ud(1)
         
         ! calculate output for unperturbed R and Z
+        nr_m_max = max(-lbound(delta,2),ubound(delta,2))                        ! maximum perturbation
+        nr_m_max = max((n_B-1)/2,nr_m_max)                                      ! correct if less than unperturbed modal content
+        if (pert_style.eq.2)  &
+            &nr_m_max = max(size(prop_B_tor_interp_F,1)-1,nr_m_max)             ! correct if less than proportionality map
         plot_name(1) = 'R_F'
         plot_name(2) = 'Z_F'
-        allocate(B_F(nr_n,0:nr_m_max,2,2))                                      ! (tor modes, pol modes, cos/sin (m theta), R/Z)
+        allocate(B_F(nr_n,-nr_m_max:nr_m_max,2,2))                              ! (tor modes, pol modes, cos/sin (m θ), R/Z)
         B_F = 0._dp
         do kd = 1,2
             ! user output
@@ -1468,24 +1503,24 @@ contains
             call lvl_ud(1)
             
             ! NUFFT
-            ierr = nufft(theta_B,BH_0(:,kd),B_F_loc,plot_name(kd))
+            ierr = nufft(theta_B,BH_0(:,kd),B_F_dum,plot_name(kd))
             CHCKERR('')
-            B_F(1,:,:,kd) = B_F_loc
+            B_F(1,0:size(B_F_dum,1)-1,:,kd) = B_F_dum
         
 #if ldebug
             if (debug_create_VMEC_input) then
-                allocate(BH_0_ALT(size(BH_0,1),size(B_F_loc,1)))
+                allocate(BH_0_ALT(size(BH_0,1),size(B_F_dum,1)))
                 
                 call writo('Comparing R or Z with reconstruction &
                     &through Fourier coefficients')
-                BH_0_ALT(:,1) = B_F_loc(1,1)
-                do id = 1,size(B_F_loc,1)-1
+                BH_0_ALT(:,1) = B_F_dum(1,1)
+                do id = 1,size(B_F_dum,1)-1
                     BH_0_ALT(:,id+1) = BH_0_ALT(:,id) + &
-                        &B_F_loc(id+1,1)*cos(id*theta_B) + &
-                        &B_F_loc(id+1,2)*sin(id*theta_B)
+                        &B_F_dum(id+1,1)*cos(id*theta_B) + &
+                        &B_F_dum(id+1,2)*sin(id*theta_B)
                 end do
                 call print_ex_2D(['orig BH','alt BH '],'',&
-                    &reshape([BH_0(:,kd),BH_0_ALT(:,size(B_F_loc,1))],&
+                    &reshape([BH_0(:,kd),BH_0_ALT(:,size(B_F_dum,1))],&
                     &[size(BH_0,1),2]),x=&
                     &reshape([theta_B],[size(BH_0,1),1]))
                 
@@ -1494,20 +1529,20 @@ contains
                     &'_F_series',BH_0_ALT,&
                     &x=reshape([theta_B],[size(BH_0,1),1]))
                 call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                    &'_F_series',size(B_F_loc,1),1,.false.)
+                    &'_F_series',size(B_F_dum,1),1,.false.)
                 
                 call writo('Making animation')
                 call print_ex_2D(['alt BH'],'TEST_'//trim(plot_name(kd))//&
                     &'_F_series_anim',BH_0_ALT,&
                     &x=reshape([theta_B],[size(BH_0,1),1]))
                 call draw_ex(['alt BH'],'TEST_'//trim(plot_name(kd))//&
-                    &'_F_series_anim',size(B_F_loc,1),1,.false.,&
+                    &'_F_series_anim',size(B_F_dum,1),1,.false.,&
                     &is_animated=.true.)
                 
                 deallocate(BH_0_ALT)
             end if
 #endif
-            deallocate(B_F_loc)
+            deallocate(B_F_dum)
             
             call lvl_ud(-1)
         end do
@@ -1525,11 +1560,13 @@ contains
             
             ! sort
             allocate(n_pert_copy(nr_n))
-            allocate(delta_copy(nr_n,0:nr_m_max,2))
+            allocate(delta_copy(nr_n,-nr_m_max:nr_m_max,2))
+            delta_copy = 0.0_dp
             n_pert_copy = n_pert(1:nr_n)
-            delta_copy = delta(1:nr_n,:,:)
+            delta_copy(:,lbound(delta,2):ubound(delta,2),:) = delta(1:nr_n,:,:)
             deallocate(n_pert); allocate(n_pert(nr_n)); n_pert = n_pert_copy
-            deallocate(delta); allocate(delta(nr_n,0:nr_m_max,2))
+            deallocate(delta); allocate(delta(nr_n,-nr_m_max:nr_m_max,2))
+            deallocate(n_pert_copy)
             allocate(piv(nr_n))
             call bubble_sort(n_pert,piv)                                        ! sort n
             do jd = 1,nr_n
@@ -1548,7 +1585,7 @@ contains
             call writo('Summary of perturbation form:')
             call lvl_ud(1)
             do jd = 1,nr_n
-                do id = 0,nr_m_max
+                do id = -nr_m_max,nr_m_max
                     if (maxval(abs(delta(jd,id,:))).lt.tol_zero) cycle          ! this mode has no amplitude
                     if (n_pert(jd).ge.0) then
                         pm(1) = '-'
@@ -1576,56 +1613,204 @@ contains
                 end do
             end do
             call lvl_ud(-1)
-        else
-            id_n_0 = 1
-        end if
-        
-        ! loop  over  all  toroidal  modes   N  and  include  the  corresponding
-        ! perturbation, consisting of terms of the form:
-        ! delta_c cos(M theta - N zeta) + delta_s sin(M theta - N zeta) = 
-        !   delta_c [cos(M theta)cos(N zeta) + sin(M theta) sin(N zeta) ] + 
-        !   delta_s [sin(M theta)cos(N zeta) - cos(M theta) sin(N zeta) ].
-        ! First, however, the delta_c and delta_s  have to be translated from an
-        ! absolute modification of the radius r = sqrt(R^2 + Z^2) to an absolute
-        ! modification of R and Z:
-        !    ΔR = delta(m) cos(m theta)
-        !    ΔZ = delta(m) sin(m theta),
-        ! which simply shifts up and down the index m by one.
-        ! Note that  for perturbation type 2  (2D map), there is  an extra shift
-        ! before.
-        pert_N: do jd = 1,nr_n
-            if (pert_eq) then
+            
+            ! loop  over all  toroidal  modes N  and  include the  corresponding
+            ! perturbation, consisting of terms of the form:
+            ! δc cos(M θ - N ζ) + δs sin(M θ - N ζ) = 
+            !   δc [cos(M θ)cos(N ζ) + sin(M θ) sin(N ζ) ] + 
+            !   δs [sin(M θ)cos(N ζ) - cos(M θ) sin(N ζ) ].
+            ! First, however, the δc and δs have to be translated from
+            ! an absolute modification  of the radius r = sqrt(R^2  + Z^2) to an
+            ! absolute modification of R and Z:
+            !    ΔR = δ(m) cos(m θ)
+            !    ΔZ = δ(m) sin(m θ),
+            ! which simply shifts up and down the index m by one.
+            ! Additionally, for perturbation type 2  (2D map), there is an extra
+            ! shift before this.
+            !
+            ! These shifts are done separately  for each toroidal mode number N,
+            ! so that  the factors cos(θ M)  and sin(θ M) are  shifted and the
+            ! resulting corresponding modal amplitudes  become δc' and δs' for
+            ! the term proportional to cos(N ζ):
+            !    δc cos(M θ) + δs sin(M θ),
+            ! and δc" and δs" for the term proportional to sin(N ζ):
+            !   -δs cos(M θ) + δc sin(M θ).
+            !
+            ! Finally recombining  the results into terms  proportional to cos(m
+            ! θ - N ζ) and sin(m θ - N ζ) then results in
+            !   (δc'+δs")/2 cos(m θ - N ζ) + (δc'-δs")/2 cos(-m θ - N ζ) +
+            !   (δs'-δc")/2 sin(m θ - N ζ) - (δs'+δc")/2 sin(-m θ - N ζ),
+            ! which  means that the  different toroidal  modes N can  be treated
+            ! independently.
+            !
+            ! Note that if  there is no shifting  at all, δc =  δc' =  δs" and
+            ! δs = δs' = -δc" and m = M, which indeed reduces to
+            !   δc cos(M θ - N ζ) + δs sin(M θ - N ζ).
+            m_range = [-nr_m_max,nr_m_max]
+            pert_N: do jd = 1,nr_n
                 ! initialize
-                allocate(B_F_loc(0:nr_m_max,2))
+                allocate(B_F_dum(-nr_m_max:nr_m_max,2))
+                allocate(B_F_dum2(-nr_m_max:nr_m_max,2))
+                allocate(B_F_dum3(-nr_m_max:nr_m_max,2))
                 
-                ! shift due to proportionality map
-                if (pert_style.eq.2) then
-                    call shift_F(delta(jd,:,:),prop_B_tor_interp_F,&
-                        &B_F_loc(:,:))
-                    delta(jd,:,:) = B_F_loc
-                end if
+                ! for R, shift due to cos(θ), for Z, shift due to sin(θ)
+                do kd = 1,2                                                     ! iterate over R (kd = 1), then Z (kd = 2)
+                    B_F_dum = 0._dp
+                    B_F_dum(1,kd) = 1._dp                                       ! cos(θ) for kd = 1, sin(θ) for kd = 2
+                    if (pert_style.eq.2) then                                   ! shift due to proportionality map
+                        B_F_dum2(0:ubound(prop_B_tor_interp_F,1),:) = &
+                            &prop_B_tor_interp_F
+                        call shift_F(m_range,m_range,m_range,&
+                            &B_F_dum,B_F_dum2,B_F_dum3)
+                        B_F_dum = B_F_dum3
+                    end if
+                    
+                    ! calculate δ' due to δc cos(M θ) + δs sin(M θ)
+                    B_F_dum2(:,1) = delta(jd,:,1)                               ! ~ cos
+                    B_F_dum2(:,2) = delta(jd,:,2)                               ! ~ sin
+                    call shift_F(m_range,m_range,m_range,&
+                        &B_F_dum,B_F_dum2,B_F_dum3)
+                    B_F_dum3 = B_F_dum3*0.5_dp
+                    !  (δc'+δs")/2 cos(m θ - N ζ)
+                    B_F(jd,:,1,kd) = B_F(jd,:,1,kd) + B_F_dum3(:,1)
+                    !  (δs'-δc")/2 sin(m θ - N ζ)
+                    B_F(jd,:,2,kd) = B_F(jd,:,2,kd) + B_F_dum3(:,2)
+                    !  (δc'-δs")/2 cos(-m θ - N ζ)
+                    B_F(jd,:,1,kd) = B_F(jd,:,1,kd) + &
+                        &B_F_dum3(nr_m_max:-nr_m_max:-1,1)
+                    ! -(δs'+δc")/2 sin(-m θ - N ζ)
+                    B_F(jd,:,2,kd) = B_F(jd,:,2,kd) - &
+                        &B_F_dum3(nr_m_max:-nr_m_max:-1,2)
+                    
+                    ! calculate δ' due to -δs cos(M θ) + δc sin(M θ)
+                    B_F_dum2(:,1) = -delta(jd,:,2)                              ! ~ cos
+                    B_F_dum2(:,2) = delta(jd,:,1)                               ! ~ sin
+                    call shift_F(m_range,m_range,m_range,&
+                        &B_F_dum,B_F_dum2,B_F_dum3)
+                    B_F_dum3 = B_F_dum3*0.5_dp
+                    !  (δc'+δs")/2 cos(m θ - N ζ)
+                    B_F(jd,:,1,kd) = B_F(jd,:,1,kd) + B_F_dum3(:,2)
+                    !  (δs'-δc")/2 sin(m θ - N ζ)
+                    B_F(jd,:,2,kd) = B_F(jd,:,2,kd) - B_F_dum3(:,1)
+                    !  (δc'-δs")/2 cos(-m θ - N ζ)
+                    B_F(jd,:,1,kd) = B_F(jd,:,1,kd) - &
+                        &B_F_dum3(nr_m_max:-nr_m_max:-1,2)
+                    ! -(δs'+δc")/2 sin(-m θ - N ζ)
+                    B_F(jd,:,2,kd) = B_F(jd,:,2,kd) - &
+                        &B_F_dum3(nr_m_max:-nr_m_max:-1,1)
+                end do
                 
-                ! for R, shift due to cos(theta)
-                loc_F(0,:) = [0._dp,0._dp]
-                loc_F(1,:) = [1._dp,0._dp]
-                call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
-                B_F(jd,:,:,1) = B_F(jd,:,:,1) + B_F_loc
-                
-                ! for Z, shift due to sin(theta)
-                loc_F(0,:) = [0._dp,0._dp]
-                loc_F(1,:) = [0._dp,1._dp]
-                call shift_F(delta(jd,:,:),loc_F,B_F_loc(:,:))
-                B_F(jd,:,:,2) = B_F(jd,:,:,2) + B_F_loc
-                
-                deallocate(B_F_loc)
-            end if
-        end do pert_N
-        
-        ! plot boundary in 3D
-        if (pert_eq) then
+                deallocate(B_F_dum)
+                deallocate(B_F_dum2)
+                deallocate(B_F_dum3)
+            end do pert_N
+            
+            allocate(B_F_copy(2*nr_n,0:nr_m_max,2,2))                           ! swap negative m for inverse n
+            allocate(n_pert_copy(2*nr_n))
+            B_F_copy = 0._dp
+            n_pert_copy = 0
+            nr_n = 0                                                            ! start at zero again
+            allocate(B_F_dum(0:nr_m_max,2))
+            pert_N_convert: do jd = 1,size(B_F,1)
+                do kd = 1,2                                                     ! loop over negative and positive ranges
+                    ! loop over R and Z
+                    do ld = 1,2
+                        ! initialize B_F dummy, then set it up
+                        B_F_dum = 0._dp
+                        if (kd.eq.1) then
+                            ! set local n for negative range: invert n and m
+                            n_loc = -n_pert(jd)
+                            B_F_dum(0:nr_m_max,1) = B_F(jd,0:-nr_m_max:-1,1,ld) ! do not invert cosine factors
+                            B_F_dum(0:nr_m_max,2) = -B_F(jd,0:-nr_m_max:-1,2,ld)! invert sine factors
+                        else
+                            ! set local n for positive range
+                            n_loc = n_pert(jd)
+                            B_F_dum(0:nr_m_max,:) = B_F(jd,0:nr_m_max,:,ld)
+                        end if
+                        B_F_dum(0,:) = B_F_dum(0,:)*0.5_dp                      ! positive and negative range share half each
+                        
+                        if (maxval(abs(B_F_dum)).gt.tol_zero) then
+                            ! bundle into n_pert
+                            n_id = nr_n+1                                       ! default new N in next index
+                            do id = 1,nr_n                                      ! check all previous, though
+                                if (n_loc.eq.n_pert_copy(id)) n_id = id
+                            end do
+                            if (n_id.gt.nr_n) then                              ! new N
+                                nr_n = n_id                                     ! increment number of N
+                                n_pert_copy(n_id) = n_loc                       ! with value n_loc
+                            end if
+#if ldebug
+                            if (debug_create_VMEC_input) then
+                                call writo('putting n = '//trim(i2str(n_loc))//&
+                                    &' in index '//trim(i2str(n_id))//':')
+                                if (kd.eq.1) then
+                                    call writo('(negative range)')
+                                else
+                                    call writo('(positive range)')
+                                end if
+                                if (ld.eq.1) then
+                                    call writo('(for R)')
+                                else
+                                    call writo('(for Z)')
+                                end if
+                                call lvl_ud(1)
+                                do id = 0,nr_m_max
+                                    if (maxval(abs(B_F_dum(id,:)))&
+                                        &.gt.tol_zero) then
+                                        call writo('B_F ('//trim(i2str(id))//&
+                                            &') = ('//&
+                                            &trim(r2strt(B_F_dum(id,1)))//&
+                                            &', '//&
+                                            &trim(r2strt(B_F_dum(id,2)))//')')
+                                    end if
+                                end do
+                                call lvl_ud(-1)
+                            end if
+#endif
+                            
+                            ! update B_F_copy
+                            B_F_copy(n_id,:,:,ld) = B_F_copy(n_id,:,:,ld) + &
+                                &B_F_dum
+                        end if
+                    end do
+                end do
+            end do pert_N_convert
+            
+            ! copy back to B_F and n_pert
+            deallocate(B_F)
+            deallocate(n_pert)
+            allocate(B_F(nr_n,0:nr_m_max,2,2))
+            allocate(n_pert(nr_n))
+            B_F = B_F_copy(1:nr_n,:,:,:)
+            n_pert = n_pert_copy(1:nr_n)
+            deallocate(B_F_copy)
+            deallocate(n_pert_copy)
+            
+            ! plot boundary in 3D
             call plot_boundary(B_F,n_pert(1:nr_n),'last_fs_pert',&
                 &plot_dim,plot_lims)
             call lvl_ud(-1)
+            
+            ! set nfp: save greatest common denominator of N into nfp, excluding
+            ! N=0
+            do jd = 2,nr_n
+                if (jd.eq.2) then
+                    nfp = n_pert(jd)
+                else
+                    nfp = GCD(nfp,n_pert(jd))
+                end if
+            end do
+            if (nfp.ne.0) then
+                n_pert = n_pert/nfp
+            else
+                nfp = 1
+            end if
+        else
+            ! set the index of N = 0 in B_F
+            id_n_0 = 1
+            
+            ! set nfp to one
+            nfp = 1
         end if
         
         ! user output
@@ -1651,25 +1836,6 @@ contains
         call writo('Generate VMEC input file "'//trim(file_name)//'"')
         call writo('This can be used for VMEC porting')
         call lvl_ud(1)
-        
-        ! set up nfp
-        if (pert_eq) then
-            ! save greatest common denominator of N into nfp, excluding N=0
-            do jd = 2,nr_n
-                if (jd.eq.2) then
-                    nfp = n_pert(jd)
-                else
-                    nfp = GCD(nfp,n_pert(jd))
-                end if
-            end do
-            if (nfp.ne.0) then
-                n_pert = n_pert/nfp
-            else
-                nfp = 1
-            end if
-        else
-            nfp = 1
-        end if
         
         ! detect whether there is stellarator symmetry
         stel_sym = .false.
@@ -1762,7 +1928,7 @@ contains
         write(HEL_export_i,"(A,L1)") "LASYM = ", .not.stel_sym
         write(HEL_export_i,"(A)") "LFREEB = F"
         write(HEL_export_i,"(A)") "NTOR = "//trim(i2str(nr_n-1))                ! -NTOR .. NTOR
-        write(HEL_export_i,"(A)") "MPOL = "//trim(i2str(rec_min_m))             ! 0 .. MPOL-1
+        write(HEL_export_i,"(A)") "MPOL = "//trim(i2str(max_n_B_output))        ! 0 .. MPOL-1
         write(HEL_export_i,"(A)") "TCON0 = 1"
         write(HEL_export_i,"(A)") "FTOL_ARRAY = 1.E-6, 1.E-6, 1.E-8, 1.E-10, &
             &5.000E-18,"
@@ -2036,7 +2202,7 @@ contains
                 end select
                 
                 ! output to file
-                do m = 0,min(size(B,1)-1,max_n_B_output)-1
+                do m = 0,min(size(B,1)-1,max_n_B_output)
                     write(temp_output_str,"(' ',A,'BC(',I4,', ',I4,') = ',&
                         &ES23.16,'   ',A,'BS(',I4,', ',I4,') = ',ES23.16)") &
                         &var_name,n_pert,m,B(m+1,1,kd), &

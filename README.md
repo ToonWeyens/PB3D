@@ -13,6 +13,17 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.31:
+* THERE WERE RATHER LARGE BUGS IN EXPORT TO VMEC, WHICH HAVE BEEN FIXED AND CHECKED.
+* Testing with circular tokamak when exporting HELENA to VMEC in `create_VMEC_input` now is a real test.
+* `nufft` does not use pspline with periodic boundary conditions any more, as this was found not to work well and introduce errors in the fft; It now uses standard not-a-knot conditions with a large overlap.
+* In `extend_grid_F`, the variable `r_E` is now set by directly copying from the input grid, and in contrast to the previous method, this also works for grids that have limits not corresponding to the absolute minimum and maximum.
+* In `driver_POST`, `divide_eq_jobs` is now called with the correct normal ranges when they don't coincide with the PB3D normal ranges.
+* Rewrote `create_VMEC_input` to correct an important bug where some modes were not correctly shifted because those that were supposed to be shifted to a negative value were just discarded.
+* This bug caused top-bottom symmetrical perturbations to be actually not symmetrical, so it might be responsible for many of the problems found previously.
+* In the calculation of toroidal differences in `calc_tor_diff`, division by zero is now explicitely avoided.
+* Changed the method to calculate maximum perturbation at midplane in `create_VMEC_input` to also include the sine factors.
+
 ## 2.30:
 * Fixed important bug where `sigma` was calculated wrongly in `calc_derived_q` for VMEC when using multiple processes because the VMEC variables were wrongly used.
 * Restructered and debugged the Richardson extrapolation and jumping to solution options.
