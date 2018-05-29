@@ -22,6 +22,7 @@ module driver_POST
     
     ! local variables
     integer :: lims_norm(2,3)                                                   !< normal \c i_limit of eq, X and sol variables
+    integer, allocatable :: dum_ser(:)                                          !< serial dummy variable
     integer :: rich_lvl_name                                                    !< either the Richardson level or zero, to append to names
     integer :: min_id(3), max_id(3)                                             !< min. and max. index of range 1, 2 and 3
     integer :: last_unstable_id                                                 !< index of last unstable EV
@@ -79,7 +80,7 @@ contains
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
-            &X_grid_style
+            &X_grid_style, n_procs
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -91,7 +92,7 @@ contains
         use grid_utilities, only: calc_eqd_grid
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
-        use MPI_utilities, only: wait_MPI
+        use MPI_utilities, only: wait_MPI, get_ser_var
         
         character(*), parameter :: rout_name = 'init_POST'
         
@@ -215,6 +216,7 @@ contains
             &X_limits=lims_norm(:,2),sol_limits=lims_norm(:,3),&
             &r_F_eq=grid_eq%r_F,r_F_X=r_F_X,r_F_sol=grid_sol%r_F)
         CHCKERR('')
+        write(*,*) ''
         deallocate(r_F_X)
         call writo('normal grid limits:')
         call lvl_ud(1)
@@ -416,13 +418,20 @@ contains
             end if
             
             ! set size of all variables, without parallel dimension
-            var_size_without_par(1) = n_out(3,1)
+            allocate(dum_ser(2*n_procs))
+            ierr = get_ser_var(lims_norm(:,1),dum_ser,scatter=.true.)           ! normal limits of equilibrium grid
+            CHCKERR('')
+            var_size_without_par(1) = dum_ser(2*n_procs)-dum_ser(1)+1           ! maximum range
+            ierr = get_ser_var(lims_norm(:,2),dum_ser,scatter=.true.)           ! normal limits of perturbation grid
+            CHCKERR('')
+            var_size_without_par(2) = dum_ser(2*n_procs)-dum_ser(1)+1           ! maximum range
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
-                    var_size_without_par(2) = n_out(3,2) + n_r_sol
+                    var_size_without_par(2) = var_size_without_par(2) + n_r_sol
                 case (2)                                                        ! solution
-                    var_size_without_par(2) = n_out(3,2)
+                    ! do nothing
             end select
+            deallocate(dum_ser)
             
             n_div_max = n_out(1,1)-1
             if (compare_tor_pos) n_div_max = 1

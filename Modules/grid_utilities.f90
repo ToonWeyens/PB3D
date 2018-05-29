@@ -125,10 +125,10 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits and possibly loc_r)
-        real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
+        real(dp), intent(in) :: r_F(:)                                          !< (local) \f$r_\text{F}\f$
         real(dp), intent(in) :: theta_F(:,:,:)                                  !< \f$\theta_\text{F}\f$
         real(dp), intent(in) :: zeta_F(:,:,:)                                   !< \f$\zeta_\text{F}\f$
-        real(dp), intent(inout) :: r_E(:)                                       !< \f$r_\text{E}\f$
+        real(dp), intent(inout) :: r_E(:)                                       !< (local) \f$r_\text{E}\f$
         real(dp), intent(inout) :: theta_E(:,:,:)                               !< \f$\theta_\text{E}\f$
         real(dp), intent(inout) :: zeta_E(:,:,:)                                !< \f$\zeta_\text{E}\f$
         real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
@@ -301,8 +301,8 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for possibly loc_r)
-        real(dp), intent(in) :: r_F(:)                                          !< \f$r_\text{F}\f$
-        real(dp), intent(inout) :: r_E(:)                                       !< \f$r_\text{E}\f$
+        real(dp), intent(in) :: r_F(:)                                          !< (local) \f$r_\text{F}\f$
+        real(dp), intent(inout) :: r_E(:)                                       !< (local) \f$r_\text{E}\f$
         real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
         real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
         
@@ -356,10 +356,10 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_E(:)                                          !< \f$r_\text{E}\f$
+        real(dp), intent(in) :: r_E(:)                                          !< (local) \f$r_\text{E}\f$
         real(dp), intent(in) :: theta_E(:,:,:)                                  !< \f$\theta_\text{E}\f$
         real(dp), intent(in) :: zeta_E(:,:,:)                                   !< \f$\zeta_\text{E}\f$
-        real(dp), intent(inout) :: r_F(:)                                       !< \f$r_\text{F}\f$
+        real(dp), intent(inout) :: r_F(:)                                       !< (local) \f$r_\text{F}\f$
         real(dp), intent(inout) :: theta_F(:,:,:)                               !< \f$\theta_\text{F}\f$
         real(dp), intent(inout) :: zeta_F(:,:,:)                                !< \f$\zeta_\text{F}\f$
         real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
@@ -471,8 +471,8 @@ contains
         
         ! input / output
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid (for normal local limits)
-        real(dp), intent(in) :: r_E(:)                                          !< \f$r_\text{D}\f$
-        real(dp), intent(inout) :: r_F(:)                                       !< \f$r_\text{F}\f$
+        real(dp), intent(in) :: r_E(:)                                          !< (local) \f$r_\text{E}\f$
+        real(dp), intent(inout) :: r_F(:)                                       !< (local) \f$r_\text{F}\f$
         real(dp), intent(in), optional, target :: r_E_array(:)                  !< optional array that defines mapping between two coord. systems
         real(dp), intent(in), optional, target :: r_F_array(:)                  !< optional array that defines mapping between two coord. systems
         
@@ -624,7 +624,7 @@ contains
     !> \private 2-D version
     integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
         &result(ierr)
-        use num_vars, only: min_theta_plot, max_theta_plot
+        use num_vars, only: min_theta_plot, max_theta_plot, tol_zero
         use num_utilities, only: spline, order_per_fun
         
         character(*), parameter :: rout_name = 'calc_tor_diff_2D'
@@ -688,7 +688,9 @@ contains
                         &(v_com_interp(:,3)-v_com_interp(:,1))
                     if (.not.absolute_loc) &                                    ! make it relative
                         &v_com_interp(:,2) = v_com_interp(:,2)/&
-                        &(v_com_interp(:,3)+v_com_interp(:,1))
+                        &sign(max(&
+                        &tol_zero,abs(v_com_interp(:,3)+v_com_interp(:,1))),&
+                        &v_com_interp(:,3)+v_com_interp(:,1))
                     
                     ! order
                     ierr = order_per_fun(theta_eqd,v_com_interp(:,2),&
@@ -784,7 +786,7 @@ contains
     !!  -# For VMEC, the trigonometric factors of \c grid_XYZ must be calculated
     !!  beforehand.
     !!  -# The normalization factor \c R_0  for length is taken into account and
-    !!  the output is transformed back to unnormalized values:
+    !!  the output is transformed back to unnormalized values.
     !!
     !! \return ierr
     integer function calc_XYZ_grid(grid_eq,grid_XYZ,X,Y,Z,L,R) result(ierr)
@@ -1146,6 +1148,9 @@ contains
             call writo('convert F to E coordinates')
             call lvl_ud(1)
             
+            ! set total r_E
+            grid_ext%r_E = grid_in%r_E
+            
             ! get local r_E and angular theta_E and zeta_E
             ierr = coord_F2E(grid_eq,&
                 &grid_ext%loc_r_F,grid_ext%theta_F,grid_ext%zeta_F,&
@@ -1155,11 +1160,6 @@ contains
             ! trim external grid
             ierr = trim_grid(grid_ext,grid_ext_trim)
             CHCKERR('')
-            
-            ! get total r_E from variables of trimmed grid
-            ierr = get_ser_var(grid_ext_trim%loc_r_E,r_E,scatter=.true.)
-            CHCKERR('')
-            grid_ext%r_E = r_E
             
             ! clean up
             call grid_ext_trim%dealloc()
@@ -2924,16 +2924,16 @@ contains
             CHCKERR('x is not a fundamental interval')
         end if
         
-        ! create local x and f that go from <0 to <2pi, where 1 point overlap is
-        ! enough for pspline
-        ierr = order_per_fun(x,f,x_loc,f_loc,1)
+        ! create local x and f that go from <0 to <2pi, with a royal overlap for
+        ! interpolation
+        ierr = order_per_fun(x,f,x_loc,f_loc,10)
         CHCKERR('')
         
         ! set local f and interpolate
         n_x = size(x)
         allocate(f_int(n_x))
         ierr = spline(x_loc,f_loc,[((id-1._dp)/n_x*2*pi,id=1,n_x)],f_int,&
-            &ord=3,bcs=[-1,-1])
+            &ord=3)
         CHCKERR('')
         
         ! clean up

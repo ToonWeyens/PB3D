@@ -2646,35 +2646,40 @@ contains
     !> Calculate multiplication  through shifting of fourier modes A  and B into
     !! C.
     !!
-    !! \note
-    !!  -# These all  are assumed to  have nonzero mode  numers starting from  0. Any
-    !!  negative modes are converted into positive ones.
-    !!  -# Modes that are larger than what C can hold are thrown away.
-    subroutine shift_F(A,B,C)
+    !! This works by calculating
+    !! \f$\left[\sum_A \left(\alpha_A \cos m_A \theta + \beta_A \sin m_A \theta \right)\right]
+    !! \left[\sum_B \left(\alpha_B \cos m_B \theta + \beta_B \sin m_B \theta \right)\right] = 
+    !! \left[\sum_C \left(\alpha_C \cos m_C \theta + \beta_C \sin m_C \theta \right)\right]\f$
+    !!
+    !! where the \f$\alpha\f$ and \f$\beta\f$ factors  are provide in \c A, \c B
+    !! and \c C.
+    !!
+    !! This  then boils  down to  finding the four  combinations of  cosines and
+    !! sines.
+    !!
+    !! \note Modes that are larger than what C can hold are thrown away.
+    subroutine shift_F(Al,Bl,Cl,A,B,C)
         ! input / output
-        real(dp), intent(in) :: A(0:,:)                                         !< input
-        real(dp), intent(in) :: B(0:,:)                                         !< input
-        real(dp), intent(inout) :: C(0:,:)                                      !< result
+        integer, intent(in) :: Al(2)                                            !< limits on A mode numbers
+        integer, intent(in) :: Bl(2)                                            !< limits on B mode numbers
+        integer, intent(in) :: Cl(2)                                            !< limits on C mode numbers
+        real(dp), intent(in) :: A(Al(1):Al(2),2)                                !< input
+        real(dp), intent(in) :: B(Bl(1):Bl(2),2)                                !< input
+        real(dp), intent(inout) :: C(Cl(1):Cl(2),2)                             !< result
         
         ! local variables
         integer :: i_A, i_B, i_C                                                ! indices in A, B and C
-        integer :: n_A, n_B, n_C                                                ! number of modes for A, B and C
-        
-        ! set number of modes
-        n_A = size(A,1)-1
-        n_B = size(B,1)-1
-        n_C = size(C,1)-1
         
         ! initialize C
         C = 0._dp
         
         ! loop over A
-        do i_A = 0,n_A
-            do i_B = 0,n_B
+        do i_A = Al(1),Al(2)
+            do i_B = Bl(1),Bl(2)
                 ! contribution to i_A + i_B
                 i_C = i_A + i_B
                 
-                if (i_C.le.n_C) then
+                if (i_C.ge.Cl(1) .and. i_C.le.Cl(2)) then
                     C(i_C,1) = C(i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
                     C(i_C,2) = C(i_C,2) + 0.5* A(i_A,1)*B(i_B,2)
                     C(i_C,2) = C(i_C,2) + 0.5* A(i_A,2)*B(i_B,1)
@@ -2684,16 +2689,11 @@ contains
                 ! contribution to i_A + i_B
                 i_C = i_A - i_B
                 
-                if (i_C.ge.0) then
+                if (i_C.ge.Cl(1) .and. i_C.le.Cl(2)) then
                     C(i_C,1) = C(i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
                     C(i_C,2) = C(i_C,2) - 0.5* A(i_A,1)*B(i_B,2)
                     C(i_C,2) = C(i_C,2) + 0.5* A(i_A,2)*B(i_B,1)
                     C(i_C,1) = C(i_C,1) + 0.5* A(i_A,2)*B(i_B,2)
-                else
-                    C(-i_C,1) = C(-i_C,1) + 0.5* A(i_A,1)*B(i_B,1)
-                    C(-i_C,2) = C(-i_C,2) + 0.5* A(i_A,1)*B(i_B,2)
-                    C(-i_C,2) = C(-i_C,2) - 0.5* A(i_A,2)*B(i_B,1)
-                    C(-i_C,1) = C(-i_C,1) + 0.5* A(i_A,2)*B(i_B,2)
                 end if
             end do
         end do

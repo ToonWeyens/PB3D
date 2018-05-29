@@ -14,9 +14,9 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.30
-!!  \date       2012-2017
-!!  \copyright  GNU Public License.
+!>  \version    2.31
+!!  \date       2012-2018
+!!  \copyright  GNU General Public License.
 !------------------------------------------------------------------------------!
 !>  \see
 !!  References:
