@@ -4004,6 +4004,18 @@ contains
     !! This is  an important  issue as these  derived equilbrium  quantities are
     !! important building  blocks of  the perturbed potential  energy, including
     !! the drivers of instabilities.
+    !!
+    !! The shear
+    !! --------
+    !!
+    !! The  local shear  \f$S\f$ is  calculated using  equation 3.22  from \cite
+    !! Weyens3D :
+    !!
+    !! \f$S = - \frac{1}{\mathcal{J}} \frac{\partial}{\partial \theta}
+    !!  \left(\frac{ h^{\psi\alpha}}{ h^{\psi \psi}}\right)\f$
+    !!
+    !! which  doesn't pose  any particular  problems as  there are  only angular
+    !! derivatives.
     !! 
     !! The curvature 
     !! -------------
@@ -4086,39 +4098,59 @@ contains
     !! The parallel current
     !! --------------------
     !!
-    !! The  parallel current  is calculated  with the help  of equation  3.26 of
-    !! \cite Weyens3D :
+    !! The  parallel current  is  calculated from  the shear  with  the help  of
+    !! equation 3.29 of \cite Weyens3D :
     !!
-    !! \f$\sigma = \frac{\partial B_\psi}{\partial \alpha} - 
-    !!      \frac{\partial B_\alpha}{\partial \psi} -
-    !!      \mu_0 p' \mathcal{J} \frac{B_\alpha}{B_\theta}\f$
-    !! 
-    !! where care must be taken withi the normal derivative of \f$B_\alpha\f$.
+    !! \f$\mu_0 \sigma = -\frac{1}{B_\theta} \left[
+    !!  2 \frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2} \cdot 
+    !!  \frac{\partial \left(\nabla \psi\right)}{\partial \theta} +
+    !!  \mathcal{J} \left|\nabla \psi\right|^2 S \right]\f$ .
     !!
-    !! It is found that the best  way to perform this derivative is numerically,
-    !! directly on the VMEC output, without passing through the equation for the
-    !! magnetic field covariant components:
+    !! where a  similar technique can be  used as above, for  the calculation of
+    !! the curvature: As
+    !!
+    !! \f$\frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2}
+    !!  = \frac{B_\theta \vec{e}_\alpha - B_\alpha \vec{e}_\theta}
+    !!  {\mathcal{J} \left|\nabla\psi\right|^2}\f$ ,
+    !!
+    !! The parallel derivative of \f$\nabla \psi\f$ can be rewritten in terms of
+    !! contravariant components of derivatives of covariant basis vectors:
+    !!
+    !! \f$\left\{ \begin{aligned}
+    !!  \vec{e}_\alpha  \cdot \frac{\partial \left(\nabla \psi\right)}{\partial\theta}
+    !!  = - \nabla \psi \cdot \frac{\partial \vec{e}_\theta}{\partial \alpha} \\
+    !!  \vec{e}_\theta  \cdot \frac{\partial \left(\nabla \psi\right)}{\partial\theta}
+    !!  = - \nabla \psi \cdot \frac{\partial \vec{e}_\theta}{\partial \theta} \\
+    !! \end{aligned}\right. \f$ ,
+    !!
+    !! so that the result is:
     !! 
-    !! \f$B_i = \frac{g_{i,theta}}{\mathcal{J}}\f$
+    !! \f$\frac{\nabla \psi \times \vec{B}}{\left|\nabla \psi\right|^2} \cdot 
+    !!  \frac{\partial \left(\nabla \psi\right)}{\partial \theta}
+    !!  = \frac{1}{\mathcal{J}^2} \frac{\nabla \psi}{\left|\nabla\psi\right|^2} \cdot
+    !!  \left[ g_{\alpha\theta} \frac{\partial \vec{e}_\theta}{\partial \theta}
+    !!      - g_{\theta\theta} \frac{\partial \vec{e}_\theta}{\partial \alpha} \right]
+    !! \f$ ,
+    !!
+    !! which  is given  by a  formula  similar to  the  one used  above for  the
+    !! geodesical curvature.
     !!
     !! In  debug  mode,  it  can  be  checked  whether  the  current  is  indeed
     !! divergence-free, with the help of equation 3.33 of \cite Weyens3D.
     !!
     !! \f$ -2 p' \int_{\theta_0}^\theta \mathcal{J} \kappa_g \text{d}{\theta} = 
     !!      \sigma\left(\theta\right) - \sigma_0\f$
+    !! 
+    !! and whether a  direct, naive implementation of the  parallel current from
+    !! equation 3.26  of \cite  Weyens3D agrees with  the more  accurate results
+    !! used here:
     !!
+    !! \f$\sigma = \frac{\partial B_\psi}{\partial \alpha} - 
+    !!      \frac{\partial B_\alpha}{\partial \psi} -
+    !!      \mu_0 p' \mathcal{J} \frac{B_\alpha}{B_\theta}\f$ .
     !!
-    !! The shear
-    !! --------
-    !!
-    !! The  local shear  \f$S\f$ is  calculated using  equation 3.22  from \cite
-    !! Weyens3D :
-    !!
-    !! \f$S = - \frac{1}{\mathcal{J}} \frac{\partial}{\partial \theta}
-    !!  \left(\frac{ h^{\psi\alpha}}{ h^{\psi \psi}}\right)\f$
-    !!
-    !! which  doesn't pose  any particular  problems as  there are  only angular
-    !! derivatives.
+    !! The reason why they are  generally different is that this implementation
+    !! relies on the cancellation of large terms.
     !!
     !! \note
     !!  -# If the toroidal flux is  used instead, the actual curvature obviously
@@ -4146,16 +4178,20 @@ contains
     !!      * \f$\frac{\nabla \psi \times  \vec{B}}{B^2} = 
     !!          \frac{q R^2}{R_\theta^2 + Z_\theta^2 + q^2 R^2}
     !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
+    !!  -# The expression for \f$\mathcal{J}\left|\nabla \psi\right|^2 S +
+    !!  \mu_0 \mathcal{J}B^2 \sigma\f$ for HELENA is
+    !!  \f$- 2 \frac{F}{R} \left( \frac{Z_\theta}{R} +
+    !!  \frac{Z_\theta R_{\theta\theta} - R_\theta Z_{\theta\theta}}{R_\theta^2 + Z_\theta^2} \right)\f$.
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
         use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
         use num_vars, only: norm_disc_prec_eq, eq_style, use_pol_flux_F
         use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias
         use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
-        use VMEC_utilities, only: fourier2real
 #if ldebug
         use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_utilities, only: calc_int
+        use VMEC_utilities, only: fourier2real
 #endif
         
         character(*), parameter :: rout_name = 'calc_derived_q'
@@ -4176,11 +4212,10 @@ contains
         real(dp), allocatable :: dum2(:,:)                                      ! dummy variable
         real(dp), allocatable :: de(:,:,:,:,:,:)                                ! derivs of cov. unit vector in E (space,deriv.,unitvec,output)
         real(dp), allocatable :: D_de(:,:,:,:,:)                                ! derivs of transf. matrix in E (space,deriv.,output)
-        real(dp), allocatable :: kappa_C(:,:,:,:)                               ! curvature in covariatn Cylindrical coordinates
+        real(dp), allocatable :: D1_epar(:,:,:,:)                               ! cylindrical contravariant components of alpha derivative of parallel basis vector
+        real(dp), allocatable :: D3_epar(:,:,:,:)                               ! cylindrical contravariant components of theta derivative of parallel basis vector
         real(dp), allocatable :: b_n(:,:,:,:)                                   ! basis vector for normal coordinate
         real(dp), allocatable :: b_g(:,:,:,:)                                   ! basis vector for geodesic coordinate
-        real(dp), allocatable :: B_V(:,:,:,:)                                   ! magnetic field in VMEC coordinates
-        real(dp), allocatable :: B_alpha(:,:,:)                                 ! B_alpha Flux coordinates
         ! submatrices
         ! jacobian
         real(dp), pointer :: J(:,:,:) => null()                                 ! jac
@@ -4209,6 +4244,8 @@ contains
         real(dp), allocatable :: X_plot(:,:,:)                                  ! x values of total plot
         real(dp), allocatable :: Y_plot(:,:,:)                                  ! y values of total plot
         real(dp), allocatable :: Z_plot(:,:,:)                                  ! z values of total plot
+        real(dp), allocatable :: B_V(:,:,:,:)                                   ! magnetic field in VMEC coordinates
+        real(dp), allocatable :: B_alpha(:,:,:)                                 ! B_alpha Flux coordinates
         real(dp), pointer :: D13J(:,:,:) => null()                              ! D_alpha,theta jac
         real(dp), pointer :: D23J(:,:,:) => null()                              ! D_psi,theta jac
         real(dp), pointer :: D23g13(:,:,:) => null()                            ! D_psi,theta g_alpha,theta
@@ -4268,7 +4305,11 @@ contains
         end if
         bcs_val = 0._dp
         
-        ! Calculate the normal curvature kappa_n and geodesic curvature kappa_g
+        ! Calculate the shear S
+        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+        
+        ! initialize helper  variables to  calculate the angular  derivatives of
+        ! the covariant parallel basis vector
         allocate(de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,2,3))
         allocate(D_de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,3))
         allocate(b_n(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
@@ -4279,7 +4320,7 @@ contains
         b_g = 0._dp
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! 1.  calculate the  derivatives  of covariant  unit vectors  in
+                ! calculate  the  derivatives  of   covariant  unit  vectors  in
                 ! Equilibrium coordinates
                 
                 ! d/dtheta e_theta
@@ -4302,8 +4343,8 @@ contains
                 de(:,:,:,2,2,2) = 2*eq_2%R_E(:,:,:,0,0,1)/eq_2%R_E(:,:,:,0,0,0) ! ~ e_phi
                 de(:,:,:,2,2,3) = eq_2%Z_E(:,:,:,0,0,2)                         ! ~ e_Z
                 
-                ! 2.   calculate  derivatives   of   transformation  matrix   in
-                ! Equilibrium coordinates
+                ! calculate derivatives of  transformation matrix in Equilibrium
+                ! coordinates
                 
                 ! ~d/dtheta
                 D_de(:,:,:,1,1) = eq_2%R_E(:,:,:,0,1,0)*&
@@ -4327,8 +4368,8 @@ contains
                     &eq_2%Z_E(:,:,:,0,0,1)*&
                     &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                    ! ~ e_Z
                 
-                ! 3.   Decompose  normal   and  geodesic   basis  vectors   into
-                ! contravariant cylindrical basis vectors.
+                ! Decompose normal and geodesic basis vectors into contravariant
+                ! cylindrical basis vectors.
                 
                 ! b_n
                 b_n(:,:,:,2) = (eq_2%R_E(:,:,:,0,0,1)*eq_2%Z_E(:,:,:,0,1,0) - &
@@ -4361,7 +4402,7 @@ contains
                         &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)                 ! prefactor 1/g_thetatheta
                 end do
             case (2)                                                            ! HELENA
-                ! 1.  calculate the  derivatives  of covariant  unit vectors  in
+                ! calculate  the  derivatives  of   covariant  unit  vectors  in
                 ! Equilibrium coordinates
                 allocate(Rchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
                 allocate(Zchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
@@ -4398,12 +4439,12 @@ contains
                 !de(:,1,:,2,2,2) = 0._dp                                         ! ~ e_phi
                 !de(:,1,:,2,2,3) = 0._dp                                         ! ~ e_Z
                 
-                ! 2.   calculate  derivatives   of   transformation  matrix   in
-                ! Equilibrium coordinates
+                ! calculate derivatives of  transformation matrix in Equilibrium
+                ! coordinates
                 D_de = 0._dp
                 
-                ! 3.   Decompose  normal   and  geodesic   basis  vectors   into
-                ! contravariant cylindrical basis vectors.
+                ! Decompose normal and geodesic basis vectors into contravariant
+                ! cylindrical basis vectors.
                 do jd = 1,grid_eq%n(2)
                     ! auxiliary variables
                     allocate(dum1(grid_eq%n(1),grid_eq%loc_n_r))                ! Rchi^2 + Zchi^2
@@ -4443,103 +4484,83 @@ contains
                 deallocate(Rchi, Zchi)
         end select
         
-        ! 4. double summation of de and correction with single summation of D_de
-        allocate(kappa_C(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
-        kappa_C = 0._dp
+        ! calculate cylindrical contravariant  components of angular derivatives
+        ! of covariant parallel basis vector
+        allocate(D1_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))          ! d/dalpha e_theta
+        allocate(D3_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))          ! d/dtheta e_theta
+        D1_epar = 0._dp
+        D3_epar = 0._dp
         do ld = 1,3
             do id = 1,2
                 do jd = 1,2
-                    kappa_C(:,:,:,ld) = kappa_C(:,:,:,ld) + &
+                    ! d/dalpha
+                    D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + &
                         &de(:,:,:,id,jd,ld) * &
-                        &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0) * &
+                        &eq_2%T_FE(:,:,:,c([1,1+id],.false.),0,0,0) * &         ! 1 for alpha
+                        &eq_2%T_FE(:,:,:,c([3,1+jd],.false.),0,0,0) 
+                    ! d/dtheta
+                    D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + &
+                        &de(:,:,:,id,jd,ld) * &
+                        &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0) * &         ! 3 for theta
                         &eq_2%T_FE(:,:,:,c([3,1+jd],.false.),0,0,0) 
                 end do
-                kappa_C(:,:,:,ld) = kappa_C(:,:,:,ld) + D_de(:,:,:,id,ld) * &
-                    &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0)
+                ! d/dalpha
+                D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + D_de(:,:,:,id,ld) * &
+                    &eq_2%T_FE(:,:,:,c([1,1+id],.false.),0,0,0)                 ! 1 for alpha
+                ! d/dtheta
+                D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + D_de(:,:,:,id,ld) * &
+                    &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0)                 ! 3 for theta
             end do
         end do
         
-        ! 5. dot kappa and basis vectors
+        ! calculate curvature: dot d/dtheta e_theta and basis vectors
         eq_2%kappa_n = 0._dp
         eq_2%kappa_g = 0._dp
         do ld = 1,3
-            eq_2%kappa_n = eq_2%kappa_n + kappa_C(:,:,:,ld) * b_n(:,:,:,ld)
-            eq_2%kappa_g = eq_2%kappa_g + kappa_C(:,:,:,ld) * b_g(:,:,:,ld)
+            eq_2%kappa_n = eq_2%kappa_n + D3_epar(:,:,:,ld) * b_n(:,:,:,ld)
+            eq_2%kappa_g = eq_2%kappa_g + D3_epar(:,:,:,ld) * b_g(:,:,:,ld)
         end do
         
-        ! 6. divide by |e_theta|^2
+        ! divide by |e_theta|^2
         eq_2%kappa_n = eq_2%kappa_n / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
         eq_2%kappa_g = eq_2%kappa_g / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
         
-        ! 7. possibly correct for toroidal flux
+        ! possibly correct for toroidal flux
         if (.not.use_pol_flux_F) then
             eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) * q_saf_H(kd_H,0)
             eq_2%kappa_g(:,:,kd) = eq_2%kappa_g(:,:,kd) / q_saf_H(kd_H,0)
         end if
         
-        ! Calculate the shear S
-        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+        ! calculate the parallel current
+        eq_2%sigma = 0._dp
+        do ld = 1,3
+            eq_2%sigma = eq_2%sigma + 2._dp * b_n(:,:,:,ld) * &
+                &(D3_epar(:,:,:,ld) * eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0) - &
+                &D1_epar(:,:,:,ld) * eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)) / &
+                &eq_2%jac_FD(:,:,:,0,0,0)**2
+        end do
         
-        ! Calculate the parallel current sigma
-        select case (eq_style)
-            case (1)                                                            ! VMEC
-                ! magnetic field in VMEC coordinates
-                allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
-                do id = 2,3                                                     ! only angular V components count for e_alpha
-                    ierr = fourier2real(&
-                        &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
-                        &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
-                        &grid_eq%trigon_factors,B_V(:,:,:,id),&
-                        &[.true.,is_asym_V])
-                    CHCKERR('')
-                end do
-                
-                ! transform them to Flux coord. system
-                allocate(B_alpha(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                B_alpha = 0._dp
-                do kd = 2,3
-                    B_alpha = B_alpha + B_V(:,:,:,kd) * &
-                        &eq_2%T_FE(:,:,:,c([1,kd],.false.),0,0,0)
-                end do
-                
-                !!! more elegant but less accurate alternative:
-                !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
-                    !!&eq_2%jac_FD(id,jd,:,0,0,0)
-                
-                ! derivate in normal direction
-                do jd = 1,grid_eq%n(2)
-                    do id = 1,grid_eq%n(1)
-                        ierr = spline(grid_eq%loc_r_F,B_alpha(id,jd,:),&
-                            &grid_eq%loc_r_F,eq_2%sigma(id,jd,:),&
-                            &ord=norm_disc_prec_eq,deriv=1)
-                        CHCKERR('')
-                    end do
-                end do
-                
-                ! contribute to sigma
-                eq_2%sigma = (D1g23 - g23*D1J/J)/J - eq_2%sigma
-                
-                !!! equally elegant but also inaccurate second alternative:
-                !!eq_2%sigma = (D1g23 - g23*D1J/J)/J - (D2g13 - g13*D2J/J)/J
-            case (2)                                                            ! HELENA
-                do kd = 1,grid_eq%loc_n_r
-                    eq_2%sigma(:,:,kd) = -RBphi_H(kd+grid_eq%i_min-1,1)
-                end do
-        end select
-        do kd = 1,grid_eq%loc_n_r
-            eq_2%sigma(:,:,kd) = eq_2%sigma(:,:,kd) / vac_perm - &
-                &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
-        end do 
+        ! add shear term and divide by -B_theta mu_0
+        eq_2%sigma = -(eq_2%sigma + eq_2%jac_FD(:,:,:,0,0,0) * &
+            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)*eq_2%S) * &
+            &eq_2%jac_FD(:,:,:,0,0,0)/&
+            &(vac_perm*eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0))
         
 #if ldebug
-        ! test whether -2 p' J kappa_g = D3sigma and plot kappa components
+        ! test consistency of derived quantities:
+        !   * whether -2 p' J kappa_g = D3sigma
+        !   * whether sigma agrees with naive implementation
+        ! and also plot kappa components
         if (debug_calc_derived_q) then
-            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
+            call writo('Testing consistency of derived quantities')
             call lvl_ud(1)
             
             ! trim equilibrium grid
             ierr = trim_grid(grid_eq,grid_trim,norm_id)
             CHCKERR('')
+            
+            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
+            call lvl_ud(1)
             
             ! allocate variables
             allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
@@ -4623,6 +4644,71 @@ contains
             
             ! clean up
             nullify(ang_par_F)
+            
+            call lvl_ud(-1)
+            
+            call writo('Testing whether sigma agrees with naive implementation')
+            call lvl_ud(1)
+            
+            ! Calculate the parallel current sigma with naive implementation
+            sigma_ALT = 0._dp
+            select case (eq_style)
+                case (1)                                                            ! VMEC
+                    ! magnetic field in VMEC coordinates
+                    allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
+                    do id = 2,3                                                     ! only angular V components count for e_alpha
+                        ierr = fourier2real(&
+                            &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
+                            &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
+                            &grid_eq%trigon_factors,B_V(:,:,:,id),&
+                            &[.true.,is_asym_V])
+                        CHCKERR('')
+                    end do
+                    
+                    ! transform them to Flux coord. system
+                    allocate(B_alpha(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+                    B_alpha = 0._dp
+                    do kd = 2,3
+                        B_alpha = B_alpha + B_V(:,:,:,kd) * &
+                            &eq_2%T_FE(:,:,:,c([1,kd],.false.),0,0,0)
+                    end do
+                    
+                    !!! more elegant but less accurate alternative:
+                    !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
+                        !!&eq_2%jac_FD(id,jd,:,0,0,0)
+                    
+                    ! derivate in normal direction
+                    do jd = 1,grid_eq%n(2)
+                        do id = 1,grid_eq%n(1)
+                            ierr = spline(grid_eq%loc_r_F,B_alpha(id,jd,:),&
+                                &grid_eq%loc_r_F,sigma_ALT(id,jd,:),&
+                                &ord=norm_disc_prec_eq,deriv=1)
+                            CHCKERR('')
+                        end do
+                    end do
+                    
+                    ! contribute to sigma
+                    sigma_ALT = (D1g23 - g23*D1J/J)/J - sigma_ALT
+                    
+                    !!! equally elegant but also inaccurate second alternative:
+                    !!sigma_ALT = (D1g23 - g23*D1J/J)/J - (D2g13 - g13*D2J/J)/J
+                case (2)                                                            ! HELENA
+                    do kd = 1,grid_eq%loc_n_r
+                        sigma_ALT(:,:,kd) = -RBphi_H(kd+grid_eq%i_min-1,1)
+                    end do
+            end select
+            do kd = 1,grid_eq%loc_n_r
+                sigma_ALT(:,:,kd) = sigma_ALT(:,:,kd) / vac_perm - &
+                    &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
+            end do 
+            
+            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma_2',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
+                &sigma agrees with naive calculation',output_message=.true.)
+            
+            call lvl_ud(-1)
+            
+            ! clean up
             call grid_trim%dealloc()
             
             call lvl_ud(-1)

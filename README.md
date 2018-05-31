@@ -13,6 +13,11 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.32:
+* FIXED THE PROBLEM WITH TRULY TERRIBLE PARALLEL CURRENT CALCULATION IN 3-D.
+* The parallel current is now calculated using new theory, in a way combined wihh the shear.
+* The results works for 3-D equilibria as well.
+
 ## 2.31:
 * THERE WERE RATHER LARGE BUGS IN EXPORT TO VMEC, WHICH HAVE BEEN FIXED AND CHECKED.
 * Testing with circular tokamak when exporting HELENA to VMEC in `create_VMEC_input` now is a real test.
