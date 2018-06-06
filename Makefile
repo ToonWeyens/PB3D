@@ -15,11 +15,11 @@ LIBSTELL_DIR=/opt/stellinstall/bin# 1. XPS 9360
 # HDF5
 # (from http://www.hdfgroup.org/ftp/HDF5/examples/howto/makefiles/Makefilef)
 HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 1. XPS 9360
-#HDF5_DIR=$(COMPILE_DIR)# 2. ITER
+#HDF5_DIR=/work/imas/opt/EasyBuild/software/HDF5/1.10.1-intel-2018a/lib# 2. ITER
 
 # NETCDF
 NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
-#NETCDFF_DIR=$(COMPILE_DIR)#  2. ITER
+#NETCDFF_DIR=/work/imas/opt/EasyBuild/software/netCDF/4.6.0-intel-2018a-HDF5-1.10.1/lib64#  2. ITER
 
 # PSPLINE
 PSPLINE_DIR=/opt/pspline/LINUX# 1. XPS 9360
@@ -29,12 +29,14 @@ PSPLINE_DIR=/opt/pspline/LINUX# 1. XPS 9360
 #PETSC_ARCH = debug-complex
 PETSC_ARCH = complex# 1. XPS 9360
 #PETSC_ARCH = complex# 2. ITER
-PETSC_DIR = /opt/petsc-3.7.6# 1. XPS 9360
+PETSC_DIR = /opt/petsc-3.9.2# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
+include  $(PETSC_DIR)/lib/petsc/conf/variables
 
 # SLEPC
-SLEPC_DIR=/opt/slepc-3.7.4# 1. XPS 9360
+SLEPC_DIR=/opt/slepc-3.9.1# 1. XPS 9360
 #SLEPC_DIR=$(COMPILE_DIR)# 2. ITER
+include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 
 # PB3D
 PB3D_DIR=/opt/PB3D# 1. XPS 9360
@@ -45,13 +47,13 @@ STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
 #STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
 
 # SCALAPACK
-SCALAPACK_LIB='-L/opt/scalapack-2.0.2/INSTALL/lib -lscalapack -llapack -lblas'# 1. XPS 9360
-#SCALAPACK_LIB=' ${MKLROOT}/lib/intel64/libmkl_blas95_lp64.a ${MKLROOT}/lib/intel64/libmkl_lapack95_lp64.a -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blacs_intelmpi_lp64 -liomp5 -lpthread -lm -ldl'# 2. ITER
+SCALAPACK_LIB=-L/opt/scalapack-2.0.2/INSTALL/lib -lscalapack -L/usr/lib -llapack -lblas -lopenblas# 1. XPS 9360
+#SCALAPACK_LIB=-L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blacs_intelmpi_lp64 -liomp5 -lpthread -lm -ldl# 2. ITER
 
-SCALAPACK_INC=''#1. XPS 9360
-#SCALAPACK_INC='-I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include'#2. ITER
+SCALAPACK_INC=#1. XPS 9360
+#SCALAPACK_INC=-I${MKLROOT}/include#2. ITER
 
-LIB_INTERNAL = libdfftpack.a libfoul.a
+LIB_INTERNAL=libdfftpack.a libfoul.a
 
 ##############################################################################
 #   Other variables
@@ -61,9 +63,6 @@ PB3D_version := $(shell grep 'prog_version =' Modules/num_vars.f90 | cut --compl
 ##############################################################################
 #   Include
 ##############################################################################
-include  $(PETSC_DIR)/lib/petsc/conf/variables
-include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
-
 INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   $(PETSC_FC_INCLUDES) \
   $(SLEPC_INCLUDE) \
@@ -101,10 +100,9 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   #-L$(HDF5_DIR) -lhdf5_fortran -lhdf5 \
   #-L$(NETCDFF_DIR)/lib -lnetcdff \
   #-Wl,-R$(NETCDFF_DIR)/lib \
-  -L$(PSPLINE_DIR)/lib -lpspline \
+  #-L$(PSPLINE_DIR)/lib -lpspline \
   #-L$(STRUMPACK_DIR)/lib -lstrumpack \
   #$(SCALAPACK_LIB)#2. ITER
-  ##-lm -lstdc++ -lmpi_cxx# 2. ITER
 
 LINK := $(LIB_INTERNAL) $(LINK)
 
@@ -112,14 +110,16 @@ LINK := $(LIB_INTERNAL) $(LINK)
 ##############################################################################
 #   Compiler
 ##############################################################################
-COMPILER=mpifort
+COMPILER=mpifort# 1. XPS 9360
+#COMPILER=mpiifort# 2. ITER
 #COMPILER=/opt/scorep-3.0/bin/scorep mpifort
 
 
 ##############################################################################
 #   Linker
 ##############################################################################
-LINKER=mpifort
+LINKER=mpifort# 1. XPS 9360
+#LINKER=mpiifort# 2. ITER
 #LINKER=/opt/scorep-3.0/bin/scorep mpifort
 
 
@@ -169,6 +169,19 @@ include $(OBJLIST)# Names of all the objects
 ##############################################################################
 #   Rules
 ##############################################################################
+info:
+	@echo "PETSc library path:"
+	@echo "    $(PETSC_LIB)"
+	@echo ""
+	@echo "SLEPc library path:"
+	@echo "    $(SLEPC_LIB)"
+	@echo ""
+	@echo "PETSc FC includes:"
+	@echo "    $(PETSC_FC_INCLUDES)"
+	@echo ""
+	@echo "SLEPc includes:"
+	@echo "    $(SLEPC_INCLUDE)"
+
 all:	PB3D POST
 
 PB3D:	$(ObjectFiles) $(LIB_INTERNAL) PB3D.o

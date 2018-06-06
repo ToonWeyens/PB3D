@@ -6,8 +6,6 @@
     min_r_sol               = 0.5
     max_r_sol               = 1.0
     n_r_sol                 = 500
-    norm_disc_prec_sol      = 3
-    norm_disc_prec_eq       = 5
     max_it_zero             = 500
     use_pol_flux_F          = .true.
     use_normalization       = .true.
@@ -29,7 +27,7 @@
     plot_J                  = .false.
     plot_kappa              = .false.
     matrix_SLEPC_style      = 1
-    max_it_rich             = 2
+    max_it_rich             = 1
     rich_restart_lvl        = 1
     n_theta_plot            = 50
     n_zeta_plot             = 1

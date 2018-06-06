@@ -13,6 +13,15 @@ by *Toon Weyens* (2012-2018)
 
 ## Changelog
 
+## 2.33:
+* Rewrote the runscript using python, resulting in `run.py` as a replacement for `run.sh`.
+* Put it in a separate repository.
+* Updated to new PETSc 3.9.2 and accompanying SLEPc 3.9.1.
+* Updated makefile to fix a bug that appeared with these new PETSc and SLEPc.
+* Adapted to run on the new ITER 2018 cluster.
+* Fixed a bug in HDF5 where file ID's were of the incorrect integer format.
+* Fixed important bug in `SLEPC_ops` where the variable `n_r` was not initialized when setting the boundary conditions.
+
 ## 2.32:
 * FIXED THE PROBLEM WITH TRULY TERRIBLE PARALLEL CURRENT CALCULATION IN 3-D.
 * The parallel current is now calculated using new theory, in a way combined wihh the shear.

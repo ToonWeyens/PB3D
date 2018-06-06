@@ -38,7 +38,7 @@ module HDF5_vars
     
     !> HDF5 data type, containing the information about HDF5 files.
     type, public :: HDF5_file_type                                              
-        integer :: HDF5_i                                                       !< HDF5 file handle
+        integer(HID_T) :: HDF5_i                                                !< HDF5 file handle
         integer :: XDMF_i                                                       !< XDMF file handle
         character(len=max_str_ln) :: name                                       !< name of files (without extensions ".h5" and ".xmf")
     end type HDF5_file_type

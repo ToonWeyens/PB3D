@@ -8,8 +8,9 @@
 module SLEPC_utilities
 #include <PB3D_macros.h>
 #include <wrappers.h>
+#include <slepc/finclude/slepceps.h>
 ! for slepc 3.6.0:
-#include <slepc/finclude/slepcepsdef.h>
+!#include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
 !#include <finclude/slepcepsdef.h>
     use str_utilities

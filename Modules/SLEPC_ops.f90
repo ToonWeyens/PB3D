@@ -10,8 +10,10 @@
 module SLEPC_ops
 #include <PB3D_macros.h>
 #include <wrappers.h>
+! for slepc 3.9.0:
+#include <slepc/finclude/slepceps.h>
 ! for slepc 3.6.0:
-#include <slepc/finclude/slepcepsdef.h>
+!#include <slepc/finclude/slepcepsdef.h>
 ! for slepc 3.5.3:
 !#include <finclude/slepcepsdef.h>
     use str_utilities
@@ -162,11 +164,11 @@ contains
                 call lvl_ud(1)
                 if (get_log(.true.)) then                                       ! A
                     call writo('Testing spectrum of A')
-                    ierr = setup_solver(X,A,PETSC_NULL_OBJECT,solver)
+                    ierr = setup_solver(X,A,PETSC_NULL_MAT,solver)
                     CHCKERR('')
                 else                                                            ! B
                     call writo('Testing spectrum of B')
-                    ierr = setup_solver(X,B,PETSC_NULL_OBJECT,solver)
+                    ierr = setup_solver(X,B,PETSC_NULL_MAT,solver)
                     CHCKERR('')
                 end if
                 call lvl_ud(-1)
@@ -252,8 +254,7 @@ contains
             CHCKERR('mat-mat_t failed')
             
             ! visualize the matrices
-            !!! Will have to be changed to PETSC_NULL_OPTION IN 3.8.0
-            call PetscOptionsSetValue(PETSC_NULL_OBJECT,'-draw_pause','-1',&
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS,'-draw_pause','-1',&
                 &ierr)
             CHCKERR('Failed to set option')
             call writo(trim(mat_name)//' =')
@@ -384,7 +385,7 @@ contains
         do id = 1,size(opt_args)
             option_name = opt_args(id)
             if (trim(option_name).ne.'') then
-                call PetscOptionsHasName(PETSC_NULL_OBJECT,&
+                call PetscOptionsHasName(PETSC_NULL_OPTIONS,&
                     &PETSC_NULL_CHARACTER,trim(option_name),flg,ierr)           ! Petsc 3.7.6
                 !call PetscOptionsHasName(PETSC_NULL_CHARACTER,&
                     !&trim(option_name),flg,ierr)                                ! Petsc 3.6.4
@@ -925,6 +926,8 @@ contains
     !!      in the last row.
     !! -This is done using left finite differences.
     !!
+    !! Makes use of n_r.
+    !!
     !! \return ierr
     integer function set_BC(mds,grid_sol,X,vac,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
@@ -945,7 +948,6 @@ contains
         Mat, intent(inout) :: B                                                 !< Matrix B from A X = lambda B X
         
         ! local variables
-        PetscInt :: n_r                                                         ! number of grid points of solution grid
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1327,7 +1329,7 @@ contains
         
         ! input / output
         type(X_2_type), intent(in) :: X                                         !< field-averaged perturbation variables (so only first index)
-        Mat, intent(inout) :: A, B                                              !< matrix A and B
+        Mat, intent(in) :: A, B                                                 !< matrix A and B
         EPS, intent(inout) :: solver                                            !< EV solver
         
         ! local variables
@@ -1346,7 +1348,7 @@ contains
             CHCKERR(err_msg)
         end if
         
-        !call PetscOptionsSetValue(PETSC_NULL_OBJECT,'-eps_view','-1',ierr)
+        !call PetscOptionsSetValue(PETSC_NULL_OPTION,'-eps_view','-1',ierr)
         call EPSCreate(PETSC_COMM_WORLD,solver,ierr)
         CHCKERR('EPSCreate failed')
         
@@ -1457,6 +1459,7 @@ contains
         PetscInt :: kd                                                          ! counter
         PetscInt :: n_EV_prev                                                   ! nr. of previous solutions
         PetscScalar, pointer ::  guess_vec_ptr(:)                               ! pointer to local guess_vec
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -1479,8 +1482,7 @@ contains
                 ! create vecctor guess_vec and set values
                 do kd = 1,n_EV_prev
                     ! create the vectors
-                    !call MatGetVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)    ! get compatible parallel vectors to matrix A (petsc 3.5.3)
-                    call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_OBJECT,ierr)  ! get compatible parallel vectors to matrix A (petsc 3.6.1)
+                    call MatCreateVecs(A,guess_vec(kd),PETSC_NULL_VEC,ierr)     ! get compatible parallel vectors to matrix A
                     CHCKERR('Failed to create vector')
                     
                     ! get pointer
@@ -1508,8 +1510,11 @@ contains
                 CHCKERR('Failed to set guess')
                 
                 ! destroy guess vector
-                call VecDestroy(guess_vec,ierr)                                 ! destroy guess vector
-                CHCKERR('Failed to destroy vector')
+                do kd = 1,size(guess_vec)
+                    call VecDestroy(guess_vec(kd),ierr)                         ! destroy guess vector
+                    err_msg = 'Failed to destroy guess vector '//trim(i2str(kd))
+                    CHCKERR(err_msg)
+                end do
                 deallocate(guess_vec)
             else
                 call writo('No vectors saved to use as guess')
@@ -1649,7 +1654,7 @@ contains
         Vec :: sol_vec                                                          ! solution EV parallel vector
         Vec :: err_vec                                                          ! AX - omega^2 BX
         Vec :: E_vec(2)                                                         ! AX and BX
-        PetscInt :: id                                                          ! counters
+        PetscInt :: id, jd                                                      ! counters
         PetscInt :: id_tot                                                      ! counters
         PetscInt :: one = 1                                                     ! one
         PetscInt, allocatable :: sol_vec_max_loc(:)                             ! location of sol_vec_max of this process
@@ -1758,8 +1763,8 @@ contains
         do while (id.le.max_n_EV)
             call VecPlaceArray(sol_vec,sol_vec_loc,ierr)                        ! place array local sol_vec in solution vec
             CHCKERR('Failed to place array')
-            call EPSGetEigenpair(solver,id_tot-1,sol%val(id),PETSC_NULL_OBJECT,&
-                &sol_vec,PETSC_NULL_OBJECT,ierr)                                ! get solution EV vector and value (starts at index 0)
+            call EPSGetEigenpair(solver,id_tot-1,sol%val(id),PETSC_NULL_SCALAR,&
+                &sol_vec,PETSC_NULL_VEC,ierr)                                   ! get solution EV vector and value (starts at index 0)
             CHCKERR('EPSGetEigenpair failed')
             sol%vec(:,:,id) = sol_vec_loc(:,1:size(sol%vec,2))
             call EPSComputeError(solver,id_tot-1,EPS_ERROR_RELATIVE,error,ierr) ! get error (starts at index 0) (petsc 3.6.1)
@@ -1912,8 +1917,11 @@ contains
                 CHCKERR('Failed to destroy err_vec')
                 call MatDestroy(err_mat,ierr)                                   ! destroy error matrix
                 CHCKERR('Failed to destroy err_mat')
-                call VecDestroy(E_vec,ierr)                                     ! destroy energy vector
-                CHCKERR('Failed to destroy E_vec')
+                do jd = 1,size(E_vec)
+                    call VecDestroy(E_vec(jd),ierr)                             ! destroy energy vector
+                    err_msg = 'Failed to destroy E_vec '//trim(i2str(jd))
+                    CHCKERR(err_msg)
+                end do
             else
                 ! reinitialize error string if error
                 EV_err_str = ''
@@ -1967,7 +1975,8 @@ contains
             call lvl_ud(-1)
         end if
         
-        !call EPSPrintSolution(solver,PETSC_NULL_OBJECT,ierr)
+        !!call EPSErrorView(solver,EPS_ERROR_RELATIVE,PETSC_NULL_VIEWER,ierr)
+        !!CHCKERR('Failed to print solution')
         
         call VecDestroy(sol_vec,ierr)                                           ! destroy solution vector
         CHCKERR('Failed to destroy sol_vec')

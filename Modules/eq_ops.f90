@@ -27,7 +27,7 @@ module eq_ops
     logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .true.                                   !< plot debug information for calc_derived_q()
+    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
     logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
@@ -5970,7 +5970,7 @@ contains
         
         ! setup auxilliary variables
         n_div = 0
-        mem_size = huge(1._dp)
+        mem_size = huge(1._dp)*0.49_dp
         if (rich_lvl.eq.1) then
             n_div_max_loc = (n_par_X-1)/fund_n_par
         else
