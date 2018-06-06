@@ -1,5 +1,5 @@
 program shell_mats
-#include <slepc/finclude/slepcepsdef.h>
+#include <slepc/finclude/slepceps.h>
     use slepceps
     
     implicit none
