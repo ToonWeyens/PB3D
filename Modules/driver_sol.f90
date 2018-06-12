@@ -289,6 +289,9 @@ contains
         use eq_vars, only: max_flux_F
         use num_utilities, only: c
         use sol_utilities, only: interp_V_spline
+!#if ldebug
+        !use num_vars, only: ex_plot_style
+!#endif
         
         character(*), parameter :: rout_name = 'interp_V'
         
@@ -303,7 +306,8 @@ contains
         ! local variables
         integer :: kd                                                           ! counter
         integer :: k, m                                                         ! counters for mode numbers
-        integer :: c_loc(2)                                                     ! local c for symmetric and asymmetric variables
+        integer :: c_loc_i(2)                                                   ! local input c for symmetric and asymmetric variables
+        integer :: c_loc_o(2)                                                   ! local output c for symmetric and asymmetric variables
         integer :: n_mod_tot                                                    ! total amount of modes
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
         integer :: id_lim_i(2), id_lim_o(2)                                     ! limits on total modes
@@ -422,49 +426,48 @@ contains
                         &'with calc_this = ', calc_this
 #endif
                 
-                ! set up c_loc
-                c_loc(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
-                c_loc(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
+                ! set up c_loc for input and output
+                c_loc_i(1) = c([sec_i_loc(k,4),sec_i_loc(m,4)],.true.,n_mod_X)
+                c_loc_i(2) = c([sec_i_loc(k,4),sec_i_loc(m,4)],.false.,n_mod_X)
+                c_loc_o(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
+                c_loc_o(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
                 
                 fcopy = .false.
                 if (calc_this(1)) then
-                    V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
-                    V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
+                    V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
                         &fcopy(1))
                     CHCKERR('')
                     
-                    V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
-                    V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
+                    V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
                         &fcopy(2))
                     CHCKERR('')
                     
-                    V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc(1))
-                    V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc(1))
+                    V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
                         &fcopy(3))
                     CHCKERR('')
                     
-                    V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc(1))
-                    V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc(1))
+                    V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
                         &fcopy(4))
                     CHCKERR('')
-                end if
-                
-                if (calc_this(2)) then
-                    V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
-                    V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
-                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(5))
-                    CHCKERR('')
                     
 #if ldebug
-                    if (debug_run_driver_sol) then
+                    if (debug_interp_V) then
                         !call writo('For [k,m] = ['//&
                             !&trim(i2str(sec_o_loc(k,1)))//','//&
                             !&trim(i2str(sec_o_loc(m,1)))//']:')
+                        !call lvl_ud(1)
+                        !call writo('input normal range: '//&
+                            !&trim(i2str(kdl_i(1)))//'..'//trim(i2str(kdl_i(2))))
+                        !call writo('output normal range: '//&
+                            !&trim(i2str(kdl_o(1)))//'..'//trim(i2str(kdl_o(2))))
                         !allocate(V_plot(max(size(V_i,3),size(V_o,3)),4))
                         !V_plot(1:size(V_i,3),1) = V_i(1,1,:)
                         !V_plot(1:size(V_o,3),2) = V_o(1,1,:)
@@ -483,11 +486,21 @@ contains
                         !!call print_ex_2D(['V_i','V_o'],'IM_V',&
                             !!&ip(V_plot(:,1:2)),x=rp(V_plot(:,3:4)))
                         !deallocate(V_plot)
+                        !if (ex_plot_style.eq.2) read(*,*)
+                        !call lvl_ud(-1)
                     end if
 #endif
+                end if
+                
+                if (calc_this(2)) then
+                    V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
+                    V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
+                        &fcopy(5))
+                    CHCKERR('')
                     
-                    V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc(2))
-                    V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc(2))
+                    V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
+                    V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
                         &fcopy(6))
                     CHCKERR('')
