@@ -11,7 +11,22 @@ by *Toon Weyens* (2012-2018)
 *The homepage can be found at <https://pb3d.github.io>.*
 *For example, have a look at <https://pb3d.github.io/Doxygen/html/index.html> for the documentation.*
 
+---
+
+Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary tools, among others, a user-friendly way to run the program on multiple systems:
+- Automatic support for HPC job schedulers [PBS](https://en.wikipedia.org/wiki/Portable_Batch_System) and [SLURM](https://slurm.schedmd.com/).
+- Easy parameter scans.
+- Configurable and modifiable
+
+---
+
 ## Changelog
+
+## 2.34:
+* Fixed an important bug in `interp_V` where the output secondary mode indices were wrongly used for the selection of the input `V_i`. While it is true that the mode numbers have to be equal, this is not so for the array indices.
+* Renamed Run directory to `Examples`.
+* Moved all run scripts and auxiliary scripts to the `PB3D_tools` repository.
+* `Examples` now only contains sample input files.
 
 ## 2.33:
 * Rewrote the runscript using python, resulting in `run.py` as a replacement for `run.sh`.
