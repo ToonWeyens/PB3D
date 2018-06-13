@@ -791,9 +791,10 @@ contains
     
     !> Interpolation for a quantity V using splines.
     !!
-    !! Optionally, a  variable 'was_copied'  is returned that  indicates whether
-    !! the interpolation degraded to a plain copy.
-    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,was_copied) &
+    !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
+    !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
+    !! spline interpolation (3).
+    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,ivs_stat) &
         &result(ierr)
         
         use num_utilities, only: spline
@@ -806,7 +807,7 @@ contains
         real(dp), intent(in) :: r_i(:)                                          ! input r
         real(dp), intent(in) :: r_o(:)                                          ! output r
         logical, intent(in) :: extrap                                           ! extrapolation possible
-        logical, intent(out), optional :: was_copied                            ! inerpolation degraded to copy
+        integer, intent(out), optional :: ivs_stat                              ! which method was used (1: copy, 2: linear, 3: spline)
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
@@ -834,17 +835,13 @@ contains
         end if
 #endif
         
-        ! initialize was_copied
-        if (present(was_copied)) was_copied = .false.
-        
         ! interpolate depending on normal size
         select case (size(r_i))
             case (1)                                                            ! copy directly
-                ! copy used
-                if (present(was_copied)) was_copied = .true.
                 do kd = 1,size(V_o,3)
                     V_o(:,:,kd) = V_i(:,:,1)
                 end do
+                if (present(ivs_stat)) ivs_stat = 1
             case (2:3)                                                          ! linear
                 do jd = 1,size(V_i,2)
                     do id = 1,size(V_i,1)
@@ -853,6 +850,7 @@ contains
                         CHCKERR('')
                     end do
                 end do
+                if (present(ivs_stat)) ivs_stat = 2
             case (4:)                                                           ! spline
                 do jd = 1,size(V_i,2)
                     do id = 1,size(V_i,1)
@@ -861,6 +859,7 @@ contains
                         CHCKERR('')
                     end do
                 end do
+                if (present(ivs_stat)) ivs_stat = 3
 #if ldebug
             case default
                 ierr = 1

@@ -22,6 +22,13 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.35:
+* Fixed bug in `setup_modes` where incorrect rounding of secondary mode limits led in some cases to the incorrect calculation of the mode numbers in each flux surface.
+* This sometimes led to the appearance of non-physical normal modes centered around the flux surfaces where even a slight error was made.
+* Improved plotting of `debug_calc_derived_q`.
+* `setup_modes` now does not use a trimmed grid, which was wrong before.
+* `n_ivs_copies` has been superceded by `ivs_stats` to give more detailed statistics about `interp_V_spline`.
+
 ## 2.34:
 * Fixed an important bug in `interp_V` where the output secondary mode indices were wrongly used for the selection of the input `V_i`. While it is true that the mode numbers have to be equal, this is not so for the array indices.
 * Renamed Run directory to `Examples`.

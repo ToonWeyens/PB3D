@@ -4189,9 +4189,12 @@ contains
         use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias
         use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
 #if ldebug
+        use num_vars, only: prog_style
         use grid_utilities, only: trim_grid, calc_XYZ_grid
         use num_utilities, only: calc_int
         use VMEC_utilities, only: fourier2real
+        use eq_vars, only: max_flux_F
+        use grid_vars, only: alpha
 #endif
         
         character(*), parameter :: rout_name = 'calc_derived_q'
@@ -4570,16 +4573,35 @@ contains
             allocate(Y_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
             allocate(Z_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
             
-            ! calculate grid
-            ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
-            CHCKERR('')
-            
             ! point parallel angle
             if (use_pol_flux_F) then
                 ang_par_F => grid_eq%theta_F
             else
                 ang_par_F => grid_eq%zeta_F
             end if
+            
+            ! calculate grid
+            select case (prog_style)
+                case (1)                                                        ! PB3D
+                    select case (eq_style)
+                        case (1)                                                ! VMEC
+                            X_plot = ang_par_F(:,:,norm_id(1):norm_id(2))
+                            do jd = 1,grid_eq%n(2)
+                                Y_plot(:,jd,:) = alpha(jd)
+                            end do
+                            do kd = 1,grid_eq%loc_n_r
+                                Z_plot(:,:,kd) = &
+                                    &grid_trim%r_F(kd)*2*pi/max_flux_F
+                            end do
+                        case (2)                                                ! HELENA
+                            ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,&
+                                &Y_plot,Z_plot)
+                            CHCKERR('')
+                    end select
+                case (2)                                                        ! POST
+                    ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
+                    CHCKERR('')
+            end select
             
             ! get derived sigma
             do kd = 1,grid_eq%loc_n_r
@@ -4621,26 +4643,26 @@ contains
             ! plot sigma
             call plot_HDF5('sigma','TEST_sigma',&
                 &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
-                !&X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot shear
             call plot_HDF5('shear','TEST_shear',&
                 &eq_2%S(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
-                !&X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_n
             call plot_HDF5('kappa_n','TEST_kappa_n',&
                 &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
-                !&X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_g
             call plot_HDF5('kappa_g','TEST_kappa_g',&
                 &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1])!,&
-                !&X=X_plot,Y=Y_plot,Z=Z_plot)
+                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! clean up
             nullify(ang_par_F)

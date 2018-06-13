@@ -1072,8 +1072,6 @@ contains
         logical, intent(in), optional :: plot_nm                                !< plot \c n and \c m
         
         ! local variables
-        type(grid_type) :: grid_eq_trim                                         ! trimmed version of equilibrium
-        type(grid_type) :: grid_trim                                            ! trimmed version of perturbation grid
         real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
         real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
         real(dp), allocatable :: x_plot(:,:)                                    ! abscissa of plot
@@ -1105,40 +1103,34 @@ contains
         plot_nm_loc = .false.
         if (present(plot_nm)) plot_nm_loc = plot_nm
         
-        ! get trimmed grids
-        ierr = trim_grid(grid_eq,grid_eq_trim)
-        CHCKERR('')
-        ierr = trim_grid(grid,grid_trim)
-        CHCKERR('')
-        
         ! bundle the mode limits in one variable and convert to real
-        allocate(lim_nm_X(4,grid_eq_trim%n(3)))
+        allocate(lim_nm_X(4,grid_eq%n(3)))
         lim_nm_X(1,:) = min_n_X*1._dp
         lim_nm_X(2,:) = max_n_X*1._dp
         lim_nm_X(3,:) = min_m_X*1._dp
         lim_nm_X(4,:) = max_m_X*1._dp
         
         ! interpolate
-        allocate(lim_nm_X_interp(4,grid_trim%n(3)))
+        allocate(lim_nm_X_interp(4,grid%n(3)))
         do id = 1,4
-            ierr = spline(grid_eq_trim%r_F,lim_nm_X(id,:),grid_trim%r_F,&
+            ierr = spline(grid_eq%r_F,lim_nm_X(id,:),grid%r_F,&
                 &lim_nm_X_interp(id,:),ord=1)                                   ! linear interpolation to preserve form
             CHCKERR('')
         end do
         
         !!! For non-monotonous tests:
-        !!lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3)) = &
-            !!&2*lim_nm_X_interp(3,grid_trim%n(3)*0.7) - &
-            !!&lim_nm_X_interp(3,grid_trim%n(3)*0.7:grid_trim%n(3))
+        !!lim_nm_X_interp(3,grid%n(3)*0.7:grid%n(3)) = &
+            !!&2*lim_nm_X_interp(3,grid%n(3)*0.7) - &
+            !!&lim_nm_X_interp(3,grid%n(3)*0.7:grid%n(3))
         !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
         
         ! set up normal tabulation values
-        allocate(ind_tot(-grid_trim%n(3)*n_mod_X:grid_trim%n(3)*n_mod_X,4))     ! not quite absolute maximum but should never be reached
+        allocate(ind_tot(-grid%n(3)*n_mod_X:grid%n(3)*n_mod_X,4))               ! not quite absolute maximum but should never be reached
         allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
         
         ! calculate n and m
-        allocate(mds%n(grid_trim%n(3),n_mod_X))
-        allocate(mds%m(grid_trim%n(3),n_mod_X))
+        allocate(mds%n(grid%n(3),n_mod_X))
+        allocate(mds%m(grid%n(3),n_mod_X))
         
         ! iterate over n (id=1) and m (id=2)
         do id = 1,2
@@ -1166,7 +1158,7 @@ contains
             ind_cur = [(ld, ld=1,n_mod_X)]
             
             ! iterate over all next normal grid points
-            do kd = 2,grid_trim%n(3)
+            do kd = 2,grid%n(3)
                 ! update ld delta and shift
                 delta_ld = nint(lim_nm_X_interp(2*id-1,kd)) - &
                     &nint(lim_nm_X_interp(2*id-1,kd-1))
@@ -1176,7 +1168,7 @@ contains
                 do ld = 1,n_mod_X
                     ! shift ld and wrap back to [1..n_mod_X]
                     ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
-                    nm_X(kd,ld_loc) = nint(lim_nm_X_interp(2*id-1,kd) + &
+                    nm_X(kd,ld_loc) = nint(lim_nm_X_interp(2*id-1,kd)) + nint(&
                         &(lim_nm_X_interp(2*id,kd)-lim_nm_X_interp(2*id-1,kd))/&
                         &(n_mod_X-1)*(ld-1))
                 end do
@@ -1232,7 +1224,7 @@ contains
             
             ! close last total modes
             do ld = 1,size(ind_cur)
-                ind_tot(ind_cur(ld),3) = grid_trim%n(3)
+                ind_tot(ind_cur(ld),3) = grid%n(3)
             end do
             
             ! save in index information
@@ -1252,9 +1244,9 @@ contains
             n_mod_tot = size(mds%sec,1)
             
             ! set up x values
-            allocate(x_plot(grid_trim%n(3),n_mod_X))
+            allocate(x_plot(grid%n(3),n_mod_X))
             do ld = 1,n_mod_X
-                x_plot(:,ld) = grid_trim%r_F
+                x_plot(:,ld) = grid%r_F
             end do
             x_plot = x_plot*2*pi/max_flux_F
             allocate(plot_titles(1))
@@ -1297,6 +1289,14 @@ contains
             plot_name = 'modes_sec'
             call print_ex_2D(plot_titles,plot_name,y_plot,x=x_plot,draw=.false.)
             call draw_ex(plot_titles,plot_name,n_mod_tot+2,1,.false.)
+            plot_name = 'modes_sec_flux'
+            do ld = 1,n_mod_tot
+                y_plot(:,ld) = grid%r_F(mds%sec(ld,2))*2*pi/max_flux_F          ! lower boundary
+                y_plot(n_mod_tot,ld) = grid%r_F(mds%sec(ld,3))*2*pi/max_flux_F  ! upper boundary
+            end do
+            call print_ex_2D(plot_titles(1:n_mod_tot),plot_name,&
+                &y_plot(:,1:n_mod_tot),x=x_plot(:,1:n_mod_tot),draw=.false.)
+            call draw_ex(plot_titles(1:n_mod_tot),plot_name,n_mod_tot,1,.false.)
             deallocate(x_plot)
             deallocate(y_plot)
             deallocate(plot_titles)
@@ -1317,8 +1317,6 @@ contains
         
         ! clean up
         nullify(nm_X)
-        call grid_eq_trim%dealloc()
-        call grid_trim%dealloc()
         
         call lvl_ud(-1)
         call writo('General mode variables set up')
