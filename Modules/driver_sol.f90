@@ -22,7 +22,7 @@ module driver_sol
 #if ldebug
     logical :: debug_run_driver_sol = .false.                                   !< debug information for run_driver_sol \ldebug
     logical :: debug_interp_V = .false.                                         !< debug information for interp_v \ldebug
-    integer :: n_ivs_copies                                                     !< number of times a copy was done in interp_V_spline
+    integer :: ivs_stats(3)                                                     !< statistics of interp_v_spline (copy, linear, spline)
 #endif
     
 contains
@@ -317,11 +317,12 @@ contains
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         logical :: extrap = .true.                                              ! whether extrapolation is used
         character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: fcopy(6)                                                     ! interp_V_spline used copy
 #if ldebug
         integer :: km_id
         integer, allocatable :: norm_ext_i(:,:)                                 ! normal extent for input quantity mode combinations
         real(dp), allocatable :: r_loc_tot(:,:,:)                               ! r_i_loc and r_o_loc for all combinations
+        integer :: ivs_stat(6)                                                  ! local stats for interp_V_spline
+        character(len=max_str_ln) :: ivs_stats_names(3)                         ! names used in interp_V_spline statistics
         !complex(dp), allocatable :: V_plot(:,:)                                 ! for debug plotting of interpolated V
 #endif
         
@@ -359,7 +360,6 @@ contains
         allocate(norm_ext_i(n_mod_tot,n_mod_tot))
         km_id = 0
         norm_ext_i = 0
-        n_ivs_copies = 0
 #endif
         do m = 1,n_mod_tot
             do k = 1,n_mod_tot
@@ -432,30 +432,29 @@ contains
                 c_loc_o(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
                 c_loc_o(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
                 
-                fcopy = .false.
                 if (calc_this(1)) then
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
                     V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(1))
+                        &ivs_stat(1))
                     CHCKERR('')
                     
                     V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
                     V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(2))
+                        &ivs_stat(2))
                     CHCKERR('')
                     
                     V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
                     V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(3))
+                        &ivs_stat(3))
                     CHCKERR('')
                     
                     V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
                     V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(4))
+                        &ivs_stat(4))
                     CHCKERR('')
                     
 #if ldebug
@@ -496,25 +495,45 @@ contains
                     V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
                     V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(5))
+                        &ivs_stat(5))
                     CHCKERR('')
                     
                     V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
                     V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap,&
-                        &fcopy(6))
+                        &ivs_stat(6))
                     CHCKERR('')
                 end if
 #if ldebug
-                n_ivs_copies = n_ivs_copies + count(fcopy)
+                do kd = 1,size(ivs_stat)
+                    !if (ivs_stat(kd).eq.1) call writo('Used direct copy for '//&
+                        !&trim(i2str(kd))//' of mode combination ('//&
+                        !&trim(i2str(k))//', '//trim(i2str(m))//') at ψ = '//&
+                        !&trim(r2strt(r_loc_tot(1,km_id,1)/max_flux_F*2*pi)))
+                    ivs_stats(ivs_stat(kd)) = ivs_stats(ivs_stat(kd)) + 1
+                end do
 #endif
             end do
         end do
         
 #if ldebug
-        if (n_ivs_copies.gt.0) call writo('Copy was performed '//&
-            &trim(i2str(n_ivs_copies))//&
-            &' times in interp_V_spline',warning=.true.)
+        call writo('interp_V_spline statistics:')
+        call lvl_ud(1)
+        ivs_stats_names(1) = 'direct copy'
+        ivs_stats_names(2) = 'linear interpolation'
+        ivs_stats_names(3) = 'spline interpolation'
+        do kd = 1,3
+            call writo(trim(ivs_stats_names(kd))//' was performed '//&
+                &trim(i2str(ivs_stats(kd)))//' times: '//&
+                &trim(r2strt(100._dp*ivs_stats(kd)/sum(ivs_stats)))//'%')
+        end do
+        if (ivs_stats(1).gt.0) then
+            call writo('It is possible that more secondary modes and/or a &
+                &lower max_njq_change are needed.',warning=.true.)
+            call writo('If unphysical modes appear, consider changing these &
+                &variables.',warning=.true.)
+        end if
+        call lvl_ud(-1)
         call print_ex_2D([''],'r_i_loc_'//trim(i2str(rank)),&
             &r_loc_tot(:,1:km_id,1)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
             &draw=.false.)

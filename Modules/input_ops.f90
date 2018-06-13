@@ -1180,7 +1180,7 @@ contains
             &norm_disc_style_sol, X_grid_style, max_njq_change
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
-        use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
+        use grid_vars, only: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
             &max_alpha
         use grid_ops, only: calc_norm_range
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &

@@ -101,6 +101,8 @@ contains
         end if
         call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
             &//trim(i2str(ntor_V))//' toroidal modes,')
+        if (ntor_V.gt.0) call writo('(basic toroidal field period NFP = '//&
+            &trim(i2str(nfp_V))//')')
         call writo('defined on '//trim(i2str(n_r_in))//' '//flux_name//&
             &' flux surfaces')
         
