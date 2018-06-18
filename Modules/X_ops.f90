@@ -1056,9 +1056,9 @@ contains
     !! Optionally, \c n and \c m can be plot.
     !!
     !! \return ierr
-    integer function setup_modes(mds,grid_eq,grid,plot_nm) result(ierr)
+    integer function setup_modes(mds,grid_eq,grid,plot_name) result(ierr)
         use num_vars, only: use_pol_flux_F, rank
-        use X_vars, only: n_mod_X, min_n_X, max_n_X, min_m_X, max_m_X
+        use X_vars, only: n_mod_X, min_n_X, min_m_X, max_n_X, max_m_X
         use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
         use num_utilities, only: spline
@@ -1069,11 +1069,10 @@ contains
         type(modes_type), intent(inout), target :: mds                          !< modes variables
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in) :: grid                                     !< grid at which to calculate modes
-        logical, intent(in), optional :: plot_nm                                !< plot \c n and \c m
+        character(len=*), intent(in), optional :: plot_name                     !< name to be used when plotting \c n and \c m
         
         ! local variables
-        real(dp), allocatable :: lim_nm_X(:,:)                                  ! bundled mode number limits
-        real(dp), allocatable :: lim_nm_X_interp(:,:)                           ! interpolated lim_nm_X
+        real(dp), allocatable :: min_nm_X(:)                                    ! interpolated minimum mode number
         real(dp), allocatable :: x_plot(:,:)                                    ! abscissa of plot
         integer, pointer :: nm_X(:,:)                                           ! either n or m
         integer :: id, ld, kd                                                   ! counters
@@ -1081,12 +1080,12 @@ contains
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: ind_id                                                       ! current size of ind_tot
         integer :: ld_shift                                                     ! shift in table indices
+        integer :: mod_X_range                                                  ! total mode range
         integer :: delta_ld                                                     ! change in total mode numbers
         integer, allocatable :: ind_cur(:)                                      ! current indices
         integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
         character(len=max_str_ln), allocatable :: plot_titles(:)                ! title for plots
-        character(len=max_str_ln) :: plot_name                                  ! file name for plots
-        logical :: plot_nm_loc                                                  ! local plot_nm
+        character(len=max_str_ln) :: plot_name_tot                              ! file name for plots
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         real(dp), allocatable :: y_plot(:,:)                                    ! ordinate of plot
@@ -1099,31 +1098,6 @@ contains
         call writo('Setting up general modes variables')
         call lvl_ud(1)
         
-        ! set local plot_nm
-        plot_nm_loc = .false.
-        if (present(plot_nm)) plot_nm_loc = plot_nm
-        
-        ! bundle the mode limits in one variable and convert to real
-        allocate(lim_nm_X(4,grid_eq%n(3)))
-        lim_nm_X(1,:) = min_n_X*1._dp
-        lim_nm_X(2,:) = max_n_X*1._dp
-        lim_nm_X(3,:) = min_m_X*1._dp
-        lim_nm_X(4,:) = max_m_X*1._dp
-        
-        ! interpolate
-        allocate(lim_nm_X_interp(4,grid%n(3)))
-        do id = 1,4
-            ierr = spline(grid_eq%r_F,lim_nm_X(id,:),grid%r_F,&
-                &lim_nm_X_interp(id,:),ord=1)                                   ! linear interpolation to preserve form
-            CHCKERR('')
-        end do
-        
-        !!! For non-monotonous tests:
-        !!lim_nm_X_interp(3,grid%n(3)*0.7:grid%n(3)) = &
-            !!&2*lim_nm_X_interp(3,grid%n(3)*0.7) - &
-            !!&lim_nm_X_interp(3,grid%n(3)*0.7:grid%n(3))
-        !!lim_nm_X_interp(4,:) = lim_nm_X(3,:)+n_mod_X-1
-        
         ! set up normal tabulation values
         allocate(ind_tot(-grid%n(3)*n_mod_X:grid%n(3)*n_mod_X,4))               ! not quite absolute maximum but should never be reached
         allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
@@ -1132,22 +1106,37 @@ contains
         allocate(mds%n(grid%n(3),n_mod_X))
         allocate(mds%m(grid%n(3),n_mod_X))
         
+        ! auxiliary variable
+        allocate(min_nm_X(grid%n(3)))
+        
         ! iterate over n (id=1) and m (id=2)
         do id = 1,2
-            ! point nm_X
+            ! point  nm_X, and  interpolate  mode minimum  (linear, to  preserve
+            ! form)
             if (id.eq.1) then
                 nm_X => mds%n
+                mod_X_range = max_n_X(1)-min_n_X(1)                             ! assumes that this is true for all normal points
+                ierr = spline(grid_eq%r_F,min_n_X*1._dp,grid%r_F,min_nm_X,ord=1)
+                CHCKERR('')
             else
                 nm_X => mds%m
+                mod_X_range = max_m_X(1)-min_m_X(1)                             ! assumes that this is true for all normal points
+                ierr = spline(grid_eq%r_F,min_m_X*1._dp,grid%r_F,min_nm_X,ord=1)
+                CHCKERR('')
             end if
+            
+            !!! For non-monotonous tests:
+            !!!if (id .eq. 2) then
+                !!!min_nm_X(nint(grid%n(3)*0.7):grid%n(3)) = &
+                    !!!&2*min_nm_X(nint(grid%n(3)*0.7)) - &
+                    !!!&min_nm_X(nint(grid%n(3)*0.7):grid%n(3))
+            !!!end if
             
             ! initialize variables for first normal grid point
             ld_shift = 0
             ind_id = 0
             do ld = 1,n_mod_X
-                nm_X(1,ld) = nint(lim_nm_X_interp(2*id-1,1) + &
-                    &(lim_nm_X_interp(2*id,1)-lim_nm_X_interp(2*id-1,1))/&
-                    &(n_mod_X-1)*(ld-1))
+                nm_X(1,ld) = nint(min_nm_X(1)) + mod_X_range*(ld-1)/(n_mod_X-1)
                 ind_tot(ld,:) = [nm_X(1,ld),1,0,ld]
                 ind_id = ind_id + 1
 #if ldebug
@@ -1160,17 +1149,15 @@ contains
             ! iterate over all next normal grid points
             do kd = 2,grid%n(3)
                 ! update ld delta and shift
-                delta_ld = nint(lim_nm_X_interp(2*id-1,kd)) - &
-                    &nint(lim_nm_X_interp(2*id-1,kd-1))
+                delta_ld = nint(min_nm_X(kd)) - nint(min_nm_X(kd-1))
                 ld_shift = ld_shift + delta_ld
                 
                 ! set n or m
                 do ld = 1,n_mod_X
                     ! shift ld and wrap back to [1..n_mod_X]
                     ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
-                    nm_X(kd,ld_loc) = nint(lim_nm_X_interp(2*id-1,kd)) + nint(&
-                        &(lim_nm_X_interp(2*id,kd)-lim_nm_X_interp(2*id-1,kd))/&
-                        &(n_mod_X-1)*(ld-1))
+                    nm_X(kd,ld_loc) = nint(min_nm_X(kd)) + &
+                        &mod_X_range*(ld-1)/(n_mod_X-1)
                 end do
                 
                 ! if there was a shift, set new total index information
@@ -1236,7 +1223,7 @@ contains
         end do
         
         ! master plots output if requested
-        if (rank.eq.0 .and. plot_nm_loc) then
+        if (rank.eq.0 .and. present(plot_name)) then
             call writo('Plotting mode numbers')
             call lvl_ud(1)
             
@@ -1253,17 +1240,17 @@ contains
             
             ! plot poloidal modes
             plot_titles(1) = 'poloidal mode numbers'
-            plot_name = 'modes_m_X'
-            call print_ex_2D(plot_titles(1:1),plot_name,mds%m*1._dp,x=x_plot,&
-                &draw=.false.)
-            call draw_ex(plot_titles(1:1),plot_name,n_mod_X,1,.false.)
+            plot_name_tot = 'modes_m_'//trim(plot_name)
+            call print_ex_2D(plot_titles(1:1),plot_name_tot,mds%m*1._dp,&
+                &x=x_plot,draw=.false.)
+            call draw_ex(plot_titles(1:1),plot_name_tot,n_mod_X,1,.false.)
             
             ! plot toroidal modes
             plot_titles(1) = 'toroidal mode numbers'
-            plot_name = 'modes_n_X'
-            call print_ex_2D(plot_titles(1:1),plot_name,mds%n*1._dp,x=x_plot,&
-                &draw=.false.)
-            call draw_ex(plot_titles(1:1),plot_name,n_mod_X,1,.false.)
+            plot_name_tot = 'modes_n_'//trim(plot_name)
+            call print_ex_2D(plot_titles(1:1),plot_name_tot,mds%n*1._dp,&
+                &x=x_plot,draw=.false.)
+            call draw_ex(plot_titles(1:1),plot_name_tot,n_mod_X,1,.false.)
             
             ! clean up
             deallocate(x_plot)
@@ -1286,17 +1273,19 @@ contains
             x_plot(:,n_mod_tot+2) = x_plot(1,1:n_mod_tot)
             y_plot(:,n_mod_tot+2) = mds%sec(:,4)                                ! index
             plot_titles(n_mod_tot+2) = 'index'
-            plot_name = 'modes_sec'
-            call print_ex_2D(plot_titles,plot_name,y_plot,x=x_plot,draw=.false.)
-            call draw_ex(plot_titles,plot_name,n_mod_tot+2,1,.false.)
-            plot_name = 'modes_sec_flux'
+            plot_name_tot = 'modes_sec_'//trim(plot_name)
+            call print_ex_2D(plot_titles,plot_name_tot,y_plot,x=x_plot,&
+                    &draw=.false.)
+            call draw_ex(plot_titles,plot_name_tot,n_mod_tot+2,1,.false.)
+            plot_name_tot = 'modes_sec_flux_'//trim(plot_name)
             do ld = 1,n_mod_tot
                 y_plot(:,ld) = grid%r_F(mds%sec(ld,2))*2*pi/max_flux_F          ! lower boundary
                 y_plot(n_mod_tot,ld) = grid%r_F(mds%sec(ld,3))*2*pi/max_flux_F  ! upper boundary
             end do
-            call print_ex_2D(plot_titles(1:n_mod_tot),plot_name,&
+            call print_ex_2D(plot_titles(1:n_mod_tot),plot_name_tot,&
                 &y_plot(:,1:n_mod_tot),x=x_plot(:,1:n_mod_tot),draw=.false.)
-            call draw_ex(plot_titles(1:n_mod_tot),plot_name,n_mod_tot,1,.false.)
+            call draw_ex(plot_titles(1:n_mod_tot),plot_name_tot,n_mod_tot,1,&
+                &.false.)
             deallocate(x_plot)
             deallocate(y_plot)
             deallocate(plot_titles)

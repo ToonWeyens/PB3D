@@ -146,7 +146,7 @@ contains
             ! initialize modes and set up
             ierr = init_modes(grid_eq,eq_1)
             CHCKERR('')
-            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
+            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_name='X')
             CHCKERR('')
             
             ! tests
@@ -225,7 +225,7 @@ contains
             ! initialize modes and set up
             ierr = init_modes(grid_eq,eq_1)
             CHCKERR('')
-            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
+            ierr = setup_modes(mds_X,grid_eq,grid_X,plot_name='X')
             CHCKERR('')
             
             ! tests

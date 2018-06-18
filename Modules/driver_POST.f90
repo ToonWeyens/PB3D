@@ -196,9 +196,9 @@ contains
         CHCKERR('')
         ierr = init_modes(grid_eq,eq_1)
         CHCKERR('')
-        ierr = setup_modes(mds_X,grid_eq,grid_X,plot_nm=.true.)
+        ierr = setup_modes(mds_X,grid_eq,grid_X,plot_name='X_POST')
         CHCKERR('')
-        ierr = setup_modes(mds_sol,grid_eq,grid_sol)
+        ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_name='sol_POST')
         CHCKERR('')
         
         ! user output
@@ -216,7 +216,6 @@ contains
             &X_limits=lims_norm(:,2),sol_limits=lims_norm(:,3),&
             &r_F_eq=grid_eq%r_F,r_F_X=r_F_X,r_F_sol=grid_sol%r_F)
         CHCKERR('')
-        write(*,*) ''
         deallocate(r_F_X)
         call writo('normal grid limits:')
         call lvl_ud(1)
@@ -533,7 +532,7 @@ contains
     !!      * HEL:  interpolate variables
     !!    for <tt>POST_style = 2</tt> (B-aligned grid):
     !!      * VMEC: read subset of variables
-    !!      * HEL:  inerpolate variables
+    !!      * HEL:  interpolate variables
     !!  - create helper variables
     !!  - create plots and outputs
     !!
@@ -739,8 +738,9 @@ contains
                     call lvl_ud(1)
                     
                     ! plot solution vector
-                    ierr = plot_sol_vec(mds_X,mds_sol,grids(1),grids(2),grids(3),&
-                        &eq_1,eq_2,X,sol,XYZ_sol,id,[plot_sol_xi,plot_sol_Q])
+                    ierr = plot_sol_vec(mds_X,mds_sol,grids(1),grids(2),&
+                        &grids(3),eq_1,eq_2,X,sol,XYZ_sol,id,&
+                        &[plot_sol_xi,plot_sol_Q])
                     CHCKERR('')
                     
                     if (plot_E_rec) then

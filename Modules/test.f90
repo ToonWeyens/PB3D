@@ -1026,7 +1026,7 @@ contains
             CHCKERR('')
             ierr = init_modes(grid_eq,eq_1)
             CHCKERR('')
-            ierr = setup_modes(mds,grid_eq,grid,plot_nm=.false.)
+            ierr = setup_modes(mds,grid_eq,grid)
             CHCKERR('')
             call eq_1%dealloc()
             ! get user input

@@ -112,7 +112,7 @@ contains
                 call lvl_ud(-1)
                 
                 ! set up modes
-                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_nm=.false.)
+                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_name='sol')
                 CHCKERR('')
                 
                 call lvl_ud(-1)
@@ -125,7 +125,7 @@ contains
                 CHCKERR('')
                 
                 ! set up modes
-                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_nm=.false.)
+                ierr = setup_modes(mds_sol,grid_eq,grid_sol,plot_name='sol')
                 CHCKERR('')
                 
                 ! reconstruct solution on trimmed grid
@@ -311,8 +311,9 @@ contains
         integer :: n_mod_tot                                                    ! total amount of modes
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
         integer :: id_lim_i(2), id_lim_o(2)                                     ! limits on total modes
-        real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
+        integer :: ivs_stat(6)                                                  ! local stats for interp_V_spline
         integer, pointer :: sec_i_loc(:,:), sec_o_loc(:,:)                      ! pointers to secondary mode variables
+        real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
         logical :: extrap = .true.                                              ! whether extrapolation is used
@@ -321,7 +322,6 @@ contains
         integer :: km_id
         integer, allocatable :: norm_ext_i(:,:)                                 ! normal extent for input quantity mode combinations
         real(dp), allocatable :: r_loc_tot(:,:,:)                               ! r_i_loc and r_o_loc for all combinations
-        integer :: ivs_stat(6)                                                  ! local stats for interp_V_spline
         character(len=max_str_ln) :: ivs_stats_names(3)                         ! names used in interp_V_spline statistics
         !complex(dp), allocatable :: V_plot(:,:)                                 ! for debug plotting of interpolated V
 #endif

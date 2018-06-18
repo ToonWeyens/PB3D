@@ -27,7 +27,7 @@ module eq_ops
     logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .true.                                   !< plot debug information for calc_derived_q()
+    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
     logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
@@ -4005,8 +4005,15 @@ contains
     !! important building  blocks of  the perturbed potential  energy, including
     !! the drivers of instabilities.
     !!
+    !! The  general formulas  are derived  under  the first  section, VMEC.  For
+    !! axisymmetric HELENA, however, simplified equations are possible and these
+    !! are presented afterwards.
+    !!
+    !! VMEC
+    !! ====
+    !!
     !! The shear
-    !! --------
+    !! ---------
     !!
     !! The  local shear  \f$S\f$ is  calculated using  equation 3.22  from \cite
     !! Weyens3D :
@@ -4145,12 +4152,57 @@ contains
     !! equation 3.26  of \cite  Weyens3D agrees with  the more  accurate results
     !! used here:
     !!
-    !! \f$\sigma = \frac{\partial B_\psi}{\partial \alpha} - 
+    !! \f$\mu_0 \sigma = \frac{\partial B_\psi}{\partial \alpha} - 
     !!      \frac{\partial B_\alpha}{\partial \psi} -
     !!      \mu_0 p' \mathcal{J} \frac{B_\alpha}{B_\theta}\f$ .
     !!
     !! The reason why they are  generally different is that this implementation
     !! relies on the cancellation of large terms.
+    !!
+    !! HELENA
+    !! ======
+    !!
+    !! The parallel current
+    !! --------------------
+    !! 
+    !! As \f$B_\alpha = F\left(\psi\right)\f$ and
+    !! \f$\vec{e}_{\alpha,\text{F}}  =   \vec{e}_{\phi,\text{H}}\f$,  the  naive
+    !! expression for the shear becomes simply
+    !!
+    !! \f$\sigma = -F' - \mu_0 p' \frac{F}{B^2}\f$ ,
+    !!
+    !! which can be used like that.
+    !!
+    !!
+    !! The shear
+    !! ---------
+    !!
+    !! The calculate  the local shear  \f$S\f$ is looks like  it is best  to use
+    !! equation 3.22 from \cite Weyens3D , just as in the VMEC case:
+    !!
+    !! As a test, however, equation 3.29 of \cite Weyens3D can be used in stead:
+    !!
+    !! \f$\mathcal{J}\left|\nabla \psi\right|^2 S + \mu_0 \mathcal{J}B^2 \sigma
+    !! = - 2 \frac{F}{R} \left( \frac{Z_\theta}{R} +
+    !! \frac{Z_\theta R_{\theta\theta} - R_\theta Z_{\theta\theta}}{R_\theta^2 + Z_\theta^2} \right)\f$.
+    !!
+    !! from which \f$\sigma\f$ can be obtained.
+    !! 
+    !! The curvature 
+    !! -------------
+    !!
+    !! Also  the  curvature  expressions  can  be  simplified  for  axisymmetric
+    !! situations. The result is given by
+    !!
+    !! \f$\kappa_n = \frac{q R}{F}
+    !!  \frac{Z_\theta \left( R_{\theta\theta} - q^2 R\right) - R_\theta Z_{\theta\theta}}
+    !!  {\left(R_\theta^2 + Z_\theta^2 + \left(q R\right)^2\right) \left( R_\theta^2 + Z_\theta^2 \right)} \f$
+    !! 
+    !! \f$\kappa_g = q R
+    !!  \frac{R_\theta \left( 2 \left(R_\theta^2 + Z_\theta^2\right) + \left(qR\right)^2 \right)
+    !!  - R \left(R_\theta R_{\theta\theta} + Z_\theta Z_{\theta\theta}\right)}
+    !!  {\left(R_\theta^2 + Z_\theta^2 + \left(q R\right)^2\right)^2} \f$
+    !!
     !!
     !! \note
     !!  -# If the toroidal flux is  used instead, the actual curvature obviously
@@ -4178,24 +4230,11 @@ contains
     !!      * \f$\frac{\nabla \psi \times  \vec{B}}{B^2} = 
     !!          \frac{q R^2}{R_\theta^2 + Z_\theta^2 + q^2 R^2}
     !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
-    !!  -# The expression for \f$\mathcal{J}\left|\nabla \psi\right|^2 S +
-    !!  \mu_0 \mathcal{J}B^2 \sigma\f$ for HELENA is
-    !!  \f$- 2 \frac{F}{R} \left( \frac{Z_\theta}{R} +
-    !!  \frac{Z_\theta R_{\theta\theta} - R_\theta Z_{\theta\theta}}{R_\theta^2 + Z_\theta^2} \right)\f$.
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
-        use num_utilities, only: c, spline
         use eq_vars, only: vac_perm
-        use num_vars, only: norm_disc_prec_eq, eq_style, use_pol_flux_F
-        use HELENA_vars, only: RBphi_H, R_H, Z_H, chi_H, q_saf_H, ias
-        use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
-#if ldebug
-        use num_vars, only: prog_style
-        use grid_utilities, only: trim_grid, calc_XYZ_grid
-        use num_utilities, only: calc_int
-        use VMEC_utilities, only: fourier2real
-        use eq_vars, only: max_flux_F
-        use grid_vars, only: alpha
-#endif
+        use num_vars, only: eq_style, use_pol_flux_F
+        use HELENA_vars, only: R_H, Z_H, chi_H, ias
+        use num_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_derived_q'
         
@@ -4209,56 +4248,14 @@ contains
         integer :: kd_H                                                         ! kd in Helena tables
         integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), theta(odd))
         real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
-        real(dp), allocatable :: Rchi(:,:,:)                                    ! chi and chi^2 derivatives of R
-        real(dp), allocatable :: Zchi(:,:,:)                                    ! chi and chi^2 derivatives of Z
-        real(dp), allocatable :: dum1(:,:)                                      ! dummy variable
-        real(dp), allocatable :: dum2(:,:)                                      ! dummy variable
-        real(dp), allocatable :: de(:,:,:,:,:,:)                                ! derivs of cov. unit vector in E (space,deriv.,unitvec,output)
-        real(dp), allocatable :: D_de(:,:,:,:,:)                                ! derivs of transf. matrix in E (space,deriv.,output)
         real(dp), allocatable :: D1_epar(:,:,:,:)                               ! cylindrical contravariant components of alpha derivative of parallel basis vector
         real(dp), allocatable :: D3_epar(:,:,:,:)                               ! cylindrical contravariant components of theta derivative of parallel basis vector
-        real(dp), allocatable :: b_n(:,:,:,:)                                   ! basis vector for normal coordinate
-        real(dp), allocatable :: b_g(:,:,:,:)                                   ! basis vector for geodesic coordinate
-        ! submatrices
-        ! jacobian
-        real(dp), pointer :: J(:,:,:) => null()                                 ! jac
-        real(dp), pointer :: D1J(:,:,:) => null()                               ! D_alpha jac
-        real(dp), pointer :: D2J(:,:,:) => null()                               ! D_psi jac
-        real(dp), pointer :: D3J(:,:,:) => null()                               ! D_theta jac
-        ! lower metric factors
-        real(dp), pointer :: g13(:,:,:) => null()                               ! g_alpha,theta
-        real(dp), pointer :: D2g13(:,:,:) => null()                             ! D_psi g_alpha,theta
-        real(dp), pointer :: D3g13(:,:,:) => null()                             ! D_theta g_alpha,theta
-        real(dp), pointer :: g23(:,:,:) => null()                               ! g_psi,theta
-        real(dp), pointer :: D1g23(:,:,:) => null()                             ! D_alpha g_psi,theta
-        real(dp), pointer :: D3g23(:,:,:) => null()                             ! D_theta g_psi,theta
-        real(dp), pointer :: g33(:,:,:) => null()                               ! g_theta,theta
-        real(dp), pointer :: D1g33(:,:,:) => null()                             ! D_alpha g_theta,theta
-        real(dp), pointer :: D2g33(:,:,:) => null()                             ! D_psi g_theta,theta
-        real(dp), pointer :: D3g33(:,:,:) => null()                             ! D_theta g_theta,theta
-        ! upper metric factors
-        real(dp), pointer :: h12(:,:,:) => null()                               ! h^alpha,psi
-        real(dp), pointer :: D3h12(:,:,:) => null()                             ! D_theta h^alpha,psi
-        real(dp), pointer :: h22(:,:,:) => null()                               ! h^psi,psi
-        real(dp), pointer :: D3h22(:,:,:) => null()                             ! D_theta h^psi,psi
-        real(dp), pointer :: h23(:,:,:) => null()                               ! h^psi,theta
-#if ldebug
-        type(grid_type) :: grid_trim                                            ! trimmed equilibrium grid
-        real(dp), allocatable :: X_plot(:,:,:)                                  ! x values of total plot
-        real(dp), allocatable :: Y_plot(:,:,:)                                  ! y values of total plot
-        real(dp), allocatable :: Z_plot(:,:,:)                                  ! z values of total plot
-        real(dp), allocatable :: B_V(:,:,:,:)                                   ! magnetic field in VMEC coordinates
-        real(dp), allocatable :: B_alpha(:,:,:)                                 ! B_alpha Flux coordinates
-        real(dp), pointer :: D13J(:,:,:) => null()                              ! D_alpha,theta jac
-        real(dp), pointer :: D23J(:,:,:) => null()                              ! D_psi,theta jac
-        real(dp), pointer :: D23g13(:,:,:) => null()                            ! D_psi,theta g_alpha,theta
-        real(dp), pointer :: D13g23(:,:,:) => null()                            ! D_alpha,theta g_psi,theta
-        real(dp), allocatable :: D3sigma(:,:,:)                                 ! D_theta sigma
-        real(dp), allocatable :: D3sigma_ALT(:,:,:)                             ! alternative D_theta sigma
-        real(dp), allocatable :: sigma_ALT(:,:,:)                               ! alternative sigma
-        real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle theta_F or zeta_F
-        integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-#endif
+        real(dp), allocatable :: b_n(:,:,:,:)                                   ! covariant Cylindrical components of normal basis vector
+        real(dp), allocatable :: b_g(:,:,:,:)                                   ! covariant Cylindrical components of geodesic basis vector
+        real(dp), allocatable :: de(:,:,:,:,:,:)                                ! derivs of cov. unit vector in E (space,deriv.,unitvec,output)
+        real(dp), allocatable :: D_de(:,:,:,:,:)                                ! derivs of transf. matrix in E (space,deriv.,output)
+        real(dp), allocatable :: Rchi(:,:,:)                                    ! chi and chi^2 derivatives of R
+        real(dp), allocatable :: Zchi(:,:,:)                                    ! chi and chi^2 derivatives of Z
         
         ! initialize ierr
         ierr = 0
@@ -4268,147 +4265,48 @@ contains
         
         call lvl_ud(1)
         
-        ! set up submatrices
-        ! jacobian
-        J => eq_2%jac_FD(:,:,:,0,0,0)
-        D1J => eq_2%jac_FD(:,:,:,1,0,0)
-        D2J => eq_2%jac_FD(:,:,:,0,1,0)
-        D3J => eq_2%jac_FD(:,:,:,0,0,1)
-        ! lower metric factors
-        g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
-        D2g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,0)
-        D3g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,1)
-        g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)
-        D1g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0)
-        D3g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,1)
-        g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        D1g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),1,0,0)
-        D2g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0)
-        D3g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,1)
-        ! upper metric factors
-        h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
-        D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
-        h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
-        D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
-        h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0)
-#if ldebug
-        D13J => eq_2%jac_FD(:,:,:,1,0,1)
-        D23J => eq_2%jac_FD(:,:,:,0,1,1)
-        D23g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,1,1)
-        D13g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,1)
-#endif
-        
-        ! set up boundary conditions
-        if (ias.eq.0) then                                                      ! top-bottom symmetric
-            bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
-            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
-        else
-            bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
-            bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic
-        end if
-        bcs_val = 0._dp
-        
-        ! Calculate the shear S
-        eq_2%S = -(D3h12/h22 - D3h22*h12/h22**2)/J
-        
-        ! initialize helper  variables to  calculate the angular  derivatives of
-        ! the covariant parallel basis vector
+        ! initialize helper variables
         allocate(de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,2,3))
         allocate(D_de(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2,3))
         allocate(b_n(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
         allocate(b_g(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
-        de = 0._dp
-        D_de = 0._dp
-        b_n = 0._dp
-        b_g = 0._dp
+        allocate(D1_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        allocate(D3_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))
+        
         select case (eq_style)
             case (1)                                                            ! VMEC
-                ! calculate  the  derivatives  of   covariant  unit  vectors  in
-                ! Equilibrium coordinates
+                ! Calculate the shear S
+                call calc_derived_S_direct(eq_2,eq_2%S)
                 
-                ! d/dtheta e_theta
-                de(:,:,:,1,1,1) = eq_2%R_E(:,:,:,0,2,0)                         ! ~ e_R
-                !de(:,:,:,1,1,2) = 0._dp                                         ! ~ e_phi
-                de(:,:,:,1,1,3) = eq_2%Z_E(:,:,:,0,2,0)                         ! ~ e_Z
-                
-                ! d/dzeta e_theta
-                de(:,:,:,2,1,1) = eq_2%R_E(:,:,:,0,1,1)                         ! ~ e_R
-                de(:,:,:,2,1,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)   ! ~ e_phi
-                de(:,:,:,2,1,3) = eq_2%Z_E(:,:,:,0,1,1)                         ! ~ e_Z
-                
-                ! d/dtheta e_zeta
-                de(:,:,:,1,2,1) = eq_2%R_E(:,:,:,0,1,1)                         ! ~ e_R
-                de(:,:,:,1,2,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)   ! ~ e_phi
-                de(:,:,:,1,2,3) = eq_2%Z_E(:,:,:,0,1,1)                         ! ~ e_Z
-                
-                ! d/dzeta e_zeta
-                de(:,:,:,2,2,1) = eq_2%R_E(:,:,:,0,0,2)-eq_2%R_E(:,:,:,0,0,0)   ! ~ e_R
-                de(:,:,:,2,2,2) = 2*eq_2%R_E(:,:,:,0,0,1)/eq_2%R_E(:,:,:,0,0,0) ! ~ e_phi
-                de(:,:,:,2,2,3) = eq_2%Z_E(:,:,:,0,0,2)                         ! ~ e_Z
-                
-                ! calculate derivatives of  transformation matrix in Equilibrium
-                ! coordinates
-                
-                ! ~d/dtheta
-                D_de(:,:,:,1,1) = eq_2%R_E(:,:,:,0,1,0)*&
-                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
-                    &eq_2%R_E(:,:,:,0,0,1)*&
-                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                    ! ~ e_R
-                D_de(:,:,:,1,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)       ! ~ e_phi
-                D_de(:,:,:,1,3) = eq_2%Z_E(:,:,:,0,1,0)*&
-                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
-                    &eq_2%Z_E(:,:,:,0,0,1)*&
-                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                    ! ~ e_Z
-                
-                ! ~d/dzeta
-                D_de(:,:,:,2,1) = eq_2%R_E(:,:,:,0,1,0)*&
-                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
-                    &eq_2%R_E(:,:,:,0,0,1)*&
-                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                    ! ~ e_R
-                D_de(:,:,:,2,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)       ! ~ e_phi
-                D_de(:,:,:,2,3) = eq_2%Z_E(:,:,:,0,1,0)*&
-                    &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
-                    &eq_2%Z_E(:,:,:,0,0,1)*&
-                    &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                    ! ~ e_Z
-                
-                ! Decompose normal and geodesic basis vectors into contravariant
-                ! cylindrical basis vectors.
-                
-                ! b_n
-                b_n(:,:,:,2) = (eq_2%R_E(:,:,:,0,0,1)*eq_2%Z_E(:,:,:,0,1,0) - &
-                    &eq_2%R_E(:,:,:,0,1,0)*eq_2%Z_E(:,:,:,0,0,1))               ! store RzetaZtheta - RthetaZeta
-                b_n(:,:,:,1) = &
-                    &-eq_2%jac_FD(:,:,:,0,0,0) * (1+eq_2%L_E(:,:,:,0,1,0)) / &
-                    &( (b_n(:,:,:,2)/eq_2%R_E(:,:,:,0,0,0))**2 + &
-                    &eq_2%R_E(:,:,:,0,1,0)**2 + eq_2%Z_E(:,:,:,0,1,0)**2 ) / &
-                    &eq_2%R_E(:,:,:,0,0,0)                                      ! set up common factor of all b_n
-                b_n(:,:,:,2) = b_n(:,:,:,1) * b_n(:,:,:,2)                      ! finalize b_n(2)
-                b_n(:,:,:,3) = b_n(:,:,:,1) * eq_2%R_E(:,:,:,0,1,0)             ! finalize b_n(3)
-                b_n(:,:,:,1) = -b_n(:,:,:,1) * eq_2%Z_E(:,:,:,0,1,0)            ! finalize b_n(1)
-                
-                ! b_g
-                do kd = 1,grid_eq%loc_n_r
-                    b_g(:,:,kd,2) = eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0) - &
-                        &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) * &
-                        &eq_1%q_saf_FD(kd,0)                                    ! store J(B_theta + B_alpha q)
-                    b_g(:,:,kd,1) = (b_g(:,:,kd,2)*eq_2%L_E(:,:,kd,0,0,1)-&
-                        &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0)) / &
-                        &(1+eq_2%L_E(:,:,kd,0,1,0))                             ! store J((B_theta + B_alpha q) L_zeta - B_alpha)/(1+L_theta)
-                end do
-                b_g(:,:,:,3) = b_g(:,:,:,1)*eq_2%Z_E(:,:,:,0,1,0) - &
-                    &b_g(:,:,:,2)*eq_2%Z_E(:,:,:,0,0,1)                         ! finalize b_g(3) (apart from pre-factor)
-                b_g(:,:,:,1) = b_g(:,:,:,1)*eq_2%R_E(:,:,:,0,1,0) - &
-                    &b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,1)                         ! finalize b_g(1) (apart from pre-factor)
-                b_g(:,:,:,2) = -b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,0)**2           ! finalize b_g(2) (apart from pre-factor)
-                do ld = 1,3
-                    b_g(:,:,:,ld) = b_g(:,:,:,ld) / &
-                        &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)                 ! prefactor 1/g_thetatheta
-                end do
+                ! Equilibrium contravariant components of angular derivatives of
+                ! covariant parallel basis vector
+                call calc_derived_DE_epar_VMEC(grid_eq,eq_2,de,D_de,b_n,b_g)
             case (2)                                                            ! HELENA
+                ! Calculate parallel current sigma
+                call calc_derived_sigma_HEL(grid_eq,eq_2,eq_2%sigma)
+                
+                ! set up boundary conditions for theta derivatives
+                if (ias.eq.0) then                                              ! top-bottom symmetric
+                    bcs(:,1) = [1,1]                                            ! theta(even): zero first derivative
+                    bcs(:,2) = [2,2]                                            ! theta(odd): zero first derivative
+                else
+                    bcs(:,1) = [-1,-1]                                          ! theta(even): periodic
+                    bcs(:,2) = [-1,-1]                                          ! theta(odd): periodic
+                end if
+                bcs_val = 0._dp
+                
+                ! initialize output
+                de = 0._dp
+                D_de = 0._dp
+                b_n = 0._dp
+                b_g = 0._dp
+                
                 ! calculate  the  derivatives  of   covariant  unit  vectors  in
-                ! Equilibrium coordinates
-                allocate(Rchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
-                allocate(Zchi(grid_eq%n(1),grid_eq%loc_n_r,1:2))
+                ! cEquilibrium oordinates
+                allocate(Rchi(grid_eq%n(1),grid_eq%loc_n_r,0:2))
+                allocate(Zchi(grid_eq%n(1),grid_eq%loc_n_r,0:2))
+                Rchi(:,:,0) = R_H(:,grid_eq%i_min:grid_eq%i_max)
+                Zchi(:,:,0) = Z_H(:,grid_eq%i_min:grid_eq%i_max)
                 do kd = 1,grid_eq%loc_n_r
                     kd_H = grid_eq%i_min-1+kd
                     do id = 1,2
@@ -4420,155 +4318,554 @@ contains
                         CHCKERR('')
                     end do
                 end do
-                ! d/dtheta e_theta
-                de(:,1,:,1,1,1) = Rchi(:,:,2)                                   ! ~ e_R
-                !de(:,1,:,1,1,2) = 0._dp                                         ! ~ e_phi
-                de(:,1,:,1,1,3) = Zchi(:,:,2)                                   ! ~ e_Z
                 
-                ! d/dzeta e_theta
-                !de(:,1,:,2,1,1) = 0._dp                                         ! ~ e_R
-                de(:,1,:,2,1,2) = -Rchi(:,:,1)/&
-                    &R_H(:,grid_eq%i_min:grid_eq%i_max)                          ! ~ e_phi
-                !de(:,1,:,2,1,3) = 0._dp                                         ! ~ e_Z
-                
-                ! d/dtheta e_zeta
-                !de(:,1,:,1,2,1) = 0._dp                                         ! ~ e_R
-                de(:,1,:,1,2,2) = -Rchi(:,:,1)/&
-                    &R_H(:,grid_eq%i_min:grid_eq%i_max)                          ! ~ e_phi
-                !de(:,1,:,1,2,3) = 0._dp                                         ! ~ e_Z
-                
-                ! d/dzeta e_zeta
-                de(:,1,:,2,2,1) = -R_H(:,grid_eq%i_min:grid_eq%i_max)             ! ~ e_R
-                !de(:,1,:,2,2,2) = 0._dp                                         ! ~ e_phi
-                !de(:,1,:,2,2,3) = 0._dp                                         ! ~ e_Z
-                
-                ! calculate derivatives of  transformation matrix in Equilibrium
-                ! coordinates
-                D_de = 0._dp
-                
-                ! Decompose normal and geodesic basis vectors into contravariant
-                ! cylindrical basis vectors.
-                do jd = 1,grid_eq%n(2)
-                    ! auxiliary variables
-                    allocate(dum1(grid_eq%n(1),grid_eq%loc_n_r))                ! Rchi^2 + Zchi^2
-                    allocate(dum2(grid_eq%n(1),grid_eq%loc_n_r))                ! Rchi^2 + Zchi^2 + (qR)^2
-                    dum1 = Rchi(:,:,1)**2 + Zchi(:,:,1)**2
-                    do kd = 1,grid_eq%loc_n_r
-                        kd_H = grid_eq%i_min-1+kd
-                        dum2(:,kd) = dum1(:,kd) + &
-                            &(eq_1%q_saf_FD(kd,0)*R_H(:,kd_H))**2
-                    end do
-                    
-                    ! b_n
-                    b_n(:,jd,:,1) = R_H(:,grid_eq%i_min:grid_eq%i_max)*&
-                        &Zchi(:,:,1)/dum1
-                    b_n(:,jd,:,3) = -R_H(:,grid_eq%i_min:grid_eq%i_max)*&
-                        &Rchi(:,:,1)/dum1
-                    
-                    ! b_g
-                    b_g(:,jd,:,1) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
-                        &Rchi(:,:,1)/dum2
-                    b_g(:,jd,:,2) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
-                        &dum1/dum2
-                    b_g(:,jd,:,3) = -R_H(:,grid_eq%i_min:grid_eq%i_max)**2 * &
-                        &Zchi(:,:,1)/dum2
-                    
-                    ! clean up
-                    deallocate(dum1,dum2)
-                end do
-                do kd = 1,grid_eq%loc_n_r
-                    kd_H = grid_eq%i_min-1+kd
-                    b_n(:,:,kd,:) = b_n(:,:,kd,:) * &
-                        &eq_1%q_saf_FD(kd,0)/RBphi_H(kd_H,0)
-                    b_g(:,:,kd,1:3:2) = b_g(:,:,kd,1:3:2) * eq_1%q_saf_FD(kd,0) ! not b_g(2)
-                end do
-                
-                ! clean up
-                deallocate(Rchi, Zchi)
+                ! Equilibrium contravariant components of angular derivatives of
+                ! covariant parallel basis vector
+                call calc_derived_DE_epar_HEL(grid_eq,eq_1,Rchi,Zchi,&
+                    &de,D_de,b_n,b_g)
         end select
         
         ! calculate cylindrical contravariant  components of angular derivatives
         ! of covariant parallel basis vector
-        allocate(D1_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))          ! d/dalpha e_theta
-        allocate(D3_epar(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,3))          ! d/dtheta e_theta
-        D1_epar = 0._dp
-        D3_epar = 0._dp
-        do ld = 1,3
-            do id = 1,2
-                do jd = 1,2
-                    ! d/dalpha
-                    D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + &
-                        &de(:,:,:,id,jd,ld) * &
-                        &eq_2%T_FE(:,:,:,c([1,1+id],.false.),0,0,0) * &         ! 1 for alpha
-                        &eq_2%T_FE(:,:,:,c([3,1+jd],.false.),0,0,0) 
-                    ! d/dtheta
-                    D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + &
-                        &de(:,:,:,id,jd,ld) * &
-                        &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0) * &         ! 3 for theta
-                        &eq_2%T_FE(:,:,:,c([3,1+jd],.false.),0,0,0) 
-                end do
-                ! d/dalpha
-                D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + D_de(:,:,:,id,ld) * &
-                    &eq_2%T_FE(:,:,:,c([1,1+id],.false.),0,0,0)                 ! 1 for alpha
-                ! d/dtheta
-                D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + D_de(:,:,:,id,ld) * &
-                    &eq_2%T_FE(:,:,:,c([3,1+id],.false.),0,0,0)                 ! 3 for theta
-            end do
-        end do
+        call calc_derived_DC_epar(de,D_de,eq_2%T_FE(:,:,:,:,0,0,0),&
+            &D1_epar,D3_epar)
         
-        ! calculate curvature: dot d/dtheta e_theta and basis vectors
-        eq_2%kappa_n = 0._dp
-        eq_2%kappa_g = 0._dp
-        do ld = 1,3
-            eq_2%kappa_n = eq_2%kappa_n + D3_epar(:,:,:,ld) * b_n(:,:,:,ld)
-            eq_2%kappa_g = eq_2%kappa_g + D3_epar(:,:,:,ld) * b_g(:,:,:,ld)
-        end do
+        ! clean up
+        deallocate(de,D_de)
         
-        ! divide by |e_theta|^2
-        eq_2%kappa_n = eq_2%kappa_n / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-        eq_2%kappa_g = eq_2%kappa_g / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+        ! calculate normal and geodesic curvature
+        call calc_derived_kappa_from_e(grid_eq,eq_1,eq_2,b_n,b_g,&
+            eq_2%kappa_n,eq_2%kappa_g)
         
-        ! possibly correct for toroidal flux
-        if (.not.use_pol_flux_F) then
-            eq_2%kappa_n(:,:,kd) = eq_2%kappa_n(:,:,kd) * q_saf_H(kd_H,0)
-            eq_2%kappa_g(:,:,kd) = eq_2%kappa_g(:,:,kd) / q_saf_H(kd_H,0)
-        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! calculate parallel current
+                call calc_derived_sigma_from_e(eq_2,b_n,eq_2%sigma)
+            case (2)                                                            ! HELENA
+                ! Calculate the shear S
+                ierr = calc_derived_s_from_deriv_hel(grid_eq,eq_2,bcs(:,1),&
+                    &bcs_val(:,1),eq_2%S)                                       ! even
+                CHCKERR('')
+        end select
         
-        ! calculate the parallel current
-        eq_2%sigma = 0._dp
-        do ld = 1,3
-            eq_2%sigma = eq_2%sigma + 2._dp * b_n(:,:,:,ld) * &
-                &(D3_epar(:,:,:,ld) * eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0) - &
-                &D1_epar(:,:,:,ld) * eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)) / &
-                &eq_2%jac_FD(:,:,:,0,0,0)**2
-        end do
-        
-        ! add shear term and divide by -B_theta mu_0
-        eq_2%sigma = -(eq_2%sigma + eq_2%jac_FD(:,:,:,0,0,0) * &
-            &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)*eq_2%S) * &
-            &eq_2%jac_FD(:,:,:,0,0,0)/&
-            &(vac_perm*eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0))
+        ! clean up
+        deallocate(b_n,b_g)
         
 #if ldebug
-        ! test consistency of derived quantities:
-        !   * whether -2 p' J kappa_g = D3sigma
-        !   * whether sigma agrees with naive implementation
-        ! and also plot kappa components
         if (debug_calc_derived_q) then
+            ! plot them
+            ierr = plot_derived_q(grid_eq,eq_2)
+            CHCKERR('')
+            
             call writo('Testing consistency of derived quantities')
+            call lvl_ud(1)
+            
+            ! test consistency sigma and kappa_g
+            ierr = test_sigma_with_kappa_g(grid_eq,eq_1,eq_2)
+            CHCKERR('')
+            
+            ! test comparison with naive implementations
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    ierr = test_sigma_VMEC(grid_eq,eq_1,eq_2)
+                    CHCKERR('')
+                case (2)                                                        ! HELENA
+                    call test_S_HEL(grid_eq,eq_2,Rchi,Zchi)
+            end select
+            
+            call lvl_ud(-1)
+            call writo('Testing done')
+        end if
+#endif
+        
+        call lvl_ud(-1)
+    contains
+        !> \private Calculate shear from direct formula
+        subroutine calc_derived_S_direct(eq_2,S)
+            use num_utilities, only: c
+            
+            ! input / output
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            real(dp), intent(out) :: S(:,:,:)                                   !< shear
+            
+            ! local variables
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: h12(:,:,:) => null()                           ! h^alpha,psi
+            real(dp), pointer :: D3h12(:,:,:) => null()                         ! D_theta h^alpha,psi
+            real(dp), pointer :: h22(:,:,:) => null()                           ! h^psi,psi
+            real(dp), pointer :: D3h22(:,:,:) => null()                         ! D_theta h^psi,psi
+            
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+            D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
+            h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+            D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+            
+            ! Calculate the shear S
+            S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+            
+            ! clean up
+            nullify(J,h12,D3h12,h22,D3h22)
+        end subroutine calc_derived_S_direct
+        
+        !> \private Calculate shear by numerically derivating for HELENA.
+        integer function calc_derived_S_from_deriv_HEL(grid_eq,eq_2,bcs,&
+            &bcs_val,S) result(ierr)
+            
+            use num_utilities, only: c, spline
+            use HELENA_vars, only: chi_H
+            
+            character(*), parameter :: rout_name = &
+                &'calc_derived_S_from_deriv_HEL'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            integer :: bcs(2)                                                   !< boundary conditions (theta(even), theta(odd))
+            real(dp) :: bcs_val(2)                                              !< values for boundary conditions
+            real(dp), intent(out) :: S(:,:,:)                                   !< shear
+            
+            ! local variables
+            integer :: jd, kd                                                   ! counters
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: h12(:,:,:) => null()                           ! h^alpha,psi
+            real(dp), pointer :: h22(:,:,:) => null()                           ! h^psi,psi
+            
+            ! initialize ierr
+            ierr = 0
+            
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+            h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+            
+            ! Calculate the shear S
+            call plot_HDF5('s','s_pre',h12/h22)
+            do kd = 1,grid_eq%loc_n_r
+                do jd = 1,grid_eq%n(2)
+                    ierr = spline(chi_H,h12(:,jd,kd)/h22(:,jd,kd),chi_H,&
+                        &S(:,kd,id),ord=3,deriv=1,bcs=bcs,bcs_val=bcs_val)
+                    CHCKERR('')
+                end do
+            end do
+            S = -S/J
+            call plot_HDF5('s','s_after',S)
+            
+            ! clean up
+            nullify(J,h12,h22)
+        end function calc_derived_S_from_deriv_HEL
+        
+        !> \private Calculate shear from sigma using identity
+        !! J|nabla psi|^2 S + mu_0 J B^2 sigma = K
+        !! with K = -2F/R (Z(1)/R(0) + (Z(1)R(2)-R(1)Z(2))/(R(1)^2+Z(1)^2)
+        subroutine calc_derived_S_from_sigma_HEL(grid_eq,eq_2,Rchi,Zchi,S)
+            use num_utilities, only: c
+            use HELENA_vars, only: RBphi_H
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            real(dp), intent(in) :: Rchi(:,:,0:)                                !< chi and chi^2 derivatives of R
+            real(dp), intent(in) :: Zchi(:,:,0:)                                !< chi and chi^2 derivatives of Z
+            real(dp), intent(out) :: S(:,:,:)                                   !< shear
+            
+            ! local variables
+            integer :: jd, kd                                                   ! counters
+            integer :: kd_H                                                     ! kd in Helena tables
+            real(dp), allocatable :: K(:,:,:)                                   ! RHS
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: g33(:,:,:) => null()                           ! g^theta,theta
+            real(dp), pointer :: h22(:,:,:) => null()                           ! h^psi,psi
+            
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+            
+            ! set up RHS K
+            allocate(K(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            do jd = 1,grid_eq%n(2)
+                K(:,jd,:) = Zchi(:,:,1)/Rchi(:,:,0) + &
+                    &(Zchi(:,:,1)*Rchi(:,:,2)-Rchi(:,:,1)*Zchi(:,:,2))/&
+                    &(Rchi(:,:,1)**2+Zchi(:,:,1)**2)
+                do kd = 1,grid_eq%loc_n_r
+                    kd_H = grid_eq%i_min-1+kd
+                    K(:,jd,kd) = -2._dp*RBphi_H(kd_H,0)/Rchi(:,kd,0) * &
+                        &K(:,jd,kd)
+                end do
+            end do
+            
+            ! subtract mu_0 J B^2 sigma
+            S = K - vac_perm*eq_2%sigma*g33/J
+            
+            ! divide by J |nabla psi|^2
+            S = S/(J*h22)
+            
+            ! clean up
+            nullify(J,g33,h22)
+        end subroutine calc_derived_S_from_sigma_HEL
+        
+        !> \private  Calculate Cylindrical  contravariant components  of angular
+        !! derivatives of covariant parallel basis vector
+        subroutine calc_derived_DC_epar(de,D_de,T_FE,D1_epar,D3_epar)
+            use num_utilities, only: c
+            
+            ! input / output
+            real(dp), intent(in) :: de(:,:,:,:,:,:)                             !< derivs of cov. unit vector in E (space,deriv.,unitvec,output)
+            real(dp), intent(in) :: D_de(:,:,:,:,:)                             !< derivs of transf. matrix in E (space,deriv.,output)
+            real(dp), intent(in) :: T_FE(:,:,:,:)                               !< transformation matrix from F to E
+            real(dp), intent(out) :: D1_epar(:,:,:,:)                           !< cylindrical contravariant components of alpha derivative of parallel basis vector
+            real(dp), intent(out) :: D3_epar(:,:,:,:)                           !< cylindrical contravariant components of theta derivative of parallel basis vector
+            
+            ! initialize output
+            D1_epar = 0._dp
+            D3_epar = 0._dp
+            
+            ! transform
+            do ld = 1,3
+                do id = 1,2
+                    do jd = 1,2
+                        ! d/dalpha
+                        D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + &
+                            &de(:,:,:,id,jd,ld) * &
+                            &T_FE(:,:,:,c([1,1+id],.false.)) * &                ! 1 for alpha
+                            &T_FE(:,:,:,c([3,1+jd],.false.)) 
+                        ! d/dtheta
+                        D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + &
+                            &de(:,:,:,id,jd,ld) * &
+                            &T_FE(:,:,:,c([3,1+id],.false.)) * &                ! 3 for theta
+                            &T_FE(:,:,:,c([3,1+jd],.false.)) 
+                    end do
+                    ! d/dalpha
+                    D1_epar(:,:,:,ld) = D1_epar(:,:,:,ld) + &
+                        &D_de(:,:,:,id,ld) * &
+                        &T_FE(:,:,:,c([1,1+id],.false.))                        ! 1 for alpha
+                    ! d/dtheta
+                    D3_epar(:,:,:,ld) = D3_epar(:,:,:,ld) + &
+                        &D_de(:,:,:,id,ld) * &
+                        &T_FE(:,:,:,c([3,1+id],.false.))                        ! 3 for theta
+                end do
+            end do
+        end subroutine calc_derived_DC_epar
+        
+        !> \private  Calculate Equilibrium  contravariant components  of angular
+        !! derivatives  of covariant  parallel basis  vector. Also  sets up  the
+        !! covariant  Cylindrical components  of the  normal and  geodesic basis
+        !! vectors.
+        subroutine calc_derived_DE_epar_VMEC(grid_eq,eq_2,de,D_de,b_n,b_g)
+            use num_utilities, only: c
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            real(dp), intent(out) :: de(:,:,:,:,:,:)                            !< derivs of cov. unit vector in E (space,deriv.,unitvec,output)
+            real(dp), intent(out) :: D_de(:,:,:,:,:)                            !< derivs of transf. matrix in E (space,deriv.,output)
+            real(dp), intent(out) :: b_n(:,:,:,:)                               !< covariant Cylindrical components of normal basis vector
+            real(dp), intent(out) :: b_g(:,:,:,:)                               !< covariant Cylindrical components of geodesic basis vector
+            
+            ! initialize output
+            de = 0._dp
+            D_de = 0._dp
+            b_n = 0._dp
+            b_g = 0._dp
+            
+            ! calculate the derivatives of covariant unit vectors in Equilibrium
+            ! coordinates
+            
+            ! d/dtheta e_theta
+            de(:,:,:,1,1,1) = eq_2%R_E(:,:,:,0,2,0)                             ! ~ e_R
+            !de(:,:,:,1,1,2) = 0._dp                                             ! ~ e_phi
+            de(:,:,:,1,1,3) = eq_2%Z_E(:,:,:,0,2,0)                             ! ~ e_Z
+            
+            ! d/dzeta e_theta
+            de(:,:,:,2,1,1) = eq_2%R_E(:,:,:,0,1,1)                             ! ~ e_R
+            de(:,:,:,2,1,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)       ! ~ e_phi
+            de(:,:,:,2,1,3) = eq_2%Z_E(:,:,:,0,1,1)                             ! ~ e_Z
+            
+            ! d/dtheta e_zeta
+            de(:,:,:,1,2,1) = eq_2%R_E(:,:,:,0,1,1)                             ! ~ e_R
+            de(:,:,:,1,2,2) = eq_2%R_E(:,:,:,0,1,0)/eq_2%R_E(:,:,:,0,0,0)       ! ~ e_phi
+            de(:,:,:,1,2,3) = eq_2%Z_E(:,:,:,0,1,1)                             ! ~ e_Z
+            
+            ! d/dzeta e_zeta
+            de(:,:,:,2,2,1) = eq_2%R_E(:,:,:,0,0,2)-eq_2%R_E(:,:,:,0,0,0)       ! ~ e_R
+            de(:,:,:,2,2,2) = 2*eq_2%R_E(:,:,:,0,0,1)/eq_2%R_E(:,:,:,0,0,0)     ! ~ e_phi
+            de(:,:,:,2,2,3) = eq_2%Z_E(:,:,:,0,0,2)                             ! ~ e_Z
+            
+            ! calculate  derivatives  of  transformation matrix  in  Equilibrium
+            ! coordinates
+            
+            ! ~d/dtheta
+            D_de(:,:,:,1,1) = eq_2%R_E(:,:,:,0,1,0)*&
+                &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
+                &eq_2%R_E(:,:,:,0,0,1)*&
+                &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                        ! ~ e_R
+            D_de(:,:,:,1,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)           ! ~ e_phi
+            D_de(:,:,:,1,3) = eq_2%Z_E(:,:,:,0,1,0)*&
+                &eq_2%T_FE(:,:,:,c([3,2],.false.),0,1,0) + &
+                &eq_2%Z_E(:,:,:,0,0,1)*&
+                &eq_2%T_FE(:,:,:,c([3,3],.false.),0,1,0)                        ! ~ e_Z
+            
+            ! ~d/dzeta
+            D_de(:,:,:,2,1) = eq_2%R_E(:,:,:,0,1,0)*&
+                &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
+                &eq_2%R_E(:,:,:,0,0,1)*&
+                &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                        ! ~ e_R
+            D_de(:,:,:,2,2) = eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)           ! ~ e_phi
+            D_de(:,:,:,2,3) = eq_2%Z_E(:,:,:,0,1,0)*&
+                &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,1) + &
+                &eq_2%Z_E(:,:,:,0,0,1)*&
+                &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,1)                        ! ~ e_Z
+            
+            ! Decompose  normal and  geodesic basis  vectors into  contravariant
+            ! cylindrical basis vectors.
+            
+            ! b_n
+            b_n(:,:,:,2) = (eq_2%R_E(:,:,:,0,0,1)*eq_2%Z_E(:,:,:,0,1,0) - &
+                &eq_2%R_E(:,:,:,0,1,0)*eq_2%Z_E(:,:,:,0,0,1))                   ! store RzetaZtheta - RthetaZeta
+            b_n(:,:,:,1) = &
+                &-eq_2%jac_FD(:,:,:,0,0,0) * (1+eq_2%L_E(:,:,:,0,1,0)) / &
+                &( (b_n(:,:,:,2)/eq_2%R_E(:,:,:,0,0,0))**2 + &
+                &eq_2%R_E(:,:,:,0,1,0)**2 + eq_2%Z_E(:,:,:,0,1,0)**2 ) / &
+                &eq_2%R_E(:,:,:,0,0,0)                                          ! set up common factor of all b_n
+            b_n(:,:,:,2) = b_n(:,:,:,1) * b_n(:,:,:,2)                          ! finalize b_n(2)
+            b_n(:,:,:,3) = b_n(:,:,:,1) * eq_2%R_E(:,:,:,0,1,0)                 ! finalize b_n(3)
+            b_n(:,:,:,1) = -b_n(:,:,:,1) * eq_2%Z_E(:,:,:,0,1,0)                ! finalize b_n(1)
+            
+            ! b_g
+            do kd = 1,grid_eq%loc_n_r
+                b_g(:,:,kd,2) = eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0) - &
+                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) * &
+                    &eq_1%q_saf_FD(kd,0)                                        ! store J(B_theta + B_alpha q)
+                b_g(:,:,kd,1) = (b_g(:,:,kd,2)*eq_2%L_E(:,:,kd,0,0,1)-&
+                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0)) / &
+                    &(1+eq_2%L_E(:,:,kd,0,1,0))                                 ! store J((B_theta + B_alpha q) L_zeta - B_alpha)/(1+L_theta)
+            end do
+            b_g(:,:,:,3) = b_g(:,:,:,1)*eq_2%Z_E(:,:,:,0,1,0) - &
+                &b_g(:,:,:,2)*eq_2%Z_E(:,:,:,0,0,1)                             ! finalize b_g(3) (apart from pre-factor)
+            b_g(:,:,:,1) = b_g(:,:,:,1)*eq_2%R_E(:,:,:,0,1,0) - &
+                &b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,1)                             ! finalize b_g(1) (apart from pre-factor)
+            b_g(:,:,:,2) = -b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,0)**2               ! finalize b_g(2) (apart from pre-factor)
+            do ld = 1,3
+                b_g(:,:,:,ld) = b_g(:,:,:,ld) / &
+                    &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)                     ! prefactor 1/g_thetatheta
+            end do
+        end subroutine calc_derived_DE_epar_VMEC
+        subroutine calc_derived_DE_epar_HEL(grid_eq,eq_1,Rchi,Zchi,&
+            &de,D_de,b_n,b_g)
+            
+            use HELENA_vars, only: RBphi_H
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
+            real(dp), intent(in) :: Rchi(:,:,0:)                                !< chi and chi^2 derivatives of R
+            real(dp), intent(in) :: Zchi(:,:,0:)                                !< chi and chi^2 derivatives of Z
+            real(dp), intent(out) :: de(:,:,:,:,:,:)                            !< derivs of cov. unit vector in E (space,deriv.,unitvec,output)
+            real(dp), intent(out) :: D_de(:,:,:,:,:)                            !< derivs of transf. matrix in E (space,deriv.,output)
+            real(dp), intent(out) :: b_n(:,:,:,:)                               !< covariant Cylindrical components of normal basis vector
+            real(dp), intent(out) :: b_g(:,:,:,:)                               !< covariant Cylindrical components of geodesic basis vector
+            
+            ! local variables
+            integer :: kd_H                                                     ! kd in Helena tables
+            real(dp), allocatable :: dum1(:,:)                                  ! dummy variable
+            real(dp), allocatable :: dum2(:,:)                                  ! dummy variable
+            
+            ! initialize output
+            de = 0._dp
+            D_de = 0._dp
+            b_n = 0._dp
+            b_g = 0._dp
+            
+            ! calculate the derivatives of covariant unit vectors in Equilibrium
+            ! coordinates
+            
+            ! d/dtheta e_theta
+            de(:,1,:,1,1,1) = Rchi(:,:,2)                                       ! ~ e_R
+            !de(:,1,:,1,1,2) = 0._dp                                             ! ~ e_phi
+            de(:,1,:,1,1,3) = Zchi(:,:,2)                                       ! ~ e_Z
+            
+            ! d/dzeta e_theta
+            !de(:,1,:,2,1,1) = 0._dp                                             ! ~ e_R
+            de(:,1,:,2,1,2) = -Rchi(:,:,1)/Rchi(:,:,0)                          ! ~ e_phi
+            !de(:,1,:,2,1,3) = 0._dp                                             ! ~ e_Z
+            
+            ! d/dtheta e_zeta
+            !de(:,1,:,1,2,1) = 0._dp                                             ! ~ e_R
+            de(:,1,:,1,2,2) = -Rchi(:,:,1)/Rchi(:,:,0)                          ! ~ e_phi
+            !de(:,1,:,1,2,3) = 0._dp                                             ! ~ e_Z
+            
+            ! d/dzeta e_zeta
+            de(:,1,:,2,2,1) = -Rchi(:,:,0)                 ! ~ e_R
+            !de(:,1,:,2,2,2) = 0._dp                                             ! ~ e_phi
+            !de(:,1,:,2,2,3) = 0._dp                                             ! ~ e_Z
+            
+            ! Decompose  normal and  geodesic basis  vectors into  contravariant
+            ! cylindrical basis vectors.
+            do jd = 1,grid_eq%n(2)
+                ! auxiliary variables
+                allocate(dum1(grid_eq%n(1),grid_eq%loc_n_r))                    ! Rchi^2 + Zchi^2
+                allocate(dum2(grid_eq%n(1),grid_eq%loc_n_r))                    ! Rchi^2 + Zchi^2 + (qR)^2
+                dum1 = Rchi(:,:,1)**2 + Zchi(:,:,1)**2
+                do kd = 1,grid_eq%loc_n_r
+                    dum2(:,kd) = dum1(:,kd) + &
+                        &(eq_1%q_saf_FD(kd,0)*Rchi(:,kd,0))**2
+                end do
+                
+                ! b_n
+                b_n(:,jd,:,1) = Rchi(:,:,0)*Zchi(:,:,1)/dum1
+                b_n(:,jd,:,3) = -Rchi(:,:,0)*Rchi(:,:,1)/dum1
+                
+                ! b_g
+                b_g(:,jd,:,1) = -Rchi(:,:,0)**2 * Rchi(:,:,1)/dum2
+                b_g(:,jd,:,2) = -Rchi(:,:,0)**2 * dum1/dum2
+                b_g(:,jd,:,3) = -Rchi(:,:,0)**2 * Zchi(:,:,1)/dum2
+                
+                ! clean up
+                deallocate(dum1,dum2)
+            end do
+            do kd = 1,grid_eq%loc_n_r
+                kd_H = grid_eq%i_min-1+kd
+                b_n(:,:,kd,:) = b_n(:,:,kd,:) * &
+                    &eq_1%q_saf_FD(kd,0)/RBphi_H(kd_H,0)
+                b_g(:,:,kd,1:3:2) = b_g(:,:,kd,1:3:2) * eq_1%q_saf_FD(kd,0)     ! not b_g(2)
+            end do
+        end subroutine calc_derived_DE_epar_HEL
+        
+        !> \private  Calculate normal  and geodesic  curvature components  using
+        !! VMEC method.
+        subroutine calc_derived_kappa_from_e(grid_eq,eq_1,eq_2,b_n,b_g,&
+            &kappa_n,kappa_g)
+            
+            use num_utilities, only: c
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            real(dp), intent(in) :: b_n(:,:,:,:)                                !< covariant Cylindrical components of normal basis vector
+            real(dp), intent(in) :: b_g(:,:,:,:)                                !< covariant Cylindrical components of geodesic basis vector
+            real(dp), intent(out) :: kappa_n(:,:,:)                             !< normal curvature
+            real(dp), intent(out) :: kappa_g(:,:,:)                             !< geodesic curvature
+            
+            ! calculate curvature: dot d/dtheta e_theta and basis vectors
+            kappa_n = 0._dp
+            kappa_g = 0._dp
+            do ld = 1,3
+                kappa_n = kappa_n + D3_epar(:,:,:,ld) * b_n(:,:,:,ld)
+                kappa_g = kappa_g + D3_epar(:,:,:,ld) * b_g(:,:,:,ld)
+            end do
+            
+            ! divide by |e_theta|^2
+            kappa_n = kappa_n / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            kappa_g = kappa_g / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            
+            ! possibly correct for toroidal flux
+            if (.not.use_pol_flux_F) then
+                do kd = 1,grid_eq%loc_n_r
+                    kappa_n(:,:,kd) = kappa_n(:,:,kd) * eq_1%q_saf_E(kd,0)
+                    kappa_g(:,:,kd) = kappa_g(:,:,kd) / eq_1%q_saf_E(kd,0)
+                end do
+            end if
+        end subroutine calc_derived_kappa_from_e
+        
+        !> \private  Calculate parallel current using VMEC method.
+        subroutine calc_derived_sigma_from_e(eq_2,b_n,sigma)
+            use num_utilities, only: c
+            
+            ! input / output
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            real(dp), intent(in) :: b_n(:,:,:,:)                                !< covariant Cylindrical components of normal basis vector
+            real(dp), intent(out) :: sigma(:,:,:)                               !< parallel current
+            
+            ! calculate the parallel current
+            sigma = 0._dp
+            do ld = 1,3
+                sigma = sigma + 2._dp * b_n(:,:,:,ld) * &
+                    &(D3_epar(:,:,:,ld) * &
+                    &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0) - &
+                    &D1_epar(:,:,:,ld) * &
+                    &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)) / &
+                    &eq_2%jac_FD(:,:,:,0,0,0)**2
+            end do
+            
+            ! add shear term and divide by -B_theta mu_0
+            sigma = -(sigma + eq_2%jac_FD(:,:,:,0,0,0) * &
+                &eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)*eq_2%S) * &
+                &eq_2%jac_FD(:,:,:,0,0,0)/&
+                &(vac_perm*eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0))
+        end subroutine calc_derived_sigma_from_e
+        
+        !> \private  Calculate parallel current using HELENA method.
+        subroutine calc_derived_sigma_HEL(grid_eq,eq_2,sigma)
+            use HELENA_vars, only: RBphi_H
+            use num_utilities, only: c
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            real(dp), intent(out) :: sigma(:,:,:)                               !< parallel current
+            
+            ! local variables
+            integer :: kd                                                       ! counter
+            integer :: kd_H                                                     ! kd in Helena tables
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: g13(:,:,:) => null()                           ! g_alpha,theta
+            real(dp), pointer :: g33(:,:,:) => null()                           ! g_theta,theta
+            
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+            g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            
+            ! calculate parallel current using direct formula
+            do kd = 1,grid_eq%loc_n_r
+                kd_H = grid_eq%i_min-1+kd
+                sigma(:,:,kd) = -RBphi_H(kd_H,1) / vac_perm - &
+                    &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
+            end do 
+            
+            ! clean up
+            nullify(J,g13,g33)
+        end subroutine calc_derived_sigma_HEL
+        
+#if ldebug
+        !> \private Plot derived equilibrium quantities for debug.
+        integer function plot_derived_q(grid_eq,eq_2) result(ierr)
+            use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
+            use grid_utilities, only: trim_grid, calc_XYZ_grid
+            use grid_vars, only: alpha
+            use eq_vars, only: max_flux_F
+            
+            character(*), parameter :: rout_name = 'plot_derived_q'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            
+            ! local variables
+            type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
+            real(dp), allocatable :: X_plot(:,:,:)                              ! x values of total plot
+            real(dp), allocatable :: Y_plot(:,:,:)                              ! y values of total plot
+            real(dp), allocatable :: Z_plot(:,:,:)                              ! z values of total plot
+            real(dp), pointer :: ang_par_F(:,:,:) => null()                     ! parallel angle theta_F or zeta_F
+            integer :: norm_id(2)                                               ! untrimmed normal indices for trimmed grids
+            integer :: plot_dim(3)                                              ! dimensions of plot
+            integer :: plot_offset(3)                                           ! local offset of plot
+            logical :: cont_plot                                                ! continued plot
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Plotting derived equilibrium quantities')
             call lvl_ud(1)
             
             ! trim equilibrium grid
             ierr = trim_grid(grid_eq,grid_trim,norm_id)
             CHCKERR('')
             
-            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
-            call lvl_ud(1)
-            
             ! allocate variables
-            allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-            allocate(D3sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-            allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
             allocate(X_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
             allocate(Y_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
             allocate(Z_plot(grid_trim%n(1),grid_trim%n(2),grid_trim%loc_n_r))
@@ -4603,7 +4900,88 @@ contains
                     CHCKERR('')
             end select
             
-            ! get derived sigma
+            ! set up plot dimensions and offset
+            select case (eq_style)
+                case (1)                                                        ! VMEC
+                    plot_dim = [eq_jobs_lims(2,size(eq_jobs_lims,2)) - &
+                        &eq_jobs_lims(1,1) + 1, grid_trim%n(2:3)]
+                    plot_offset = [eq_jobs_lims(1,eq_job_nr)-1,0,&
+                        &grid_trim%i_min-1]
+                    cont_plot = eq_job_nr.gt.1
+                case (2)                                                        ! HELENA
+                    plot_dim = grid_trim%n
+                    plot_offset = [0,0,grid_trim%i_min-1]
+                    cont_plot = .false.
+            end select
+            
+            ! plot sigma
+            call plot_HDF5('sigma','TEST_sigma',&
+                &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            
+            ! plot shear
+            call plot_HDF5('shear','TEST_S',&
+                &eq_2%S(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            
+            ! plot kappa_n
+            call plot_HDF5('kappa_n','TEST_kappa_n',&
+                &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            
+            ! plot kappa_g
+            call plot_HDF5('kappa_g','TEST_kappa_g',&
+                &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
+                &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
+                &X=X_plot,Y=Y_plot,Z=Z_plot)
+            
+            ! clean up
+            nullify(ang_par_F)
+            call grid_trim%dealloc()
+            
+            call lvl_ud(-1)
+        end function plot_derived_q
+        
+        !> \private test whether -2 p' J kappa_g = D3sigma
+        integer function test_sigma_with_kappa_g(grid_eq,eq_1,eq_2) result(ierr)
+            use num_utilities, only: spline, calc_int
+            use num_vars, only: norm_disc_prec_eq
+            
+            character(*), parameter :: rout_name = 'test_sigma_with_kappa_g'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            
+            ! local variables
+            real(dp), allocatable :: sigma_ALT(:,:,:)                           ! alternative sigma
+            real(dp), allocatable :: D3sigma(:,:,:)                             ! D_theta sigma
+            real(dp), allocatable :: D3sigma_ALT(:,:,:)                         ! alternative D_theta sigma
+            real(dp), pointer :: ang_par_F(:,:,:) => null()                     ! parallel angle theta_F or zeta_F
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Testing whether -2 p'' J kappa_g = D3sigma')
+            call lvl_ud(1)
+            
+            ! point parallel angle
+            if (use_pol_flux_F) then
+                ang_par_F => grid_eq%theta_F
+            else
+                ang_par_F => grid_eq%zeta_F
+            end if
+            
+            ! allocate variables
+            allocate(D3sigma(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(D3sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            
+            ! get derivative of sigma
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = spline(ang_par_F(:,jd,kd),eq_2%sigma(:,jd,kd),&
@@ -4615,8 +4993,8 @@ contains
             
             ! calculate alternatively derived sigma
             do kd = 1,grid_eq%loc_n_r
-                D3sigma_ALT(:,:,kd) = &
-                    &-2*eq_1%pres_FD(kd,1)*eq_2%kappa_g(:,:,kd)*J(:,:,kd)
+                D3sigma_ALT(:,:,kd) = -2*eq_1%pres_FD(kd,1)*&
+                    &eq_2%kappa_g(:,:,kd)*eq_2%jac_FD(:,:,kd,0,0,0)
             end do
             
             ! calculate alternative sigma by integration
@@ -4632,122 +5010,152 @@ contains
             end do
             
             ! plot output
-            call plot_diff_HDF5(D3sigma,D3sigma_ALT,'TEST_diff_D3sigma',&
+            call plot_diff_HDF5(D3sigma,D3sigma_ALT,&
+                &'TEST_diff_D3sigma_through_kappa_g',&
                 &grid_eq%n,[0,0,grid_eq%i_min-1],&
                 &descr='To test whether -2 p'' J kappa_g = D3sigma',&
                 &output_message=.true.)
-            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma',&
+            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,&
+                &'TEST_diff_sigma_through_kappa_g',&
                 &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
                 &int(-2 p'' J kappa_g) = sigma',output_message=.true.)
-            
-            ! plot sigma
-            call plot_HDF5('sigma','TEST_sigma',&
-                &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
-            
-            ! plot shear
-            call plot_HDF5('shear','TEST_shear',&
-                &eq_2%S(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
-            
-            ! plot kappa_n
-            call plot_HDF5('kappa_n','TEST_kappa_n',&
-                &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
-            
-            ! plot kappa_g
-            call plot_HDF5('kappa_g','TEST_kappa_g',&
-                &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
-                &tot_dim=grid_trim%n,loc_offset=[0,0,grid_trim%i_min-1],&
-                &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! clean up
             nullify(ang_par_F)
             
             call lvl_ud(-1)
+        end function test_sigma_with_kappa_g
+        
+        !> \private   test  agreement   between  parallel   current  and   naive
+        !! implementation for VMEC
+        integer function test_sigma_VMEC(grid_eq,eq_1,eq_2) result(ierr)
+            use num_utilities, only: spline, calc_int, c
+            use num_vars, only: norm_disc_prec_eq
+            use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
+            use VMEC_utilities, only: fourier2real
+            
+            character(*), parameter :: rout_name = 'test_sigma_VMEC'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            
+            ! local variables
+            real(dp), allocatable :: sigma_ALT(:,:,:)                           ! alternative sigma
+            real(dp), allocatable :: B_V(:,:,:,:)                               ! magnetic field in VMEC coordinates
+            real(dp), allocatable :: B_alpha(:,:,:)                             ! B_alpha Flux coordinates
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: D1J(:,:,:) => null()                           ! D_alpha jac
+            real(dp), pointer :: g13(:,:,:) => null()                           ! g_alpha,theta
+            real(dp), pointer :: g23(:,:,:) => null()                           ! g_psi,theta
+            real(dp), pointer :: D1g23(:,:,:) => null()                         ! D_alpha g_psi,theta
+            real(dp), pointer :: g33(:,:,:) => null()                           ! g_theta,theta
+            
+            ! initialize ierr
+            ierr = 0
             
             call writo('Testing whether sigma agrees with naive implementation')
             call lvl_ud(1)
             
-            ! Calculate the parallel current sigma with naive implementation
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            D1J => eq_2%jac_FD(:,:,:,1,0,0)
+            g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+            g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),0,0,0)
+            D1g23 => eq_2%g_FD(:,:,:,c([2,3],.true.),1,0,0)
+            g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            
+            ! initialize
+            allocate(sigma_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
             sigma_ALT = 0._dp
-            select case (eq_style)
-                case (1)                                                            ! VMEC
-                    ! magnetic field in VMEC coordinates
-                    allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
-                    do id = 2,3                                                     ! only angular V components count for e_alpha
-                        ierr = fourier2real(&
-                            &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
-                            &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
-                            &grid_eq%trigon_factors,B_V(:,:,:,id),&
-                            &[.true.,is_asym_V])
-                        CHCKERR('')
-                    end do
-                    
-                    ! transform them to Flux coord. system
-                    allocate(B_alpha(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
-                    B_alpha = 0._dp
-                    do kd = 2,3
-                        B_alpha = B_alpha + B_V(:,:,:,kd) * &
-                            &eq_2%T_FE(:,:,:,c([1,kd],.false.),0,0,0)
-                    end do
-                    
-                    !!! more elegant but less accurate alternative:
-                    !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
-                        !!&eq_2%jac_FD(id,jd,:,0,0,0)
-                    
-                    ! derivate in normal direction
-                    do jd = 1,grid_eq%n(2)
-                        do id = 1,grid_eq%n(1)
-                            ierr = spline(grid_eq%loc_r_F,B_alpha(id,jd,:),&
-                                &grid_eq%loc_r_F,sigma_ALT(id,jd,:),&
-                                &ord=norm_disc_prec_eq,deriv=1)
-                            CHCKERR('')
-                        end do
-                    end do
-                    
-                    ! contribute to sigma
-                    sigma_ALT = (D1g23 - g23*D1J/J)/J - sigma_ALT
-                    
-                    !!! equally elegant but also inaccurate second alternative:
-                    !!sigma_ALT = (D1g23 - g23*D1J/J)/J - (D2g13 - g13*D2J/J)/J
-                case (2)                                                            ! HELENA
-                    do kd = 1,grid_eq%loc_n_r
-                        sigma_ALT(:,:,kd) = -RBphi_H(kd+grid_eq%i_min-1,1)
-                    end do
-            end select
+            
+            ! magnetic field in VMEC coordinates
+            allocate(B_V(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2:3))
+            do id = 2,3                                                         ! only angular V components count for e_alpha
+                ierr = fourier2real(&
+                    &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
+                    &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
+                    &grid_eq%trigon_factors,B_V(:,:,:,id),&
+                    &[.true.,is_asym_V])
+                CHCKERR('')
+            end do
+            
+            ! transform them to Flux coord. system
+            allocate(B_alpha(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            B_alpha = 0._dp
+            do kd = 2,3
+                B_alpha = B_alpha + B_V(:,:,:,kd) * &
+                    &eq_2%T_FE(:,:,:,c([1,kd],.false.),0,0,0)
+            end do
+            
+            !!! more elegant but less accurate alternative:
+            !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
+                !!&eq_2%jac_FD(id,jd,:,0,0,0)
+            
+            ! derivate in normal direction
+            do jd = 1,grid_eq%n(2)
+                do id = 1,grid_eq%n(1)
+                    ierr = spline(grid_eq%loc_r_F,B_alpha(id,jd,:),&
+                        &grid_eq%loc_r_F,sigma_ALT(id,jd,:),&
+                        &ord=norm_disc_prec_eq,deriv=1)
+                    CHCKERR('')
+                end do
+            end do
+            
+            ! contribute to sigma
+            sigma_ALT = (D1g23 - g23*D1J/J)/J - sigma_ALT
+            
+            !!! equally elegant but also inaccurate second alternative:
+            !!sigma_ALT = (D1g23 - g23*D1J/J)/J - (D2g13 - g13*D2J/J)/J
             do kd = 1,grid_eq%loc_n_r
                 sigma_ALT(:,:,kd) = sigma_ALT(:,:,kd) / vac_perm - &
                     &eq_1%pres_FD(kd,1)*J(:,:,kd)*g13(:,:,kd)/g33(:,:,kd)
             end do 
             
-            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma_2',&
+            call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
+                &sigma agrees with naive calculation',output_message=.true.)
+            
+            ! clean up
+            nullify(J,D1J,g13,g23,D1g23,g33)
+            
+            call lvl_ud(-1)
+        end function test_sigma_VMEC
+        
+        !> \private  test  agreement  between  shear  and  implementation  using
+        !! identity to relate to sigma
+        subroutine test_S_HEL(grid_eq,eq_2,Rchi,Zchi)
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
+            real(dp), intent(in) :: Rchi(:,:,0:)                                !< chi and chi^2 derivatives of R
+            real(dp), intent(in) :: Zchi(:,:,0:)                                !< chi and chi^2 derivatives of Z
+            
+            ! local variables
+            real(dp), allocatable :: S_ALT(:,:,:)                               ! alternative shear
+            
+            call writo('Testing whether shear agrees with alternative &
+                &implementation using sigma')
+            call lvl_ud(1)
+            
+            allocate(S_alt(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r))
+            
+            ! calculate implementation with identity using sigma
+            call calc_derived_S_from_sigma_HEL(grid_eq,eq_2,Rchi,Zchi,S_alt)
+            call plot_diff_HDF5(eq_2%S,S_ALT,'TEST_diff_S_from_sigma',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
+                &sigma agrees with naive calculation',output_message=.true.)
+            
+            ! calculate naive implementation
+            call calc_derived_S_direct(eq_2,S_alt)
+            call plot_diff_HDF5(eq_2%S,S_ALT,'TEST_diff_S_naive',&
                 &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
                 &sigma agrees with naive calculation',output_message=.true.)
             
             call lvl_ud(-1)
-            
-            ! clean up
-            call grid_trim%dealloc()
-            
-            call lvl_ud(-1)
-            call writo('Testing done')
-        end if
+        end subroutine test_S_HEL
 #endif
-        
-        ! clean up
-        nullify(J,D1J,D2J,D3J)
-        nullify(g13,D2g13,D3g13)
-        nullify(g23,D1g23,D3g23)
-        nullify(g33,D1g33,D2g33,D3g33)
-        nullify(h12,D3h12)
-        nullify(h22,D3h22)
-        nullify(h23)
-        
-        call lvl_ud(-1)
     end function calc_derived_q
     
     !> Sets up normalization constants.
