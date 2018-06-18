@@ -22,6 +22,12 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.36:
+* The `setup_modes` routine was still buggy, and this has been fixed by simplifying the part where n and m are set up..
+* Fixed a bug in `setup_modes` when only one mode was used.
+* The structure of the `calc_derived_q` has been extensively rewritten. Mostly for HELENA there are large changes in order to be able to use the best option, which often does not coincide with the VMEC best option.
+* Further improved plotting of `debug_calc_derived_q`; It should work well with multiple equilibrium jobs as well now.
+
 ## 2.35:
 * Fixed bug in `setup_modes` where incorrect rounding of secondary mode limits led in some cases to the incorrect calculation of the mode numbers in each flux surface.
 * This sometimes led to the appearance of non-physical normal modes centered around the flux surfaces where even a slight error was made.

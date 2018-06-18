@@ -94,7 +94,8 @@ contains
         ! local variables
         integer :: m                                                            ! secondary mode number
         integer :: kd_tot                                                       ! kd in total grid
-        integer :: ind                                                          ! index of mode in tables
+        integer :: ind_X                                                        ! index of mode in X tables
+        integer :: ind_sol                                                      ! index of mode in sol tables
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: n_t                                                          ! number of time points
         integer :: n_loc, m_loc                                                 ! local mode numbers
@@ -312,8 +313,9 @@ contains
             r_X_loc => grid_X%loc_r_F(kdl_X(1):kdl_X(2))
             r_sol_loc => grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2))
             
-            ! set up table index
-            ind = sec_sol_loc(m,4)
+            ! set up table indices
+            ind_X = sec_X_loc(m,4)
+            ind_sol = sec_sol_loc(m,4)
             
             ! Set up multiplicative factors fac_0 and fac_1 which are used in
             ! XUQ = fac_0*X + fac_1*DX with fac_0 and fac_1:
@@ -337,8 +339,8 @@ contains
             do kd = kdl_sol(1),kdl_sol(2)
                 ! set up local mode numbers
                 kd_tot = kd + grid_sol%i_min - 1
-                n_loc = mds_sol%n(kd_tot,ind)
-                m_loc = mds_sol%m(kd_tot,ind)
+                n_loc = mds_sol%n(kd_tot,ind_sol)
+                m_loc = mds_sol%m(kd_tot,ind_sol)
 #if ldebug
                 if (use_pol_flux_F .and. (m_loc.ne.sec_X_loc(m,1)) .or. &
                     &(.not.use_pol_flux_F .and. (n_loc.ne.sec_X_loc(m,1)))) then
@@ -378,30 +380,30 @@ contains
                                 &kdl_sol(1):kdl_sol(2)))
                             if (deriv_loc) then                                 ! parallel derivative
                                 ierr = interp_V_spline(&
-                                    &X%DU_0(:,:,kdl_X(1):kdl_X(2),ind),U0,&
+                                    &X%DU_0(:,:,kdl_X(1):kdl_X(2),ind_X),U0,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                                 ierr = interp_V_spline(&
-                                    &X%DU_1(:,:,kdl_X(1):kdl_X(2),ind),U1,&
+                                    &X%DU_1(:,:,kdl_X(1):kdl_X(2),ind_X),U1,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                             else
                                 ierr = interp_V_spline(&
-                                    &X%U_0(:,:,kdl_X(1):kdl_X(2),ind),U0,&
+                                    &X%U_0(:,:,kdl_X(1):kdl_X(2),ind_X),U0,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                                 ierr = interp_V_spline(&
-                                    &X%U_1(:,:,kdl_X(1):kdl_X(2),ind),U1,&
+                                    &X%U_1(:,:,kdl_X(1):kdl_X(2),ind_X),U1,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                             end if
                         case (2)                                                ! solution
                             if (deriv_loc) then                                 ! parallel derivative
-                                U0 => X%DU_0(:,:,kdl_X(1):kdl_X(2),ind)
-                                U1 => X%DU_1(:,:,kdl_X(1):kdl_X(2),ind)
+                                U0 => X%DU_0(:,:,kdl_X(1):kdl_X(2),ind_X)
+                                U1 => X%DU_1(:,:,kdl_X(1):kdl_X(2),ind_X)
                             else
-                                U0 => X%U_0(:,:,kdl_X(1):kdl_X(2),ind)
-                                U1 => X%U_1(:,:,kdl_X(1):kdl_X(2),ind)
+                                U0 => X%U_0(:,:,kdl_X(1):kdl_X(2),ind_X)
+                                U1 => X%U_1(:,:,kdl_X(1):kdl_X(2),ind_X)
                             end if
                     end select
                     
@@ -444,11 +446,11 @@ contains
                                 CHCKERR(err_msg)
                             else
                                 ierr = interp_V_spline(&
-                                    &X%DU_0(:,:,kdl_X(1):kdl_X(2),ind),U0,&
+                                    &X%DU_0(:,:,kdl_X(1):kdl_X(2),ind_X),U0,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                                 ierr = interp_V_spline(&
-                                    &X%DU_1(:,:,kdl_X(1):kdl_X(2),ind),U1,&
+                                    &X%DU_1(:,:,kdl_X(1):kdl_X(2),ind_X),U1,&
                                     &r_X_loc,r_sol_loc,extrap)
                                 CHCKERR('')
                             end if
@@ -457,8 +459,8 @@ contains
                                 ierr = 1
                                 CHCKERR(err_msg)
                             else
-                                U0 => X%DU_0(:,:,kdl_X(1):kdl_X(2),ind)
-                                U1 => X%DU_1(:,:,kdl_X(1):kdl_X(2),ind)
+                                U0 => X%DU_0(:,:,kdl_X(1):kdl_X(2),ind_X)
+                                U1 => X%DU_1(:,:,kdl_X(1):kdl_X(2),ind_X)
                             end if
                     end select
                     
@@ -485,8 +487,8 @@ contains
             do kd = kdl_sol(1),kdl_sol(2)
                 ! set up loc complex XUQ without time at this normal point
                 XUQ_loc = exp(iu*expon(:,:,kd)) * &
-                    &(sol%vec(ind,kd,X_id)*fac_0(:,:,kd) + &
-                    &Dsol_vec(ind,kd)*fac_1(:,:,kd))
+                    &(sol%vec(ind_sol,kd,X_id)*fac_0(:,:,kd) + &
+                    &Dsol_vec(ind_sol,kd)*fac_1(:,:,kd))
                 
                 ! iterate over time steps
                 do id = 1,n_t
@@ -872,7 +874,6 @@ contains
         do jd = 1,size(V_i,2)
             do id = 1,size(V_i,1)
                 if (debug_interp_V_spline) then
-                    write(*,*) '    id,jd', id, jd
                     call plot_comp('real part',r_i,rp(V_i(id,jd,:)),&
                         &r_o,rp(V_o(id,jd,:)))
                     call plot_comp('imaginary part',r_i,ip(V_i(id,jd,:)),&
