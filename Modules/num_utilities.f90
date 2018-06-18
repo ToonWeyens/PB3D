@@ -1702,6 +1702,8 @@ contains
         integer :: il(2)                                                        ! limits of interp., what falls outside is extrapolated
         real(dp) :: bcs_val_loc(2)                                              ! local bcs_val
         real(dp) :: lim_vals(0:3)                                               ! limit values at boundaries for extrapolation
+        real(dp), allocatable :: xnew_EZ(:)                                     ! xnew in EZ spline doubles
+        real(dp), allocatable :: ynew_EZ(:)                                     ! ynew in EZ spline doubles
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: extrap_loc                                                   ! local extrap
         
@@ -1851,21 +1853,26 @@ contains
         call EZspline_setup(f_spl,y,ierr,exact_dim=.true.)                      ! match exact dimensions
         call EZspline_error(ierr)
         CHCKERR('')
-        
         ! interpolated part
         if (il(1).le.il(2)) then
+            allocate(xnew_EZ(nnew_interp))
+            allocate(ynew_EZ(nnew_interp))
+            xnew_EZ = xnew(il(1):il(2))
+            
             if (deriv_loc.eq.0) then
                 ! interpolate
-                call EZspline_interp(f_spl,nnew_interp,xnew(il(1):il(2)),&
-                    &ynew(il(1):il(2)),ierr)
+                call EZspline_interp(f_spl,nnew_interp,xnew_EZ,ynew_EZ,ierr)
                 call EZspline_error(ierr)
                 CHCKERR('')
             else
-                call EZspline_derivative(f_spl,deriv_loc,nnew_interp,&
-                    &xnew(il(1):il(2)),ynew(il(1):il(2)),ierr) 
+                call EZspline_derivative(f_spl,deriv_loc,nnew_interp,xnew_EZ,&
+                    &ynew_EZ,ierr) 
                 call EZspline_error(ierr)
                 CHCKERR('')
             end if
+            
+            ynew(il(1):il(2)) = ynew_EZ
+            deallocate(xnew_EZ,ynew_EZ)
         end if
         
         ! extrapolated part

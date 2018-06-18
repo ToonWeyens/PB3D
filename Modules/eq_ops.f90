@@ -4441,16 +4441,14 @@ contains
             h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
             
             ! Calculate the shear S
-            call plot_HDF5('s','s_pre',h12/h22)
             do kd = 1,grid_eq%loc_n_r
                 do jd = 1,grid_eq%n(2)
                     ierr = spline(chi_H,h12(:,jd,kd)/h22(:,jd,kd),chi_H,&
-                        &S(:,kd,id),ord=3,deriv=1,bcs=bcs,bcs_val=bcs_val)
+                        &S(:,jd,kd),ord=3,deriv=1,bcs=bcs,bcs_val=bcs_val)
                     CHCKERR('')
                 end do
             end do
             S = -S/J
-            call plot_HDF5('s','s_after',S)
             
             ! clean up
             nullify(J,h12,h22)
