@@ -22,6 +22,10 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.37:
+* Fixed important bug for HELENA where the wrong indices were passed when calculating the shear.
+* Improved EZspline usage in `num_utilities` so that it should also work if the library has slightly different kinds for doubles than PB3D.
+
 ## 2.36:
 * The `setup_modes` routine was still buggy, and this has been fixed by simplifying the part where n and m are set up..
 * Fixed a bug in `setup_modes` when only one mode was used.
