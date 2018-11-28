@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.38:
+* Fixed bug where min and max alpha were passed as integer, instead of real, which leads to serious rounding off errors.
+
 ## 2.37:
 * Fixed important bug for HELENA where the wrong indices were passed when calculating the shear.
 * Improved EZspline usage in `num_utilities` so that it should also work if the library has slightly different kinds for doubles than PB3D.

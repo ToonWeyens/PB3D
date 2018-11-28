@@ -27,7 +27,7 @@ module eq_ops
     logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
+    logical :: debug_calc_derived_q = .true.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
     logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
@@ -4231,7 +4231,7 @@ contains
     !!          \frac{q R^2}{R_\theta^2 + Z_\theta^2 + q^2 R^2}
     !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
-        use eq_vars, only: vac_perm
+        use eq_vars, only: vac_perm, max_flux_F
         use num_vars, only: eq_style, use_pol_flux_F
         use HELENA_vars, only: R_H, Z_H, chi_H, ias
         use num_utilities, only: spline
@@ -4365,6 +4365,8 @@ contains
             CHCKERR('')
             
             ! test comparison with naive implementations
+            ierr = test_kappa(grid_eq,eq_1,eq_2)
+            CHCKERR('')
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ierr = test_sigma_VMEC(grid_eq,eq_1,eq_2)
@@ -4383,6 +4385,7 @@ contains
         !> \private Calculate shear from direct formula
         subroutine calc_derived_S_direct(eq_2,S)
             use num_utilities, only: c
+            use num_vars, only: tol_zero
             
             ! input / output
             type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
@@ -4394,6 +4397,7 @@ contains
             real(dp), pointer :: D3h12(:,:,:) => null()                         ! D_theta h^alpha,psi
             real(dp), pointer :: h22(:,:,:) => null()                           ! h^psi,psi
             real(dp), pointer :: D3h22(:,:,:) => null()                         ! D_theta h^psi,psi
+            real(dp), allocatable :: h22_corrected(:,:,:)                       ! to avoid division by zero
             
             ! set up submatrices
             J => eq_2%jac_FD(:,:,:,0,0,0)
@@ -4401,9 +4405,11 @@ contains
             D3h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,1)
             h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
             D3h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,1)
+            allocate(h22_corrected(size(S,1),size(S,2),size(S,3)))
+            h22_corrected = sign(max(abs(h22),tol_zero),h22)
             
             ! Calculate the shear S
-            S = -(D3h12/h22 - D3h22*h12/h22**2)/J
+            S = -(D3h12/h22_corrected - D3h22*h12/h22_corrected**2)/J
             
             ! clean up
             nullify(J,h12,D3h12,h22,D3h22)
@@ -4553,6 +4559,7 @@ contains
         !! vectors.
         subroutine calc_derived_DE_epar_VMEC(grid_eq,eq_2,de,D_de,b_n,b_g)
             use num_utilities, only: c
+            use num_vars, only: tol_zero
             
             ! input / output
             type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
@@ -4624,8 +4631,8 @@ contains
                 &eq_2%R_E(:,:,:,0,1,0)*eq_2%Z_E(:,:,:,0,0,1))                   ! store RzetaZtheta - RthetaZeta
             b_n(:,:,:,1) = &
                 &-eq_2%jac_FD(:,:,:,0,0,0) * (1+eq_2%L_E(:,:,:,0,1,0)) / &
-                &( (b_n(:,:,:,2)/eq_2%R_E(:,:,:,0,0,0))**2 + &
-                &eq_2%R_E(:,:,:,0,1,0)**2 + eq_2%Z_E(:,:,:,0,1,0)**2 ) / &
+                &max(tol_zero, ( (b_n(:,:,:,2)/eq_2%R_E(:,:,:,0,0,0))**2 + &
+                &eq_2%R_E(:,:,:,0,1,0)**2 + eq_2%Z_E(:,:,:,0,1,0)**2 )) / &
                 &eq_2%R_E(:,:,:,0,0,0)                                          ! set up common factor of all b_n
             b_n(:,:,:,2) = b_n(:,:,:,1) * b_n(:,:,:,2)                          ! finalize b_n(2)
             b_n(:,:,:,3) = b_n(:,:,:,1) * eq_2%R_E(:,:,:,0,1,0)                 ! finalize b_n(3)
@@ -4831,10 +4838,11 @@ contains
 #if ldebug
         !> \private Plot derived equilibrium quantities for debug.
         integer function plot_derived_q(grid_eq,eq_2) result(ierr)
-            use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
+            use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr, &
+                &use_normalization, mu_0_original
             use grid_utilities, only: trim_grid, calc_XYZ_grid
             use grid_vars, only: alpha
-            use eq_vars, only: max_flux_F
+            use eq_vars, only: max_flux_F, B_0, R_0
             
             character(*), parameter :: rout_name = 'plot_derived_q'
             
@@ -4844,6 +4852,7 @@ contains
             
             ! local variables
             type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
+            real(dp) :: norm_factors(4)                                         ! normalization factors
             real(dp), allocatable :: X_plot(:,:,:)                              ! x values of total plot
             real(dp), allocatable :: Y_plot(:,:,:)                              ! y values of total plot
             real(dp), allocatable :: Z_plot(:,:,:)                              ! z values of total plot
@@ -4912,27 +4921,36 @@ contains
                     cont_plot = .false.
             end select
             
+            ! set up normalization factors
+            norm_factors = 1._dp
+            if (use_normalization) then
+                norm_factors(1) = 1._dp/(mu_0_original*R_0)                     ! sigma
+                norm_factors(2) = 1._dp/(R_0**3)                                ! S
+                norm_factors(3) = 1._dp/(R_0*B_0)                               ! kappa_n
+                norm_factors(4) = 1._dp                                         ! kappa_g
+            end if
+            
             ! plot sigma
             call plot_HDF5('sigma','TEST_sigma',&
-                &eq_2%sigma(:,:,norm_id(1):norm_id(2)),&
+                &eq_2%sigma(:,:,norm_id(1):norm_id(2))*norm_factors(1),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
                 &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot shear
             call plot_HDF5('shear','TEST_S',&
-                &eq_2%S(:,:,norm_id(1):norm_id(2)),&
+                &eq_2%S(:,:,norm_id(1):norm_id(2))*norm_factors(2),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
                 &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_n
             call plot_HDF5('kappa_n','TEST_kappa_n',&
-                &eq_2%kappa_n(:,:,norm_id(1):norm_id(2)),&
+                &eq_2%kappa_n(:,:,norm_id(1):norm_id(2))*norm_factors(3),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
                 &X=X_plot,Y=Y_plot,Z=Z_plot)
             
             ! plot kappa_g
             call plot_HDF5('kappa_g','TEST_kappa_g',&
-                &eq_2%kappa_g(:,:,norm_id(1):norm_id(2)),&
+                &eq_2%kappa_g(:,:,norm_id(1):norm_id(2))*norm_factors(4),&
                 &tot_dim=plot_dim,loc_offset=plot_offset,cont_plot=cont_plot,&
                 &X=X_plot,Y=Y_plot,Z=Z_plot)
             
@@ -5024,6 +5042,94 @@ contains
             call lvl_ud(-1)
         end function test_sigma_with_kappa_g
         
+        !> \private test agreement between curvatures and naive implementation
+        integer function test_kappa(grid_eq,eq_1,eq_2) result(ierr)
+            use num_utilities, only: c
+            
+            character(*), parameter :: rout_name = 'test_kappa'
+            
+            ! input / output
+            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
+            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
+            type(eq_2_type), intent(in), target :: eq_2                         !< metric equilibrium variables
+            
+            ! local variables
+            real(dp), allocatable :: kappa_ALT(:,:,:,:)                         ! alternative kappa_n (1) and kappa_g(2)
+            real(dp), pointer :: J(:,:,:) => null()                             ! jac
+            real(dp), pointer :: D1J(:,:,:) => null()                           ! D_alpha jac
+            real(dp), pointer :: D2J(:,:,:) => null()                           ! D_psi jac
+            real(dp), pointer :: D3J(:,:,:) => null()                           ! D_theta jac
+            real(dp), pointer :: g13(:,:,:) => null()                           ! g_alpha,theta
+            real(dp), pointer :: g33(:,:,:) => null()                           ! g_theta,theta
+            real(dp), pointer :: D1g33(:,:,:) => null()                         ! D_alpha g_theta,theta
+            real(dp), pointer :: D2g33(:,:,:) => null()                         ! D_psi g_theta,theta
+            real(dp), pointer :: D3g33(:,:,:) => null()                         ! D_theta g_theta,theta
+            real(dp), pointer :: h12(:,:,:) => null()                           ! h_alpha,psi
+            real(dp), pointer :: h22(:,:,:) => null()                           ! h_psi,psi
+            real(dp), pointer :: h23(:,:,:) => null()                           ! h_psi,theta
+            
+            ! initialize ierr
+            ierr = 0
+            
+            call writo('Testing whether kappa agrees with naive implementation')
+            call lvl_ud(1)
+            
+            ! set up submatrices
+            J => eq_2%jac_FD(:,:,:,0,0,0)
+            D1J => eq_2%jac_FD(:,:,:,1,0,0)
+            D2J => eq_2%jac_FD(:,:,:,0,1,0)
+            D3J => eq_2%jac_FD(:,:,:,0,0,1)
+            g13 => eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0)
+            g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
+            D1g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),1,0,0)
+            D2g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,1,0)
+            D3g33 => eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,1)
+            h12 => eq_2%h_FD(:,:,:,c([1,2],.true.),0,0,0)
+            h22 => eq_2%h_FD(:,:,:,c([2,2],.true.),0,0,0)
+            h23 => eq_2%h_FD(:,:,:,c([2,3],.true.),0,0,0)
+            
+            ! initialize
+            allocate(kappa_ALT(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,2))
+            kappa_ALT = 0._dp
+            
+            ! Calculate naive normal curvature kappa_n
+            do kd = 1,grid_eq%loc_n_r
+                kappa_ALT(:,:,kd,1) = &
+                    &vac_perm*J(:,:,kd)**2*eq_1%pres_FD(kd,1)/g33(:,:,kd) + &
+                    &1._dp/(2*h22(:,:,kd)) * ( &
+                    &h12(:,:,kd) * ( D1g33(:,:,kd)/g33(:,:,kd) - &
+                    &2*D1J(:,:,kd)/J(:,:,kd) ) + &
+                    &h22(:,:,kd) * ( D2g33(:,:,kd)/g33(:,:,kd) - &
+                    &2*D2J(:,:,kd)/J(:,:,kd) ) + &
+                    &h23(:,:,kd) * ( D3g33(:,:,kd)/g33(:,:,kd) - &
+                    &2*D3J(:,:,kd)/J(:,:,kd) ) )
+            end do
+            
+            ! Calculate naive geodesic curvature kappa_g
+            kappa_ALT(:,:,:,2) = (0.5*D1g33/g33 - D1J/J) - &
+                &g13/g33*(0.5*D3g33/g33 - D3J/J)
+            
+            call plot_diff_HDF5(eq_2%kappa_n,kappa_ALT(:,:,:,1),'TEST_diff_kappa_n',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
+                &kappa_n agrees with naive calculation',output_message=.true.)
+            call plot_diff_HDF5(eq_2%kappa_g,kappa_ALT(:,:,:,2),'TEST_diff_kappa_g',&
+                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
+                &kappa_g agrees with naive calculation',output_message=.true.)
+            
+            ! temporarily
+            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_n,&
+                &kappa_ALT(:,:,:,1),'kappa_n')
+            CHCKERR('')
+            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_g,&
+                &kappa_ALT(:,:,:,2),'kappa_g')
+            CHCKERR('')
+            
+            ! clean up
+            nullify(J,D1J,D2J,D3J,g13,g33,D1g33,D2g33,D3g33,h12,h22,h23)
+            
+            call lvl_ud(-1)
+        end function test_kappa
+        
         !> \private   test  agreement   between  parallel   current  and   naive
         !! implementation for VMEC
         integer function test_sigma_VMEC(grid_eq,eq_1,eq_2) result(ierr)
@@ -5088,8 +5194,7 @@ contains
             end do
             
             !!! more elegant but less accurate alternative:
-            !!B_alpha = eq_2%g_FD(id,jd,:,c([1,3],.true.),0,0,0)/&
-                !!&eq_2%jac_FD(id,jd,:,0,0,0)
+            !!B_alpha = g13/J
             
             ! derivate in normal direction
             do jd = 1,grid_eq%n(2)
@@ -5114,6 +5219,11 @@ contains
             call plot_diff_HDF5(eq_2%sigma,sigma_ALT,'TEST_diff_sigma',&
                 &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
                 &sigma agrees with naive calculation',output_message=.true.)
+            
+            ! temporarily
+            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%sigma,sigma_ALT,&
+                &'sigma')
+            CHCKERR('')
             
             ! clean up
             nullify(J,D1J,g13,g23,D1g23,g33)
@@ -5153,6 +5263,57 @@ contains
             
             call lvl_ud(-1)
         end subroutine test_S_HEL
+        
+        !> \private make plot for 2018 paper; requires one process only.
+        integer function plot_diff_for_paper(r, A, B, title) result(ierr)
+            use num_vars, only: n_procs
+            
+            character(*), parameter :: rout_name = 'plot_diff_for_paper'
+            
+            ! input / output
+            real(dp), intent(in) :: r(:)                                        !< r at which tabulated
+            real(dp), intent(in) :: A(:,:,:)                                    !< GOOD value (optimized implementation)
+            real(dp), intent(in) :: B(:,:,:)                                    !< BAD value (naive implementation)
+            character(len=*), intent(in) :: title                               !< plot title
+            
+            ! local variables
+            integer :: jd, kd                                                   ! counters
+            integer :: n_r                                                      ! size of r
+            character(len=max_str_ln) :: plot_title(3)                          ! titles of plot (GOOD, BAD, diff)
+            
+            ! initialize ierr
+            ierr = 0
+            
+            if (n_procs.gt.1) then
+                ierr = 1
+                CHCKERR('Need 1 process')
+            end if
+            
+            n_r = size(r)
+            
+            do jd = 1,size(A,2)
+                plot_title(1) = trim(title)//'_GOOD'
+                plot_title(2) = trim(title)//'_BAD'
+                plot_title(3) = trim(title)//'_DIFF'
+                if (jd.gt.1) then
+                    do kd = 1,3
+                        plot_title(kd) = trim(plot_title(kd))//'_'//&
+                            &trim(i2str(kd))
+                    end do
+                end if
+                call print_ex_2D([''],plot_title(1),transpose(A(:,jd,:)),&
+                    &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
+                call draw_ex([''],plot_title(1),n_r,1,.false.)
+                call print_ex_2D([''],plot_title(2),transpose(B(:,jd,:)),&
+                    &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
+                call draw_ex([''],plot_title(2),n_r,1,.false.)
+                call print_ex_2D([''],plot_title(3),&
+                    &transpose(abs(B(:,jd,:)-A(:,jd,:))/&
+                    &(abs(B(:,jd,:))+abs(A(:,jd,:)))),&
+                    &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
+                call draw_ex([''],plot_title(3),n_r,1,.false.)
+            end do
+        end function plot_diff_for_paper
 #endif
     end function calc_derived_q
     
