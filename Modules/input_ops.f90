@@ -866,6 +866,7 @@ contains
                             &warning=.true.)
                         n_alpha = 1
                     end if
+                    min_alpha = alpha
                     max_alpha = alpha
                 case (2)                                                        ! multiple field lines, single turns
                     if (n_alpha.lt.1) then
@@ -1621,7 +1622,7 @@ contains
             &max_sec_X*1._dp,norm_disc_prec_X*1._dp,norm_style*1._dp,&
             &U_style*1._dp,X_style*1._dp,matrix_SLEPC_style*1._dp,&
             &magn_int_style*1._dp,K_style*1._dp,alpha_style*1._dp,&
-            &X_grid_style*1._dp,min_alpha*1._dp,max_alpha*1._dp,n_alpha*1._dp,&
+            &X_grid_style*1._dp,min_alpha,max_alpha,n_alpha*1._dp,&
             &max_njq_change]
         
         ! misc_sol
