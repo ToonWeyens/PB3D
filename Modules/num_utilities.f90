@@ -1730,7 +1730,8 @@ contains
         do kd = 2,n
             if (x(kd).le.x(kd-1)) then
                 ierr = 1
-                err_msg = 'x is not monotonously increasing'
+                err_msg = 'for index '//trim(i2str(kd))//&
+                    &', x is not monotonously increasing'
                 CHCKERR(err_msg)
             end if
         end do

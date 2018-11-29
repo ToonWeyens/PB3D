@@ -72,6 +72,7 @@ module eq_vars
         real(dp), allocatable :: flux_p_FD(:,:)                                 !< poloidal flux and norm. deriv.
         real(dp), allocatable :: flux_t_FD(:,:)                                 !< toroidal flux and norm. deriv.
         real(dp), allocatable :: rho(:)                                         !< density
+        logical :: flip_angles                                                   !< flip poloidal coordinate [false]
 #if ldebug
         real(dp) :: estim_mem_usage(2)                                          !< expected memory usage \ldebug
 #endif

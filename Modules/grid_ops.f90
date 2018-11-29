@@ -820,7 +820,8 @@ contains
         real(dp), pointer :: flux_F(:) => null()                                ! flux that the F uses as normal coord.
         real(dp), pointer :: flux_E(:) => null()                                ! flux that the E uses as normal coord.
         real(dp) :: r_F_factor, r_E_factor                                      ! mult. factors for r_F and r_E
-        integer :: pmone                                                        ! plus or minus one
+        integer :: pmone_LH                                                     ! plus or minus one for conversion left-right handed coordinate systems
+        integer :: pmone_FA                                                     ! plus or minus one for angle flip
         integer :: id, jd, kd                                                   ! counters
         integer :: n_par_X_loc                                                  ! local n_par_X
         logical :: only_half_grid_loc                                           ! local only_half_grid
@@ -868,12 +869,18 @@ contains
                     flux_E => eq%flux_t_E(:,0)
                 end if
                 r_E_factor = max_flux_E
-                pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
+                pmone_LH = -1                                                   ! conversion VMEC LH -> RH coord. system
             case (2)                                                            ! HELENA
                 flux_E => eq%flux_p_E(:,0)
                 r_E_factor = 2*pi
-                pmone = 1
+                pmone_LH = 1
         end select
+        
+        if (eq%flip_angles) then
+            pmone_FA = -1
+        else
+            pmone_FA = 1
+        endif
         
         ! set up flux_F
         if (use_pol_flux_F) then                                                ! poloidal flux / 2pi
@@ -881,8 +888,9 @@ contains
             r_F_factor = 2*pi
         else                                                                    ! toroidal flux / 2pi
             flux_F => eq%flux_t_E(:,0)
-            r_F_factor = pmone*2*pi                                             ! possible conversion VMEC LH -> RH coord. system
+            r_F_factor = pmone_LH*2*pi                                          ! possible conversion VMEC LH -> RH coord. system
         end if
+        r_F_factor = pmone_FA*r_F_factor                                        ! possible conversion because of angle flip
         
         ! set up parallel angle in  Flux coordinates on equidistant grid        
         ! and use this to calculate the other angle as well
@@ -893,7 +901,7 @@ contains
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
-                zeta_F_loc(:,:,kd) = pmone*eq%q_saf_E(kd,0)*&
+                zeta_F_loc(:,:,kd) = pmone_LH*eq%q_saf_E(kd,0)*&
                     &theta_F_loc(:,:,kd)
             end do
             do jd = 1,n_alpha
@@ -904,7 +912,7 @@ contains
                 &max_par_X*pi,1,excl_last=.false.)                              ! first index corresponds to parallel angle
             CHCKERR('')
             do kd = 1,grid_eq%loc_n_r
-                theta_F_loc(:,:,kd) = pmone*eq%rot_t_E(kd,0)*&
+                theta_F_loc(:,:,kd) = pmone_LH*eq%rot_t_E(kd,0)*&
                     &zeta_F_loc(:,:,kd)
             end do
             do jd = 1,n_alpha

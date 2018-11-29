@@ -9,6 +9,9 @@ module eq_ops
     use num_vars, only: pi, dp, max_str_ln, max_deriv
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
+
+    use MPI_utilities, only: wait_MPI
+
 #if ldebug
     use num_utilities, only: check_deriv
 #endif
@@ -350,12 +353,44 @@ contains
             use VMEC_vars, only: rot_t_V, q_saf_V, flux_t_V, flux_p_V, pres_V
             use eq_vars, only: max_flux_E
             
+            ! local variables
+            logical :: is_mon(2)                                                ! whether pol. and tor. flux is monotonous
+            
             ! copy flux variables
             eq%flux_p_E = flux_p_V(grid_eq%i_min:grid_eq%i_max,:)
             eq%flux_t_E = flux_t_V(grid_eq%i_min:grid_eq%i_max,:)
             eq%pres_E = pres_V(grid_eq%i_min:grid_eq%i_max,:)
             eq%q_saf_E = q_saf_V(grid_eq%i_min:grid_eq%i_max,:)
             eq%rot_t_E = rot_t_V(grid_eq%i_min:grid_eq%i_max,:)
+            
+            ! check  whether  we need  to  flip  the flux  in  order  to have  a
+            ! monotonously increasing flux
+            is_mon(1) = (maxval(flux_p_V(:,1))/minval(flux_p_V(:,1)) .ge. 0._dp)
+            is_mon(2) = (maxval(flux_t_V(:,1))/minval(flux_t_V(:,1)) .ge. 0._dp)
+            !call print_ex_2D(['pol','tor'], '', reshape([flux_p_V(:,0), flux_t_V(:,0)], [grid_eq%n(3),2]))
+            if (use_pol_flux_F) then
+                if (.not. is_mon(1)) then
+                    ierr = 1
+                    err_msg = 'poloidal flux is not monotonous'
+                    if (is_mon(2)) err_msg = trim(err_msg) // &
+                        &'; try using the toroidal flux as normal coordinate'
+                    CHCKERR(err_msg)
+                end if
+                
+                eq%flip_angles = &
+                    &(flux_p_V(maxloc(abs(flux_p_V(:,1)),1),1) .lt. 0._dp)
+            else
+                if (.not. is_mon(2)) then
+                    ierr = 1
+                    err_msg = 'toroidal flux is not monotonous'
+                    if (is_mon(1)) err_msg = trim(err_msg) // &
+                        &'; try using the poloidal flux as normal coordinate'
+                    CHCKERR(err_msg)
+                end if
+                
+                eq%flip_angles = &
+                    &(flux_t_V(maxloc(abs(flux_t_V(:,1)),1),1) .lt. 0._dp)
+            end if
             
             ! max flux and  normal coord. of eq grid  in Equilibrium coordinates
             ! (uses poloidal flux by default)
@@ -371,6 +406,7 @@ contains
             else
                 grid_eq%r_F = - flux_t_V(:,0)/(2*pi)                            ! psi_F = flux_t/2pi, conversion VMEC LH -> PB3D RH
             end if
+            if (eq%flip_angles) grid_eq%r_F = -grid_eq%r_F
         end subroutine calc_flux_q_VMEC
         
         ! HELENA version
@@ -3374,7 +3410,7 @@ contains
         real(dp), allocatable :: theta_s(:,:,:,:,:,:)                           ! theta_F and derivatives
         real(dp), allocatable :: zeta_s(:,:,:,:,:,:)                            ! - zeta_F and derivatives
         integer :: dims(3)                                                      ! dimensions
-        integer :: c1                                                           ! 2D coordinate in met_type storage convention
+        integer :: c1                                                           ! 2D coordinate in met_type storage, to avoid compiler crash (as of 26-02-2015)
         
         ! initialize ierr
         ierr = 0
@@ -3398,6 +3434,7 @@ contains
         ! start from theta_E
         theta_s(:,:,:,0,0,0) = grid_eq%theta_E
         theta_s(:,:,:,0,1,0) = 1.0_dp
+        if (eq_1%flip_angles) theta_s = -theta_s
         ! add the deformation described by lambda
         theta_s = theta_s + &
             &eq_2%L_E(:,:,:,0:deriv(1)+1,0:deriv(2)+1,0:deriv(3)+1)
@@ -3405,51 +3442,70 @@ contains
         if (use_pol_flux_F) then
             ! calculate transformation matrix T_V^F
             ! (1,1)
+            c1 = c([1,1],.false.)
             ierr = add_arr_mult(theta_s,eq_1%q_saf_E(:,1:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)),&
                 &deriv)
             CHCKERR('')
             ierr = add_arr_mult(eq_2%L_E(:,:,:,1:,0:,0:),eq_1%q_saf_E(:,0:),&
-                &eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)),&
                 &deriv)
             CHCKERR('')
             ! (1,2)
+            c1 = c([1,2],.false.)
             if (deriv(2).eq.0 .and. deriv(3).eq.0) then
                 do kd = 1,dims(3)
-                    eq_2%T_EF(:,:,kd,c([1,2],.false.),deriv(1),0,0) = &
+                    eq_2%T_EF(:,:,kd,c1,deriv(1),0,0) = &
                         &eq_1%flux_p_E(kd,deriv(1)+1)/(2*pi)
                 end do
             !else
-                !eq_2%T_EF(:,:,:,c([1,2],.false.),deriv(1),deriv(2),deriv(3)) &
+                !eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) &
                     !&= 0.0_dp
             end if
+            if (eq_1%flip_angles) &
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
+                &-eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3))
             ! (1,3)
-            eq_2%T_EF(:,:,:,c([1,3],.false.),deriv(1),deriv(2),deriv(3)) = &
-                &eq_2%L_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+            c1 = c([1,3],.false.)
+            eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
+                !&eq_2%L_E(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+                &theta_s(:,:,:,deriv(1)+1,deriv(2),deriv(3))
+            call plot_diff_HDF5(eq_2%L_E(:,:,:,deriv(1)+1,deriv(2),deriv(3)),&
+                &theta_s(:,:,:,deriv(1)+1,deriv(2),deriv(3)),'L_E')
+            ierr = wait_MPI()
+            CHCKERR('')
             ! (2,1)
+            c1 = c([2,1],.false.)
             ierr = add_arr_mult(theta_s(:,:,:,0:,1:,0:),eq_1%q_saf_E,&
-                &eq_2%T_EF(:,:,:,c([2,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)),&
                 &deriv)
             CHCKERR('')
             ! (2,2)
-            !eq_2%T_EF(:,:,:,c([2,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+            !c1 = c([2,2],.false.)
+            !eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
                 !&0.0_dp
             ! (2,3)
-            eq_2%T_EF(:,:,:,c([2,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+            c1 = c([2,3],.false.)
+            eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
                 &theta_s(:,:,:,deriv(1),deriv(2)+1,deriv(3))
             ! (3,1)
+            c1 = c([3,1],.false.)
             if (sum(deriv).eq.0) then
-                eq_2%T_EF(:,:,:,c([3,1],.false.),0,0,0) = -1.0_dp
+                eq_2%T_EF(:,:,:,c1,0,0,0) = -1.0_dp
+                if (eq_1%flip_angles) eq_2%T_EF(:,:,:,c1,0,0,0) = &
+                    &-eq_2%T_EF(:,:,:,c1,0,0,0)
             end if
             ierr = add_arr_mult(eq_2%L_E(:,:,:,0:,0:,1:),eq_1%q_saf_E,&
-                &eq_2%T_EF(:,:,:,c([3,1],.false.),deriv(1),deriv(2),deriv(3)),&
+                &eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)),&
                 &deriv)
             CHCKERR('')
             ! (3,2)
-            !eq_2%T_EF(:,:,:,c([3,2],.false.),deriv(1),deriv(2),deriv(3)) = &
+            !c1 = c([3,2],.false.)
+            !eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
                 !&0.0_dp
             ! (3,3)
-            eq_2%T_EF(:,:,:,c([3,3],.false.),deriv(1),deriv(2),deriv(3)) = &
+            c1 = c([3,3],.false.)
+            eq_2%T_EF(:,:,:,c1,deriv(1),deriv(2),deriv(3)) = &
                 &eq_2%L_E(:,:,:,deriv(1),deriv(2),deriv(3)+1)
             
             ! determinant
