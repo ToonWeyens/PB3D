@@ -27,7 +27,7 @@ module eq_ops
     logical :: BR_normalization_provided(2)                                     ! used to export HELENA to VMEC
 #if ldebug
     !> \ldebug
-    logical :: debug_calc_derived_q = .true.                                   !< plot debug information for calc_derived_q()
+    logical :: debug_calc_derived_q = .false.                                   !< plot debug information for calc_derived_q()
     !> \ldebug
     logical :: debug_J_plot = .false.                                           !< plot debug information for j_plot()
     !> \ldebug
@@ -313,6 +313,26 @@ contains
             case (2)                                                            ! HELENA
                 call calc_flux_q_HEL()
         end select
+        
+        ! tests
+        err_msg = 'Check out the FAQ at &
+            &https://pb3d.github.io/Doxygen/html/page_faq.html'
+        
+        ! check whether the coordinate is increasing
+        if (grid_eq%r_F(grid_eq%n(3)) .le. grid_eq%r_F(1)) then
+            ierr = 1
+            call writo('The code has not been tested satisfactorily for &
+                &decreasing normal coordinate',alert=.true.)
+            CHCKERR(err_msg)
+        end if
+        
+        ! check whether there are reversed shear regions
+        if (maxval(eq%q_saf_E)*minval(eq%q_saf_E) .lt. 0._dp) then
+            ierr = 1
+            call writo('The code has to be adapted for reversed-shear regions &
+                &still.',alert=.true.)
+            CHCKERR(err_msg)
+        end if
         
         ! take local variables
         grid_eq%loc_r_E = grid_eq%r_E(grid_eq%i_min:grid_eq%i_max)
@@ -4890,10 +4910,10 @@ contains
                     select case (eq_style)
                         case (1)                                                ! VMEC
                             X_plot = ang_par_F(:,:,norm_id(1):norm_id(2))
-                            do jd = 1,grid_eq%n(2)
+                            do jd = 1,grid_trim%n(2)
                                 Y_plot(:,jd,:) = alpha(jd)
                             end do
-                            do kd = 1,grid_eq%loc_n_r
+                            do kd = 1,grid_trim%loc_n_r
                                 Z_plot(:,:,kd) = &
                                     &grid_trim%r_F(kd)*2*pi/max_flux_F
                             end do
@@ -5109,20 +5129,22 @@ contains
             kappa_ALT(:,:,:,2) = (0.5*D1g33/g33 - D1J/J) - &
                 &g13/g33*(0.5*D3g33/g33 - D3J/J)
             
-            call plot_diff_HDF5(eq_2%kappa_n,kappa_ALT(:,:,:,1),'TEST_diff_kappa_n',&
-                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
-                &kappa_n agrees with naive calculation',output_message=.true.)
-            call plot_diff_HDF5(eq_2%kappa_g,kappa_ALT(:,:,:,2),'TEST_diff_kappa_g',&
-                &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
-                &kappa_g agrees with naive calculation',output_message=.true.)
+            call plot_diff_HDF5(eq_2%kappa_n,kappa_ALT(:,:,:,1),&
+                &'TEST_diff_kappa_n',grid_eq%n,[0,0,grid_eq%i_min-1],&
+                &descr='To test whether kappa_n agrees with naive calculation',&
+                &output_message=.true.)
+            call plot_diff_HDF5(eq_2%kappa_g,kappa_ALT(:,:,:,2),&
+                &'TEST_diff_kappa_g',grid_eq%n,[0,0,grid_eq%i_min-1],&
+                &descr='To test whether kappa_g agrees with naive calculation',&
+                &output_message=.true.)
             
-            ! temporarily
-            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_n,&
-                &kappa_ALT(:,:,:,1),'kappa_n')
-            CHCKERR('')
-            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_g,&
-                &kappa_ALT(:,:,:,2),'kappa_g')
-            CHCKERR('')
+            !!! temporary: for 2018 paper
+            !!ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_n,&
+                !!&kappa_ALT(:,:,:,1),'kappa_n')
+            !!CHCKERR('')
+            !!ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%kappa_g,&
+                !!&kappa_ALT(:,:,:,2),'kappa_g')
+            !!CHCKERR('')
             
             ! clean up
             nullify(J,D1J,D2J,D3J,g13,g33,D1g33,D2g33,D3g33,h12,h22,h23)
@@ -5220,10 +5242,10 @@ contains
                 &grid_eq%n,[0,0,grid_eq%i_min-1],descr='To test whether &
                 &sigma agrees with naive calculation',output_message=.true.)
             
-            ! temporarily
-            ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%sigma,sigma_ALT,&
-                &'sigma')
-            CHCKERR('')
+            !!! temporary: for 2018 paper
+            !!ierr = plot_diff_for_paper(grid_eq%loc_r_F,eq_2%sigma,sigma_ALT,&
+                !!&'sigma')
+            !!CHCKERR('')
             
             ! clean up
             nullify(J,D1J,g13,g23,D1g23,g33)
@@ -5279,6 +5301,7 @@ contains
             ! local variables
             integer :: jd, kd                                                   ! counters
             integer :: n_r                                                      ! size of r
+            integer :: n_par                                                    ! number of parallel points
             character(len=max_str_ln) :: plot_title(3)                          ! titles of plot (GOOD, BAD, diff)
             
             ! initialize ierr
@@ -5290,6 +5313,7 @@ contains
             end if
             
             n_r = size(r)
+            n_par = size(A, 1)
             
             do jd = 1,size(A,2)
                 plot_title(1) = trim(title)//'_GOOD'
@@ -5303,15 +5327,15 @@ contains
                 end if
                 call print_ex_2D([''],plot_title(1),transpose(A(:,jd,:)),&
                     &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
-                call draw_ex([''],plot_title(1),n_r,1,.false.)
+                call draw_ex([''],plot_title(1),n_par,1,.false.)
                 call print_ex_2D([''],plot_title(2),transpose(B(:,jd,:)),&
                     &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
-                call draw_ex([''],plot_title(2),n_r,1,.false.)
+                call draw_ex([''],plot_title(2),n_par,1,.false.)
                 call print_ex_2D([''],plot_title(3),&
                     &transpose(abs(B(:,jd,:)-A(:,jd,:))/&
                     &(abs(B(:,jd,:))+abs(A(:,jd,:)))),&
                     &x=reshape(r*2*pi/max_flux_F,[n_r,1]),draw=.false.)
-                call draw_ex([''],plot_title(3),n_r,1,.false.)
+                call draw_ex([''],plot_title(3),n_par,1,.false.)
             end do
         end function plot_diff_for_paper
 #endif
@@ -7266,8 +7290,8 @@ contains
             &consistent with determinant of metric matrix'
         
         ! plot difference
-        call plot_diff_HDF5(res(:,:,:),&
-            &eq%jac_E(:,:,norm_id(1):norm_id(2),0,0,0)**2,&
+        call plot_diff_HDF5(-sqrt(res),&
+            &eq%jac_E(:,:,norm_id(1):norm_id(2),0,0,0),&
             &file_name,tot_dim,loc_offset,description,output_message=.true.)
         
         ! clean up

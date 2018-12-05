@@ -65,6 +65,16 @@ contains
         integer :: istat                                                        ! status
         
         if (rank.eq.0) then
+            call write_formatted(' PB3D Copyright (C) 2019  Toon Weyens',&
+                &'italic')
+            call write_formatted(' This program comes with ABSOLUTELY NO &
+                &WARRANTY.','italic')
+            call write_formatted(' This is free software, and you are welcome &
+                &to redistribute it','italic')
+            call write_formatted(' under certain conditions; See LICENSE for &
+                &details.','italic')
+            call write_formatted('','italic')
+            
             call write_formatted(' Simulation started on '//get_date()//', at '&
                 &//get_clock(),'italic')
             call write_formatted(' '//prog_name//' version: '//&

@@ -1108,7 +1108,6 @@ contains
         integer :: n_zeta_plot_loc                                              ! local n_zeta_plot
         real(dp) :: lim_theta_plot_loc(2)                                       ! local limits of theta_plot
         real(dp) :: lim_zeta_plot_loc(2)                                        ! local limits of zeta_plot
-        real(dp), allocatable :: r_E(:)                                         ! total r_E
         
         ! initialize ierr
         ierr = 0
@@ -3003,14 +3002,14 @@ contains
         lim_id = [1,n_r]                                                        ! initialize with full range
         if (r_F(1).lt.r_F(n_r)) then                                            ! ascending r_F
             do id = 1,n_r
-                if (r_F(id).le.lim_r(1)-tol) lim_id(1) = id                     ! move lower limit up
-                if (r_F(n_r-id+1).ge.lim_r(2)+tol) &
+                if (r_F(id).le.minval(lim_r)-tol) lim_id(1) = id                ! move lower limit up
+                if (r_F(n_r-id+1).ge.maxval(lim_r)+tol) &
                     &lim_id(2) = n_r-id+1                                       ! move upper limit down
             end do
         else                                                                    ! descending r_F
             do id = 1,n_r
-                if (r_F(id).ge.lim_r(2)+tol) lim_id(1) = id                     ! move lower limit up
-                if (r_F(n_r-id+1).le.lim_r(1)-tol) &
+                if (r_F(id).ge.maxval(lim_r)+tol) lim_id(1) = id                ! move lower limit up
+                if (r_F(n_r-id+1).le.minval(lim_r)-tol) &
                     &lim_id(2) = n_r-id+1                                       ! move upper limit down
             end do
         end if

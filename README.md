@@ -22,6 +22,13 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.39:
+* Added check for nonpositive coordinate systems and reversed shear regions.
+* Adapted `spline` to handle monotonously decreasing abscissae as well as the increasing ones.
+* Fixed bug in `plot_diff_for_paper` where the wrong dimension was taken in the plots.
+* Fixed bug in `plot_derived_q` where the untrimmed grid was taken wrongly.
+* Fixed bug in `print_HDF5_arrs` where the head group was not closed before being deleted, which gave errors when jumping to solution.
+
 ## 2.38:
 * Fixed bug where min and max alpha were passed as integer, instead of real, which leads to serious rounding off errors.
 

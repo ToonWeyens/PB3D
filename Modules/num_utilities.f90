@@ -1680,9 +1680,9 @@ contains
         character(*), parameter :: rout_name = 'spline_real'
         
         ! input / output
-        real(dp), intent(in) :: x(:)                                            !< coordinates
+        real(dp), intent(in), target :: x(:)                                    !< coordinates
         real(dp), intent(in) :: y(:)                                            !< function value
-        real(dp), intent(in) :: xnew(:)                                         !< new coordinates
+        real(dp), intent(in), target :: xnew(:)                                 !< new coordinates
         real(dp), intent(out) :: ynew(:)                                        !< new function values
         integer, intent(in), optional :: ord                                    !< order [def 3]
         integer, intent(in), optional :: deriv                                  !< derivative [def 0]
@@ -1700,11 +1700,14 @@ contains
         integer :: nnew                                                         ! size of output x, y
         integer :: nnew_interp                                                  ! size of interpolated x, y, rest is extrapolated
         integer :: il(2)                                                        ! limits of interp., what falls outside is extrapolated
+        real(dp), pointer :: x_loc(:)                                           ! x or -x
+        real(dp), pointer :: xnew_loc(:)                                        ! xnew or -xnew
         real(dp) :: bcs_val_loc(2)                                              ! local bcs_val
         real(dp) :: lim_vals(0:3)                                               ! limit values at boundaries for extrapolation
         real(dp), allocatable :: xnew_EZ(:)                                     ! xnew in EZ spline doubles
         real(dp), allocatable :: ynew_EZ(:)                                     ! ynew in EZ spline doubles
         character(len=max_str_ln) :: err_msg                                    ! error message
+        logical :: flip_x                                                       ! whether x axis is flipped
         logical :: extrap_loc                                                   ! local extrap
         
         ! initialize ierr
@@ -1725,12 +1728,24 @@ contains
         n = size(x)
         nnew = size(xnew)
         
+        ! set local x and xnew, possibly flipped if negative
+        flip_x = (x(2) .lt. x(1))
+        if (flip_x) then
+            allocate(x_loc(n))
+            allocate(xnew_loc(nnew))
+            x_loc = -x
+            xnew_loc = -xnew
+        else
+            x_loc => x
+            xnew_loc => xnew
+        end if
+        
 #if ldebug
         ! check monotony
         do kd = 2,n
-            if (x(kd).le.x(kd-1)) then
+            if (x_loc(kd).le.x_loc(kd-1)) then
                 ierr = 1
-                err_msg = 'x is not monotonously increasing'
+                err_msg = '|x| is not monotonously increasing'
                 CHCKERR(err_msg)
             end if
         end do
@@ -1807,11 +1822,11 @@ contains
         
         ! set up interpolation limits
         do kd = 1,nnew
-            if (xnew(kd).ge.x(1)) exit
+            if (xnew_loc(kd).ge.x_loc(1)) exit
         end do
         il(1) = kd
         do kd = nnew,1,-1
-            if (xnew(kd).le.x(n)) exit
+            if (xnew_loc(kd).le.x_loc(n)) exit
         end do
         il(2) = kd
         nnew_interp = il(2)-il(1)+1
@@ -1841,12 +1856,16 @@ contains
         end if
         
         ! set grid
-        f_spl%x1 = x
+        f_spl%x1 = x_loc
         
         ! set boundary condition
         if (present(bcs_val)) then
             f_spl%bcval1min = bcs_val_loc(1)
             f_spl%bcval1max = bcs_val_loc(2)
+            if (flip_x) then                                                    ! if x-axis flipped, also first derivative flipped
+                if (bcs_loc(1) .eq. 1) f_spl%bcval1min = -f_spl%bcval1min
+                if (bcs_loc(2) .eq. 1) f_spl%bcval1max = -f_spl%bcval1max
+            end if
         end if
         
         ! set up 
@@ -1857,7 +1876,7 @@ contains
         if (il(1).le.il(2)) then
             allocate(xnew_EZ(nnew_interp))
             allocate(ynew_EZ(nnew_interp))
-            xnew_EZ = xnew(il(1):il(2))
+            xnew_EZ = xnew_loc(il(1):il(2))
             
             if (deriv_loc.eq.0) then
                 ! interpolate
@@ -1880,29 +1899,37 @@ contains
             ! extrapolate left
             if (il(1).gt.1) then
                 ! set up limit values at first point
-                ierr = setup_lim_vals(x(1),lim_vals)
+                ierr = setup_lim_vals(x_loc(1),lim_vals)
                 CHCKERR('')
                 
                 ! calculate extrapolation
-                call calc_extrap(xnew(1:il(1)-1),x(1),lim_vals,ynew(1:il(1)-1))
+                call calc_extrap(xnew_loc(1:il(1)-1),x_loc(1),lim_vals,&
+                    &ynew(1:il(1)-1))
             end if
             
             ! extrapolate right
             if (il(2).lt.nnew) then
                 ! set up limit values at last point
-                ierr = setup_lim_vals(x(n),lim_vals)
+                ierr = setup_lim_vals(x_loc(n),lim_vals)
                 CHCKERR('')
                 
                 ! calculate extrapolation
-                call calc_extrap(xnew(il(2)+1:nnew),x(n),lim_vals,&
+                call calc_extrap(xnew_loc(il(2)+1:nnew),x_loc(n),lim_vals,&
                     &ynew(il(2)+1:nnew))
             end if
         end if
         
         ! free
         call EZspline_free(f_spl,ierr)
+        CHCKERR('')
         call EZspline_error(ierr)
         CHCKERR('')
+        if (flip_x) then
+            deallocate(x_loc)
+            deallocate(xnew_loc)
+        end if
+        nullify(x_loc)
+        nullify(xnew_loc)
     contains
         !> /private set up limit values
         !!

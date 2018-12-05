@@ -95,9 +95,9 @@ contains
             call writo('Fixed boundary VMEC')
         end if
         if (is_asym_V) then
-            call writo('No stellerator symmetry')
+            call writo('No stellarator symmetry')
         else
-            call writo('Stellerator symmetry')
+            call writo('Stellarator symmetry')
         end if
         call writo('VMEC has '//trim(i2str(mpol_V))//' poloidal and '&
             &//trim(i2str(ntor_V))//' toroidal modes,')

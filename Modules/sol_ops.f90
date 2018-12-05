@@ -86,7 +86,7 @@ contains
     !! This is done using the angular  part of the the provided equilibrium grid
     !! and the normal part of the provided solution grid.
     !!
-    !! The perturbtion grid  is assumed to have the same  angular coordinates as
+    !! The perturbation grid is assumed to  have the same angular coordinates as
     !! the equilibrium grid, and the normal coordinates correspond to either the
     !! equilibrium grid (\c X_grid_style 1),  the solution grid (\c X_grid_style
     !! 2) or the enriched equilibrium grid (\c X_grid_style 3).

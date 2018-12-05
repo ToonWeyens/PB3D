@@ -29,12 +29,14 @@ PSPLINE_DIR=/opt/pspline/LINUX# 1. XPS 9360
 #PETSC_ARCH = debug-complex
 PETSC_ARCH = complex# 1. XPS 9360
 #PETSC_ARCH = complex# 2. ITER
-PETSC_DIR = /opt/petsc-3.9.2# 1. XPS 9360
+PETSC_DIR = /opt/petsc-3.10.2# 1. XPS 9360
+###PETSC_DIR = /opt/petsc-3.9.2# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
 include  $(PETSC_DIR)/lib/petsc/conf/variables
 
 # SLEPC
-SLEPC_DIR=/opt/slepc-3.9.1# 1. XPS 9360
+SLEPC_DIR=/opt/slepc-3.10.1# 1. XPS 9360
+####SLEPC_DIR=/opt/slepc-3.9.1# 1. XPS 9360
 #SLEPC_DIR=$(COMPILE_DIR)# 2. ITER
 include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 

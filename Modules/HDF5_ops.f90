@@ -1263,6 +1263,8 @@ contains
         group_exists = istat.eq.0
         call H5Eset_auto_f(1,ierr)
         if (group_exists .and. remove_previous_arrs_loc) then
+            call H5Gclose_f(head_group_id, ierr)
+            CHCKERR('Failed to close head group')
             call H5Ldelete_f(HDF5_i,trim(head_name_loc),ierr)
             CHCKERR('Failed to delete group')
             group_exists = .false.
