@@ -22,6 +22,10 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.40:
+* Fixed important bug where check on reverse shear regions was wrong and virtually no simulations would ever run.
+* Improved output of this check.
+
 ## 2.39:
 * Added check for nonpositive coordinate systems and reversed shear regions.
 * Adapted `spline` to handle monotonously decreasing abscissae as well as the increasing ones.

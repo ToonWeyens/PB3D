@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.39
+!>  \version    2.40
 !!  \date       2012-2018
 !!  \copyright  GNU General Public License.
 !!  Copyright (C) 2019 Toon Weyens

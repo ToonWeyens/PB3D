@@ -292,6 +292,8 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
+        character(len=max_str_ln) :: file_name                                  ! file name
+        character(len=max_str_ln) :: plot_title                                 ! plot title
         
         ! initialize ierr
         ierr = 0
@@ -320,17 +322,26 @@ contains
         
         ! check whether the coordinate is increasing
         if (grid_eq%r_F(grid_eq%n(3)) .le. grid_eq%r_F(1)) then
+            file_name = 'r_F'
+            plot_title = 'Flux normal coordinate'
+            call print_ex_2D(plot_title,file_name,grid_eq%r_F,draw=.false.)
+            call draw_ex([plot_title],file_name,1,1,.false.)
             ierr = 1
             call writo('The code has not been tested satisfactorily for &
-                &decreasing normal coordinate',alert=.true.)
+                &decreasing normal coordinate. See plot '// trim(file_name),&
+                &alert=.true.)
             CHCKERR(err_msg)
         end if
         
         ! check whether there are reversed shear regions
-        if (maxval(eq%q_saf_E)*minval(eq%q_saf_E) .lt. 0._dp) then
+        if (maxval(eq%q_saf_E(:,1))*minval(eq%q_saf_E(:,1)) .lt. 0._dp) then
+            file_name = 'Dq_saf'
+            plot_title = 'derivative of safety factor'
+            call print_ex_2D(plot_title,file_name,eq%q_saf_E(:,1),draw=.false.)
+            call draw_ex([plot_title],file_name,1,1,.false.)
             ierr = 1
             call writo('The code has to be adapted for reversed-shear regions &
-                &still.',alert=.true.)
+                &still. See plot ' // trim(file_name),alert=.true.)
             CHCKERR(err_msg)
         end if
         
