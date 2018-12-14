@@ -149,7 +149,7 @@ contains
         dims = shape(theta_E)
         
         ! set up local ord
-        ord_loc = 2
+        ord_loc = 1
         if (present(ord)) ord_loc = ord
         
         ! tests
@@ -184,7 +184,7 @@ contains
         ! VMEC version
         !> \private
         integer function coord_F2E_VMEC() result(ierr)
-            use num_vars, only: norm_disc_prec_eq
+            use num_vars, only: norm_disc_prec_eq, rank
             use num_ops, only: calc_zero_HH
             use VMEC_vars, only: mnmax_V
             use num_utilities, only: spline
@@ -194,8 +194,8 @@ contains
             ! local variables
             integer :: id                                                       ! counter
             real(dp), pointer :: loc_r_F(:) => null()                           ! loc_r in F coords.
-            real(dp), allocatable :: theta_E_guess(:,:)                         ! guess for theta_E for a flux surface
             real(dp), allocatable :: theta_E_guess_3D(:,:,:)                    ! guess for theta_E
+            real(dp), allocatable :: lam(:,:,:,:)                               ! lambda and derivative
             
             ! initialize ierr
             ierr = 0
@@ -225,15 +225,19 @@ contains
             end do
             
             ! set up guess
-            allocate(theta_E_guess(dims(1),dims(2)))
             allocate(theta_E_guess_3D(dims(1),dims(2),dims(3)))
+            allocate(lam(dims(1),dims(2),dims(3),0:1))
             
-            ! set up guess: try theta_F - lambda(theta_F)
+            ! set up guess: try theta_F - lambda(theta_F)/(1+Dlambda(theta_F)),
+            ! which is what you get when you approximate lambda(theta_V) as
+            ! lambda(theta_F) + Dlambda(theta_F) (theta_V-theta_F)
             ! (lambda(theta_V) would be the exact solution)
-            ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_F,zeta_E,&
-                &theta_E_guess_3D,sym=[is_asym_V,.true.],deriv=[0,0])
-            CHCKERR('')
-            theta_E_guess_3D = theta_F - theta_E_guess_3D
+            do id = 0,1
+                ierr = fourier2real(L_V_c_loc,L_V_s_loc,theta_F,zeta_E,&
+                    &lam(:,:,:,id),sym=[is_asym_V,.true.],deriv=[id,0])
+                CHCKERR('')
+            end do
+            theta_E_guess_3D = theta_F - lam(:,:,:,0)/(1+lam(:,:,:,1))
             
             ! the poloidal angle has to be found as the zero of
             !   f = theta_F - theta_E - lambda
@@ -246,9 +250,11 @@ contains
             
             ! do a check whether the result is indeed zero
             if (maxval(abs(fun_pol(dims,theta_E,0))).gt.tol_zero*100) then
+                call plot_HDF5('f','ERROR_coord_F2E_VMEC_'//trim(i2str(rank)),&
+                    &fun_pol(dims,theta_E,0))
                 err_msg = 'In coord_F2E_VMEC, calculating whether f=0 as a &
-                    &check, yields a deviation from 0 by '//trim(r2strt(&
-                    &100*maxval(abs(fun_pol(dims,theta_E,0)))))//'%'
+                    &check, yields a deviation from 0 of '//trim(r2strt(&
+                    &maxval(abs(fun_pol(dims,theta_E,0)))))//'. See output.'
                 ierr = 1
                 CHCKERR(err_msg)
             end if

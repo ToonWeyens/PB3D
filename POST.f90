@@ -14,9 +14,8 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.40
+!>  \version    2.41
 !!  \date       2012-2018
-!!  \copyright  GNU General Public License.
 !!  Copyright (C) 2019 Toon Weyens
 !!
 !!  This program is free software: you can redistribute it and/or modify
@@ -29,8 +28,8 @@
 !!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 !!  GNU General Public License for more details.
 !!
-!!  You should have received a copy of the GNU General Public License
-!!  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+!!  You should have received a copy of the License along with this program.
+!!  If not, contact weyenst@gmail.com
 !------------------------------------------------------------------------------!
 !>  \see
 !!  References:

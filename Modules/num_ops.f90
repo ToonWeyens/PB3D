@@ -349,7 +349,7 @@ contains
                     &call writo('backtrack '//trim(i2str(id))//' of max. '//&
                     &trim(i2str(max_nr_backtracks_loc))//' - criterion: '//&
                     &trim(r2str(maxval(abs(fun_new)-abs(fun_vals(:,:,:,0)))))//&
-                    &' < 1?')
+                    &' <= 0?')
 #endif
                 if (maxval(abs(fun_new)-abs(fun_vals(:,:,:,0))).le.0._dp) then  ! error has decreased
                     relaxed_enough = .true.

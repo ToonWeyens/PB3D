@@ -62,6 +62,9 @@ contains
         call lvl_ud(1)
         
         ! read VMEC output using LIBSTELL
+        if (scan(eq_name, ".") .ne. scan(eq_name, ".", .true.)) &
+            &call writo('There seems to be a dot "."  in "'//trim(eq_name)//&
+            &'". This can create problems.', alert=.true.)
         call read_wout_file(eq_name,ierr)                                       ! read the VMEC file
         CHCKERR('Failed to read the VMEC file')
         
