@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.42:
+* Fixed bug in create_VMEC_input: Equilibria without added perturbation were not yet adapted so that no negative poloidal modes appeared.
+
 ## 2.41:
 * Added check for problematic filenames with a dot in the VMEC files.
 * Default order for `coord_F2E` is now 1, as there appeared to be a problem with very large corrections for order 2 at specific points for ITER cases.

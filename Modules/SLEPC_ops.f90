@@ -1735,7 +1735,7 @@ contains
                         CHCKERR('Failed to write')
                     case (2)                                                    ! HELENA
                         write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
-                            &'#     (HELENA normalization)'
+                            &'#     (MISHKA normalization)'
                         CHCKERR('Failed to write')
                 end select
             else

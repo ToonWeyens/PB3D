@@ -1520,13 +1520,16 @@ contains
         call lvl_ud(1)
         
         ! calculate output for unperturbed R and Z
-        nr_m_max = max(-lbound(delta,2),ubound(delta,2))                        ! maximum perturbation
-        nr_m_max = max((n_B-1)/2,nr_m_max)                                      ! correct if less than unperturbed modal content
-        if (pert_style.eq.2)  &
-            &nr_m_max = max(size(prop_B_tor_interp_F,1)-1,nr_m_max)             ! correct if less than proportionality map
+        nr_m_max = (n_B-1)/2                                                    ! maximum perturbation
+        if (pert_eq) then
+            nr_m_max = max(nr_m_max, max(-lbound(delta,2),ubound(delta,2)))     ! correct if less than delta
+            if (pert_style.eq.2) &
+                &nr_m_max = max(nr_m_max, size(prop_B_tor_interp_F,1)-1)        ! correct if less than proportionality map
+        end if
         plot_name(1) = 'R_F'
         plot_name(2) = 'Z_F'
         allocate(B_F(nr_n,-nr_m_max:nr_m_max,2,2))                              ! (tor modes, pol modes, cos/sin (m θ), R/Z)
+        ! Note: B_F will later be reallocated to run from 0:nr_m_max in index 2
         B_F = 0._dp
         do kd = 1,2
             ! user output
@@ -1579,7 +1582,9 @@ contains
         end do
         
         ! plot axisymetric boundary in 3D
-        call plot_boundary(B_F(1:1,:,:,:),[0],'last_fs',plot_dim,plot_lims)
+        ! Note: Still using -nr_m_max:nr_m_max for poloidal modes
+        call plot_boundary(B_F(1:1,:,:,:),[-nr_m_max,nr_m_max],[0],&
+            &'last_fs',plot_dim,plot_lims)
         
         call lvl_ud(-1)
         
@@ -1818,7 +1823,8 @@ contains
             deallocate(n_pert_copy)
             
             ! plot boundary in 3D
-            call plot_boundary(B_F,n_pert(1:nr_n),'last_fs_pert',&
+            ! Note: Using 0:nr_m_max for poloidal modes
+            call plot_boundary(B_F,[0,nr_m_max],n_pert(1:nr_n),'last_fs_pert',&
                 &plot_dim,plot_lims)
             call lvl_ud(-1)
             
@@ -1837,12 +1843,26 @@ contains
                 nfp = 1
             end if
         else
+            ! migrate negative poloidal modes to positive in B_F_copy
+            allocate(B_F_copy(1,0:nr_m_max,2,2))                                ! (tor modes, pol modes, cos/sin (m θ), R/Z)
+            do id = 0,nr_m_max
+                B_F_copy(1,id,1,:) = B_F(1,id,1,:) + B_F(1,-id,1,:)             ! do not invert cosine factors
+                B_F_copy(1,id,2,:) = B_F(1,id,2,:) - B_F(1,-id,2,:)             ! invert sine factors
+            end do
+            B_F_copy(1,0,:,:) = B_F_copy(1,0,:,:)*0.5_dp                        ! positive and negative range share half each
+            deallocate(B_F)
+            allocate(B_F(1,0:nr_m_max,2,2))
+            B_F = B_F_copy
+            deallocate(B_F_copy)
+            
             ! set the index of N = 0 in B_F
             id_n_0 = 1
             
             ! set nfp to one
             nfp = 1
         end if
+        
+        ! Note: From now on the dimensions of B_F are (nr_n,0:nr_m_max,2,2)
         
         ! user output
         file_name = "input."//trim(eq_name)
@@ -2129,9 +2149,10 @@ contains
     contains
         ! plots the boundary of a toroidal configuration
         !> \private
-        subroutine plot_boundary(B,n,plot_name,plot_dim,plot_lims)
+        subroutine plot_boundary(B,m_lims,n,plot_name,plot_dim,plot_lims)
             ! input / output
             real(dp), intent(in) :: B(1:,0:,1:,1:)                              ! cosine and sine of fourier series (tor modes, pol modes, cos/sin (m theta_geo), R/Z)
+            integer, intent(in) :: m_lims(2)                                    ! limits of poloidal mode numbers
             integer, intent(in) :: n(:)                                         ! toroidal mode numbers
             character(len=*), intent(in) :: plot_name                           ! name of plot
             integer, intent(in) :: plot_dim(2)                                  ! plot dimensions in geometrical angle
@@ -2141,13 +2162,12 @@ contains
             real(dp), allocatable :: ang_plot(:,:,:)                            ! angles of plot (theta,zeta)
             real(dp), allocatable :: XYZ_plot(:,:,:)                            ! coordinates of boundary (X,Y,Z)
             integer :: kd, id                                                   ! counters
-            integer :: m_F                                                      ! number of poloidal modes
+            integer :: m                                                        ! local poloidal mode number
             
             ! set variables
             allocate(ang_plot(plot_dim(1),plot_dim(2),2))                       ! theta and zeta (geometrical)
             allocate(XYZ_plot(plot_dim(1),plot_dim(2),3))                       ! X, Y and Z
             XYZ_plot = 0._dp
-            m_F = size(B,2)-1
             
             ! create grid
             do id = 1,plot_dim(1)
@@ -2161,18 +2181,20 @@ contains
             
             ! inverse Fourier transform
             do id = 1,size(n)                                                   ! toroidal modes
-                do kd = 0,m_F                                                   ! poloidal modes
+                do kd = 0,m_lims(2)-m_lims(1)                                   ! poloidal modes
+                    m = m_lims(1)+kd  
+                    
                     ! R
                     XYZ_plot(:,:,1) = XYZ_plot(:,:,1) + &
-                        &B(id,kd,1,1)*cos(kd*ang_plot(:,:,1)-&
+                        &B(id,kd,1,1)*cos(m*ang_plot(:,:,1)-&
                         &n(id)*ang_plot(:,:,2)) + &
-                        &B(id,kd,2,1)*sin(kd*ang_plot(:,:,1)-&
+                        &B(id,kd,2,1)*sin(m*ang_plot(:,:,1)-&
                         &n(id)*ang_plot(:,:,2))
                     ! Z
                     XYZ_plot(:,:,3) = XYZ_plot(:,:,3) + &
-                        &B(id,kd,1,2)*cos(kd*ang_plot(:,:,1)-&
+                        &B(id,kd,1,2)*cos(m*ang_plot(:,:,1)-&
                         &n(id)*ang_plot(:,:,2)) + &
-                        &B(id,kd,2,2)*sin(kd*ang_plot(:,:,1)-&
+                        &B(id,kd,2,2)*sin(m*ang_plot(:,:,1)-&
                         &n(id)*ang_plot(:,:,2))
                 end do
             end do
@@ -5370,8 +5392,8 @@ contains
     !!          - rho_0:  reference mass density
     !!      where aspr (aspect ratio) and beta are given by VMEC.
     !!  - HELENA version (\c eq_style=2):\n
-    !!      Normalization  is  used  by  default  and  does  not  depend  on  \c
-    !!      norm_style
+    !!      MISHKA Normalization  is  used  by  default  and  does  not  depend
+    !!      on  \c norm_style
     !!
     !! \see read_hel()
     !!
