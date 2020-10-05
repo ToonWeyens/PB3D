@@ -56,7 +56,7 @@ module vac_vars
         integer :: n_ang(2)                                                     !< number of angles (1) and number of field lines (2)
         integer :: ind_p(2)                                                     !< index of local process in grid
         integer :: n_loc(2)                                                     !< local number of rows and columns
-        integer :: lim_sec_X(2)                                                 !< limits on secondary mode numbers
+        integer, allocatable :: sec_X(:)                                        !< secondary mode numbers
         integer, allocatable :: lims_c(:,:)                                     !< column limits for different subrows of G and H
         integer, allocatable :: lims_r(:,:)                                     !< row limits for different subcolumns of G and H
         real(dp) :: jq                                                          !< iota (tor. flux) or q (pol. flux) at edge

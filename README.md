@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.43:
+* Fixed show-stopper bug that caused the mode numbers to wrongly used in the vacuum response calculation.
+
 ## 2.42:
 * Fixed bug in create_VMEC_input: Equilibria without added perturbation were not yet adapted so that no negative poloidal modes appeared.
 

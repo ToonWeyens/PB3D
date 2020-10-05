@@ -190,7 +190,7 @@ contains
         ! local variables
         integer :: id                                                           ! counter
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: first_ints(2)                                                ! first two input integers of input file (HELENA)
+        integer :: first_int                                                    ! first input integer of input file (HELENA)
         integer :: istat                                                        ! status
         character(len=max_str_ln) :: file_ext                                   ! file extension
         
@@ -243,7 +243,7 @@ contains
                     end if
                     
                     ! Check for HELENA
-                    read(eq_i,*,IOSTAT=istat) first_ints
+                    read(eq_i,*,IOSTAT=istat) first_int 
                     backspace(UNIT=eq_i)                                        ! go back one line in the equilibrium file
                     if (istat.eq.0) then
                         eq_style = 2

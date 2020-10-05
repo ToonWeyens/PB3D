@@ -489,7 +489,7 @@ contains
             integer, intent(in) :: lim(2)
             
             ! local variables
-            integer :: seed(12)
+            integer :: seed(33)
             real(dp) :: r_nr
             integer :: n_steps = 5
             integer :: id

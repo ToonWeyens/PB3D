@@ -1243,7 +1243,6 @@ contains
         integer :: style                                                        ! style of vacuum
         integer :: n_bnd                                                        ! number of terms in boundary
         integer :: prim_X                                                       ! primary mode number
-        integer :: lim_sec_X(2)                                                 ! secondary mode number limits
         integer :: n_ang(2)                                                     ! number of angles (1) and number of field lines (2)
         real(dp) :: jq                                                          ! iota or q
         
@@ -1262,9 +1261,8 @@ contains
         style = nint(dum_1D(1))
         n_bnd = nint(dum_1D(2))
         prim_X = nint(dum_1D(3))
-        lim_sec_X = nint(dum_1D(4:5))
-        n_ang = nint(dum_1D(6:7))
-        jq = dum_1D(8)
+        n_ang = nint(dum_1D(4:5))
+        jq = dum_1D(6)
         call dealloc_var_1D(var_1D)
         
         ! create vac
@@ -1272,7 +1270,13 @@ contains
         CHCKERR('')
         
         ! secondary mode numbers
-        vac%lim_sec_X = lim_sec_X
+        ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+            &'sec_X',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_1D2ND(var_1D,dum_1D)
+        vac%sec_X = nint(dum_1D)
+        deallocate(dum_1D)
+        call dealloc_var_1D(var_1D)
         
         ! norm
         ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&

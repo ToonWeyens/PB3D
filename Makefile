@@ -18,7 +18,7 @@ HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/openmpi# 1. XPS 9360
 #HDF5_DIR=/work/imas/opt/EasyBuild/software/HDF5/1.10.1-intel-2018a/lib# 2. ITER
 
 # NETCDF
-NETCDFF_DIR=/opt/netcdf-fortran-4.4.4/4.4.4#  1. XPS 9360
+NETCDFF_DIR=/opt/netcdf-fortran-4.7.4/4.7.4#  1. XPS 9360
 #NETCDFF_DIR=/work/imas/opt/EasyBuild/software/netCDF/4.6.0-intel-2018a-HDF5-1.10.1/lib64#  2. ITER
 
 # PSPLINE
@@ -29,13 +29,13 @@ PSPLINE_DIR=/opt/pspline/LINUX# 1. XPS 9360
 #PETSC_ARCH = debug-complex
 PETSC_ARCH = complex# 1. XPS 9360
 #PETSC_ARCH = complex# 2. ITER
-PETSC_DIR = /opt/petsc-3.10.2# 1. XPS 9360
+PETSC_DIR = /opt/petsc/complex#1. XPS 9360
 ###PETSC_DIR = /opt/petsc-3.9.2# 1. XPS 9360
 #PETSC_DIR=$(COMPILE_DIR)# 2. ITER
 include  $(PETSC_DIR)/lib/petsc/conf/variables
 
 # SLEPC
-SLEPC_DIR=/opt/slepc-3.10.1# 1. XPS 9360
+SLEPC_DIR=/opt/slepc#1. XPS 9360
 ####SLEPC_DIR=/opt/slepc-3.9.1# 1. XPS 9360
 #SLEPC_DIR=$(COMPILE_DIR)# 2. ITER
 include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
@@ -49,7 +49,7 @@ STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
 #STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
 
 # SCALAPACK
-SCALAPACK_LIB=-L/opt/scalapack-2.0.2/INSTALL/lib -lscalapack -L/usr/lib -llapack -lblas -lopenblas# 1. XPS 9360
+SCALAPACK_LIB=-L/opt/scalapack-2.1.0/lib -lscalapack -L/usr/lib -llapack -lblas# 1. XPS 9360
 #SCALAPACK_LIB=-L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blacs_intelmpi_lp64 -liomp5 -lpthread -lm -ldl# 2. ITER
 
 SCALAPACK_INC=#1. XPS 9360
@@ -93,7 +93,7 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   -L$(PSPLINE_DIR)/lib -lpspline \
   -L$(STRUMPACK_DIR)/lib -lstrumpack \
   $(SCALAPACK_LIB) \
-  -Wl,-rpath,/opt/scalapack-2.0.2/INSTALL/lib \
+  -Wl,-rpath,/opt/scalapack-2.1.0/lib \
   -lm -lstdc++ -lmpi_cxx# 1. XPS 9360
 
 #LINK = $(LIBSTELL_DIR)/libstell.a \

@@ -338,8 +338,8 @@ contains
             ! initialize ierr
             ierr = 0
             
-            write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-            return
+            !write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            !return
             
             ! user output
             call writo('Start storing vacuum quantities')
@@ -1522,12 +1522,11 @@ contains
             end if
             
             ! set secondary mode numbers
+            allocate(vac%sec_X(n_mod_X))
             if (use_pol_flux_F) then
-                vac%lim_sec_X(1) = mds%m(size(mds%m,1),1)
-                vac%lim_sec_X(2) = mds%m(size(mds%m,1),size(mds%m,2))
+                vac%sec_X = mds%m(size(mds%m,1),:)
             else
-                vac%lim_sec_X(1) = mds%n(size(mds%n,1),1)
-                vac%lim_sec_X(2) = mds%n(size(mds%n,1),size(mds%n,2))
+                vac%sec_X = mds%n(size(mds%n,1),:)
             end if
             
             ! set sizes
@@ -1567,7 +1566,7 @@ contains
                         &cd-lims_c_loc(1,i_cd)+1
                     
                     ! set local secondary mode number
-                    sec_X_loc = vac%lim_sec_X(1)-1+(mod(cd-1,n_mod_X)+1)
+                    sec_X_loc = vac%sec_X(mod(cd-1,n_mod_X)+1)
                     
                     ! iterate over all subrows of matrix with n_bnd rows
                     subrows: do i_rd = 1,size(vac%lims_r,2)
@@ -1945,7 +1944,7 @@ contains
                             
                             ! sum over all modes to get parallel derivative of X
                             do jd = 1,n_mod_X
-                                sec_X_loc = vac%lim_sec_X(1)-1+jd
+                                sec_X_loc = vac%sec_X(jd)
                                 if (use_pol_flux_F) then
                                     fac_X = [prim_X,-sec_X_loc]
                                 else
@@ -2371,13 +2370,24 @@ contains
         allocate(vac_1D_loc%tot_i_min(1),vac_1D_loc%tot_i_max(1))
         allocate(vac_1D_loc%loc_i_min(1),vac_1D_loc%loc_i_max(1))
         vac_1D_loc%loc_i_min = [1]
-        vac_1D_loc%loc_i_max = [8]
+        vac_1D_loc%loc_i_max = [6]
         vac_1D_loc%tot_i_min = vac_1D_loc%loc_i_min
         vac_1D_loc%tot_i_max = vac_1D_loc%loc_i_max
-        allocate(vac_1D_loc%p(8))
+        allocate(vac_1D_loc%p(6))
         vac_1D_loc%p = [vac%style*1._dp,vac%n_bnd*1._dp,vac%prim_X*1._dp,&
-            &vac%lim_sec_X(1)*1._dp,vac%lim_sec_X(2)*1._dp,&
             &vac%n_ang*1._dp,vac%jq]
+        
+        ! sec_X
+        vac_1D_loc => vac_1D(id); id = id+1
+        vac_1D_loc%var_name = 'sec_X'
+        allocate(vac_1D_loc%tot_i_min(1),vac_1D_loc%tot_i_max(1))
+        allocate(vac_1D_loc%loc_i_min(1),vac_1D_loc%loc_i_max(1))
+        vac_1D_loc%tot_i_min = [1]
+        vac_1D_loc%tot_i_max = n_mod_X
+        vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
+        vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
+        allocate(vac_1D_loc%p(n_mod_X))
+        vac_1D_loc%p = vac%sec_X*1._dp
         
         ! norm
         vac_1D_loc => vac_1D(id); id = id+1
