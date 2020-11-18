@@ -1181,7 +1181,8 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            !write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
+            ierr = 2
+            CHCKERR('Vacuum has not been implemented yet!')
             ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
@@ -1209,6 +1210,8 @@ contains
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
+            ierr = 2
+            CHCKERR('Vacuum has not been implemented yet!')
             ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')

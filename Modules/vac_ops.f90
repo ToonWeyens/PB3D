@@ -338,8 +338,8 @@ contains
             ! initialize ierr
             ierr = 0
             
-            !write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-            !return
+            ierr = 2
+            CHCKERR('Vacuum has not been implemented yet!')
             
             ! user output
             call writo('Start storing vacuum quantities')
@@ -1466,6 +1466,8 @@ contains
         real(dp), allocatable :: res2_ev(:,:)                                   ! eigenvalues of res2
         real(dp), allocatable :: tau(:)                                         ! array tau in upper Hessenberg form
         real(dp), allocatable :: work(:)                                        ! work array
+        real(dp), allocatable :: X_plot(:,:)                                    ! X of plot
+        real(dp), allocatable :: Y_plot(:,:)                                    ! Y of plot
         complex(dp), allocatable :: res_loc(:,:)                                ! local vac%res
         complex(dp), allocatable :: res_ev(:)                                   ! eigenvalues of res2
         complex(dp), allocatable :: work_c(:)                                   ! work array
@@ -1706,17 +1708,26 @@ contains
                     &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
                 vac%res = vac%res/vac_perm
 #if ldebug
+                allocate(X_plot(n_mod_X,n_mod_X))
+                allocate(Y_plot(n_mod_X,n_mod_X))
+                do jd = 1,n_mod_X
+                    X_plot(jd,:) = vac%sec_X(jd)
+                    Y_plot(:, jd) = vac%sec_X(jd)
+                end do
                 call print_ex_2D(['real vacuum response'],'vac_res_Re',&
-                    &rp(vac%res),draw=.false.)
+                    &rp(vac%res),x=X_plot,draw=.false.)
                 call draw_ex(['real vacuum response'],'vac_res_Re',n_mod_X,1,&
                     &.false.)
                 call print_ex_2D(['imag vacuum response'],'vac_res_Im',&
-                    &ip(vac%res),draw=.false.)
+                    &ip(vac%res),x=X_plot,draw=.false.)
                 call draw_ex(['imag vacuum response'],'vac_res_Im',n_mod_X,1,&
                     &.false.)
                 call plot_HDF5(['real part','imag part','imag diff'],'vac_res',&
                     &reshape([rp(vac%res),ip(vac%res),&
-                    &ip(vac%res+transpose(vac%res))],[n_mod_X,n_mod_X,1,3]))
+                    &ip(vac%res+transpose(vac%res))],[n_mod_X,n_mod_X,1,3]),&
+                    &X=reshape(X_plot,[n_mod_X,n_mod_X,1,1]),&
+                    &Y=reshape(Y_plot,[n_mod_X,n_mod_X,1,1]))
+                deallocate(X_plot,Y_plot)
                 
                 if (debug_calc_vac_res) then
                     ! copy vacuum response

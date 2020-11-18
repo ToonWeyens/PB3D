@@ -446,9 +446,9 @@ contains
         real(dp), intent(in), target :: vars(:,:,:,:)                           !< variables to plot
         integer, intent(in), optional :: tot_dim(4)                             !< total dimensions of the arrays
         integer, intent(in), optional :: loc_offset(4)                          !< offset of local dimensions
-        real(dp), intent(in), target, optional :: X(:,:,:,:)                    !< curvlinear grid X points
-        real(dp), intent(in), target, optional :: Y(:,:,:,:)                    !< curvlinear grid Y points
-        real(dp), intent(in), target, optional :: Z(:,:,:,:)                    !< curvlinear grid Z points
+        real(dp), intent(in), target, optional :: X(:,:,:,:)                    !< curvilinear grid X points
+        real(dp), intent(in), target, optional :: Y(:,:,:,:)                    !< curvilinear grid Y points
+        real(dp), intent(in), target, optional :: Z(:,:,:,:)                    !< curvilinear grid Z points
         integer, intent(in), optional :: col_id                                 !< index of time dimension
         integer, intent(in), optional :: col                                    !< whether a collection is made
         integer, intent(in), optional :: sym_type                               !< type of symmetry (1: no symmetry, 2: toroidal, 3: poloidal)
@@ -953,9 +953,9 @@ contains
         real(dp), intent(in) :: var(:,:,:)                                      !< variable to plot
         integer, intent(in), optional :: tot_dim(3)                             !< total dimensions of the arrays
         integer, intent(in), optional :: loc_offset(3)                          !< offset of local dimensions
-        real(dp), intent(in), target, optional :: X(:,:,:)                      !< curvlinear grid X points
-        real(dp), intent(in), target, optional :: Y(:,:,:)                      !< curvlinear grid Y points
-        real(dp), intent(in), target, optional :: Z(:,:,:)                      !< curvlinear grid Z points
+        real(dp), intent(in), target, optional :: X(:,:,:)                      !< curvilinear grid X points
+        real(dp), intent(in), target, optional :: Y(:,:,:)                      !< curvilinear grid Y points
+        real(dp), intent(in), target, optional :: Z(:,:,:)                      !< curvilinear grid Z points
         logical, intent(in), optional :: cont_plot                              !< continued plot
         character(len=*), intent(in), optional :: descr                         !< description
         

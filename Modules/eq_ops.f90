@@ -326,7 +326,7 @@ contains
             plot_title = 'Flux normal coordinate'
             call print_ex_2D(plot_title,file_name,grid_eq%r_F,draw=.false.)
             call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 1
+            ierr = 3
             call writo('The code has not been tested satisfactorily for &
                 &decreasing normal coordinate. See plot '// trim(file_name),&
                 &alert=.true.)
@@ -339,7 +339,7 @@ contains
             plot_title = 'derivative of safety factor'
             call print_ex_2D(plot_title,file_name,eq%q_saf_E(:,1),draw=.false.)
             call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 1
+            ierr = 3
             call writo('The code has to be adapted for reversed-shear regions &
                 &still. See plot ' // trim(file_name),alert=.true.)
             CHCKERR(err_msg)

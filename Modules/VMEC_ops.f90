@@ -238,12 +238,13 @@ contains
             end do
         end do
         
-        !!! to check, as these are not supposed to be necessary
-        !!flux_t_V(:,3:) = 0._dp
-        !!flux_p_V(:,3:) = 0._dp
-        !!q_saf_V(:,3:) = 0._dp
-        !!rot_t_V(:,3:) = 0._dp
-        !!pres_V(:,3:) = 0._dp
+        ! These are only necessary if the compiler searches for uninitialized
+        ! memory
+        flux_t_V(:,3:) = 0._dp
+        flux_p_V(:,3:) = 0._dp
+        q_saf_V(:,3:) = 0._dp
+        rot_t_V(:,3:) = 0._dp
+        pres_V(:,3:) = 0._dp
         
         ! allocate helper variables
         allocate(B_V_sub_c_M(mnmax_V,n_r_in,3)); B_V_sub_c_M = 0._dp

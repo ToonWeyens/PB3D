@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.44:
+* Cleaned up.
+
 ## 2.43:
 * Fixed show-stopper bug that caused the mode numbers to wrongly used in the vacuum response calculation.
 

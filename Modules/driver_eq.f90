@@ -280,8 +280,9 @@ contains
                 CHCKERR('')
             end if
             
-            !write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
             ! store vacuum variables
+            ierr = 2
+            CHCKERR('Vacuum has not been implemented yet!')
             ierr = store_vac(grid_eq,eq_1,eq_2,vac)
             CHCKERR('')
         end if

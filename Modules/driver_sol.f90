@@ -154,10 +154,10 @@ contains
                     do_vac_ops = .false.
                 end if
         end select
-        !write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-        !do_vac_ops = .false.
         
         if (do_vac_ops) then
+            ierr = 2
+            CHCKERR('Vacuum has not been implemented yet!')
             ! calculate vacuum
             ierr = calc_vac_res(mds_sol,vac)
             CHCKERR('')
@@ -264,7 +264,7 @@ contains
     !> \public  Interpolate  tensorial  perturbation  quantities  in  the  third
     !! dimension.
     !!
-    !! The input grid should not be divided, whereas the output grid can be.
+    !! The input grid should not be divided, though the output grid can be.
     !!
     !! The procedure  considers all  possible mode  number combinations.  For \c
     !! X_style 2  (fast), each  secondary mode  only lives  in a  certain normal
