@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.45:
+* Cleaned up, removed errenous vacuum warnings.
+
 ## 2.44:
 * Cleaned up.
 

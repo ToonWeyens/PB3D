@@ -43,9 +43,9 @@ module vac_ops
     
     ! global variables
 #if ldebug
-    logical :: debug_calc_GH = .true.                                          !< plot debug information for calc_GH() \ldebug
-    logical :: debug_calc_vac_res = .true.                                     !< plot debug information for calc_vac_res() \ldebug
-    logical :: debug_vac_pot_plot = .true.                                     !< plot debug information for vac_pot_plot() \ldebug
+    logical :: debug_calc_GH = .false.                                          !< plot debug information for calc_GH() \ldebug
+    logical :: debug_calc_vac_res = .false.                                     !< plot debug information for calc_vac_res() \ldebug
+    logical :: debug_vac_pot_plot = .false.                                     !< plot debug information for vac_pot_plot() \ldebug
 #endif
 
 contains

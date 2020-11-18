@@ -156,8 +156,6 @@ contains
         end select
         
         if (do_vac_ops) then
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
             ! calculate vacuum
             ierr = calc_vac_res(mds_sol,vac)
             CHCKERR('')

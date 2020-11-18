@@ -25,7 +25,7 @@ module sol_ops
     ! global variables
 #if ldebug
     logical :: debug_plot_sol_vec = .false.                                     !< plot debug information for plot_sol_vec() \ldebug
-    logical :: debug_plot_harmonics = .true.                                   !< plot debug information for plot_harmonics() \ldebug
+    logical :: debug_plot_harmonics = .false.                                   !< plot debug information for plot_harmonics() \ldebug
     logical :: debug_calc_E = .false.                                           !< plot debug information for calc_E() \ldebug
     logical :: debug_X_norm = .false.                                           !< plot debug information \c X_norm \ldebug
     logical :: debug_DU = .false.                                               !< plot debug information for calculation of \c DU \ldebug
