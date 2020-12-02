@@ -366,6 +366,8 @@ contains
                 if (sec_i_loc(k,1).ne.sec_o_loc(k,1) .or. &
                     &sec_i_loc(m,1).ne.sec_o_loc(m,1)) then
                     ierr = 1
+                    write(*,*) 'k', k, sec_i_loc(k,1), sec_o_loc(k,1)
+                    write(*,*) 'm', m, sec_i_loc(m,1), sec_o_loc(m,1)
                     err_msg = 'For ('//trim(i2str(k))//','//trim(i2str(m))//&
                         &'), no consistency for modes in grid_i and grid_o'
                     CHCKERR(err_msg)

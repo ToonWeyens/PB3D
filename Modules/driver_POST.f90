@@ -263,8 +263,8 @@ contains
             ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
                 &rich_lvl=rich_lvl)
             CHCKERR('')
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
+            !ierr = 2
+            !CHCKERR('Vacuum has not been implemented yet!')
             ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
             CHCKERR('')
         end if

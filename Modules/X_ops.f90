@@ -11,6 +11,7 @@ module X_ops
     use grid_vars, onlY: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type, modes_type
+    use input_utilities, only: pause_prog
 
     implicit none
     private
@@ -24,7 +25,7 @@ module X_ops
     ! global variables
 #if ldebug
     logical :: debug_check_X_modes_2 = .false.                                  !< plot debug information for check_x_modes_2() \ldebug
-    logical :: debug_setup_modes = .false.                                      !< plot debug information for setup_modes() \ldebug
+    logical :: debug_setup_modes = .true.                                      !< plot debug information for setup_modes() \ldebug
 #endif
     
     ! interfaces
@@ -1075,15 +1076,19 @@ contains
         real(dp), allocatable :: min_nm_X(:)                                    ! interpolated minimum mode number
         real(dp), allocatable :: x_plot(:,:)                                    ! abscissa of plot
         integer, pointer :: nm_X(:,:)                                           ! either n or m
-        integer :: id, ld, kd                                                   ! counters
+        integer :: id, jd, ld, kd                                               ! counters
         integer :: ld_loc                                                       ! shfited ld
         integer :: n_mod_tot                                                    ! total number of modes
-        integer :: ind_id                                                       ! current size of ind_tot
+        integer :: ind_id                                                       ! current size of mds_sec
+        integer :: ind_min                                                      ! index of max nm_X in last n_mod_X entries of mds_sec
+        integer :: ind_max                                                      ! index to min nm_X in last n_mod_X entries of mds_sec
+        integer :: ind_min_loc                                                  ! location of ind_min in inds_loc
+        integer :: ind_max_loc                                                  ! location of ind_max in inds_loc
         integer :: ld_shift                                                     ! shift in table indices
         integer :: mod_X_range                                                  ! total mode range
-        integer :: delta_ld                                                     ! change in total mode numbers
-        integer, allocatable :: ind_cur(:)                                      ! current indices
-        integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
+        integer :: delta_jd                                                     ! change in total mode numbers
+        integer, allocatable :: inds_loc(:)                                     ! local indices in mds_sec at current kd
+        integer, allocatable :: mds_sec(:,:)                                    ! total index information, will be later cut to sec
         character(len=max_str_ln), allocatable :: plot_titles(:)                ! title for plots
         character(len=max_str_ln) :: plot_name_tot                              ! file name for plots
         character(len=max_str_ln) :: err_msg                                    ! error message
@@ -1099,8 +1104,8 @@ contains
         call lvl_ud(1)
         
         ! set up normal tabulation values
-        allocate(ind_tot(-grid%n(3)*n_mod_X:grid%n(3)*n_mod_X,4))               ! not quite absolute maximum but should never be reached
-        allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
+        allocate(mds_sec(-grid%n(3)*n_mod_X:grid%n(3)*n_mod_X,4))               ! not quite absolute maximum but should never be reached
+        allocate(inds_loc(n_mod_X))                                             ! track all n_mod_X indices
         
         ! calculate n and m
         allocate(mds%n(grid%n(3),n_mod_X))
@@ -1108,6 +1113,28 @@ contains
         
         ! auxiliary variable
         allocate(min_nm_X(grid%n(3)))
+        
+        ! check that the sign of m and n does not flip
+        if (maxval(min_n_X)*1._dp/minval(min_n_X) .le. 0._dp .or. &
+            &maxval(min_m_X)*1._dp/minval(min_m_X) .le. 0._dp) then
+            ierr = 1
+            err_msg = 'min_n_X ['//&
+                &trim(i2str(minval(min_n_X)))//'..'//&
+                &trim(i2str(maxval(min_n_X)))//'] and max_n_X ['//&
+                &trim(i2str(minval(min_m_X)))//'..'//&
+                &trim(i2str(maxval(min_m_X)))//&
+                &'] cannot switch sign throughout the plasma'
+            CHCKERR(err_msg)
+        end if
+        
+        call print_ex_2D(['min_n','max_n'], 'minmax_n', &
+            &reshape([min_n_X*1._dp, max_n_X*1._dp],[size(min_n_X),2]), &
+            &draw=.false.)
+        call draw_ex(['min_n','max_n'], 'minmax_n',2,1,.false.)
+        call print_ex_2D(['min_m','max_m'], 'minmax_m', &
+            &reshape([min_m_X*1._dp, max_m_X*1._dp],[size(min_m_X),2]), &
+            &draw=.false.)
+        call draw_ex(['min_m','max_m'], 'minmax_m',2,1,.false.)
         
         ! iterate over n (id=1) and m (id=2)
         do id = 1,2
@@ -1137,22 +1164,22 @@ contains
             ind_id = 0
             do ld = 1,n_mod_X
                 nm_X(1,ld) = nint(min_nm_X(1)) + mod_X_range*(ld-1)/(n_mod_X-1)
-                ind_tot(ld,:) = [nm_X(1,ld),1,0,ld]
+                mds_sec(ld,:) = [nm_X(1,ld),1,0,ld]
+                inds_loc(ld) = ld
                 ind_id = ind_id + 1
 #if ldebug
-                if (debug_setup_modes) write(*,*) 'starting with', ld, ':', &
-                    &ind_tot(ld,:)
+                if (debug_setup_modes) write(*,*) '> starting', ld, ':', &
+                    &mds_sec(ld,:)
 #endif
             end do
-            ind_cur = [(ld, ld=1,n_mod_X)]
             
             ! iterate over all next normal grid points
             do kd = 2,grid%n(3)
                 ! update ld delta and shift
-                delta_ld = nint(min_nm_X(kd)) - nint(min_nm_X(kd-1))
-                ld_shift = ld_shift + delta_ld
+                delta_jd = nint(min_nm_X(kd)) - nint(min_nm_X(kd-1))
+                ld_shift = ld_shift + delta_jd
                 
-                ! set n or m
+                ! set n or m at local normal position
                 do ld = 1,n_mod_X
                     ! shift ld and wrap back to [1..n_mod_X]
                     ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
@@ -1161,64 +1188,89 @@ contains
                 end do
                 
                 ! if there was a shift, set new total index information
-                if (abs(delta_ld).gt.0) then
+                if (abs(delta_jd).gt.0) then
 #if ldebug
-                    if (debug_setup_modes) write(*,*) 'kd', kd, 'delta', &
-                        &delta_ld
+                    if (debug_setup_modes) write(*,*) 'at pos', kd, 'delta', &
+                        &delta_jd
 #endif
-                    do ld = 1,abs(delta_ld)
-                        if (delta_ld.gt.0) then                                 ! mode number has increased
-                            ind_tot(ind_cur(1),3) = kd - 1                      ! upper limit in normal range
-                            ind_tot(ind_id+ld,:) = [ &
-                                &ind_tot(ind_cur(n_mod_X),1) + 1, &             ! total mode number
-                                &kd, &                                          ! lower limit in normal range
-                                &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)+ld-1,n_mod_X) + 1]    ! index in tables, shifted and wrapped around
-#if ldebug
-                            if (debug_setup_modes) then
-                                write(*,*) '    FINISHES', ind_cur(1), &
-                                    &':', ind_tot(ind_cur(1),:)
-                                write(*,*) '    STARTS', ind_id+ld, ':', &
-                                    &ind_tot(ind_id+ld,:) 
+                    do jd = 1,abs(delta_jd)
+                        ! find information about min and max mode number in
+                        ! current indices
+                        ind_min_loc = 1
+                        ind_max_loc = 1
+                        ind_min = inds_loc(ind_min_loc)
+                        ind_max = inds_loc(ind_max_loc)
+                        do ld = 1,n_mod_X
+                            if (mds_sec(inds_loc(ld),1).gt.mds_sec(ind_max,1)) &
+                                &then
+                                ind_max = inds_loc(ld)
+                                ind_max_loc = ld
                             end if
-#endif
-                            ind_cur = [ind_cur(2:n_mod_X),ind_id+ld]            ! add ind_id+ld at top
-                        else                                                    ! mode number has decreased
-                            ind_tot(ind_cur(n_mod_X),3) = kd - 1                ! upper limit normal range
-                            ind_tot(ind_id+ld,:) = [ &
-                                &ind_tot(ind_cur(1),1) - 1, &                   ! total mode number
-                                &kd, &                                          ! lower limit in normal range
-                                &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)-ld,n_mod_X) + 1]      ! index in tables, shifted and wrapped around
-#if ldebug
-                            if (debug_setup_modes) then
-                                write(*,*) '    FINISHES', ind_cur(n_mod_X), &
-                                    &':', ind_tot(ind_cur(n_mod_X),:)
-                                write(*,*) '    STARTS', ind_id+ld, ':', &
-                                    &ind_tot(ind_id+ld,:) 
+                            if (mds_sec(inds_loc(ld),1).lt.mds_sec(ind_min,1)) &
+                                &then
+                                ind_min = inds_loc(ld)
+                                ind_min_loc = ld
                             end if
-#endif
-                            ind_cur = [ind_id+ld,ind_cur(1:n_mod_X-1)]          ! add ind_id+ld at bottom
+                        end do
+#if ldebug
+                        if (debug_setup_modes) then
+                            write(*,*) '    indices currently in use:', &
+                                &inds_loc, '(min at', ind_min, ', max at', &
+                                &ind_max, ')'
                         end if
-                    end do
-                    ind_id = ind_id+abs(delta_ld)
-#if ldebug
-                    if (debug_setup_modes) write(*,*) '    current indices:', &
-                        &ind_cur
 #endif
+                        
+                        ! finish the least resonant mode and start the new one
+                        mds_sec(ind_id+jd,2) = kd                               ! lower limit in normal range
+                        mds_sec(ind_id+jd,3) = 0                                ! initalize upper limit normal range
+                        if (delta_jd.gt.0) then                                 ! mode number has increased
+                            mds_sec(ind_min,3) = kd-1                           ! upper limit in normal range reached
+                            mds_sec(ind_id+jd,1) = mds_sec(ind_max,1)+jd        ! add jd to previous maximum
+                            mds_sec(ind_id+jd,4) = mds_sec(ind_min,4)           ! take index corresponding to previous minimum nm_X
+                            inds_loc(ind_min_loc) = ind_id+jd                   ! new index in use
+                        else                                                    ! mode number has decreased
+                            mds_sec(ind_max,3) = kd-1                           ! upper limit in normal range reached
+                            mds_sec(ind_id+jd,1) = mds_sec(ind_min,1)-jd        ! subtract jd from previous minimum
+                            mds_sec(ind_id+jd,4) = mds_sec(ind_max,4)           ! take index corresponding to previous maximum nm_X
+                            inds_loc(ind_max_loc) = ind_id+jd                   ! new index in use
+                            write(*,*) 'ind_max_loc', ind_max_loc, 'set to', ind_id+jd
+                        end if
+#if ldebug
+                        if (debug_setup_modes) then
+                            if (delta_jd.gt.0) then
+                                write(*,*) '< finished:', ind_min,':', &
+                                    &mds_sec(ind_min,:)
+                            else
+                                write(*,*) '< finished:', ind_max,':', &
+                                    &mds_sec(ind_max,:)
+                            end if
+                            write(*,*) '> starting:', ind_id+jd, ':', &
+                                &mds_sec(ind_id+jd,:)
+                            write(*,*) '  with local indices', inds_loc
+                        end if
+#endif
+                    end do
+                    ind_id = ind_id+abs(delta_jd)
                 end if
+                if (id.eq.2) call pause_prog
             end do
             
             ! close last total modes
-            do ld = 1,size(ind_cur)
-                ind_tot(ind_cur(ld),3) = grid%n(3)
+            do ld = 1,ind_id
+                if (mds_sec(ld,3).eq.0) then
+                    mds_sec(ld,3) = grid%n(3)
+#if ldebug
+                    if (debug_setup_modes) write(*,*) '< finished', ld, &
+                        &':', mds_sec(ld,:)
+#endif
+                end if
             end do
             
             ! save in index information
             if ((use_pol_flux_F .and. id.eq.2) .or. &
                 &(.not.use_pol_flux_F .and. id.eq.1)) then
                 allocate(mds%sec(ind_id,4))
-                mds%sec = ind_tot(1:ind_id,:)
+                mds%sec = mds_sec(1:ind_id,:)
             end if
         end do
         
@@ -1711,6 +1763,10 @@ contains
         ! calculate normalization factor max_flux / 2pi
         norm_factor = max_flux_F/(2*pi)
         
+        call print_ex_2D(['mode nr', 'low lim', 'upp lim', 'ind tab'], 'mds', &
+            &1._dp*mds%sec,draw=.false.)
+        call draw_ex(['mode nr', 'low lim', 'upp lim', 'ind tab'], 'mds', &
+            &size(mds%sec,2),1,.false.)
         ! loop over all modes (and shift the index in m_loc and n_loc by 1)
         ld_loc = 1
         do ld = 1,size(mds%sec,1)
@@ -1880,6 +1936,11 @@ contains
         ! find resonating surfaces
         ierr = calc_res_surf(mds,grid_eq,eq,res_surf,info=.true.,jq=jq)
         CHCKERR('')
+        call print_ex_2D(['m_idx', 'rad_p', 'fract'], 'res_surf', res_surf, draw=.false.)
+        call draw_ex(['m_idx', 'rad_p', 'fract'], 'res_surf', 3, 1, .false.)
+    !!  - <tt>(:,1)</tt>: the mode index
+    !!  - <tt>(:,2)</tt>: the radial position in Flux coordinates
+    !!  - <tt>(:,3)</tt>: the fraction \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$
         
         call lvl_ud(-1)
         

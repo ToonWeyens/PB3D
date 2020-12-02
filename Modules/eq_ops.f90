@@ -326,11 +326,11 @@ contains
             plot_title = 'Flux normal coordinate'
             call print_ex_2D(plot_title,file_name,grid_eq%r_F,draw=.false.)
             call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 3
+            !ierr = 3
             call writo('The code has not been tested satisfactorily for &
                 &decreasing normal coordinate. See plot '// trim(file_name),&
                 &alert=.true.)
-            CHCKERR(err_msg)
+            !CHCKERR(err_msg)
         end if
         
         ! check whether there are reversed shear regions
