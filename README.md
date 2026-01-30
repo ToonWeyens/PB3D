@@ -22,6 +22,12 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.47:
+* Modernized build system: migrated from Makefile to CMake.
+* Added Spack environment support for portable dependency management.
+* Old Makefile preserved as `Makefile.legacy` for reference.
+* Added `Documentation/spack-setup.md` with build instructions.
+
 ## 2.46:
 * Fixed bug in `interp_V_spline` where 2-point interpolation cases crashed because EZspline requires at least 3 points. Now uses vectorized manual linear interpolation for 2-point cases.
 

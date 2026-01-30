@@ -4,3 +4,4 @@ POST
 *.xmf
 *.yaml
 *.sample
+build/
