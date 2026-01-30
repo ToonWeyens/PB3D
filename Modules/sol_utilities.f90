@@ -844,7 +844,14 @@ contains
                     V_o(:,:,kd) = V_i(:,:,1)
                 end do
                 if (present(ivs_stat)) ivs_stat = 1
-            case (2:3)                                                          ! linear
+            case (2)                                                            ! manual linear (EZspline needs >= 3 pts)
+                do kd = 1,size(V_o,3)
+                    V_o(:,:,kd) = V_i(:,:,1) + &
+                        &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &
+                        &(r_o(kd) - r_i(1))
+                end do
+                if (present(ivs_stat)) ivs_stat = 2
+            case (3)                                                            ! linear via EZspline
                 do jd = 1,size(V_i,2)
                     do id = 1,size(V_i,1)
                         ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&

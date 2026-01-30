@@ -22,6 +22,9 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.46:
+* Fixed bug in `interp_V_spline` where 2-point interpolation cases crashed because EZspline requires at least 3 points. Now uses vectorized manual linear interpolation for 2-point cases.
+
 ## 2.45:
 * Cleaned up, removed errenous vacuum warnings.
 
