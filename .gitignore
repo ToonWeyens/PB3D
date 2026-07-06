@@ -3,5 +3,9 @@ POST
 *.h5
 *.xmf
 *.yaml
+!spack.yaml
 *.sample
 build/
+build-*/
+.env
+*~

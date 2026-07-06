@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.47
+    VERSION 2.48
     LANGUAGES Fortran C CXX
     DESCRIPTION "Peeling Ballooning in 3D"
 )
@@ -17,6 +17,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Options
 option(PB3D_ENABLE_DEBUG "Enable debug mode (ldebug preprocessor flag)" OFF)
 option(PB3D_ENABLE_INFINIBAND "Enable InfiniBand support (lIB preprocessor flag)" OFF)
+option(PB3D_BUILD_EXECUTABLES "Build the PB3D and POST executables (requires the full dependency stack: PETSc, SLEPc, HDF5, NetCDF, PSPLINE, LIBSTELL, ...)" ON)
+
+# CTest integration; provides the BUILD_TESTING option (default ON).
+# With PB3D_BUILD_EXECUTABLES=OFF, only the dependency-light core library and
+# its unit tests are built, which requires no external libraries at all.
+include(CTest)
 
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -88,9 +94,14 @@ endif()
 # Find dependencies
 #------------------------------------------------------------------------------
 
-# MPI
-find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
-message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
+# MPI: needed by the full build always, and by the core library only in debug
+# mode (messages.f90 uses MPI for memory monitoring under ldebug)
+if(PB3D_BUILD_EXECUTABLES OR PB3D_ENABLE_DEBUG)
+    find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
+    message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
+endif()
+
+if(PB3D_BUILD_EXECUTABLES)
 
 # PETSc (uses its own CMake config)
 find_package(PkgConfig REQUIRED)
@@ -161,6 +172,8 @@ message(STATUS "Found LIBSTELL: ${LIBSTELL_LIBRARIES}")
 find_package(LAPACK)
 find_package(BLAS)
 
+endif() # PB3D_BUILD_EXECUTABLES
+
 #------------------------------------------------------------------------------
 # Internal libraries
 #------------------------------------------------------------------------------
@@ -176,6 +189,40 @@ add_library(foul STATIC
     ${CMAKE_SOURCE_DIR}/Libraries/foul.f90
 )
 target_compile_options(foul PRIVATE -O2 -w)
+set_target_properties(foul PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/foul)
+target_include_directories(foul PUBLIC ${CMAKE_BINARY_DIR}/mod/foul)
+
+#------------------------------------------------------------------------------
+# Dependency-light core library
+#
+# The leaf modules of the dependency tree: everything here compiles with just
+# a Fortran compiler (plus MPI in debug mode), without PETSc/SLEPc/HDF5/
+# NetCDF/PSPLINE/LIBSTELL. The unit tests in tests/ build against this
+# library, so they remain available on machines without the full stack.
+#------------------------------------------------------------------------------
+set(PB3D_CORE_SOURCES
+    Modules/num_vars.f90
+    Modules/str_utilities.f90
+    Modules/messages.f90
+    Modules/files_utilities.f90
+    Modules/dtorh.f90
+)
+
+add_library(pb3d_core OBJECT ${PB3D_CORE_SOURCES})
+set_target_properties(pb3d_core PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/core)
+target_include_directories(pb3d_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/core
+)
+target_link_libraries(pb3d_core PUBLIC foul)
+if(PB3D_ENABLE_DEBUG)
+    # messages.f90 uses MPI under ldebug (memory monitoring)
+    target_link_libraries(pb3d_core PUBLIC MPI::MPI_Fortran)
+endif()
+
+if(PB3D_BUILD_EXECUTABLES)
 
 #------------------------------------------------------------------------------
 # Module source files (order matters for Fortran module dependencies)
@@ -267,9 +314,15 @@ set(PB3D_MODULE_SOURCES
 #------------------------------------------------------------------------------
 add_library(pb3d_modules OBJECT ${PB3D_MODULE_SOURCES})
 
+# Keep the .mod files of the full module library separate from those of
+# pb3d_core (the core sources are compiled into both targets)
+set_target_properties(pb3d_modules PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/full)
+
 # Include directories
 target_include_directories(pb3d_modules PUBLIC
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -299,6 +352,7 @@ add_executable(PB3D
 
 target_include_directories(PB3D PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -350,6 +404,7 @@ add_executable(POST
 
 target_include_directories(POST PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -398,6 +453,15 @@ install(TARGETS PB3D POST
     RUNTIME DESTINATION bin
 )
 
+endif() # PB3D_BUILD_EXECUTABLES
+
+#------------------------------------------------------------------------------
+# Tests
+#------------------------------------------------------------------------------
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 #------------------------------------------------------------------------------
 # Summary
 #------------------------------------------------------------------------------
@@ -410,15 +474,19 @@ message(STATUS "  Fortran:        ${CMAKE_Fortran_COMPILER}")
 message(STATUS "  Compiler ID:    ${CMAKE_Fortran_COMPILER_ID}")
 message(STATUS "  Debug mode:     ${PB3D_ENABLE_DEBUG}")
 message(STATUS "  InfiniBand:     ${PB3D_ENABLE_INFINIBAND}")
+message(STATUS "  Executables:    ${PB3D_BUILD_EXECUTABLES}")
+message(STATUS "  Testing:        ${BUILD_TESTING}")
 message(STATUS "")
-message(STATUS "Dependencies:")
-message(STATUS "  MPI:            ${MPI_Fortran_COMPILER}")
-message(STATUS "  PETSc:          ${PETSC_VERSION}")
-message(STATUS "  SLEPc:          ${SLEPC_VERSION}")
-message(STATUS "  HDF5:           ${HDF5_VERSION}")
-message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
-message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
-message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
-message(STATUS "  PSPLINE:        ${PSPLINE_FOUND}")
-message(STATUS "  LIBSTELL:       ${LIBSTELL_FOUND}")
-message(STATUS "")
+if(PB3D_BUILD_EXECUTABLES)
+    message(STATUS "Dependencies:")
+    message(STATUS "  MPI:            ${MPI_Fortran_COMPILER}")
+    message(STATUS "  PETSc:          ${PETSC_VERSION}")
+    message(STATUS "  SLEPc:          ${SLEPC_VERSION}")
+    message(STATUS "  HDF5:           ${HDF5_VERSION}")
+    message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
+    message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
+    message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
+    message(STATUS "  PSPLINE:        ${PSPLINE_FOUND}")
+    message(STATUS "  LIBSTELL:       ${LIBSTELL_FOUND}")
+    message(STATUS "")
+endif()

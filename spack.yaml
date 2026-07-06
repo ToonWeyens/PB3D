@@ -1,0 +1,22 @@
+# Spack environment for the full PB3D dependency stack
+# (see Documentation/spack-setup.md for the complete build walkthrough;
+# PSPLINE, LIBSTELL and STRUMPACK-Dense 1.1.1 are built outside Spack).
+#
+# NOTE: PB3D was last built against PETSc 3.9.2 / SLEPc 3.9.1 (2018-era, see
+# the README changelog) and requires PETSc with COMPLEX scalars. Recent PETSc
+# versions have incompatible Fortran API changes, so the known-good versions
+# are pinned here. Building 2018-era PETSc with a very recent GCC may in turn
+# require pinning an older compiler (e.g. append '%gcc@11' to the specs).
+# Porting PB3D to current PETSc/SLEPc is tracked as modernization work.
+spack:
+  specs:
+    - openmpi
+    - petsc@3.9.2 +complex ~debug
+    - slepc@3.9.1
+    - hdf5 +fortran +hl +mpi
+    - netcdf-fortran
+    - netlib-scalapack
+    - pkgconf
+  concretizer:
+    unify: true
+  view: true

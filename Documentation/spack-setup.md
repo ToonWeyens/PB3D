@@ -216,10 +216,22 @@ The executables `PB3D` and `POST` are created in the build directory.
 |--------|---------|-------------|
 | `PB3D_ENABLE_DEBUG` | OFF | Enable debug mode (ldebug preprocessor flag) |
 | `PB3D_ENABLE_INFINIBAND` | OFF | Enable InfiniBand support (lIB flag) |
+| `PB3D_BUILD_EXECUTABLES` | ON | Build PB3D/POST (needs the full stack); OFF builds only the core library + unit tests |
+| `BUILD_TESTING` | ON | Build the CTest test suite (see `testing.md`) |
 | `CMAKE_BUILD_TYPE` | Release | Build type (Debug, Release, RelWithDebInfo) |
 | `PSPLINE_DIR` | - | Path to PSPLINE installation |
 | `LIBSTELL_DIR` | - | Path to LIBSTELL installation |
 | `STRUMPACK_DIR` | ~/Code/STRUMPACK-Dense-1.1.1 | Path to STRUMPACK-Dense 1.1.1 installation |
+
+### Testing without the full stack
+
+The unit tests need no external libraries at all (see `testing.md`):
+
+```bash
+cmake -S . -B build-tests -DPB3D_BUILD_EXECUTABLES=OFF
+cmake --build build-tests -j
+ctest --test-dir build-tests --output-on-failure
+```
 
 ### Debug Build
 

@@ -22,6 +22,14 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.48:
+* Modernized testing infrastructure: added a CTest-driven test suite in `tests/`, with unit tests written in the vendored fortran-lang `test-drive` framework (see `Documentation/testing.md`).
+* New CMake option `PB3D_BUILD_EXECUTABLES` (default ON): with OFF, only a dependency-light core library (`num_vars`, `str_utilities`, `messages`, `files_utilities`, `dtorh`) and its unit tests are built, requiring no external libraries. This allows testing on machines without the PETSc/SLEPc/HDF5 stack.
+* First unit tests: `dtorh` toroidal harmonics validated against 30-digit mpmath reference values (including the near-singular regime relevant for the vacuum BEM), recurrence relations and error handling; `str_utilities` output formats pinned down.
+* Added GitHub Actions workflow running the unit tests on every push.
+* Committed the previously missing `spack.yaml` (was excluded by the `*.yaml` gitignore rule) with pinned, known-good PETSc/SLEPc versions.
+* Smoke tests for the `PB3D`/`POST` usage output are registered but await a full-stack build for verification.
+
 ## 2.47:
 * Modernized build system: migrated from Makefile to CMake.
 * Added Spack environment support for portable dependency management.

@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+    branches: [master, "dev/**"]
+  pull_request:
+
+jobs:
+  # Unit tests of the dependency-light core (no PETSc/SLEPc/HDF5 stack
+  # needed). The full-stack build of the PB3D/POST executables is not done in
+  # CI yet — see Documentation/testing.md.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake
+
+      - name: Configure
+        run: cmake -S . -B build -DPB3D_BUILD_EXECUTABLES=OFF
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
