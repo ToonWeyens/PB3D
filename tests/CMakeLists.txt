@@ -25,6 +25,7 @@ target_include_directories(testdrive PUBLIC ${CMAKE_BINARY_DIR}/mod/testdrive)
 add_executable(pb3d_unit_tests
     unit/main.f90
     unit/test_str_utilities.f90
+    unit/test_files_utilities.f90
     unit/test_dtorh.f90
 )
 set_target_properties(pb3d_unit_tests PROPERTIES
@@ -35,6 +36,7 @@ target_link_libraries(pb3d_unit_tests PRIVATE pb3d_core testdrive)
 # be run in parallel
 set(PB3D_UNIT_SUITES
     str_utilities
+    files_utilities
     dtorh
 )
 foreach(suite IN LISTS PB3D_UNIT_SUITES)

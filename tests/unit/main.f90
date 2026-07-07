@@ -14,6 +14,7 @@ program pb3d_tester
     use testdrive, only: run_testsuite, new_testsuite, testsuite_type, &
         &select_suite, run_selected, get_argument
     use test_str_utilities, only: collect_str_utilities
+    use test_files_utilities, only: collect_files_utilities
     use test_dtorh, only: collect_dtorh
     use num_vars, only: rank, n_procs, prog_name
     use messages, only: init_output
@@ -38,6 +39,7 @@ program pb3d_tester
 
     testsuites = [ &
         &new_testsuite("str_utilities", collect_str_utilities), &
+        &new_testsuite("files_utilities", collect_files_utilities), &
         &new_testsuite("dtorh", collect_dtorh) &
         &]
 
