@@ -802,25 +802,25 @@ contains
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables
-            real(dp) :: mat_info(MAT_INFO_SIZE)                                 ! information about matrix
-            
+            MatInfo :: mat_info                                                 ! information about matrix
+
             ! initialize ierr
             ierr = 0
-            
+
             call lvl_ud(1)
-            
+
             select case (matrix_SLEPC_style)
                 case (1)                                                        ! sparse
                     call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
                     CHCKERR('')
                     call writo('memory usage: '//&
-                        &trim(r2strt(mat_info(MAT_INFO_MEMORY)*1.E-6_dp))//&
+                        &trim(r2strt(mat_info%memory*1.E-6_dp))//&
                         &' MB')
                     call writo('nonzero''s allocated: '//&
-                        &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
-                    if (mat_info(MAT_INFO_NZ_UNNEEDED).gt.0._dp) then
+                        &trim(r2strt(mat_info%nz_allocated)))
+                    if (mat_info%nz_unneeded.gt.0._dp) then
                         call writo('of which unused: '//&
-                            &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
+                            &trim(r2strt(mat_info%nz_unneeded)))
                     end if
                 case (2)                                                        ! shell
                     call writo('shell matrix')
@@ -1489,7 +1489,7 @@ contains
                     CHCKERR('Failed to create vector')
                     
                     ! get pointer
-                    call VecGetArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    call VecGetArray(guess_vec(kd),guess_vec_ptr,ierr)
                     CHCKERR('Failed to get pointer')
                     
                     ! copy the values
@@ -1500,7 +1500,7 @@ contains
                         &= guess_vec_ptr(size(sol%vec(:,:,kd)))                 ! some BC's have a grid extension
                     
                     ! return pointer
-                    call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    call VecRestoreArray(guess_vec(kd),guess_vec_ptr,ierr)
                     CHCKERR('Failed to restore pointer')
                     
                     !! visualize guess
@@ -1696,7 +1696,7 @@ contains
         
         ! create solution vector
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&
-            &n_r*n_mod_X,PETSC_NULL_SCALAR,sol_vec,ierr)
+            &n_r*n_mod_X,PETSC_NULL_SCALAR_ARRAY,sol_vec,ierr)
         CHCKERR('Failed to create MPI vector with arrays')
         
         ! set up EV error string and format string:
@@ -1841,7 +1841,7 @@ contains
                 call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,err_mat,ierr)
                 err_msg = 'failed to duplicate mat into err_mat'
                 CHCKERR(err_msg)
-                call MatCopy(A,err_mat,MAT_SHARE_NONZERO_PATTERN,ierr)          ! err_mat has same structure as A
+                call MatCopy(A,err_mat,SAME_NONZERO_PATTERN,ierr)               ! err_mat has same structure as A
                 CHCKERR('Failed to copy mat into mat_loc')
                 call MatAXPY(err_mat,-sol%val(id),B,DIFFERENT_NONZERO_PATTERN,&
                     &ierr)                                                      ! for some reason, SAME_NONZERO_PATTERN does not work
@@ -1996,18 +1996,19 @@ contains
             ! input / output
             PetscInt, intent(inout) :: id                                       ! id of faulty values
             PetscInt, intent(inout) :: max_id                                   ! maximum id
-            PetscBool, intent(in), optional :: remove_next                      ! whether all next values have to be removed as well
-            
+            logical, intent(in), optional :: remove_next                        ! whether all next values have to be removed as well
+
             ! local variables
             PetscScalar, allocatable :: sol_val_loc(:)                          ! local copy of sol_val
             PetscScalar, allocatable :: sol_vec_loc(:,:,:)                      ! local copy of sol_vec
-            PetscBool :: remove_next_loc = .false.                              ! local copy of remove_next
-            
+            logical :: remove_next_loc                                          ! local copy of remove_next
+
             ! only remove if faulty solutions are not optionally retained
             if (retain_all_sol) then
                 id = id+1                                                       ! increment the solution
             else
                 ! set up local remove_next
+                remove_next_loc = .false.
                 if (present(remove_next)) remove_next_loc = remove_next
                 
                 ! save old arrays

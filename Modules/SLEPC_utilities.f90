@@ -96,18 +96,18 @@ contains
         PetscInt, intent(in) :: r_id                                            !< normal position of corresponding \f$\widetilde{V}^0\f$ (starting at 0)
         PetscInt, intent(in) :: ind(2)                                          !< 2D index in matrix, relative to \cr_id
         PetscInt, intent(in) :: n_r                                             !< number of grid points of solution grid
-        PetscBool, intent(in), optional :: transp                               !< also set Hermitian transpose
-        PetscBool, intent(in), optional :: overwrite                            !< overwrite
-        PetscBool, intent(in), optional :: ind_insert                           !< individual insert, only important for debugging
-        
+        logical, intent(in), optional :: transp                                 !< also set Hermitian transpose
+        logical, intent(in), optional :: overwrite                              !< overwrite
+        logical, intent(in), optional :: ind_insert                             !< individual insert, only important for debugging
+
         ! local variables
         PetscInt, pointer :: nm_X(:,:)                                          ! m (pol. flux) or n (tor. flux)
-        PetscBool :: transp_loc                                                 ! local copy of transp
-        PetscBool :: overwrite_loc                                              ! local copy of overwrite
+        logical :: transp_loc                                                   ! local copy of transp
+        logical :: overwrite_loc                                                ! local copy of overwrite
         character(len=max_str_ln) :: err_msg                                    ! error message
-        PetscInt :: operation                                                   ! either ADD_VALUES or INSERT_VALUES
+        InsertMode :: operation                                                 ! either ADD_VALUES or INSERT_VALUES
         PetscScalar, allocatable :: block_loc(:,:)                              ! local block, possibly shifted from block
-        PetscBool :: ind_insert_loc                                             ! local ind_insert
+        logical :: ind_insert_loc                                               ! local ind_insert
         
         ! initialize ierr
         ierr = 0
@@ -158,7 +158,7 @@ contains
             call setup_local_block(nm_X,r_id,ind(1:2),block,block_loc)
             
             ! set values
-            call MatSetValuesBlocked(mat,1,r_id+ind(1),1,r_id+ind(2),&
+            call MatSetValuesBlocked(mat,1,[r_id+ind(1)],1,[r_id+ind(2)],&
                 &transpose(block_loc),operation,ierr)
             CHCKERR(err_msg)
             
@@ -174,7 +174,7 @@ contains
                 call setup_local_block(nm_X,r_id,ind(2:1:-1),&
                     &transpose(conjg(block)),block_loc)
                 
-                call MatSetValuesBlocked(mat,1,r_id+ind(2),1,r_id+ind(1),&
+                call MatSetValuesBlocked(mat,1,[r_id+ind(2)],1,[r_id+ind(1)],&
                     &transpose(block_loc),operation,ierr)
                 CHCKERR(err_msg)
             end if
