@@ -158,8 +158,10 @@ if(STRUMPACK_LIBRARY AND STRUMPACK_INCLUDE_DIR)
     message(STATUS "  Include dir: ${STRUMPACK_INCLUDE_DIR}")
 else()
     set(STRUMPACK_FOUND FALSE)
-    message(WARNING "STRUMPACK-Dense not found. Vacuum module will not work.")
-    message(STATUS "  Set STRUMPACK_DIR to point to STRUMPACK-Dense-1.1.1 directory")
+    message(STATUS "STRUMPACK-Dense not found - the vacuum module will solve its \
+boundary-element system with ScaLAPACK (pdgesv) instead of STRUMPACK's \
+compressed solver. Set STRUMPACK_DIR to a STRUMPACK-Dense-1.1.1 build to \
+use the latter.")
 endif()
 
 # PSPLINE (custom find module)
@@ -342,6 +344,7 @@ target_link_libraries(pb3d_modules PUBLIC
 
 if(STRUMPACK_FOUND)
     target_include_directories(pb3d_modules PUBLIC ${STRUMPACK_INCLUDE_DIRS})
+    target_compile_definitions(pb3d_modules PRIVATE PB3D_WITH_STRUMPACK)
 endif()
 
 #------------------------------------------------------------------------------

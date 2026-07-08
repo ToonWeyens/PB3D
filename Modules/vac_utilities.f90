@@ -6,12 +6,11 @@
 module vac_utilities
 #include <PB3D_macros.h>
 #include <wrappers.h>
-    use StrumpackDensePackage
     use str_utilities
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
-    use vac_vars, only: vac_type
+    use vac_vars, only: vac_type, BLACSCTXTSIZE
 
     implicit none
     private
@@ -73,7 +72,10 @@ contains
         else
             G = -1._dp/sqrt(r2)
             do kd = 1,2
-                H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**(-3)
+                ! dipole kernel norm.(x_s-x_in)/|x_s-x_in|^3, i.e. the
+                ! directional derivative of G along the source normal
+                ! (the exponent used to be -3, off by a factor |x_s-x_in|^6)
+                H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**3
             end do
         end if
     end subroutine calc_GH_int_1
