@@ -47,6 +47,22 @@ endforeach()
 #------------------------------------------------------------------------------
 # Smoke tests of the executables
 #------------------------------------------------------------------------------
+# Some sandboxed/container environments break OpenMPI's default one-sided
+# communication (MPI_Win_create fails in shared-memory/CMA paths, even for
+# single-process runs). If this OpenMPI still ships the pt2pt osc component,
+# force it for the tests that run the executables; it is slow but always
+# works. OpenMPI >= 5 dropped pt2pt (and generally works out of the box), and
+# other MPI implementations ignore the variable.
+set(PB3D_TEST_MPI_ENV "")
+find_program(OMPI_INFO_EXECUTABLE ompi_info)
+if(OMPI_INFO_EXECUTABLE)
+    execute_process(COMMAND ${OMPI_INFO_EXECUTABLE} --parsable
+        OUTPUT_VARIABLE _ompi_info_out ERROR_QUIET)
+    if(_ompi_info_out MATCHES "mca:osc:pt2pt")
+        set(PB3D_TEST_MPI_ENV "OMPI_MCA_osc=pt2pt")
+    endif()
+endif()
+
 # Invoking without arguments has to print the usage message. The exit code is
 # deliberately not relied upon (PASS_REGULAR_EXPRESSION takes precedence), as
 # the error path aborts through MPI.
@@ -54,12 +70,14 @@ if(TARGET PB3D)
     add_test(NAME smoke_PB3D_usage COMMAND PB3D)
     set_tests_properties(smoke_PB3D_usage PROPERTIES
         PASS_REGULAR_EXPRESSION "Usage:"
+        ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
         LABELS "smoke")
 endif()
 if(TARGET POST)
     add_test(NAME smoke_POST_usage COMMAND POST)
     set_tests_properties(smoke_POST_usage PROPERTIES
         PASS_REGULAR_EXPRESSION "Usage:"
+        ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
         LABELS "smoke")
 endif()
 
@@ -79,6 +97,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set_tests_properties(regression_cbm18a_fixed_bnd PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
     else()
         message(STATUS "PB3D_FIXTURE_DIR set but cbm18a_extended_vac.12 not found - regression test skipped")

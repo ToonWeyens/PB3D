@@ -158,8 +158,11 @@ contains
             call setup_local_block(nm_X,r_id,ind(1:2),block,block_loc)
             
             ! set values
+            ! (values flattened to 1-D in row-major order: the 2-D form is
+            ! only accepted by the Fortran interface from PETSc >= 3.20)
             call MatSetValuesBlocked(mat,1,[r_id+ind(1)],1,[r_id+ind(2)],&
-                &transpose(block_loc),operation,ierr)
+                &reshape(transpose(block_loc),[size(block_loc)]),operation,&
+                &ierr)
             CHCKERR(err_msg)
             
             ! untransposed block
@@ -175,7 +178,8 @@ contains
                     &transpose(conjg(block)),block_loc)
                 
                 call MatSetValuesBlocked(mat,1,[r_id+ind(2)],1,[r_id+ind(1)],&
-                    &transpose(block_loc),operation,ierr)
+                    &reshape(transpose(block_loc),[size(block_loc)]),&
+                    &operation,ierr)
                 CHCKERR(err_msg)
             end if
             

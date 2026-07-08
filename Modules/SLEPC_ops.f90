@@ -804,7 +804,13 @@ contains
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables
+            ! (MatInfo became a derived type in the PETSc 3.22 Fortran
+            ! overhaul; before that it was an array indexed by MAT_INFO_*)
+#if PETSC_VERSION_GE(3,22,0)
             MatInfo :: mat_info                                                 ! information about matrix
+#else
+            MatInfo :: mat_info(MAT_INFO_SIZE)                                  ! information about matrix
+#endif
 
             ! initialize ierr
             ierr = 0
@@ -815,6 +821,7 @@ contains
                 case (1)                                                        ! sparse
                     call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
                     CHCKERR('')
+#if PETSC_VERSION_GE(3,22,0)
                     call writo('memory usage: '//&
                         &trim(r2strt(mat_info%memory*1.E-6_dp))//&
                         &' MB')
@@ -824,6 +831,17 @@ contains
                         call writo('of which unused: '//&
                             &trim(r2strt(mat_info%nz_unneeded)))
                     end if
+#else
+                    call writo('memory usage: '//&
+                        &trim(r2strt(mat_info(MAT_INFO_MEMORY)*1.E-6_dp))//&
+                        &' MB')
+                    call writo('nonzero''s allocated: '//&
+                        &trim(r2strt(mat_info(MAT_INFO_NZ_ALLOCATED))))
+                    if (mat_info(MAT_INFO_NZ_UNNEEDED).gt.0._dp) then
+                        call writo('of which unused: '//&
+                            &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
+                    end if
+#endif
                 case (2)                                                        ! shell
                     call writo('shell matrix')
             end select
@@ -1697,8 +1715,15 @@ contains
         call sol%init(mds,grid_sol_trim,max_n_EV)
         
         ! create solution vector
+        ! (PETSC_NULL_SCALAR_ARRAY only exists from PETSc 3.22 on; older
+        ! versions pass the scalar PETSC_NULL_SCALAR for a null array)
+#if PETSC_VERSION_GE(3,22,0)
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&
             &n_r*n_mod_X,PETSC_NULL_SCALAR_ARRAY,sol_vec,ierr)
+#else
+        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&
+            &n_r*n_mod_X,PETSC_NULL_SCALAR,sol_vec,ierr)
+#endif
         CHCKERR('Failed to create MPI vector with arrays')
         
         ! set up EV error string and format string:
