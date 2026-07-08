@@ -1524,6 +1524,9 @@ contains
             end if
             
             ! set secondary mode numbers
+            ! (can be already allocated if the vacuum was reconstructed, e.g.
+            ! on the HELENA Richardson-restart path)
+            if (allocated(vac%sec_X)) deallocate(vac%sec_X)
             allocate(vac%sec_X(n_mod_X))
             if (use_pol_flux_F) then
                 vac%sec_X = mds%m(size(mds%m,1),:)
@@ -1622,8 +1625,12 @@ contains
                     end do subrows
                 end do col
             end do subcols
-            call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
-            
+#if ldebug
+            if (debug_calc_vac_res) then
+                call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
+            end if
+#endif
+
             ! solve for Phi
             ierr = solve_Phi_BEM(vac,EP,Phi,[vac%n_bnd,2*n_mod_X],&
                 &[vac%n_loc(1),n_loc(2)],lims_c_loc,desc_PhiEP)

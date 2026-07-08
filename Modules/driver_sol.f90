@@ -42,7 +42,7 @@ contains
         &result(ierr)
         
         use num_vars, only: EV_style, eq_style, rich_restart_lvl, rank, &
-            &n_procs, X_grid_style, jump_to_sol
+            &n_procs, X_grid_style, jump_to_sol, BC_style
         use grid_vars, only: n_r_sol, n_alpha
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_sol
         use SLEPC_ops, only: solve_EV_system_SLEPC
@@ -142,7 +142,7 @@ contains
         
         ! set up  whether Richardson level  has to be  appended to the  name and
         ! whether to do vacuum operations
-        select case (eq_style) 
+        select case (eq_style)
             case (1)                                                            ! VMEC
                 rich_lvl_name = rich_lvl                                        ! append richardson level
                 do_vac_ops = .true.
@@ -154,6 +154,7 @@ contains
                     do_vac_ops = .false.
                 end if
         end select
+        if (BC_style(2).eq.1) do_vac_ops = .false.                              ! fixed-boundary BC does not use the vacuum response
         
         if (do_vac_ops) then
             ! calculate vacuum
