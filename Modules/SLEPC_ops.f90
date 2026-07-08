@@ -281,12 +281,14 @@ contains
             call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&
                 &file_viewer,ierr)
             CHCKERR('Unable to open file viewer')
-            !call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
-            call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_MATLAB,ierr)
+            !call PetscViewerPushFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
+            call PetscViewerPushFormat(file_viewer,PETSC_VIEWER_ASCII_MATLAB,ierr)
             CHCKERR('Unable to set format')
             !call MatView(mat_loc,file_viewer,ierr)
             call MatView(mat,file_viewer,ierr)
             CHCKERR('Unable to write matrix to file')
+            call PetscViewerPopFormat(file_viewer,ierr)
+            CHCKERR('Unable to pop format')
             call PetscViewerDestroy(file_viewer,ierr)
             CHCKERR('Unable to destroy file viewer')
             !if (rank.eq.0) then

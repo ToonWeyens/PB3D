@@ -59,7 +59,9 @@ set(CMAKE_Fortran_PREPROCESS ON)
 # Note: -fimplicit-none is intentionally not global to support legacy libraries like dfftpack
 if(PB3D_COMPILER_GNU)
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fbacktrace -fno-omit-frame-pointer -fallow-argument-mismatch")
-    set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -g -Wall -Wextra -pedantic -finit-real=snan -ffpe-trap=invalid -fcheck=all")
+    # no -pedantic: it re-promotes the argument mismatches in vendored F77
+    # (Libraries/dfft.f) to hard errors despite -fallow-argument-mismatch
+    set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -g -Wall -Wextra -finit-real=snan -ffpe-trap=invalid -fcheck=all")
     set(CMAKE_Fortran_FLAGS_RELEASE "-O3")
     set(CMAKE_Fortran_FLAGS_RELWITHDEBINFO "-O2 -g")
 endif()
