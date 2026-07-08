@@ -62,3 +62,25 @@ if(TARGET POST)
         PASS_REGULAR_EXPRESSION "Usage:"
         LABELS "smoke")
 endif()
+
+#------------------------------------------------------------------------------
+# Physics regression tests (opt-in: need local equilibrium fixtures)
+#------------------------------------------------------------------------------
+# Pass -DPB3D_FIXTURE_DIR=<dir> at configure time to enable. The fixtures are
+# large binary equilibrium files kept outside the repository (see
+# Documentation/testing.md for provenance).
+if(TARGET PB3D AND PB3D_FIXTURE_DIR)
+    if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        add_test(NAME regression_cbm18a_fixed_bnd
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_fixed_bnd.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_cbm18a_fixed_bnd PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            TIMEOUT 600)
+    else()
+        message(STATUS "PB3D_FIXTURE_DIR set but cbm18a_extended_vac.12 not found - regression test skipped")
+    endif()
+endif()
