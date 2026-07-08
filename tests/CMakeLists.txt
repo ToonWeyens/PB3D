@@ -82,6 +82,70 @@ if(TARGET POST)
 endif()
 
 #------------------------------------------------------------------------------
+# Full-stack tests
+#------------------------------------------------------------------------------
+# These link against the complete pb3d_modules library and therefore need the
+# full dependency stack; they currently cover the vacuum module (Green's
+# function kernels against brute-force references, Green's identity on a
+# synthetic circular boundary, and the boundary potential solve). Single
+# MPI process (the executable runs in MPI singleton mode).
+if(PB3D_BUILD_EXECUTABLES)
+    add_executable(pb3d_fullstack_tests
+        fullstack/main.f90
+        fullstack/test_vac_kernels.f90
+        fullstack/test_vac_greens.f90
+        $<TARGET_OBJECTS:pb3d_modules>
+    )
+    set_target_properties(pb3d_fullstack_tests PROPERTIES
+        Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/tests_fullstack)
+    target_include_directories(pb3d_fullstack_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/mod/full
+    )
+    target_link_libraries(pb3d_fullstack_tests PRIVATE
+        testdrive
+        dfftpack
+        foul
+        ${PSPLINE_LIBRARIES}
+        ${LIBSTELL_LIBRARIES}
+        MPI::MPI_Fortran
+        MPI::MPI_CXX
+        PkgConfig::PETSC
+        PkgConfig::SLEPC
+        ${HDF5_Fortran_LIBRARIES}
+        PkgConfig::NETCDF_FORTRAN
+    )
+    if(SCALAPACK_FOUND)
+        if(TARGET PkgConfig::SCALAPACK)
+            target_link_libraries(pb3d_fullstack_tests PRIVATE PkgConfig::SCALAPACK)
+        else()
+            target_link_libraries(pb3d_fullstack_tests PRIVATE ${SCALAPACK_LIBRARIES})
+        endif()
+    endif()
+    if(STRUMPACK_FOUND)
+        target_link_libraries(pb3d_fullstack_tests PRIVATE ${STRUMPACK_LIBRARIES})
+    endif()
+    if(LAPACK_FOUND)
+        target_link_libraries(pb3d_fullstack_tests PRIVATE ${LAPACK_LIBRARIES})
+    endif()
+    if(BLAS_FOUND)
+        target_link_libraries(pb3d_fullstack_tests PRIVATE ${BLAS_LIBRARIES})
+    endif()
+    target_link_libraries(pb3d_fullstack_tests PRIVATE m stdc++)
+
+    set(PB3D_FULLSTACK_SUITES
+        vac_kernels
+        vac_greens
+    )
+    foreach(suite IN LISTS PB3D_FULLSTACK_SUITES)
+        add_test(NAME fullstack_${suite} COMMAND pb3d_fullstack_tests ${suite})
+        set_tests_properties(fullstack_${suite} PROPERTIES
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            LABELS "fullstack")
+    endforeach()
+endif()
+
+#------------------------------------------------------------------------------
 # Physics regression tests (opt-in: need local equilibrium fixtures)
 #------------------------------------------------------------------------------
 # Pass -DPB3D_FIXTURE_DIR=<dir> at configure time to enable. The fixtures are
