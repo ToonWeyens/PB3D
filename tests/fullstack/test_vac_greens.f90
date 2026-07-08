@@ -50,7 +50,8 @@ contains
             &new_unittest("greens_identity", test_greens_identity), &
             &new_unittest("greens_identity_convergence", &
             &   test_greens_convergence), &
-            &new_unittest("solve_Phi_BEM_roundtrip", test_solve_roundtrip) &
+            &new_unittest("solve_Phi_BEM_roundtrip", test_solve_roundtrip), &
+            &new_unittest("vac_response_cylinder", test_response_cylinder) &
             &]
     end subroutine collect_vac_greens
 
@@ -290,4 +291,102 @@ contains
 
         call vac%dealloc()
     end subroutine test_solve_roundtrip
+
+    !> The vacuum response matrix on the circular boundary against the
+    !! analytical large-aspect-ratio (cylinder) limit.
+    !!
+    !! In the cylinder limit, the decaying exterior solution for poloidal
+    !! Fourier boundary data e^{i m theta} is proportional to r^-|m|, so the
+    !! full chain of calc_vac_res (Neumann data (n q - m) e^{-i m theta},
+    !! exterior solve, projection with the integration rule) reduces to
+    !!    res_{m m'} = -2 pi (n q - m)^2 / (R_0 |m| mu_0) delta_{m m'},
+    !! with toroidal corrections of order a/R_0. This pins sign, scaling and
+    !! mode structure of the response that enters the SLEPc boundary
+    !! condition (set_BC_4).
+    subroutine test_response_cylinder(error)
+        use X_vars, only: n_mod_X, modes_type
+        use num_vars, only: use_pol_flux_F, eq_style
+        use eq_vars, only: vac_perm
+        use vac_ops, only: calc_vac_res
+
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: n_bnd = 201                                       ! boundary points
+        integer, parameter :: n_mod = 5                                         ! number of poloidal modes, m = 1..n_mod
+        real(dp), parameter :: R_big = 20.0_dp                                  ! major radius (large aspect ratio)
+        real(dp), parameter :: jq = 1.35_dp                                     ! safety factor at edge (nonresonant: n jq - m /= 0)
+        real(dp), parameter :: tol_diag = 0.25_dp                               ! relative tolerance on the diagonal (aspect-ratio corrections)
+        real(dp), parameter :: tol_offdiag = 0.10_dp                            ! off-diagonal tolerance, relative to largest diagonal
+
+        type(vac_type) :: vac                                                   ! vacuum variables
+        type(modes_type) :: mds                                                 ! minimal modes variables
+        integer :: ierr, id, jd                                                 ! error status, counters
+        integer :: n_mod_X_old                                                  ! original n_mod_X
+        real(dp) :: t, R                                                        ! angle, major radius
+        real(dp) :: res_ana                                                     ! analytical response
+        real(dp) :: rel_diff                                                    ! relative difference
+
+        ! the response needs several modes; restore module state afterwards
+        n_mod_X_old = n_mod_X
+        n_mod_X = n_mod
+        use_pol_flux_F = .true.
+        eq_style = 2                                                            ! HELENA (axisymmetric)
+
+        ! minimal modes tables: only the last row of m is used
+        allocate(mds%m(1,n_mod),mds%n(1,n_mod))
+        mds%m(1,:) = [(id, id=1,n_mod)]
+        mds%n(1,:) = prim_X_test
+
+        ! circular boundary at large aspect ratio
+        ierr = vac%init(2,n_bnd,prim_X_test,[n_bnd,1],jq)
+        call check(error, ierr, 0, 'init failed')
+        if (allocated(error)) return
+        do id = 1,n_bnd
+            t = 2._dp*pi*(id-1)/(n_bnd-1)
+            R = R_big + a_min*cos(t)
+            vac%ang(id,1) = t
+            vac%x_vec(id,:) = [R, a_min*sin(t)]
+            vac%norm(id,:) = [-R*a_min*cos(t), -R*a_min*sin(t)]
+            vac%dnorm(id,:) = [a_min*sin(t)*(a_min*cos(t)+R), &
+                &a_min*(a_min*sin(t)**2-R*cos(t))]
+        end do
+
+        ierr = calc_vac_res(mds,vac)
+        call check(error, ierr, 0, 'calc_vac_res failed')
+        if (allocated(error)) return
+
+        do id = 1,n_mod                                                         ! single process: last rank = rank 0 has vac%res
+            do jd = 1,n_mod
+                if (id.eq.jd) then
+                    res_ana = -2._dp*pi*(prim_X_test*jq-mds%m(1,id))**2/&
+                        &(R_big*abs(mds%m(1,id))*vac_perm)
+                    rel_diff = abs(real(vac%res(id,id))-res_ana)/&
+                        &abs(res_ana)
+                    write(error_unit,'(A,I2,A,ES12.5,A,ES12.5,A,F6.3)') &
+                        &'   [vac response] m = ',mds%m(1,id),': res = ',&
+                        &real(vac%res(id,id)),', cylinder = ',res_ana,&
+                        &', rel diff = ',rel_diff
+                    call check(error, rel_diff.lt.tol_diag, &
+                        &'diagonal response for m = '//trim(i2str(id))//&
+                        &' deviates from cylinder limit by '//&
+                        &trim(r2str(rel_diff)))
+                else
+                    call check(error, abs(vac%res(id,jd)).lt.tol_offdiag*&
+                        &2._dp*pi*(prim_X_test*jq-1._dp)**2/&
+                        &(R_big*vac_perm), &
+                        &'off-diagonal response ('//trim(i2str(id))//','//&
+                        &trim(i2str(jd))//') too large: '//&
+                        &trim(r2str(abs(vac%res(id,jd)))))
+                end if
+                if (allocated(error)) exit
+            end do
+            if (allocated(error)) exit
+        end do
+
+        ! clean up and restore module state
+        call vac%dealloc()
+        call mds%dealloc()
+        n_mod_X = n_mod_X_old
+        if (allocated(error)) return
+    end subroutine test_response_cylinder
 end module test_vac_greens

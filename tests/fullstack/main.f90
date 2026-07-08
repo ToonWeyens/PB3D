@@ -20,7 +20,8 @@ program pb3d_fullstack_tester
     use test_vac_kernels, only: collect_vac_kernels
     use test_vac_greens, only: collect_vac_greens
     use num_vars, only: dp, rank, n_procs, prog_name, max_it_zero, tol_zero, &
-        &max_nr_backtracks_HH
+        &max_nr_backtracks_HH, rich_restart_lvl
+    use rich_vars, only: rich_lvl
     use X_vars, only: n_mod_X
     use messages, only: init_output
 
@@ -41,10 +42,12 @@ program pb3d_fullstack_tester
     call MPI_Comm_rank(MPI_Comm_world,rank,ierr)
     call MPI_Comm_size(MPI_Comm_world,n_procs,ierr)
     prog_name = 'TEST'
-    n_mod_X = 1                                                                 ! vac%res is allocated with this size; not used in the tests
+    n_mod_X = 1                                                                 ! vac%res is allocated with this size; overridden by the response test
     max_it_zero = 100                                                           ! zero-finder settings, normally set during input
     tol_zero = 1.e-10_dp                                                        ! processing (see input_ops); calc_GH_2 needs them
     max_nr_backtracks_HH = 20                                                   ! for its singularity tolerance
+    rich_lvl = 1                                                                ! no Richardson extrapolation in the tests
+    rich_restart_lvl = 1
     call init_output()
 
     stat = 0
