@@ -167,9 +167,15 @@ cd LIBSTELL && make release && cd ..
 # Module files are at $STELLOPT_PATH/install/include/*.mod
 ```
 
-## 6. Build STRUMPACK-Dense 1.1.1 (required for vacuum module)
+## 6. Build STRUMPACK-Dense 1.1.1 (optional, for the vacuum module)
 
-PB3D's vacuum module requires the old STRUMPACK-Dense 1.1.1 library (not the newer STRUMPACK 7.x):
+PB3D's vacuum module can use the old STRUMPACK-Dense 1.1.1 library (not the
+newer STRUMPACK 7.x) to solve its boundary-element system with a compressed
+(HSS) solver. **This is optional**: without it, the same system is solved
+with ScaLAPACK LU (`pdgesv`), which is perfectly adequate for the moderate
+system sizes of axisymmetric vacua. The original download location
+(`portal.nersc.gov`) has become unreliable, so skipping this dependency is
+the recommended default unless you work with very large 3-D vacua:
 
 ```bash
 cd ~/Code
@@ -196,7 +202,7 @@ export STRUMPACK_DIR=$PWD
 
 ## 7. Building PB3D with CMake
 
-With the Spack environment active and PSPLINE/LIBSTELL/STRUMPACK-Dense built:
+With the Spack environment active and PSPLINE/LIBSTELL built (plus optionally STRUMPACK-Dense; omit `-DSTRUMPACK_DIR` to use the ScaLAPACK solver for the vacuum):
 
 ```bash
 spack env activate pb3d-env

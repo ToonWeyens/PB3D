@@ -14,11 +14,19 @@
 !!      - The  integration in the poloidal  angle is done using  the collocation
 !!      method.
 !!
-!! The final matrix equation is solved through Strumpack \cite Meiser2016.
+!! The final  matrix equation is  solved through Strumpack  \cite Meiser2016,
+!! or through ScaLAPACK when PB3D was built without Strumpack.
 !!
 !! \see See \cite Weyens3D.
 !!
-!! \todo The vacuum part of PB3D is still under construction and not usable yet.
+!! Status: the  axisymmetric building blocks  (Green's function
+!! kernels,  singular   integrals,  assembled  G  and   H,  boundary
+!! potential  solve) are  verified  by the  full-stack  test suite  in
+!! tests/fullstack  (see  Documentation/testing.md).  The  free-boundary
+!! chain (store_vac  -> calc_GH -> calc_vac_res  -> SLEPC set_BC) is
+!! wired for  BC_style(2) = 4;  end-to-end validation against  a known
+!! free-boundary  benchmark  and  the  3-D  (field-line,  style  1)  vacuum
+!! remain open.
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
@@ -345,10 +353,7 @@ contains
             
             ! initialize ierr
             ierr = 0
-            
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            
+
             ! user output
             call writo('Start storing vacuum quantities')
             

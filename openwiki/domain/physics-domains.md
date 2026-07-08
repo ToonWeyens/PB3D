@@ -51,10 +51,14 @@ Outside the plasma boundary, the perturbed magnetic field must match a vacuum so
 computes this via a **Boundary Element Method**, either using a fully 3-D field-aligned
 collocation approach or (for axisymmetric cases) an analytical toroidal Green's-function
 integration (see the `vac_ops.f90` module header for the cited references). The resulting dense
-linear system is solved with STRUMPACK-Dense.
+linear system — for the exterior (vacuum) side, `(H + 4 pi I) Phi = G dPhi` — is solved with
+STRUMPACK-Dense when available, or with ScaLAPACK LU otherwise.
 
-**This module is explicitly marked incomplete in its own source**: *"The vacuum part of PB3D is
-still under construction and not usable yet."* Treat vacuum-related work as experimental; verify
+**Verification status**: the axisymmetric building blocks (Green's function kernels, singular
+integrals, assembled `G`/`H`, boundary potential solve) are covered by the full-stack test suite
+(`tests/fullstack`, see `Documentation/testing.md`); the free-boundary chain is wired for
+`BC_style(2) = 4` but not yet benchmarked end-to-end, and the 3-D field-line style is untested
+beyond its far-field kernels. Treat vacuum-related work as experimental; verify
 current status in `vac_ops.f90` before relying on or extending it.
 
 ## Solution (`sol_*`, `SLEPC_*`)

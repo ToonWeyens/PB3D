@@ -50,7 +50,7 @@ variables or manual builds (see the Spack guide for exact steps):
 | HDF5 (Fortran) | `find_package(HDF5 REQUIRED COMPONENTS Fortran)` | All PB3D/POST output (`HDF5_ops.f90`) plus XDMF metadata for visualization |
 | NetCDF-Fortran | `pkg_check_modules(NETCDF_FORTRAN REQUIRED ...)` | Reading VMEC equilibrium files |
 | ScaLAPACK | `pkg_check_modules` then a manual `find_library` fallback | Optional; a `WARNING` (not a hard failure) is emitted if missing |
-| STRUMPACK-Dense **1.1.1** (old, not the modern STRUMPACK) | Custom `find_library`/`find_path` against `STRUMPACK_DIR` (defaults to `$HOME/Code/STRUMPACK-Dense-1.1.1`) | Solves the dense linear system for the **vacuum** boundary-element method (`vac_ops.f90`); build only warns if missing — the vacuum module simply won't work |
+| STRUMPACK-Dense **1.1.1** (old, not the modern STRUMPACK) | Custom `find_library`/`find_path` against `STRUMPACK_DIR` (defaults to `$HOME/Code/STRUMPACK-Dense-1.1.1`) | **Optional** compressed (HSS) solver for the **vacuum** boundary-element system (`vac_ops.f90`); without it the same system is solved with ScaLAPACK LU (`pdgesv`) — CMake sets the `PB3D_WITH_STRUMPACK` preprocessor flag when found |
 | PSPLINE | `find_package(PSPLINE REQUIRED)` via [`/cmake/FindPSPLINE.cmake`](/cmake/FindPSPLINE.cmake) | Spline interpolation library (Princeton) used throughout equilibrium/grid interpolation |
 | LIBSTELL | `find_package(LIBSTELL REQUIRED)` via [`/cmake/FindLIBSTELL.cmake`](/cmake/FindLIBSTELL.cmake) | Part of the STELLOPT suite; provides the `read_wout_mod` module used by `VMEC_ops.f90` to read VMEC NetCDF output |
 | LAPACK / BLAS | `find_package`, optional | General linear algebra |

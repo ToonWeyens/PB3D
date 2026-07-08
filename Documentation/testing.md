@@ -30,6 +30,7 @@ from the regular build directory.
 |---|---|---|---|
 | Unit | `unit` | Fortran compiler only | test-drive suites against `pb3d_core` |
 | Smoke | `smoke` | full executable build | `PB3D`/`POST` usage-message checks |
+| Full-stack | `fullstack` | full executable build | test-drive suites against the complete `pb3d_modules` (currently: the vacuum module) |
 | Physics regression | `regression` | full build + `-DPB3D_FIXTURE_DIR=<dir>` | end-to-end eigenvalue anchors on local equilibrium fixtures |
 
 Select layers with labels: `ctest -L unit`, a single suite with
@@ -47,6 +48,24 @@ Select layers with labels: `ctest -L unit`, a single suite with
   - rejection of invalid arguments (\(z \le 1\)).
 - **`str_utilities`** — all public conversion/case/merge routines, pinning
   the exact output formats other modules rely upon.
+- **`vac_kernels` (full-stack)** — the vacuum Green's function interval
+  kernels (`vac_utilities::calc_GH_int_1/2`) against
+  implementation-independent references: direct toroidal-harmonic
+  evaluation for regular G, numerical directional derivatives along the
+  source normal for H (validates the analytical `Aij` algebra), and
+  brute-force panel quadrature with exact log subtraction for the
+  (near-)singular analytical integrals, at two interval sizes. Also pins
+  the asymptote \(Q_{n-1/2}(1+x) = -\tfrac{1}{2}\ln(x/32) - b_n\) against
+  `dtorh`.
+- **`vac_greens` (full-stack)** — the assembled axisymmetric \(G\), \(H\)
+  matrices on a synthetic circular boundary (built like `store_vac_HEL`'s,
+  seam point duplicated) through the two jump relations
+  \(H\phi = G\,\text{d}\phi\) for interior-harmonic \(\phi\) and
+  \((H + 4\pi I)\phi = G\,\text{d}\phi\) for exterior-harmonic decaying
+  \(\phi\), their first-order convergence with resolution, and the
+  `solve_Phi_BEM` round trip (Neumann data of a known exterior harmonic
+  returns its boundary trace), both with STRUMPACK and with the ScaLAPACK
+  fallback.
 
 ## Adding a test suite
 
@@ -104,11 +123,14 @@ stacks are expected to be unaffected.
 
 ## Roadmap
 
-- Full-stack unit tests (grid, equilibrium and vacuum quantities) — in
-  particular `vac_utilities::calc_GH_int_1/2` (singular Green's-function
-  integrals) against brute-force quadrature, as groundwork for completing
-  the vacuum module.
+- Extend the full-stack vacuum coverage to the response matrix itself:
+  `calc_vac_res` on the circular boundary against the analytical
+  large-aspect-ratio (cylinder) vacuum response, validating sign and
+  magnitude of `vac%res` as it enters the SLEPc boundary condition
+  (`set_BC_4`).
+- Full-stack tests for grid and equilibrium quantities.
 - More regression anchors: a VMEC fixed-boundary case, multi-process runs
   (blocked on an `mpirun` launcher crash in Homebrew OpenMPI 5's prte on
-  macOS), and free-boundary cases once the vacuum module is verified.
+  macOS), and free-boundary cases (`BC_style(2) = 4`) benchmarked against
+  an established free-boundary result.
 - Root-cause the macOS singleton-MPI I/O flakiness (see above).
