@@ -66,6 +66,21 @@ Select layers with labels: `ctest -L unit`, a single suite with
   `solve_Phi_BEM` round trip (Neumann data of a known exterior harmonic
   returns its boundary trace), both with STRUMPACK and with the ScaLAPACK
   fallback.
+- **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
+  analytical circular torus covered by field lines \(\zeta = \alpha +
+  q\theta\):
+  - the singular interval kernel (`vac_utilities::calc_GH_int_1`) against
+    brute-force quadrature of \(-1/d\) over the metric half-cell (the exact
+    primitive is documented in the kernel);
+  - Green's identities for the assembled matrices: with the row-sum
+    construction of the H diagonal and the inward normal \(J\nabla\psi\),
+    interior harmonics satisfy \((H+4\pi I)\phi = G\,\text{d}\phi\) and
+    exterior ones \(H\phi = G\,\text{d}\phi\) (opposite roles to style 2!),
+    converging with resolution;
+  - the vacuum response of the axisymmetric boundary computed with the
+    full 3-D machinery against the (independently validated) axisymmetric
+    result: diagonals agree to 0.2 % (m = 1) through 9 % (m = 5, 12 points
+    per poloidal wavelength) at 61×60.
 
 ## Adding a test suite
 

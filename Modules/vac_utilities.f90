@@ -24,10 +24,39 @@ contains
     !! The indices for the  source variables are <tt>[left:right,dim]</tt> where
     !! \c dim is the Cartesian dimension. The same holds for \c ql.
     !!
-    !! For  subintegrals  close  to  the singularity,  the  procedure  uses  the
-    !! analytical approximation.
+    !! For  subintegrals adjacent  to the  singularity (i.e.  with the  influence
+    !! point as  one of  their endpoints), the  contribution of  the singular
+    !! endpoint is  replaced by the analytical  integral of the kernel  over its
+    !! grid half-cell.  In field-aligned coordinates,  with \f$\delta p\f$ along
+    !! the field  line (metric \f$g_{\theta\theta}\f$  = <tt>h_fac(3)</tt>)  and
+    !! \f$\delta a\f$  the field  line label  (metric \f$g_{\alpha\alpha}\f$  =
+    !! <tt>h_fac(1)</tt>, coupling \f$g_{\alpha\theta}\f$ = <tt>h_fac(2)</tt>),
+    !! the squared distance near the singular point is the quadratic form
+    !! \f$ g_{\theta\theta} \delta p^2 + 2 g_{\alpha\theta} \delta p \delta a
+    !!  + g_{\alpha\alpha} \delta a^2 \f$,
+    !! and with  the metric-normalized  half-cell sizes  \f$U = \sqrt{g_{\theta
+    !! \theta}} \Delta p/2\f$, \f$V = \sqrt{g_{\alpha\alpha}} \Delta a/2\f$ and
+    !! nonorthogonality  \f$s  = g_{\alpha\theta}  /  \sqrt{g_{\alpha\alpha}
+    !! g_{\theta\theta}}\f$, the exact primitive is
+    !! \f[ \int_0^U \int_{-V}^{V} \frac{\text{d}u \text{d}v}
+    !!  {\sqrt{u^2+2suv+v^2}} =
+    !!  U \ln\left(\frac{V+sU+D_+}{-V+sU+D_-}\right) +
+    !!  V \ln\left(\frac{U+sV+D_+}{-U+sV+D_-}\right), \quad
+    !!  D_\pm = \sqrt{U^2 \pm 2sUV + V^2}. \f]
+    !! In the  same units  as the  regular kernel  values (which  carry implicit
+    !! quadrature  weight \f$\Delta  p  \Delta a  /  2\f$ in  the  assembly of
+    !! calc_GH_1), the singular endpoint contribution is then
+    !! \f$-2 F / (\Delta p \Delta a \sqrt{g_{\alpha\alpha} g_{\theta\theta}})
+    !! \f$. The nonsingular endpoint keeps the regular kernel.
     !!
-    !! \note This routine does not calculate the contribution \f$2\beta\f$.
+    !! (The previous  expression had  the same  logarithm twice,  diverged for
+    !! orthogonal  coordinates  and  had  the  wrong  sign;  it  is  verified
+    !! against brute-force quadrature in the full-stack tests.)
+    !!
+    !! \note This routine does not calculate the contribution \f$2\beta\f$: the
+    !! diagonal  of  H is  overwritten  by  calc_GH_1 through  the  constant-
+    !! potential row-sum identity, so  the singular H returned  here (the crude
+    !! approximation <tt>h_fac(4) G</tt>) never enters the final system.
     subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol)
         ! input / output
         real(dp), intent(inout) :: G(2)                                         !< G
@@ -38,46 +67,46 @@ contains
         real(dp), intent(in) :: h_fac_in(4)                                     !< metric factors at which to calculate influence
         real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
         real(dp), intent(in) :: tol                                             !< tolerance on distance between points
-        
+
         ! local variables
         integer :: kd                                                           ! counter
         real(dp) :: r2(2)                                                       ! distance between source and influence points
-        real(dp) :: E_fac                                                       ! factor E
-        real(dp) :: sineps                                                      ! sin(eps)
-        real(dp) :: dum_fac(2)                                                  ! dummy factors
-        
+        real(dp) :: s_no                                                        ! nonorthogonality g_at/sqrt(g_aa g_tt)
+        real(dp) :: U_hc, V_hc                                                  ! metric-normalized half-cell sizes
+        real(dp) :: D_pm(2)                                                     ! D_+ and D_-
+        real(dp) :: F_int                                                       ! primitive of the half-cell integral
+
         ! initialize
         G = 0._dp
         H = 0._dp
-        
+
         ! calculate distance between source points
         do kd = 1,2
             r2(kd) = sum((x_s(kd,:)-x_in)**2)
         end do
-        
-        ! check for (near-)singular point
-        if (minval(r2).le.tol) then
-            E_fac = sqrt(h_fac_in(1)/h_fac_in(3))*step_size(2)/step_size(1)     ! |e_alpha|/|e_theta| d_par_X / d_par_X
-            sineps = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
-            dum_fac(1) = sqrt(1+2*E_fac*sineps+E_fac**2)
-            dum_fac(2) = sqrt(1-2*E_fac*sineps+E_fac**2)
-            G = -0.5_dp/sqrt(h_fac_in(1)) * step_size(1) * (&
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &- E_fac/sineps**2* &
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &)
-            H = h_fac_in(4)*G
-        else
-            G = -1._dp/sqrt(r2)
-            do kd = 1,2
+
+        do kd = 1,2
+            if (r2(kd).le.tol) then                                             ! singular endpoint: analytical half-cell integral
+                s_no = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
+                U_hc = sqrt(h_fac_in(3))*step_size(1)/2._dp
+                V_hc = sqrt(h_fac_in(1))*step_size(2)/2._dp
+                D_pm(1) = sqrt(U_hc**2+2*s_no*U_hc*V_hc+V_hc**2)
+                D_pm(2) = sqrt(U_hc**2-2*s_no*U_hc*V_hc+V_hc**2)
+                F_int = U_hc*log(abs((V_hc+s_no*U_hc+D_pm(1))/&
+                    &(-V_hc+s_no*U_hc+D_pm(2)))) + &
+                    &V_hc*log(abs((U_hc+s_no*V_hc+D_pm(1))/&
+                    &(-U_hc+s_no*V_hc+D_pm(2))))
+                G(kd) = -2._dp*F_int/(step_size(1)*step_size(2)*&
+                    &sqrt(h_fac_in(1)*h_fac_in(3)))
+                H(kd) = h_fac_in(4)*G(kd)                                       ! crude; overwritten by the row-sum identity in calc_GH_1
+            else                                                                ! regular endpoint
+                G(kd) = -1._dp/sqrt(r2(kd))
                 ! dipole kernel norm.(x_s-x_in)/|x_s-x_in|^3, i.e. the
                 ! directional derivative of G along the source normal
                 ! (the exponent used to be -3, off by a factor |x_s-x_in|^6)
                 H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**3
-            end do
-        end if
+            end if
+        end do
     end subroutine calc_GH_int_1
     
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.

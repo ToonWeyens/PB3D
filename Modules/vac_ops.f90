@@ -19,14 +19,15 @@
 !!
 !! \see See \cite Weyens3D.
 !!
-!! Status: the  axisymmetric building blocks  (Green's function
-!! kernels,  singular   integrals,  assembled  G  and   H,  boundary
-!! potential  solve) are  verified  by the  full-stack  test suite  in
-!! tests/fullstack  (see  Documentation/testing.md).  The  free-boundary
-!! chain (store_vac  -> calc_GH -> calc_vac_res  -> SLEPC set_BC) is
-!! wired for  BC_style(2) = 4;  end-to-end validation against  a known
-!! free-boundary  benchmark  and  the  3-D  (field-line,  style  1)  vacuum
-!! remain open.
+!! Status: verified by  the full-stack test suite  in tests/fullstack (see
+!! Documentation/testing.md): the axisymmetric building blocks (kernels,
+!! singular integrals, assembled G and H, boundary potential solve,
+!! response against the analytical cylinder limit), the free-boundary
+!! chain end-to-end (regression_cbm18a_free_bnd), and the 3-D field-line
+!! machinery (singular half-cell kernel, jump relations, response of an
+!! axisymmetric boundary cross-checked between the two styles). The 3-D
+!! style requires at least 2 field lines (n_alpha > 1): single-field-line
+!! Weyl coverage needs an effective transverse spacing (open item).
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
@@ -822,18 +823,26 @@ contains
         real(dp) :: H_loc(2)                                                    ! local H
         real(dp), allocatable :: res(:,:)                                       ! sums of rows of H and vector of ones
         real(dp), allocatable :: loc_res(:)                                     ! local res
-        
+        character(len=max_str_ln) :: err_msg                                    ! error message
+
         ! initialize ierr
         ierr = 0
         
         call writo('Using field-line 3-D Boundary Element Method')
-        
+
         ! initialize variables
         dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
         if (n_alpha.gt.1) then
             dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
         else
-            dalpha = 0._dp
+            ! a single field line makes the transverse cell size (and with it
+            ! the singular self-integrals and the integration rule weights of
+            ! calc_vac_res) degenerate; covering the surface with one long
+            ! field line through Weyl's theorem needs an effective transverse
+            ! spacing that is not implemented
+            ierr = 1
+            err_msg = '3-D vacuum needs at least 2 field lines (n_alpha > 1)'
+            CHCKERR(err_msg)
         end if
         
         ! set up local tolerance
@@ -866,8 +875,14 @@ contains
                             &vac%x_vec(cd:cd+1,:),x_vec_in(rd,:),&
                             &vac%norm(cd:cd+1,:),vac%h_fac(rd,:),&
                             &[dpar_X,dalpha],tol_loc**2)
-                        
+
                         ! loop over left and right side of interval
+                        ! (the contributions are weighted with the half-cell
+                        ! surface element dpar dalpha / 2, so that G and H are
+                        ! true discretized surface operators, consistently
+                        ! with the absolute -4 pi row-sum identity that sets
+                        ! the H diagonal below, and with the axisymmetric
+                        ! style, which carries its weights internally as well)
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &             ! lower local bound
                                 &cd+kd.le.vac%lims_c(2,i_cd)) then              ! upper local bound
@@ -875,9 +890,9 @@ contains
                                 if (.not.on_field_line(cd,kd,vac%n_ang(1))) &
                                     &cycle
                                 G_in(rdl,cdl+kd) = G_in(rdl,cdl+kd) + &
-                                    &G_loc(1+kd)
+                                    &G_loc(1+kd)*dpar_X*dalpha/2._dp
                                 H_in(rdl,cdl+kd) = H_in(rdl,cdl+kd) + &
-                                    &H_loc(1+kd)
+                                    &H_loc(1+kd)*dpar_X*dalpha/2._dp
                             end if
                         end do
                     end do col
@@ -973,16 +988,25 @@ contains
             deallocate(loc_res)
         end if
     contains
-        ! checks whether an interval is on the field line
+        ! Checks whether an  interval lies on a field line:  the interval with
+        ! left  point cd  bridges two  different field  lines when  cd is  the
+        ! last point of  a line, and must then be  excluded entirely (for both
+        ! endpoints kd): its geometry connects unrelated points.
+        !
+        ! (An earlier version instead dropped the left-endpoint contribution
+        ! of the FIRST interval of each field  line and only the right one of
+        ! the bridge, which zeroed the quadrature weight of every field line's
+        ! first point and doubled that of its last point.)
         logical function on_field_line(cd,kd,n_ang) result(res)
             ! input / output
-            integer, intent(in) :: cd                                           ! position of interval on field line
-            integer, intent(in) :: kd                                           ! left or right point of interval
+            integer, intent(in) :: cd                                           ! left point of interval
+            integer, intent(in) :: kd                                           ! left (0) or right (1) point of interval
             integer, intent(in) :: n_ang                                        ! number of points on field line
-            
-            res = .true.
-            if (mod(cd,n_ang).eq.1 .and. kd.eq.0) res = .false.                 ! start of field line
-            if (mod(cd,n_ang).eq.0 .and. kd.eq.1) res = .false.                 ! end of field line
+
+            integer :: kd_loc                                                   ! local copy of kd, to avoid unused warning
+
+            kd_loc = kd
+            res = mod(cd,n_ang).ne.0                                            ! exclude bridge intervals for both endpoints
         end function on_field_line
     end function calc_GH_1
     
@@ -1687,8 +1711,8 @@ contains
                         select case (vac%style)
                             case (1)                                            ! field-line 3-D
                                 I_loc = dpar_X*dalpha
-                                if ((rd-1)/vac%n_ang(1).eq.0 .or. &             ! first point on field line
-                                    &(rd-1)/vac%n_ang(1).eq.vac%n_ang(1)-1) &   ! last point on field line
+                                if (mod(rd-1,vac%n_ang(1))+1.eq.1 .or. &        ! first point on field line
+                                    &mod(rd-1,vac%n_ang(1))+1.eq.vac%n_ang(1)) &! last point on field line
                                     &I_loc = I_loc*0.5_dp
                             case (2)                                            ! axisymmetric
                                 I_loc = 0.5_dp*&
@@ -1732,6 +1756,26 @@ contains
                     &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
                     &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
                 vac%res = vac%res/vac_perm
+                if (vac%style.eq.1) then
+                    ! bring the field-line 3-D result to the same convention
+                    ! as the axisymmetric one, against which the response (and
+                    ! its use in the SLEPC boundary condition) is anchored:
+                    !  - the style-1 boundary operators expect normal data
+                    !    along J nabla psi, which for the flux coordinates
+                    !    (alpha,psi,theta) points opposite to the -J nabla psi
+                    !    data convention of the axisymmetric style, so Phi
+                    !    (and with it the response, which is linear in Phi
+                    !    but keeps the physical data in the projection) picks
+                    !    up a minus sign;
+                    !  - the style-1 projection integrates over the field
+                    !    line label as well, so it carries an extra factor of
+                    !    the alpha span compared to the per-zeta-mode
+                    !    normalization of the axisymmetric style.
+                    ! (both established empirically by the full-stack test
+                    ! response_1_vs_2 against the independently validated
+                    ! axisymmetric response of the same boundary)
+                    vac%res = -vac%res/((max_alpha-min_alpha)*pi)
+                end if
 #if ldebug
                 allocate(X_plot(n_mod_X,n_mod_X))
                 allocate(Y_plot(n_mod_X,n_mod_X))
@@ -2225,18 +2269,22 @@ contains
         integer :: rd                                                           ! global counter for row
         integer :: rdl2, cdl2                                                   ! local counters for the diagonal
         integer :: i_rd2, i_cd2                                                 ! index of subrow and subcol for the diagonal
-        real(dp), allocatable, target :: GR(:,:)                                ! GR
-        real(dp), allocatable, target :: H_ext(:,:)                             ! H + 4 pi I, the exterior operator
-#ifdef PB3D_WITH_STRUMPACK
-        real(dp) :: SDP_err                                                     ! error
-        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H_ext and H_ext itself
-        type(C_PTR) :: CdescGR, CGR                                             ! C pointers to descriptor of GR and GR itself
-        type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
-        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H_ext Phi = GR
-#else
         integer :: info_loc                                                     ! info variable for pdgesv
         integer, allocatable :: ipiv(:)                                         ! pivot variable for pdgesv
+        logical :: solved_ok                                                    ! whether a verified solution was obtained
+        real(dp) :: diag_shift                                                  ! diagonal shift selecting the exterior side
+        real(dp), allocatable, target :: GR(:,:)                                ! GR
+        real(dp), allocatable, target :: H_ext(:,:)                             ! H + shift I, the exterior operator
         character(len=max_str_ln) :: err_msg                                    ! error message
+#ifdef PB3D_WITH_STRUMPACK
+        real(dp) :: SDP_err                                                     ! error
+        real(dp) :: norms_loc(2)                                                ! squared norms of residual and right-hand side
+        real(dp), allocatable :: res_check(:,:)                                 ! residual of the compressed solve
+        real(dp), allocatable, target :: H_sdp(:,:)                             ! copy of H_ext for the compressed solver
+        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H_sdp and H_sdp itself
+        type(C_PTR) :: CdescGR, CGR                                             ! C pointers to descriptor of GR and GR itself
+        type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
+        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H_sdp Phi = GR
 #endif
 #if ldebug
         integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
@@ -2266,8 +2314,27 @@ contains
             call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,vac%G,1,1,&
                 &vac%desc_G,R,1,1,desc_RPhi,0._dp,GR,1,1,desc_GR)
 
-            ! set up the exterior operator H + 4 pi I in a local copy,
+            ! set up the exterior operator H + shift I in a local copy,
             ! iterating over the local blocks to find the diagonal elements
+            !
+            ! The shift selects  the vacuum (exterior) side of  the boundary,
+            ! as  established by  the jump-relation  measurements in  the
+            ! full-stack tests:
+            !  - style 2 (axisymmetric): the assembled H with its -2 beta
+            !    diagonal satisfies the interior identity H phi = G dphi, so
+            !    the exterior needs H + 4 pi I;
+            !  - style 1 (field-line 3-D): the H diagonal is constructed in
+            !    calc_GH_1 from the row-sum identity H 1 = -4 pi 1, which,
+            !    with the inward-pointing normal J nabla psi, already shifts
+            !    the operator to the exterior convention: exterior harmonics
+            !    satisfy H phi = G dphi directly and no shift is needed
+            !    (interior ones then satisfy (H + 4 pi I) phi = G dphi).
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    diag_shift = 0._dp
+                case default                                                    ! axisymmetric
+                    diag_shift = 4._dp*pi
+            end select
             allocate(H_ext(size(vac%H,1),size(vac%H,2)))
             H_ext = vac%H
             subrows: do i_rd2 = 1,size(vac%lims_r,2)
@@ -2281,14 +2348,22 @@ contains
                         cdl2 = sum(vac%lims_c(2,1:i_cd2-1)-&
                             &vac%lims_c(1,1:i_cd2-1)+1) + &
                             &rd-vac%lims_c(1,i_cd2)+1
-                        H_ext(rdl2,cdl2) = H_ext(rdl2,cdl2) + 4._dp*pi
+                        H_ext(rdl2,cdl2) = H_ext(rdl2,cdl2) + diag_shift
                     end do diag
                 end do subcols
             end do subrows
 
+            solved_ok = .false.
+
 #ifdef PB3D_WITH_STRUMPACK
+            ! try the compressed (HSS) solver first, on a copy of the
+            ! operator so that the original stays available for the residual
+            ! check and the possible fallback below
+            allocate(H_sdp(size(H_ext,1),size(H_ext,2)))
+            H_sdp = H_ext
+
             ! set C pointers
-            CH = C_LOC(H_ext)
+            CH = C_LOC(H_sdp)
             CdescH = C_LOC(vac%desc_H)
             CGR = C_LOC(GR)
             CdescGR = C_LOC(desc_GR)
@@ -2318,7 +2393,7 @@ contains
             ! factorization
             call SDP_F90_double_factor(SDP_loc,CH,CdescH)
 
-            ! solve (H + 4 pi I) Phi = G R
+            ! solve (H + shift I) Phi = G R
             call SDP_F90_double_solve(SDP_loc,CPhi,CdescPhi,CGR,CdescGR)
 
 #if ldebug
@@ -2330,22 +2405,48 @@ contains
             ! iterative refinement
             SDP_err = SDP_F90_double_refine(SDP_loc,CH,CdescH,CPhi,CdescPhi,&
                 &CGR,CdescGR)
-#else
-            ! solve (H + 4 pi I) Phi = G R with ScaLAPACK LU: pdgesv
-            ! overwrites the right-hand side with the solution and destroys
-            ! the matrix (which is why H_ext is a copy)
-            Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                            ! same distribution
-            allocate(ipiv(vac%n_loc(1)+vac%bs))
-            ipiv = 0
-            call pdgesv(vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,Phi,1,1,&
-                &desc_RPhi,info_loc)
-            if (info_loc.ne.0) then
-                ierr = 1
-                err_msg = 'pdgesv failed with info '//trim(i2str(info_loc))
-                CHCKERR(err_msg)
+            deallocate(H_sdp)
+
+            ! Verify the solution: the randomized HSS compression can fail
+            ! silently when the boundary operator has higher off-diagonal
+            ! ranks than the hard-coded sampling parameters can capture
+            ! (observed for the field-line 3-D style at moderate sizes). The
+            ! residual is checked against the uncompressed operator, and on
+            ! failure the solve falls back to ScaLAPACK LU below.
+            allocate(res_check(vac%n_loc(1),n_loc_RPhi(2)))
+            res_check = GR
+            call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,H_ext,1,1,&
+                &vac%desc_H,Phi,1,1,desc_RPhi,-1._dp,res_check,1,1,desc_GR)
+            norms_loc(1) = sum(res_check**2)
+            norms_loc(2) = sum(GR**2)
+            call dgsum2d(vac%ctxt_HG,'all',' ',2,1,norms_loc,2,-1,-1)
+            deallocate(res_check)
+            if (norms_loc(1).le.1.E-12_dp*norms_loc(2)) then                    ! relative residual <= 1e-6
+                solved_ok = .true.
+            else
+                call writo('The STRUMPACK solution has a relative residual '//&
+                    &trim(r2strt(sqrt(norms_loc(1)/max(norms_loc(2),&
+                    &tiny(1._dp)))))//' - falling back to ScaLAPACK LU',&
+                    &warning=.true.)
             end if
-            deallocate(ipiv)
 #endif
+
+            if (.not.solved_ok) then
+                ! solve (H + shift I) Phi = G R with ScaLAPACK LU: pdgesv
+                ! overwrites the right-hand side with the solution and
+                ! destroys the matrix (which is why H_ext is a copy)
+                Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                        ! same distribution
+                allocate(ipiv(vac%n_loc(1)+vac%bs))
+                ipiv = 0
+                call pdgesv(vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,Phi,&
+                    &1,1,desc_RPhi,info_loc)
+                if (info_loc.ne.0) then
+                    ierr = 1
+                    err_msg = 'pdgesv failed with info '//trim(i2str(info_loc))
+                    CHCKERR(err_msg)
+                end if
+                deallocate(ipiv)
+            end if
 
 #if ldebug
 #ifdef PB3D_WITH_STRUMPACK

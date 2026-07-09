@@ -19,6 +19,7 @@ program pb3d_fullstack_tester
         &select_suite, run_selected, get_argument
     use test_vac_kernels, only: collect_vac_kernels
     use test_vac_greens, only: collect_vac_greens
+    use test_vac_3d, only: collect_vac_3d
     use num_vars, only: dp, rank, n_procs, prog_name, max_it_zero, tol_zero, &
         &max_nr_backtracks_HH, rich_restart_lvl
     use rich_vars, only: rich_lvl
@@ -54,7 +55,8 @@ program pb3d_fullstack_tester
 
     testsuites = [ &
         &new_testsuite("vac_kernels", collect_vac_kernels), &
-        &new_testsuite("vac_greens", collect_vac_greens) &
+        &new_testsuite("vac_greens", collect_vac_greens), &
+        &new_testsuite("vac_3d", collect_vac_3d) &
         &]
 
     call get_argument(1, suite_name)

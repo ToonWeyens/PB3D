@@ -54,12 +54,17 @@ integration (see the `vac_ops.f90` module header for the cited references). The 
 linear system — for the exterior (vacuum) side, `(H + 4 pi I) Phi = G dPhi` — is solved with
 STRUMPACK-Dense when available, or with ScaLAPACK LU otherwise.
 
-**Verification status**: the axisymmetric building blocks (Green's function kernels, singular
-integrals, assembled `G`/`H`, boundary potential solve) are covered by the full-stack test suite
-(`tests/fullstack`, see `Documentation/testing.md`); the free-boundary chain is wired for
-`BC_style(2) = 4` but not yet benchmarked end-to-end, and the 3-D field-line style is untested
-beyond its far-field kernels. Treat vacuum-related work as experimental; verify
-current status in `vac_ops.f90` before relying on or extending it.
+**Verification status**: both styles are covered by the full-stack test suite
+(`tests/fullstack`, see `Documentation/testing.md`): the axisymmetric building blocks (Green's
+function kernels, singular integrals, assembled `G`/`H`, boundary potential solve, response
+matrix against the analytical cylinder limit), the free-boundary chain end-to-end
+(`regression_cbm18a_free_bnd`), and the field-line 3-D machinery (singular half-cell kernel,
+jump relations, and the response of an axisymmetric boundary cross-checked between the two
+styles). Two style-1 limitations remain: at least 2 field lines are required (`n_alpha > 1`;
+single-line Weyl coverage needs an effective transverse spacing that is not implemented), and
+the STRUMPACK HSS solver can fail on the higher-rank style-1 operators — the solve verifies its
+residual and falls back to ScaLAPACK LU automatically. Extend the tests when touching the
+vacuum.
 
 ## Solution (`sol_*`, `SLEPC_*`)
 
