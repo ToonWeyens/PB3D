@@ -12,22 +12,22 @@
 # vac_ops. The two growth rates should be comparable (the pseudo-vacuum
 # construction was designed for exactly this correspondence).
 #
-# Anchor: TBD_ANCHOR - to be established on the first verified run with the
-# HELENA fixture; see Documentation/testing.md.
+# Anchor: omega^2/omega_A^2 = -4.2349e-2 (MISHKA normalization), single
+# process, established 2026-07-09 with distro PETSc 3.19/SLEPc 3.19
+# (complex), gfortran 13, Ubuntu 24.04. Bit-identical between the STRUMPACK
+# and ScaLAPACK vacuum solver paths; ~4% more unstable than the
+# fixed-boundary anchor of the same deck window, as expected from freeing
+# the boundary. Moves by ~1% when n_r_sol goes 200 -> 300 (normal radial
+# convergence; the anchor is defined at the deck's resolution). Asserted to
+# +-10% like the fixed-boundary anchor.
 set -u
 
 PB3D_EXE=$1
 INPUT=$2
 EQ_FILE=$3
 
-ANCHOR=TBD_ANCHOR
+ANCHOR=-4.2349e-2
 RTOL=0.10
-
-if [ "$ANCHOR" = "TBD_ANCHOR" ]; then
-    echo "FAIL: anchor eigenvalue not yet established for this test."
-    echo "Run manually, verify the physics, then substitute the anchor."
-    exit 1
-fi
 
 # fresh scratch dir, as PB3D writes several output files
 WORKDIR=$(mktemp -d)

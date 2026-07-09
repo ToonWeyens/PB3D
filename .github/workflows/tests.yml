@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, "dev/**"]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   # Unit tests of the dependency-light core (no PETSc/SLEPc/HDF5 stack
