@@ -98,11 +98,14 @@ Notes:
 
 ### 4.2 Legacy test machinery (`--test` flag, `Modules/test.f90`, `Test/`)
 
-- Convertible to automated suites (self-contained analytic references):
-  `test_splines` (vs analytic sin and derivatives, all orders/BCs — needs
-  PSPLINE, so fullstack layer), `test_calc_int_vol` (analytic torus volume
-  integral `R₀π² + i·2π²/3`), `test_calc_D2_smooth` (Holoborodko derivative
-  vs analytic; ldebug-only symbol).
+- Converted to automated suites (self-contained analytic references):
+  `test_splines` → `tests/fullstack/test_splines.f90` (polynomial
+  exactness, convergence rates, periodic BCs, extrapolation convention)
+  and `test_calc_int_vol` → `tests/fullstack/test_calc_int_vol.f90`
+  (analytic torus volume integral `R₀π² + i·2π²/3`, convergence,
+  singleton-dimension convention). Still convertible:
+  `test_calc_D2_smooth` (Holoborodko derivative vs analytic; ldebug-only
+  symbol).
 - Already superseded: `test_tor_fun` → `tests/unit/test_dtorh.f90`; the
   vacuum debug toggles → `tests/fullstack/test_vac_*`.
 - Not automatable: `test_lock` (timing/concurrency stress), ~25 plot-only
@@ -152,8 +155,9 @@ executable) are still single-process.
    §4.5): the vacuum test harnesses assert on globally gathered quantities
    and the distributed suites are registered at `-n 1, 2, 4` via `mpirun`
    in CTest. Follow-up: a multi-process regression deck.
-2. **Legacy-test conversion**: `test_splines` and `test_calc_int_vol` into
-   the fullstack layer (analytic references already in the legacy code).
+2. ~~**Legacy-test conversion**~~ **Done**: `test_splines` and
+   `test_calc_int_vol` are fullstack suites (`splines`, `calc_int_vol`);
+   `test_calc_D2_smooth` remains (ldebug-only symbol).
 3. **Warning burn-down**: fix the ~10 core-module warnings, then chip at the
    321 baseline per module; when a module reaches zero, consider
    `-Werror`-listing it.

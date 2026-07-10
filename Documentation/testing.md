@@ -89,6 +89,21 @@ combined over all ranks.
   `solve_Phi_BEM` round trip (Neumann data of a known exterior harmonic
   returns its boundary trace), both with STRUMPACK and with the ScaLAPACK
   fallback.
+- **`splines` (full-stack)** — the spline interpolation wrapper
+  (`spline_utilities::spline`, backed by PSPLINE/EZspline; converted from
+  the interactive legacy check): exact reproduction of polynomials in the
+  interpolation space (linear/order 1, cubic/order 3 with prescribed
+  endpoint derivatives, all derivatives 0-3), the quadratic-Taylor
+  extrapolation convention, convergence at the expected rates on
+  \(\sin 2\pi x\) for all three orders, periodic boundary conditions, and
+  the refusal to extrapolate when not allowed.
+- **`calc_int_vol` (full-stack)** — the volume integral
+  (`grid_utilities::calc_int_vol`; converted from the interactive legacy
+  check) against the analytic torus integral
+  \(\int f J = R_0\pi^2 + i\,2\pi^2/3\) for
+  \(f = 1 - r^2 + i\cos\theta\), its second-order convergence, and the
+  singleton-dimension convention (a missing angular dimension contributes
+  a full turn \(2\pi\)).
 - **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
   analytical circular torus covered by field lines \(\zeta = \alpha +
   q\theta\):

@@ -118,6 +118,8 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_vac_kernels.f90
         fullstack/test_vac_greens.f90
         fullstack/test_vac_3d.f90
+        fullstack/test_splines.f90
+        fullstack/test_calc_int_vol.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -161,6 +163,8 @@ if(PB3D_BUILD_EXECUTABLES)
         vac_kernels
         vac_greens
         vac_3d
+        splines
+        calc_int_vol
     )
     foreach(suite IN LISTS PB3D_FULLSTACK_SUITES)
         add_test(NAME fullstack_${suite} COMMAND pb3d_fullstack_tests ${suite})
