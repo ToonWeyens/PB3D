@@ -51,11 +51,12 @@ minimal LIBSTELL) are cached on the hashes of their build scripts.
 | Job | Purpose | Blocking? |
 |---|---|---|
 | `unit` (Release + Debug) | fast unit layer; the Debug leg runs with `-fcheck=all -ffpe-trap=invalid -finit-real=snan` | yes |
-| `fullstack` (Release) | complete stack, **all** test layers including both physics regressions; enforces the compiler-warning baseline | yes |
+| `sanitize` | unit layer under `-fsanitize=address,undefined` (`-fno-sanitize-recover=all`; exit-leak reports off — only the driver's one-time allocations) | yes |
+| `fullstack` (Release) | complete stack, **all** test layers including both physics regressions and the `mpirun -n 2, 4` rows; enforces the compiler-warning baseline | yes |
 | `fullstack-debug` | Debug + `PB3D_ENABLE_DEBUG` (ldebug code paths compiled in) with full runtime checking; all layers except regression | yes |
 | `coverage` | line coverage of `Modules/` from all layers (gcovr); summary + HTML/XML artifact | reporting |
-| `lint` | fortitude static analysis, findings histogram + full report artifact | report-only (see §5) |
-| `docs` | Doxygen reference build (`Doxyfile`), warning count, HTML artifact | reporting |
+| `lint` | fortitude static analysis; cleaned categories (`OB`) gated blocking, findings histogram + full report artifact | gate + report (see §5) |
+| `docs` | Doxygen reference build (`Doxyfile`), warning-count ratchet (`.github/doxygen-warnings-baseline.txt`), HTML artifact | ratchet |
 
 Notes:
 - Pushes made by the Claude GitHub App do not trigger workflows (GitHub
@@ -186,11 +187,13 @@ executable) are still single-process.
    `eq_utilities`/`sol_utilities`/`grid_utilities` and add their pure
    routines.
 6. **`read_HEL` golden-file test** against the committed cbm18a fixture.
-7. **Sanitizer job**: `-fsanitize=address,undefined` on the unit layer
-   (no MPI involved) is cheap; full-stack ASAN under MPI is noisy — nightly
-   at most.
-8. **Docs gate**: baseline the 374 Doxygen warnings and ratchet like the
-   compiler warnings; optionally publish the HTML artifact to GitHub Pages.
+7. ~~**Sanitizer job**~~ **Done**: the `sanitize` CI job runs the unit
+   layer under `-fsanitize=address,undefined` with all findings fatal;
+   full-stack ASAN under MPI remains noisy — nightly at most.
+8. ~~**Docs gate**~~ **Done**: the 374 Doxygen warnings are baselined in
+   `.github/doxygen-warnings-baseline.txt` and ratcheted like the compiler
+   warnings; publishing the HTML artifact to GitHub Pages remains optional
+   follow-up.
 9. **PETSc 3.25 matrix leg** (scheduled weekly, spack build cache) to guard
    the 3.19/3.25 version guards from both sides.
 10. **Delete `Test/`** and the stale committed binaries after sign-off.

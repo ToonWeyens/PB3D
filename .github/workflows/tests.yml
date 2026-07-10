@@ -41,6 +41,37 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   # ---------------------------------------------------------------------------
+  # Sanitizers on the unit layer (no MPI involved, so the reports are
+  # clean). Leak detection is off: the reports it produces here are only
+  # the test driver's one-time allocations at program exit (deferred-
+  # length strings in main.f90), not defects; the value of this job is
+  # ASAN's buffer-overflow and UBSAN's undefined-behavior detection, with
+  # -fno-sanitize-recover=all making any finding fatal.
+  # ---------------------------------------------------------------------------
+  sanitize:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake ninja-build liblapack-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DPB3D_BUILD_EXECUTABLES=OFF
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_Fortran_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # ---------------------------------------------------------------------------
   # Full-stack build (distro PETSc/SLEPc 3.19 complex, cached PSPLINE +
   # minimal LIBSTELL, no STRUMPACK: ScaLAPACK vacuum solver). Runs every
   # test layer, including the physics regressions on the committed
@@ -328,11 +359,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen
 
+      # ratchet on the Doxygen warning count, like the compiler-warning
+      # baseline: the count may never rise, and the baseline should be
+      # lowered when it falls (baseline established with doxygen 1.9.8)
       - name: Build reference documentation
         run: |
           doxygen Doxyfile
           n=$(wc -l < doc/doxygen-warnings.log)
-          echo "### Doxygen warnings: $n" >> $GITHUB_STEP_SUMMARY
+          baseline=$(cat .github/doxygen-warnings-baseline.txt)
+          echo "### Doxygen warnings: $n (baseline: $baseline)" >> $GITHUB_STEP_SUMMARY
+          if [ "$n" -gt "$baseline" ]; then
+            echo "FAIL: Doxygen warning count $n exceeds baseline $baseline."
+            echo "New warnings:"
+            tail -30 doc/doxygen-warnings.log
+            exit 1
+          elif [ "$n" -lt "$baseline" ]; then
+            echo "NOTE: count $n is below baseline $baseline - please lower"
+            echo "      .github/doxygen-warnings-baseline.txt to $n."
+          fi
 
       - name: Upload documentation artifact
         uses: actions/upload-artifact@v4
