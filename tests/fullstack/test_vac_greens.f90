@@ -59,7 +59,9 @@ contains
     ! helpers
     !--------------------------------------------------------------------------
 
-    !> Set up the synthetic circular vacuum boundary (single process).
+    !> Set up the synthetic circular vacuum boundary (the geometry arrays are
+    !! global, so every process fills them completely; only G, H and res are
+    !! distributed).
     subroutine setup_circle_vac(vac,n_bnd,ierr)
         type(vac_type), intent(inout) :: vac                                    ! vacuum variables
         integer, intent(in) :: n_bnd                                            ! number of boundary points (last = first)
@@ -148,7 +150,15 @@ contains
     !> Assemble G and H for a circular boundary and return the Green's
     !! identity residuals max|H phi - G dphi| / max|H phi| for the three test
     !! potentials.
+    !!
+    !! The products with the distributed matrices are evaluated globally on
+    !! all processes (see fullstack_utils), so the assertions are identical
+    !! everywhere; processes outside the BLACS context report zero residuals.
     subroutine greens_residuals(n_bnd,res,ierr)
+        use num_vars, only: rank
+        use vac_vars, only: in_context
+        use fullstack_utils, only: dis_matvec
+
         integer, intent(in) :: n_bnd                                            ! number of boundary points
         real(dp), intent(out) :: res(3)                                         ! residuals for the potentials
         integer, intent(out) :: ierr                                            ! error status
@@ -158,28 +168,34 @@ contains
         real(dp), allocatable :: phi(:), dphi(:)                                ! potential and normal derivative
         real(dp), allocatable :: lhs(:), rhs(:)                                 ! H phi and G dphi
 
+        res = 0._dp
         call setup_circle_vac(vac,n_bnd,ierr)
         if (ierr.ne.0) return
 
         ierr = calc_GH(vac)
         if (ierr.ne.0) return
 
-        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd))
-        do kind = 1,3
-            call eval_potential(vac,kind,phi,dphi,ierr)
-            if (ierr.ne.0) return
-            lhs = matmul(vac%H,phi)                                             ! single process: local = global
-            rhs = matmul(vac%G,dphi)
-            select case (kind)
-                case (1,2)                                                      ! interior: H phi = G dphi
-                    res(kind) = maxval(abs(lhs-rhs))/maxval(abs(lhs))
-                case (3)                                                        ! exterior: (H + 4 pi) phi = G dphi
-                    res(kind) = maxval(abs(lhs+4._dp*pi*phi-rhs))/&
-                        &maxval(abs(4._dp*pi*phi))
-            end select
-            write(error_unit,'(A,I6,A,I2,A,ES10.3)') '   [greens residual] &
-                &n_bnd = ',n_bnd,', potential ',kind,': ',res(kind)
-        end do
+        if (in_context(vac%ctxt_HG)) then
+            allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd))
+            do kind = 1,3
+                call eval_potential(vac,kind,phi,dphi,ierr)
+                if (ierr.ne.0) return
+                ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                if (ierr.ne.0) return
+                ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
+                if (ierr.ne.0) return
+                select case (kind)
+                    case (1,2)                                                  ! interior: H phi = G dphi
+                        res(kind) = maxval(abs(lhs-rhs))/maxval(abs(lhs))
+                    case (3)                                                    ! exterior: (H + 4 pi) phi = G dphi
+                        res(kind) = maxval(abs(lhs+4._dp*pi*phi-rhs))/&
+                            &maxval(abs(4._dp*pi*phi))
+                end select
+                if (rank.eq.0) write(error_unit,'(A,I6,A,I2,A,ES10.3)') &
+                    &'   [greens residual] n_bnd = ',n_bnd,', potential ',&
+                    &kind,': ',res(kind)
+            end do
+        end if
 
         call vac%dealloc()
     end subroutine greens_residuals
@@ -246,6 +262,10 @@ contains
     !! the 4 pi diagonal term of the exterior operator lifts the degeneracy
     !! and enforces the equality of the two coinciding solution values.
     subroutine test_solve_roundtrip(error)
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc
+        use fullstack_utils, only: n_col1_loc, vec_glob2dis
+
         type(error_type), allocatable, intent(out) :: error
 
         integer, parameter :: n_bnd = 101                                       ! boundary points
@@ -253,9 +273,12 @@ contains
 
         type(vac_type) :: vac                                                   ! vacuum variables
         integer :: ierr                                                         ! error status
+        integer :: n_col1                                                       ! local number of columns of R and Phi
         integer :: desc_RPhi(9)                                                 ! descriptor for R and Phi
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of R and Phi
         real(dp), allocatable :: phi(:), dphi(:)                                ! potential and normal derivative
-        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! right-hand side and solution
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        real(dp), allocatable :: phi_num(:)                                     ! gathered numerical solution
         real(dp) :: err_sol                                                     ! solution error
 
         call setup_circle_vac(vac,n_bnd,ierr)
@@ -271,20 +294,35 @@ contains
         call check(error, ierr, 0, 'potential evaluation failed')
         if (allocated(error)) return
 
-        allocate(R_mat(n_bnd,1),Phi_mat(n_bnd,1))
-        R_mat(:,1) = dphi
-        Phi_mat = 0._dp
-        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
-            &max(1,vac%n_loc(1)),ierr)
-        call check(error, ierr, 0, 'descinit failed')
-        if (allocated(error)) return
+        err_sol = 0._dp
+        if (in_context(vac%ctxt_HG)) then
+            ! distributed n_bnd x 1 right-hand side, as in calc_vac_res
+            n_col1 = n_col1_loc(vac)
+            call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
+            allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+            allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+            if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+            Phi_mat = 0._dp
+            call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+                &max(1,vac%n_loc(1)),ierr)
+            call check(error, ierr, 0, 'descinit failed')
+            if (allocated(error)) return
 
-        ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],[vac%n_loc(1),1],&
-            &reshape([1,1],[2,1]),desc_RPhi)
-        call check(error, ierr, 0, 'solve_Phi_BEM failed')
-        if (allocated(error)) return
+            ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],&
+                &[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+            call check(error, ierr, 0, 'solve_Phi_BEM failed')
+            if (allocated(error)) return
 
-        err_sol = maxval(abs(Phi_mat(:,1)-phi))/maxval(abs(phi))
+            ! gather the solution on all processes and compare globally
+            allocate(phi_num(n_bnd))
+            ierr = vec_dis2loc(vac%ctxt_HG,&
+                &reshape(Phi_mat(1:vac%n_loc(1),:),[vac%n_loc(1)*n_col1]),&
+                &vac%lims_r,phi_num)
+            call check(error, ierr, 0, 'gather failed')
+            if (allocated(error)) return
+
+            err_sol = maxval(abs(phi_num-phi))/maxval(abs(phi))
+        end if
         call check(error, err_sol.lt.tol, &
             &'solve round-trip error too large: '//trim(r2str(err_sol)))
         if (allocated(error)) return
@@ -305,9 +343,10 @@ contains
     !! condition (set_BC_4).
     subroutine test_response_cylinder(error)
         use X_vars, only: n_mod_X, modes_type
-        use num_vars, only: use_pol_flux_F, eq_style
+        use num_vars, only: use_pol_flux_F, eq_style, rank
         use eq_vars, only: vac_perm
         use vac_ops, only: calc_vac_res
+        use fullstack_utils, only: gather_res
 
         type(error_type), allocatable, intent(out) :: error
 
@@ -325,6 +364,7 @@ contains
         real(dp) :: t, R                                                        ! angle, major radius
         real(dp) :: res_ana                                                     ! analytical response
         real(dp) :: rel_diff                                                    ! relative difference
+        complex(dp), allocatable :: res(:,:)                                    ! response, gathered on all processes
 
         ! the response needs several modes; restore module state afterwards
         n_mod_X_old = n_mod_X
@@ -355,28 +395,36 @@ contains
         call check(error, ierr, 0, 'calc_vac_res failed')
         if (allocated(error)) return
 
-        do id = 1,n_mod                                                         ! single process: last rank = rank 0 has vac%res
+        ! the response only lives on the last process: gather it everywhere
+        ! so that all processes run identical assertions
+        allocate(res(n_mod,n_mod))
+        ierr = gather_res(vac,res)
+        call check(error, ierr, 0, 'gathering the response failed')
+        if (allocated(error)) return
+
+        do id = 1,n_mod
             do jd = 1,n_mod
                 if (id.eq.jd) then
                     res_ana = -2._dp*pi*(prim_X_test*jq-mds%m(1,id))**2/&
                         &(R_big*abs(mds%m(1,id))*vac_perm)
-                    rel_diff = abs(real(vac%res(id,id))-res_ana)/&
+                    rel_diff = abs(real(res(id,id))-res_ana)/&
                         &abs(res_ana)
-                    write(error_unit,'(A,I2,A,ES12.5,A,ES12.5,A,F6.3)') &
+                    if (rank.eq.0) &
+                        &write(error_unit,'(A,I2,A,ES12.5,A,ES12.5,A,F6.3)') &
                         &'   [vac response] m = ',mds%m(1,id),': res = ',&
-                        &real(vac%res(id,id)),', cylinder = ',res_ana,&
+                        &real(res(id,id)),', cylinder = ',res_ana,&
                         &', rel diff = ',rel_diff
                     call check(error, rel_diff.lt.tol_diag, &
                         &'diagonal response for m = '//trim(i2str(id))//&
                         &' deviates from cylinder limit by '//&
                         &trim(r2str(rel_diff)))
                 else
-                    call check(error, abs(vac%res(id,jd)).lt.tol_offdiag*&
+                    call check(error, abs(res(id,jd)).lt.tol_offdiag*&
                         &2._dp*pi*(prim_X_test*jq-1._dp)**2/&
                         &(R_big*vac_perm), &
                         &'off-diagonal response ('//trim(i2str(id))//','//&
                         &trim(i2str(jd))//') too large: '//&
-                        &trim(r2str(abs(vac%res(id,jd)))))
+                        &trim(r2str(abs(res(id,jd)))))
                 end if
                 if (allocated(error)) exit
             end do

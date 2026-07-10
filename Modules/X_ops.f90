@@ -1061,7 +1061,7 @@ contains
         use X_vars, only: n_mod_X, min_n_X, min_m_X, max_n_X, max_m_X
         use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_modes'
         
@@ -1772,7 +1772,7 @@ contains
         ! m/n or iota = n/m.
         !> \private
         real(dp) function jq_fun(pt) result(res)
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
@@ -2096,7 +2096,8 @@ contains
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, &
             &norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
 #if ldebug
@@ -2645,7 +2646,8 @@ contains
         &result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         
@@ -2877,7 +2879,8 @@ contains
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: K_style, norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         
@@ -3082,7 +3085,8 @@ contains
             &alpha_style, X_grid_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use grid_vars, only: min_par_X, max_par_X, n_alpha
         use rich_vars, only: rich_lvl
         

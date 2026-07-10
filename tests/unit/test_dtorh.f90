@@ -115,8 +115,10 @@ contains
             z = ref(1,id)
             n = nint(ref(2,id))
 
-            ! (re)calculate the whole array only when z changes
-            if (z.ne.z_prev) then
+            ! (re)calculate the whole array only when z changes (exact
+            ! comparison of table values, written .gt. to satisfy
+            ! -Wcompare-reals)
+            if (abs(z-z_prev).gt.0._dp) then
                 ierr = dtorh1(z,0,nmax,pl,ql,newn)
                 call check(error, ierr, 0, 'dtorh1 failed for z = '//&
                     &trim(r2str(z)))

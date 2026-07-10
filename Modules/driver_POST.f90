@@ -1187,11 +1187,11 @@ contains
     integer function setup_out_grids(grids_out,XYZ_eq,XYZ_sol) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         use grid_utilities, only: extend_grid_F
         use PB3D_ops, only: reconstruct_PB3D_grid
-        use num_vars, only: rank, n_procs
 #if ldebug
+        use num_vars, only: rank, n_procs
         use grid_utilities, only: nufft
 #endif
         
@@ -1209,10 +1209,12 @@ contains
         integer :: id, jd, ld                                                   ! counters
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         real(dp) :: lim_theta(2)                                                ! theta limits
+#if ldebug
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
         real(dp), allocatable :: xy(:,:,:)                                      ! x and y
         real(dp), allocatable :: f(:,:,:)                                       ! Fourier components
         real(dp), allocatable :: f_loc(:,:)                                     ! local f
+#endif
         real(dp), allocatable :: XYZ_X(:,:,:,:)                                 ! X, Y and Z on output perturbation grid
         
         ! initialize ierr

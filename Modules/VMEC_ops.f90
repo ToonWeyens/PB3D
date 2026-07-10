@@ -31,7 +31,8 @@ contains
     !!
     !! \return ierr
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
-        use num_utilities, only: calc_int, spline
+        use num_utilities, only: calc_int
+        use spline_utilities, only: spline
         use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
         
         character(*), parameter :: rout_name = 'read_VMEC'

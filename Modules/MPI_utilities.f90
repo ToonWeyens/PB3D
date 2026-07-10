@@ -883,6 +883,7 @@ contains
         integer, allocatable :: ranks_to_activate(:)                            ! ranks to be set active
         logical :: next_proc_exists                                             ! a next process exists
         logical :: next_proc_Bl                                                 ! next process is BL
+        logical :: no_NB_running                                                ! no nonblocking processes running any more
 #if ldebug
         integer :: istat                                                        ! status
 #endif
@@ -909,7 +910,8 @@ contains
         !   - NB: was last NB running
         next_proc_Bl = .false.
         next_proc_exists = .false.
-        if (lock%blocking .or. wl_empty(wl_loc,[-2])) then
+        no_NB_running = wl_empty(wl_loc,[-2])                                   ! evaluated separately: impure function in .or. might be short-circuited
+        if (lock%blocking .or. no_NB_running) then
             ! find all BL procs
             next_proc_exists = .not.wl_empty(wl_loc,[1],next_procs=next_procs)
             if (next_proc_exists) next_proc_Bl = .true.

@@ -121,7 +121,8 @@ contains
         use grid_utilities, only: trim_grid, calc_vec_comp
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use MPI_utilities, only: get_ser_var
 #if ldebug
         use num_vars, only: use_pol_flux_F
@@ -147,7 +148,10 @@ contains
         type(grid_type) :: grid_out                                             ! output grid (see description)
         type(grid_type) :: grid_out_trim                                        ! trimmed output grid
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        integer :: id, jd, jd2, kd, td                                          ! counters
+        integer :: id, jd, kd, td                                               ! counters
+#if ldebug
+        integer :: jd2                                                          ! counter
+#endif
         integer :: n_t(2)                                                       ! nr. of time steps in quarter period, nr. of quarter periods
         integer :: plot_dim(4)                                                  ! dimensions of plot
         integer :: plot_offset(4)                                               ! local offset of plot
@@ -170,7 +174,9 @@ contains
         real(dp), allocatable :: ccomp(:,:,:,:,:)                               ! Cart. components of perturbation
         complex(dp) :: omega                                                    ! sqrt of Eigenvalue
         complex(dp), allocatable :: f_plot(:,:,:,:,:)                           ! the function to plot
+#if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
+#endif
         character(len=max_str_ln) :: var_name(2)                                ! name of variable that is plot
         character(len=max_str_ln) :: file_name(2)                               ! name of file
         character(len=max_str_ln) :: description(2)                             ! description
@@ -1204,14 +1210,18 @@ contains
         &sol,vac,B_aligned,X_id,E_pot,E_kin,E_pot_int,E_kin_int) result(ierr)
         
         use num_vars, only: use_pol_flux_F, n_procs, K_style, &
-            &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, rank, &
+            &norm_disc_prec_eq, norm_disc_prec_X, rank, &
             &eq_job_nr, eq_jobs_lims, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
         use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ
+#if ldebug
+        use num_vars, only: norm_disc_prec_sol
+#endif
         
         character(*), parameter :: rout_name = 'calc_E'
         

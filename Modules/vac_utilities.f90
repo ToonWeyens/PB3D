@@ -253,9 +253,7 @@ contains
     integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,proc) result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'vec_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for vector
         real(dp), intent(in) :: vec_dis(:)                                      !< distributed vector
@@ -307,9 +305,7 @@ contains
         &result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'mat_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for matrix
         real(dp), intent(in) :: mat_dis(:,:)                                    !< distributed matrix

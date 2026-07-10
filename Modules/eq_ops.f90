@@ -452,11 +452,14 @@ contains
         logical, intent(in), optional :: dealloc_vars                           !< deallocate variables on the fly after writing
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id                                                           ! counter
         integer :: pmone                                                        ! plus or minus one
         logical :: dealloc_vars_loc                                             ! local dealloc_vars
+#if ldebug
+        integer :: jd, kd                                                       ! counters
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+#endif
+
         ! initialize ierr
         ierr = 0
         
@@ -790,7 +793,8 @@ contains
         use X_vars, only: min_r_sol, max_r_sol
         use input_utilities, only: pause_prog, get_log, get_int, get_real
         use num_utilities, only: GCD, bubble_sort, order_per_fun, &
-            &shift_F, calc_int, spline
+            &shift_F, calc_int
+        use spline_utilities, only: spline
         use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
             &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original, &
             &use_normalization
@@ -2919,7 +2923,8 @@ contains
     integer function calc_g_H_ind(grid_eq,eq,deriv) result(ierr)
         use num_vars, only: norm_disc_prec_eq
         use HELENA_vars, only: ias, nchi, R_H, Z_H, chi_H, h_H_33
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use EZspline_obj
         use EZspline
         
@@ -3349,9 +3354,11 @@ contains
     !> \private individual version
     integer function calc_T_VC_ind(eq,deriv) result(ierr)
         use num_utilities, only: add_arr_mult, c
-        
+
+#if ldebug
         character(*), parameter :: rout_name = 'calc_T_VC_ind'
-        
+#endif
+
         ! input / output
         type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium
         integer, intent(in) :: deriv(:)                                         !< derivatives
@@ -4284,10 +4291,13 @@ contains
     !!          \frac{q R^2}{R_\theta^2 + Z_\theta^2 + q^2 R^2}
     !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
-        use eq_vars, only: vac_perm, max_flux_F
+        use eq_vars, only: vac_perm
         use num_vars, only: eq_style, use_pol_flux_F
+#if ldebug
+        use eq_vars, only: max_flux_F                                           ! for plot_diff_for_paper
+#endif
         use HELENA_vars, only: R_H, Z_H, chi_H, ias
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_derived_q'
         
@@ -4472,7 +4482,8 @@ contains
         integer function calc_derived_S_from_deriv_HEL(grid_eq,eq_2,bcs,&
             &bcs_val,S) result(ierr)
             
-            use num_utilities, only: c, spline
+            use num_utilities, only: c
+            use spline_utilities, only: spline
             use HELENA_vars, only: chi_H
             
             character(*), parameter :: rout_name = &
@@ -4512,10 +4523,12 @@ contains
             ! clean up
             nullify(J,h12,h22)
         end function calc_derived_S_from_deriv_HEL
-        
+
+#if ldebug
         !> \private Calculate shear from sigma using identity
         !! J|nabla psi|^2 S + mu_0 J B^2 sigma = K
         !! with K = -2F/R (Z(1)/R(0) + (Z(1)R(2)-R(1)Z(2))/(R(1)^2+Z(1)^2)
+        !! (only used by test_S_HEL)
         subroutine calc_derived_S_from_sigma_HEL(grid_eq,eq_2,Rchi,Zchi,S)
             use num_utilities, only: c
             use HELENA_vars, only: RBphi_H
@@ -4562,7 +4575,8 @@ contains
             ! clean up
             nullify(J,g33,h22)
         end subroutine calc_derived_S_from_sigma_HEL
-        
+#endif
+
         !> \private  Calculate Cylindrical  contravariant components  of angular
         !! derivatives of covariant parallel basis vector
         subroutine calc_derived_DC_epar(de,D_de,T_FE,D1_epar,D3_epar)
@@ -5016,7 +5030,8 @@ contains
         
         !> \private test whether -2 p' J kappa_g = D3sigma
         integer function test_sigma_with_kappa_g(grid_eq,eq_1,eq_2) result(ierr)
-            use num_utilities, only: spline, calc_int
+            use num_utilities, only: calc_int
+            use spline_utilities, only: spline
             use num_vars, only: norm_disc_prec_eq
             
             character(*), parameter :: rout_name = 'test_sigma_with_kappa_g'
@@ -5188,7 +5203,8 @@ contains
         !> \private   test  agreement   between  parallel   current  and   naive
         !! implementation for VMEC
         integer function test_sigma_VMEC(grid_eq,eq_1,eq_2) result(ierr)
-            use num_utilities, only: spline, calc_int, c
+            use num_utilities, only: calc_int, c
+            use spline_utilities, only: spline
             use num_vars, only: norm_disc_prec_eq
             use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
             use VMEC_utilities, only: fourier2real
@@ -5285,7 +5301,8 @@ contains
             
             call lvl_ud(-1)
         end function test_sigma_VMEC
-        
+
+#if ldebug
         !> \private  test  agreement  between  shear  and  implementation  using
         !! identity to relate to sigma
         subroutine test_S_HEL(grid_eq,eq_2,Rchi,Zchi)
@@ -5318,7 +5335,8 @@ contains
             
             call lvl_ud(-1)
         end subroutine test_S_HEL
-        
+#endif
+
         !> \private make plot for 2018 paper; requires one process only.
         integer function plot_diff_for_paper(r, A, B, title) result(ierr)
             use num_vars, only: n_procs
@@ -5829,9 +5847,9 @@ contains
         character(len=10) :: base_name                                          ! base name
         real(dp), allocatable, save :: J_flux_tor(:,:), J_flux_pol(:,:)         ! fluxes
         logical :: plot_fluxes_loc                                              ! local plot_fluxes
+#if ldebug
         character(len=max_str_ln) :: plot_name                                  ! name of plot
         character(len=max_str_ln) :: plot_titles(2)                             ! titles of plot
-#if ldebug
         real(dp), allocatable :: J_V_sup_int2(:,:)                              ! integrated J_V_sup_int
 #endif
         
@@ -6951,7 +6969,8 @@ contains
     !! \return ierr
     integer function test_D12h_H(grid_eq,eq) result(ierr)
         use grid_utilities, only: trim_grid
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use num_vars, only: norm_disc_prec_eq
         use HELENA_vars, only: ias
         
@@ -7499,7 +7518,8 @@ contains
     !!
     !! \return ierr
     integer function test_p(grid_eq,eq_1,eq_2) result(ierr)
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use grid_utilities, only: trim_grid
         use eq_vars, only: vac_perm
         use num_vars, only: eq_style, norm_disc_prec_eq

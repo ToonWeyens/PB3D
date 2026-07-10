@@ -12,3 +12,4 @@ build-*/
 
 # built minimal LIBSTELL (Libraries/build_libstell_min.sh output)
 Libraries/libstell-min/
+doc/

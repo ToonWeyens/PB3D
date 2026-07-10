@@ -1563,7 +1563,9 @@ contains
         integer :: max_corder                                                   ! current maximum creation order value for group
         integer, allocatable :: lim_tot(:,:)                                    ! total limits
         integer, allocatable :: lim_loc_loc(:,:)                                ! local lim_loc
+#if ldebug
         character(len=max_str_ln) :: name_len_loc                               ! local copy of name_len
+#endif
         character(len=max_str_ln) :: group_name                                 ! name of group
         character(len=max_str_ln) :: head_name_loc                              ! local head_name
         logical :: disp_info_loc                                                ! local disp_info

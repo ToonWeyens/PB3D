@@ -515,14 +515,13 @@ contains
     integer function calc_GH(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in) &
         &result(ierr)
         
-        use num_vars, only: rank
         use vac_vars, only: in_context
         use vac_utilities, only: vec_dis2loc
 #if ldebug
-        use num_vars, only: n_procs
+        use num_vars, only: rank, n_procs
         use vac_utilities, only: mat_dis2loc
 #endif
-        
+
         character(*), parameter :: rout_name = 'calc_GH'
         
         ! input / output
@@ -535,7 +534,9 @@ contains
         
         ! local variables
         integer :: n_r                                                          ! number of rows
+#if ldebug
         integer :: id, jd                                                       ! counters
+#endif
         integer, pointer :: lims_r(:,:)                                         ! row limits
         real(dp), pointer :: G(:,:)                                             ! G
         real(dp), pointer :: H(:,:)                                             ! H
@@ -1024,8 +1025,10 @@ contains
         use vac_utilities, only: calc_GH_int_2
         use MPI_utilities, only: get_ser_var
         use num_ops, only: calc_zero_HH, calc_zero_Zhang
+#if ldebug
         use num_vars, only: rank
-        
+#endif
+
         character(*), parameter :: rout_name = 'calc_GH_2'
         
         ! input / output
@@ -2457,34 +2460,36 @@ contains
 #endif
 
             ! user output
+            ! set global angle (the same for every subrow and column; the
+            ! subrow slices below use global indices, so ang has to span
+            ! the whole boundary, also when the rows are distributed over
+            ! multiple block-cyclic subrows)
+            allocate(ang(vac%n_bnd))
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    do id = 1,vac%n_ang(1)
+                        ang(id:id+vac%n_ang(1)*(vac%n_ang(2)-1):&
+                            &vac%n_ang(1)) = &
+                            &pi * (min_par_X + (id-1)*&
+                            &(max_par_X-min_par_X)/(n_par_X-1))
+                    end do
+                case (2)                                                        ! axisymmetric
+                    ang = reshape(vac%ang,[vac%n_bnd])
+            end select
+
             subcols2: do i_cd = 1,size(lims_c_RPhi,2)
                 col: do cd = lims_c_RPhi(1,i_cd),lims_c_RPhi(2,i_cd)
                     ! set local column index
                     cdl = sum(lims_c_RPhi(2,1:i_cd-1)-&
                         &lims_c_RPhi(1,1:i_cd-1)+1) + &
                         &cd-lims_c_RPhi(1,i_cd)+1
-                    
+
                     subrows2: do i_rd = 1,size(vac%lims_r,2)
                         ! set local row limits
                         lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
                             &vac%lims_r(1,1:i_rd-1)+1) + &
                             &vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
-                        
-                        ! set angle
-                        allocate(ang(vac%lims_r(2,i_rd)-vac%lims_r(1,i_rd)+1))
-                        select case (vac%style)
-                            case (1)                                            ! field-line 3-D
-                                do id = 1,vac%n_ang(1)
-                                    ang(id:&
-                                        &id+vac%n_ang(1)*(vac%n_ang(2)-1):&
-                                        &vac%n_ang(1)) = &
-                                        &pi * (min_par_X + (id-1)*&
-                                        &(max_par_X-min_par_X)/(n_par_X-1))
-                                end do
-                            case (2)                                            ! axisymmetric
-                                ang = reshape(vac%ang,[vac%n_bnd])
-                        end select
-                        
+
                         ! output
                         plot_title = 'for column '//trim(i2str(cd))//&
                             &' and starting row '//&
@@ -2498,12 +2503,12 @@ contains
                             &draw=.false.)
                         call draw_ex(['Phi '//trim(plot_title)],&
                             &'Phi'//trim(plot_name),1,1,.false.)
-                        
-                        ! clean up
-                        deallocate(ang)
                     end do subrows2
                 end do col
             end do subcols2
+
+            ! clean up
+            deallocate(ang)
 #endif
 
 #ifdef PB3D_WITH_STRUMPACK

@@ -49,8 +49,11 @@ contains
         
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
-            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest, alpha_style, &
+            &eq_jobs_lims, jump_to_sol, rich_restart_lvl, alpha_style, &
             &X_grid_style, BC_style
+#if ldebug
+        use num_vars, only: ltest
+#endif
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
             &redistribute_output_eq, B_plot, J_plot, kappa_plot
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &

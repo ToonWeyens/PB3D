@@ -186,7 +186,11 @@ endif() # PB3D_BUILD_EXECUTABLES
 add_library(dfftpack STATIC
     ${CMAKE_SOURCE_DIR}/Libraries/dfft.f
 )
-target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch)
+# -w: vendored code is not ours to lint (same policy as foul below and
+# fortitude.toml); without it, dfft.f alone contributes ~157 warnings under
+# -Wall -Wextra that the CI warning counter cannot reliably attribute,
+# because gfortran prints the file location on a separate line
+target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch -w)
 
 # libfoul - from Libraries/foul.f90
 add_library(foul STATIC
@@ -211,7 +215,33 @@ set(PB3D_CORE_SOURCES
     Modules/messages.f90
     Modules/files_utilities.f90
     Modules/dtorh.f90
+    # light type modules and the pure index logic built on them
+    Modules/var_1D_vars.f90
+    Modules/grid_vars.f90
+    Modules/X_vars.f90
+    Modules/PB3D_utilities.f90
 )
+
+# num_utilities (pure numerics: integration, finite-difference weights, index
+# helpers, zero finders, ...) needs LAPACK for its 0-D determinant/inverse and
+# polynomial extrapolation; since the spline wrappers were split off into
+# spline_utilities it has no other external dependency. num_ops additionally
+# uses output_ops (HDF5) under ldebug, so it only joins the core in non-debug
+# configurations.
+find_package(LAPACK QUIET)
+set(PB3D_CORE_HAS_NUM FALSE)
+if(LAPACK_FOUND)
+    list(APPEND PB3D_CORE_SOURCES Modules/num_utilities.f90)
+    # X_utilities only needs num_utilities (the index helper c)
+    list(APPEND PB3D_CORE_SOURCES Modules/X_utilities.f90)
+    set(PB3D_CORE_HAS_NUM TRUE)
+    if(NOT PB3D_ENABLE_DEBUG)
+        list(APPEND PB3D_CORE_SOURCES Modules/num_ops.f90)
+        set(PB3D_CORE_HAS_NUM_OPS TRUE)
+    endif()
+else()
+    message(STATUS "LAPACK not found - num_utilities/num_ops unit tests disabled")
+endif()
 
 add_library(pb3d_core OBJECT ${PB3D_CORE_SOURCES})
 set_target_properties(pb3d_core PROPERTIES
@@ -221,6 +251,9 @@ target_include_directories(pb3d_core PUBLIC
     ${CMAKE_BINARY_DIR}/mod/core
 )
 target_link_libraries(pb3d_core PUBLIC foul)
+if(LAPACK_FOUND)
+    target_link_libraries(pb3d_core PUBLIC ${LAPACK_LIBRARIES})
+endif()
 if(PB3D_ENABLE_DEBUG)
     # messages.f90 uses MPI under ldebug (memory monitoring)
     target_link_libraries(pb3d_core PUBLIC MPI::MPI_Fortran)
@@ -239,6 +272,7 @@ set(PB3D_MODULE_SOURCES
     # Messages and utilities
     Modules/messages.f90
     Modules/num_utilities.f90
+    Modules/spline_utilities.f90
     Modules/num_ops.f90
     Modules/files_utilities.f90
 
@@ -248,6 +282,7 @@ set(PB3D_MODULE_SOURCES
     Modules/MPI_ops.f90
 
     # HDF5 modules
+    Modules/var_1D_vars.f90
     Modules/HDF5_vars.f90
     Modules/HDF5_utilities.f90
     Modules/HDF5_ops.f90
