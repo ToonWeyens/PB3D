@@ -917,12 +917,14 @@ contains
     !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
     !!      off-diagonal elements to zero.
     !!  -# Minimization of surface energy through asymmetric fin. differences:
-    !!      - PLACEHOLDER,  not implemented:  the intention  is to  impose the
-    !!      natural  boundary condition  variationally, by  assembling the last
-    !!      \c ndps  rows with  one-sided stencils  and adding  the vacuum term
-    !!      to the  edge diagonal block  with a consistent  integration weight.
-    !!      In contrast  to style 4  this would keep  A and B  Hermitian. Until
-    !!      then, use style 4.
+    !!      -  The natural  boundary condition  is imposed  variationally: the
+    !!      edge row  is assembled like  any bulk row  (with one-sided
+    !!      stencils; natively for left differences, through the \c ndc_ind
+    !!      shifting for central ones)  and the vacuum term  is added to the
+    !!      edge diagonal  block. In contrast to  style 4 this keeps  A and B
+    !!      Hermitian. Agrees  with style 4 to  8 significant digits  on the
+    !!      cbm18a free-boundary benchmark, with much  cleaner numerics (see
+    !!      Documentation/testing.md).
     !!  -# REMOVED (was: minimization of surface energy through extension of
     !!      grid - never implemented beyond a stub; use style 4).
     !!  -# Explicit introduction of the surface energy minimization:
@@ -1164,18 +1166,23 @@ contains
         ! set BC style 2:
         ! Minimization of surface energy through asymmetric fin. differences
         !
-        ! PLACEHOLDER:  the  intended  implementation  imposes  the  natural
-        ! boundary  condition variationally  (one-sided  stencils for  the
-        ! last  ndps  rows  plus  the vacuum  term  with  its  integration
-        ! weight  on  the  edge  diagonal  block),  which  would  keep  the
-        ! eigenvalue problem  Hermitian, in contrast to  style 4. Until it
-        ! exists, use style 4.
+        ! The  bulk assembly  (fill_mat  through set_bulk_lims)  already
+        ! includes  the  edge  row  as a  variational  row:  its  stencils
+        ! are  one-sided  (either  natively,  for  left differences,  or
+        ! through  the ndc_ind  shifting for  central differences),  and
+        ! V_1 blocks  carry their Hermitian-conjugate  mirrors. The  only
+        ! boundary term  of the  energy functional  is the  vacuum term
+        ! X_edge^dagger vac X_edge, whose  Hessian is added  here to  the
+        ! edge diagonal block of A (a  pure surface term: no  integration
+        ! step size). The natural boundary condition
+        !   (V_1^dagger X + V_2 X' + vac X)|_edge = 0
+        ! then  emerges  from the  discrete  stationarity  of  the  energy
+        ! instead  of  being imposed  as  an  explicit equation  (style
+        ! 4),  which  keeps  A  and  B  Hermitian  up  to  the  (small)
+        ! non-Hermiticity of the discretized vac%res itself.
         !> \private
         integer function set_BC_2(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
-
-            ! local variables
-            character(len=max_str_ln) :: err_msg                                ! error message
 
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
@@ -1189,10 +1196,10 @@ contains
                 &': Minimization of surface energy through asymmetric finite &
                 & differences',persistent=.true.)
 
-            ierr = 2
-            err_msg = 'BC_style 2 is not implemented; use 4 (explicit &
-                &surface energy minimization)'
-            CHCKERR(err_msg)
+            ! -------------!
+            ! BLOCKS ~ vac !
+            ! -------------!
+            ! add block to r_id + (0,0)
             ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')

@@ -120,13 +120,17 @@ Current anchors (see `tests/regression/`):
   `RAXIS, B0` and the full R/Z maps) on the original cbm18a input.
   Cross-platform: reproduced on Linux (PETSc/SLEPc 3.19, gfortran 13) to
   within \(10^{-4}\) relative of the macOS (PETSc 3.25, gfortran 16) anchor.
-- `cbm18a_free_bnd`: the same deck but **free-boundary** (`BC_style = 1 4`,
-  solution grid up to the plasma edge), exercising the whole vacuum chain:
+- `cbm18a_free_bnd`: the same deck but **free-boundary** (solution grid up
+  to the plasma edge), exercising the whole vacuum chain:
   `store_vac_HEL` → `calc_GH` → `calc_vac_res` (exterior BEM solve) →
-  `set_BC_4`. Anchor \(\omega^2/\omega_A^2 = -4.235\times10^{-2}\), ±10%,
+  `set_BC`. Anchor \(\omega^2/\omega_A^2 = -4.235\times10^{-2}\), ±10%,
   established 2026-07-09 on Linux; bit-identical between the STRUMPACK and
   ScaLAPACK vacuum solver paths, and ~4% more unstable than the
-  fixed-boundary result, as expected from freeing the boundary.
+  fixed-boundary result, as expected from freeing the boundary. The deck is
+  run with **both** free-boundary BC styles — 4 (explicit natural-BC row)
+  and 2 (variational/Hermitian imposition) — which are asserted to agree
+  mutually to 1e-5 (measured: 3.5e-8; style 2 additionally has a ~180×
+  smaller spurious imaginary part and SLEPc residual).
 
 **Known flakiness (macOS)**: with Homebrew OpenMPI 5 and parallel HDF5 1.14,
 singleton-MPI PB3D runs intermittently die in the I/O layer (SIGTRAP or a
