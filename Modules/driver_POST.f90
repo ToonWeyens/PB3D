@@ -80,7 +80,7 @@ contains
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
-            &X_grid_style, n_procs
+            &X_grid_style, n_procs, BC_style
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -263,10 +263,12 @@ contains
             ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
                 &rich_lvl=rich_lvl)
             CHCKERR('')
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
-            CHCKERR('')
+            ! the vacuum response is only present in the output for
+            ! free-boundary runs (see the equilibrium and solution drivers)
+            if (BC_style(2).ne.1) then
+                ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
+                CHCKERR('')
+            end if
         end if
         
         ! user output

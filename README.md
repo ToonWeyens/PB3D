@@ -22,6 +22,18 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ## Changelog
 
+## 2.48:
+* Ported to the modern PETSc/SLEPc API (validated with PETSc 3.25.3 / SLEPc 3.25.1): the 2018-era PETSc 3.9 is no longer buildable on current platforms. All changes confined to `SLEPC_ops`/`SLEPC_utilities`; both executables build and run on macOS arm64 with gfortran 16.
+* Vacuum handling: fixed-boundary runs (`BC_style(2) = 1`) now skip the vacuum response cleanly instead of erroring (HELENA) or wastefully computing it (VMEC). HELENA runs work again for the first time since 2.44. Free-boundary vacuum remains under construction.
+* First end-to-end physics validation of the modernized stack: fixed-boundary peeling-ballooning eigenvalue for the cbm18a case (HELENA and VMEC equilibria), recorded as a CTest regression anchor (opt-in via `PB3D_FIXTURE_DIR`, see `Documentation/testing.md`).
+* Build scripts for the out-of-Spack dependencies: `Libraries/build_pspline.sh` and `Libraries/build_libstell_min.sh` (minimal LIBSTELL: just `read_wout_mod`); STRUMPACK-Dense 1.1.1 build recipe updated in `Documentation/spack-setup.md`.
+* Modernized testing infrastructure: added a CTest-driven test suite in `tests/`, with unit tests written in the vendored fortran-lang `test-drive` framework (see `Documentation/testing.md`).
+* New CMake option `PB3D_BUILD_EXECUTABLES` (default ON): with OFF, only a dependency-light core library (`num_vars`, `str_utilities`, `messages`, `files_utilities`, `dtorh`) and its unit tests are built, requiring no external libraries. This allows testing on machines without the PETSc/SLEPc/HDF5 stack.
+* First unit tests: `dtorh` toroidal harmonics validated against 30-digit mpmath reference values (including the near-singular regime relevant for the vacuum BEM), recurrence relations and error handling; `str_utilities` output formats pinned down.
+* Added GitHub Actions workflow running the unit tests on every push.
+* Committed the previously missing `spack.yaml` (was excluded by the `*.yaml` gitignore rule) with pinned, known-good PETSc/SLEPc versions.
+* Smoke tests for the `PB3D`/`POST` usage output are registered but await a full-stack build for verification.
+
 ## 2.47:
 * Modernized build system: migrated from Makefile to CMake.
 * Added Spack environment support for portable dependency management.

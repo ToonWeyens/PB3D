@@ -3,5 +3,12 @@ POST
 *.h5
 *.xmf
 *.yaml
+!spack.yaml
 *.sample
 build/
+build-*/
+.env
+*~
+
+# built minimal LIBSTELL (Libraries/build_libstell_min.sh output)
+Libraries/libstell-min/

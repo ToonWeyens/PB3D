@@ -1,0 +1,96 @@
+name: tests
+
+on:
+  push:
+    branches: [master, "dev/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Unit tests of the dependency-light core (no PETSc/SLEPc/HDF5 stack
+  # needed). Fast feedback on every push.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake
+
+      - name: Configure
+        run: cmake -S . -B build -DPB3D_BUILD_EXECUTABLES=OFF
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Full-stack build of the PB3D/POST executables against the distro
+  # PETSc/SLEPc (3.19, complex scalars) plus manually built PSPLINE and
+  # minimal LIBSTELL (cached). STRUMPACK is not used: the vacuum module
+  # falls back to its ScaLAPACK solver. Runs the complete test suite
+  # (unit + smoke + fullstack).
+  fullstack:
+    runs-on: ubuntu-24.04
+    env:
+      PETSC_DIR: /usr/lib/petscdir/petsc3.19/x86_64-linux-gnu-complex
+      SLEPC_DIR: /usr/lib/slepcdir/slepc3.19/x86_64-linux-gnu-complex
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependency stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gfortran g++ cmake ninja-build pkg-config \
+            libopenmpi-dev openmpi-bin \
+            libpetsc-complex3.19-dev libslepc-complex3.19-dev \
+            libhdf5-openmpi-dev libnetcdff-dev \
+            liblapack-dev libblas-dev libscalapack-openmpi-dev
+
+      - name: Cache PSPLINE
+        id: cache-pspline
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/pspline/install
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
+
+      - name: Build PSPLINE
+        if: steps.cache-pspline.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
+          cp Libraries/build_pspline.sh ~/Code/pspline/
+          ~/Code/pspline/build_pspline.sh
+
+      - name: Cache minimal LIBSTELL
+        id: cache-libstell
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/libstell-min
+          key: libstell-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_libstell_min.sh') }}
+
+      - name: Build minimal LIBSTELL
+        if: steps.cache-libstell.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/PrincetonUniversity/STELLOPT.git ~/Code/stellopt
+          STELLOPT_SRC=$HOME/Code/stellopt NETCDF_FORTRAN_DIR=/usr \
+            Libraries/build_libstell_min.sh $HOME/Code/libstell-min
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH=$PETSC_DIR/lib/pkgconfig:$SLEPC_DIR/lib/pkgconfig
+          cmake -S . -B build -G Ninja \
+            -DPSPLINE_DIR=$HOME/Code/pspline/install \
+            -DLIBSTELL_DIR=$HOME/Code/libstell-min \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

@@ -50,7 +50,7 @@ contains
         use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
             &eq_jobs_lims, jump_to_sol, rich_restart_lvl, ltest, alpha_style, &
-            &X_grid_style
+            &X_grid_style, BC_style
         use eq_ops, only: calc_eq, print_output_eq, flux_q_plot, &
             &redistribute_output_eq, B_plot, J_plot, kappa_plot
         use grid_ops, only: setup_grid_eq_B, print_output_grid, &
@@ -281,8 +281,12 @@ contains
             end if
             
             ! store vacuum variables
-            ierr = store_vac(grid_eq,eq_1,eq_2,vac)
-            CHCKERR('')
+            ! (skipped for fixed-boundary BC at the plasma edge, where the
+            ! vacuum response is not used; see also the solution driver)
+            if (BC_style(2).ne.1) then
+                ierr = store_vac(grid_eq,eq_1,eq_2,vac)
+                CHCKERR('')
+            end if
         end if
         
         ! set output variables
