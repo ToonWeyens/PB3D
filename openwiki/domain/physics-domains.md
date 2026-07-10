@@ -60,11 +60,13 @@ function kernels, singular integrals, assembled `G`/`H`, boundary potential solv
 matrix against the analytical cylinder limit), the free-boundary chain end-to-end
 (`regression_cbm18a_free_bnd`), and the field-line 3-D machinery (singular half-cell kernel,
 jump relations, and the response of an axisymmetric boundary cross-checked between the two
-styles). Two style-1 limitations remain: at least 2 field lines are required (`n_alpha > 1`;
-single-line Weyl coverage needs an effective transverse spacing that is not implemented), and
-the STRUMPACK HSS solver can fail on the higher-rank style-1 operators — the solve verifies its
-residual and falls back to ScaLAPACK LU automatically. Extend the tests when touching the
-vacuum.
+styles). Two style-1 limitations remain: at least 2 field lines are required (`n_alpha > 1`,
+i.e. `alpha_style 2`; rejected early in input processing for free-boundary 3-D runs) — the
+single-line Weyl coverage of `alpha_style 1` would need per-point transverse spacings
+(three-distance theorem) that are deliberately not implemented, since `alpha_style 2` computes
+the same surface-averaged physics with better convergence — and the STRUMPACK HSS solver can
+fail on the higher-rank style-1 operators, so the solve verifies its residual and falls back to
+ScaLAPACK LU automatically. Extend the tests when touching the vacuum.
 
 ## Solution (`sol_*`, `SLEPC_*`)
 

@@ -884,6 +884,20 @@ contains
                     end if
             end select
             
+            ! free-boundary  VMEC  runs  use  the  field-line  3-D  vacuum,
+            ! whose  boundary element  method needs  multiple field  lines:
+            ! the transverse  cell size  is degenerate  for a  single line
+            ! (see vac_ops). Fail early with a clear message instead of in
+            ! the equilibrium driver.
+            if (alpha_style.eq.1 .and. eq_style.eq.1 .and. &
+                &BC_style(2).ne.1) then
+                ierr = 1
+                err_msg = 'Free-boundary runs with a 3-D equilibrium need &
+                    &alpha_style 2 (multiple field lines): the vacuum &
+                    &boundary element method requires n_alpha > 1'
+                CHCKERR(err_msg)
+            end if
+
             ! for HELENA, warn about axisymmetry
             if (eq_style.eq.2) then
                 if (abs(max_par_X - min_par_X - 2) .gt. tol_zero) then

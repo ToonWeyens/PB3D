@@ -29,7 +29,7 @@ second read is triggered before assuming its semantics.
 | `min_r_sol` / `max_r_sol` / `n_r_sol` | Radial (normal-coordinate) range and resolution of the solution grid |
 | `prim_X` | Primary (dominant) perturbation mode number |
 | `n_mod_X`, `min_sec_X`, `max_sec_X` | Number/range of secondary (coupled) perturbation modes |
-| `alpha` / `alpha_style` | Field-line label, and whether one field line with many turns or many field lines with one turn is used |
+| `alpha` / `alpha_style` | Field-line label, and whether one field line with many turns (style 1, legacy) or many field lines with one turn each (style 2) is used. **Style 2 is recommended for 3-D runs**: for the surface-averaged coefficients PB3D computes, its explicit field-line-label grid converges spectrally, whereas the single-line (Weyl) sampling of style 1 converges only at the equidistribution rate, is frozen during Richardson extrapolation (the line length is fixed), and is not supported by the free-boundary vacuum. Style 1 is kept as a cross-check and for axisymmetric cases (where the label is ignorable and one line is exact) |
 | `EV_style`, `EV_guess`, `EV_BC` | Eigenvalue-solver method selection and boundary artificial eigenvalue |
 | `BC_style(2)` | Boundary-condition style at the two radial boundaries |
 | `tol_rich`, `max_it_rich`, `rich_restart_lvl` | Richardson extrapolation tolerance, max levels, and restart level (`1` = fresh start) |

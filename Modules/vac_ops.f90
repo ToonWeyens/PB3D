@@ -26,8 +26,10 @@
 !! chain end-to-end (regression_cbm18a_free_bnd), and the 3-D field-line
 !! machinery (singular half-cell kernel, jump relations, response of an
 !! axisymmetric boundary cross-checked between the two styles). The 3-D
-!! style requires at least 2 field lines (n_alpha > 1): single-field-line
-!! Weyl coverage needs an effective transverse spacing (open item).
+!! style requires at least 2 field lines (n_alpha > 1, i.e. alpha_style 2,
+!! which is the recommended mode for 3-D runs anyway): single-field-line
+!! Weyl coverage would need per-point transverse spacings (three-distance
+!! theorem) and is deliberately not implemented.
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
