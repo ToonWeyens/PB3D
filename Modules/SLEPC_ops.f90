@@ -509,15 +509,6 @@ contains
         CHCKERR('')
         i_lims = [grid_sol_trim%i_min, grid_sol_trim%i_max]
         
-        ! for BC_style 3 with symmetric finite differences, extend the grid
-        if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
-            n_r = n_r + ndps
-            if (rank.eq.sol_n_procs-1) then
-                loc_n_r = loc_n_r + ndps
-                i_lims(2) = i_lims(2) + ndps
-            end if
-        end if
-        
         ! setup matrix A and B
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
@@ -659,9 +650,6 @@ contains
             CHCKERR(err_msg)
             r_sol_start = r_sol_start/n_mod_X                                   ! count per block
             r_sol_end = r_sol_end/n_mod_X                                       ! count per block
-            if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
-                if (rank.eq.sol_n_procs-1) r_sol_end = r_sol_end - ndps
-            end if
             if (rank.lt.sol_n_procs) then
                 if (grid_sol_trim%i_min.ne.r_sol_start+1) then
                     ierr = 1
@@ -924,27 +912,26 @@ contains
     !!  2. left finite differences
     !!
     !! Possibilities for \c BC_style:
-    !!  -# Set to zero:
+    !!  -# Set to zero (fixed boundary):
     !!      - An  artificial Eigenvalue  \c EV_BC is  introduced by  setting the
     !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
     !!      off-diagonal elements to zero.
     !!  -# Minimization of surface energy through asymmetric fin. differences:
-    !!      - For symmetric finite differences, the last \c ndps grid points are
-    !!      treated asymmetrically in order not go  over the edge and the vacuum
-    !!      term is added to the edge element.
-    !!      -  For left  differences, this  is already  standard, so  the method
-    !!      becomes identical to 2.
-    !!  -# Minimization of surface energy through extension of grid:
-    !!      - For  symmetric finite differences,  \c ndps extra grid  points are
-    !!      introduced after the  edge and the vacuum term is  added to the edge
-    !!      element.
-    !!      - For left finite differences, the  vacuum term is just added to the
-    !!      edge element, so this method becomes idential to 3.
+    !!      - PLACEHOLDER,  not implemented:  the intention  is to  impose the
+    !!      natural  boundary condition  variationally, by  assembling the last
+    !!      \c ndps  rows with  one-sided stencils  and adding  the vacuum term
+    !!      to the  edge diagonal block  with a consistent  integration weight.
+    !!      In contrast  to style 4  this would keep  A and B  Hermitian. Until
+    !!      then, use style 4.
+    !!  -# REMOVED (was: minimization of surface energy through extension of
+    !!      grid - never implemented beyond a stub; use style 4).
     !!  -# Explicit introduction of the surface energy minimization:
     !!      -  The equation  due  to  the minimization  of  the  vacuum term  is
     !!      introduced explicitely  as an asymmetric finite  difference equation
-    !!      in the last row.
-    !! -This is done using left finite differences.
+    !!      in the  last row, using  left finite differences:  V1^T X +  V2 X' +
+    !!      vac X =  0 (and the kinetic  analogue in B). This  breaks the
+    !!      Hermiticity of A  and B but is verified  end-to-end (see
+    !!      Documentation/testing.md).
     !!
     !! Makes use of n_r.
     !!
@@ -1014,8 +1001,6 @@ contains
                 end select
             case (2)
                 n_max = 1                                                       ! only 1 element carries vacuum contribution
-            case (3)
-                n_max = 1                                                       ! only 1 element carries vacuum contribution
             case (4)
                 n_max = 1                                                       ! only last element carries BC
             case default
@@ -1078,9 +1063,6 @@ contains
                         CHCKERR('')
                     case (2)
                         ierr = set_BC_2(kd-1,A)                                 ! indices start at 0
-                        CHCKERR('')
-                    case (3)
-                        ierr = set_BC_3(kd-1,A)                                 ! indices start at 0
                         CHCKERR('')
                     case (4)
                         ierr = set_BC_4(kd-1,kd-grid_sol%i_min+1,X,A,B,&
@@ -1181,62 +1163,41 @@ contains
         
         ! set BC style 2:
         ! Minimization of surface energy through asymmetric fin. differences
+        !
+        ! PLACEHOLDER:  the  intended  implementation  imposes  the  natural
+        ! boundary  condition variationally  (one-sided  stencils for  the
+        ! last  ndps  rows  plus  the vacuum  term  with  its  integration
+        ! weight  on  the  edge  diagonal  block),  which  would  keep  the
+        ! eigenvalue problem  Hermitian, in contrast to  style 4. Until it
+        ! exists, use style 4.
         !> \private
         integer function set_BC_2(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
-            
+
+            ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
+
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
-            
+
             ! initialize ierr
             ierr = 0
-            
+
             ! user output
             call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Minimization of surface energy through asymmetric finite &
                 & differences',persistent=.true.)
-            
-            ! -------------!
-            ! BLOCKS ~ vac !
-            ! -------------!
-            ! add block to r_id + (0,0)
+
             ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
+            err_msg = 'BC_style 2 is not implemented; use 4 (explicit &
+                &surface energy minimization)'
+            CHCKERR(err_msg)
             ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_2
-        
-        ! set BC style 3:
-        ! Minimization of surface energy through extension of grid
-        !> \private
-        integer function set_BC_3(r_id,A) result(ierr)
-            character(*), parameter :: rout_name = 'set_BC_3'
-            
-            ! input / output
-            integer, intent(in) :: r_id                                         ! position at which to set BC
-            Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Minimization of surface energy through extension of grid',&
-                &persistent=.true.)
-            
-            ! -------------!
-            ! BLOCKS ~ vac !
-            ! -------------!
-            ! add block to r_id + (0,0)
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
-        end function set_BC_3
-        
+
         ! set  BC style 4:
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface

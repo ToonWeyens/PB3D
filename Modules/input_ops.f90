@@ -325,7 +325,7 @@ contains
             U_style = 3                                                         ! full expression for U, up to order 3
             K_style = 1                                                         ! perpendicular kinetic energy normalized
             norm_style = 1                                                      ! MISHKA normalization
-            BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
+            BC_style = [1,4]                                                    ! left BC zeroed and right BC through explicit minimization of surface energy (the verified free-boundary style)
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
