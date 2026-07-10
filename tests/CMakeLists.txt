@@ -27,17 +27,21 @@ set(PB3D_UNIT_SOURCES
     unit/test_str_utilities.f90
     unit/test_files_utilities.f90
     unit/test_dtorh.f90
+    unit/test_PB3D_utilities.f90
 )
 set(PB3D_UNIT_SUITES
     str_utilities
     files_utilities
     dtorh
+    PB3D_utilities
 )
 # the numerics suites need num_utilities/num_ops in pb3d_core (see the LAPACK
-# and ldebug conditions in the top-level CMakeLists.txt)
+# and ldebug conditions in the top-level CMakeLists.txt); X_utilities uses
+# num_utilities's index helper c
 if(PB3D_CORE_HAS_NUM)
-    list(APPEND PB3D_UNIT_SOURCES unit/test_num_utilities.f90)
-    list(APPEND PB3D_UNIT_SUITES num_utilities)
+    list(APPEND PB3D_UNIT_SOURCES unit/test_num_utilities.f90
+        unit/test_X_utilities.f90)
+    list(APPEND PB3D_UNIT_SUITES num_utilities X_utilities)
 endif()
 if(PB3D_CORE_HAS_NUM_OPS)
     list(APPEND PB3D_UNIT_SOURCES unit/test_num_ops.f90)

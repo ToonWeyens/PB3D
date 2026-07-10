@@ -18,10 +18,12 @@ program pb3d_tester
     use test_dtorh, only: collect_dtorh
 #ifdef PB3D_TEST_NUM
     use test_num_utilities, only: collect_num_utilities
+    use test_X_utilities, only: collect_X_utilities
 #endif
 #ifdef PB3D_TEST_NUM_OPS
     use test_num_ops, only: collect_num_ops
 #endif
+    use test_PB3D_utilities, only: collect_PB3D_utilities
     use num_vars, only: dp, rank, n_procs, prog_name, max_it_zero, tol_zero, &
         &max_nr_backtracks_HH
     use messages, only: init_output
@@ -52,10 +54,12 @@ program pb3d_tester
         &new_testsuite("files_utilities", collect_files_utilities), &
 #ifdef PB3D_TEST_NUM
         &new_testsuite("num_utilities", collect_num_utilities), &
+        &new_testsuite("X_utilities", collect_X_utilities), &
 #endif
 #ifdef PB3D_TEST_NUM_OPS
         &new_testsuite("num_ops", collect_num_ops), &
 #endif
+        &new_testsuite("PB3D_utilities", collect_PB3D_utilities), &
         &new_testsuite("dtorh", collect_dtorh) &
         &]
 

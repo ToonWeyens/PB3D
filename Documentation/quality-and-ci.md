@@ -74,14 +74,14 @@ Notes:
   storage indexing `c`/`is_sym`, sorting with pivots, LAPACK determinant/
   inverse, polynomial extrapolation) and `num_ops` (Householder orders 1-3
   and Zhang zero finders on known roots).
-- **Next candidates, cheap** (class "a/b" — light or minor decoupling):
-  - `X_utilities` (`sec_ind_loc2tot`, `get_sec_X_range`, `is_necessary_X`,
-    `trim_modes`): pure integer mode-index logic; only needs the light
-    `X_vars`/`grid_vars` type modules in the core.
-  - `PB3D_utilities::setup_par_id`/`setup_rich_id`: pure Richardson/parallel
-    index arithmetic with a ~50-line formula docstring — ideal spec tests;
-    blocked only by a module-level `use HDF5_vars` (move `var_1D_type` to a
-    light module).
+- **Now also tested** (second-stage core expansion, 2026-07):
+  `X_utilities` (mode-index logic incl. the documented `get_sec_X_range`
+  example) and `PB3D_utilities` (`setup_par_id`/`setup_rich_id` spec tests
+  from the docstring formulas incl. the Richardson partition property,
+  `conv_1D2ND`). The enabling split: `var_1D_type` moved from `HDF5_vars`
+  to the light `var_1D_vars` (re-exported for compatibility), and
+  `grid_vars`/`X_vars` joined `pb3d_core`.
+- **Next candidates, cheap**:
   - `num_utilities` remainder: `con`, `conv_mat`, `calc_mult`,
     `add_arr_mult`, `con2dis`/`dis2con`, `round_with_tol`, `derivs`,
     `shift_F`, `order_per_fun`.
@@ -181,9 +181,10 @@ executable) are still single-process.
    `--select=OB` step in the `lint` job); next `C003` (45), gate; style
    categories via `fortitude check --fix` in one mechanical commit each
    (S101 trailing whitespace is auto-fixable).
-5. **Second-stage core expansion**: `X_utilities` and
+5. **Second-stage core expansion**: ~~`X_utilities` and
    `PB3D_utilities::setup_par_id`/`setup_rich_id` unit suites (move
-   `var_1D_type` to a light module); demote `use output_ops` to ldebug in
+   `var_1D_type` to a light module)~~ **done**; remaining: demote
+   `use output_ops` to ldebug in
    `eq_utilities`/`sol_utilities`/`grid_utilities` and add their pure
    routines.
 6. ~~**`read_HEL` golden-file test**~~ **Done**: `fullstack_read_HEL`

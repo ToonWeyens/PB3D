@@ -9,9 +9,12 @@ is needed).
 
 The unit tests build against a dependency-light subset of the code
 (`pb3d_core`: `num_vars`, `str_utilities`, `messages`, `files_utilities`,
-`dtorh`, and - when LAPACK is available - `num_utilities` and `num_ops`,
-whose PSPLINE dependency was split off into `spline_utilities`), so they
-compile with nothing but a Fortran compiler, CMake and optionally LAPACK:
+`dtorh`, the light type modules `var_1D_vars`/`grid_vars`/`X_vars`,
+`PB3D_utilities`, and - when LAPACK is available - `num_utilities`,
+`X_utilities` and `num_ops`; the PSPLINE dependency of `num_utilities` was
+split off into `spline_utilities` and the HDF5 dependency of
+`PB3D_utilities` into `var_1D_vars`), so they compile with nothing but a
+Fortran compiler, CMake and optionally LAPACK:
 
 ```bash
 cmake -S . -B build-tests -DPB3D_BUILD_EXECUTABLES=OFF
@@ -71,6 +74,16 @@ combined over all ranks.
   polynomial extrapolation, GCD/LCM/factorial.
 - **`num_ops`** — the Householder (orders 1-3) and Zhang zero finders on
   functions with known roots.
+- **`X_utilities`** — the pure mode-index logic: local-to-total secondary-
+  index translation, the symmetric-storage necessity criterion, the
+  contiguous HDF5 ranges of tensorial perturbation variables (pinning the
+  worked example from the `get_sec_X_range` documentation) and the mode-
+  range trimming.
+- **`PB3D_utilities`** — the Richardson/parallel index arithmetic:
+  `setup_par_id` checked against its docstring formulas, including the
+  partition property (the per-level index sets of an interlaced parallel
+  grid tile it exactly), windows (`par_lim`) and per-level memory indices;
+  `setup_rich_id`; and the 1-D/n-D storage conversion `conv_1D2ND`.
 - **`vac_kernels` (full-stack)** — the vacuum Green's function interval
   kernels (`vac_utilities::calc_GH_int_1/2`) against
   implementation-independent references: direct toroidal-harmonic

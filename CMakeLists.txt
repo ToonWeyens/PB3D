@@ -215,6 +215,11 @@ set(PB3D_CORE_SOURCES
     Modules/messages.f90
     Modules/files_utilities.f90
     Modules/dtorh.f90
+    # light type modules and the pure index logic built on them
+    Modules/var_1D_vars.f90
+    Modules/grid_vars.f90
+    Modules/X_vars.f90
+    Modules/PB3D_utilities.f90
 )
 
 # num_utilities (pure numerics: integration, finite-difference weights, index
@@ -227,6 +232,8 @@ find_package(LAPACK QUIET)
 set(PB3D_CORE_HAS_NUM FALSE)
 if(LAPACK_FOUND)
     list(APPEND PB3D_CORE_SOURCES Modules/num_utilities.f90)
+    # X_utilities only needs num_utilities (the index helper c)
+    list(APPEND PB3D_CORE_SOURCES Modules/X_utilities.f90)
     set(PB3D_CORE_HAS_NUM TRUE)
     if(NOT PB3D_ENABLE_DEBUG)
         list(APPEND PB3D_CORE_SOURCES Modules/num_ops.f90)
@@ -275,6 +282,7 @@ set(PB3D_MODULE_SOURCES
     Modules/MPI_ops.f90
 
     # HDF5 modules
+    Modules/var_1D_vars.f90
     Modules/HDF5_vars.f90
     Modules/HDF5_utilities.f90
     Modules/HDF5_ops.f90
