@@ -115,7 +115,7 @@ contains
         if (present(ipre)) ipre_loc = ipre
         
         OVER=1._dp/TINY
-        TINYSQ=DSQRT(TINY)
+        TINYSQ=sqrt(TINY)
         IF ((ipre_loc.NE.1).AND.(ipre_loc.NE.2)) THEN
             ierr = 1
             err_msg = 'IPRE MUST BE 1 OR 2'
@@ -137,8 +137,8 @@ contains
             CHCKERR(err_msg)
         END IF
         QZ=Z
-        PISQ=DSQRT(PI)
-        !DPPI=DSQRT(2._dp)/PISQ                                                  ! Is never used?
+        PISQ=sqrt(PI)
+        !DPPI=sqrt(2._dp)/PISQ                                                  ! Is never used?
         FL=M/2._dp
         CC=ABS(FLOAT(INT(FL))-FL)
         IF (CC.LT.0.4_dp) THEN
@@ -195,16 +195,16 @@ contains
         ierr = FRAC(Z,M,0,EPS,TINYSQ,FC)
         CHCKERR('')
         QDC1=QZ*QZ-1._dp
-        QARGU=QZ/DSQRT(QDC1)
+        QARGU=QZ/sqrt(QDC1)
         !DFAC1=DPPI*GAMMA/PI                                                     ! Is never used?
         !DFAC2=GAMMA/DPPI                                                        ! Is never used?
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !   WE EVALUATE Q_{-1/2},Q^{1}_{-1/2}               !
         !   USING SLATEC ROUTINES FOR ELLIPTIC FUNCTIONS    !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        ARGU1=DSQRT(2._dp/(Z+1._dp))
+        ARGU1=sqrt(2._dp/(Z+1._dp))
         QLMM(0)=ARGU1*ELLIP1(ARGU1)
-        QLMM(1)=-1._dp/DSQRT(2._dp*(QZ-1._dp))*ELLIP2(ARGU1)
+        QLMM(1)=-1._dp/sqrt(2._dp*(QZ-1._dp))*ELLIP2(ARGU1)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         !   WE APPLY FORWARD RECURRENCE IN M FOR Q'S  !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -253,7 +253,7 @@ contains
                 FCP=FCP/DD
                 DFACQS=DFACQS/DD
             END IF
-            PL_loc(0)=DFACQS/DSQRT(QDC1)/(1._dp-FCP*QLMM(M)/QLMM(M+1))
+            PL_loc(0)=DFACQS/sqrt(QDC1)/(1._dp-FCP*QLMM(M)/QLMM(M+1))
         ELSE
             CALL EXPAN(Z,mode_loc,ipre_loc,OVER,QARGU,M,PL0)
             PL_loc(0)=PL0
@@ -326,9 +326,9 @@ contains
         C0=FC
         D0=0._dp
      81 D0=B+A*D0
-        IF (DABS(D0).LT.TINYSQ) D0=TINYSQ
+        IF (abs(D0).LT.TINYSQ) D0=TINYSQ
         C0=B+A/C0
-        IF (DABS(C0).LT.TINYSQ) C0=TINYSQ
+        IF (abs(C0).LT.TINYSQ) C0=TINYSQ
         D0=1._dp/D0
         DELTA=C0*D0
         FC=FC*DELTA
@@ -336,7 +336,7 @@ contains
         A=-(1.D0+DN4/(DN3+MM))  
         B=DZ2*(DN1+MM)/(DN2+MM)
         IF (MM.LT.1000000) THEN
-            IF (DABS(DELTA-1.D0).GT.EPS) GOTO 81
+            IF (abs(DELTA-1.D0).GT.EPS) GOTO 81
         END IF
         IF (MM.EQ.1000000) then
             ierr =1
@@ -364,9 +364,9 @@ contains
         C0=FC
         D0=0._dp
      82 D0=B+A*D0
-        IF (DABS(D0).LT.TINYSQ) D0=TINYSQ
+        IF (abs(D0).LT.TINYSQ) D0=TINYSQ
         C0=B+A/C0
-        IF (DABS(C0).LT.TINYSQ) C0=TINYSQ
+        IF (abs(C0).LT.TINYSQ) C0=TINYSQ
         D0=1._dp/D0
         DELTA=C0*D0
         FC=FC*DELTA
@@ -542,8 +542,8 @@ contains
         
         PRECI(1)=1.E-13_dp
         PRECI(2)=1.E-9_dp
-        PISQ=DSQRT(PI)
-        DB=2._dp*DLOG(2._dp)
+        PISQ=sqrt(PI)
+        DB=2._dp*log(2._dp)
         FL=M/2.
         CC=ABS(FLOAT(INT(FL))-FL)
         IF (CC.LT.0.4_dp) THEN
@@ -561,8 +561,8 @@ contains
             GAMMA=AR
         END IF
         DFAC=2._dp/PI*DZ*GAMMA/PISQ
-        DF1=DLOG(2._dp*Z)
-        A0=1._dp/DSQRT(2._dp*Z)
+        DF1=log(2._dp*Z)
+        A0=1._dp/sqrt(2._dp*Z)
         Z2I=1._dp/(Z*Z)
         DELTA=1._dp
         SUM=0._dp

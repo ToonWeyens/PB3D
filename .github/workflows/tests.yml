@@ -296,6 +296,14 @@ jobs:
       - name: Install fortitude
         run: pip install fortitude-lint
 
+      # the ratchet: rule categories that have been cleaned completely are
+      # gated here and may not regress (see Documentation/quality-and-ci.md
+      # section 4.4); everything else stays report-only below
+      - name: Fortitude gate (blocking, cleaned categories)
+        run: |
+          fortitude check --select=OB Modules/ tests/unit tests/fullstack \
+            PB3D.f90 POST.f90
+
       - name: Fortitude report (non-blocking)
         run: |
           fortitude check --output-format concise Modules/ tests/unit \

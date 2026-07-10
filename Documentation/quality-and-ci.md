@@ -138,11 +138,15 @@ when it falls — a pure ratchet.
 ~15k findings across `Modules/`, dominated by style rules (5.9k trailing
 whitespace, 3.6k line lengths, 1.1k missing `end module` names). Correctness-
 adjacent categories are small: 140 `use` without `only`, 45
-`implicit none` without `external`, 24 obsolescent-feature findings.
-`fortitude.toml` excludes the E001 false positives on preprocessor lines and
-vendored code. Adoption is staged: the CI job is report-only; the ratchet is
-to clean one rule category at a time (start with `OB` obsolescent, 24
-findings, then `C003`), then add it to a blocking `--select` gate.
+`implicit none` without `external`, and (originally) 16 obsolescent-feature
+findings. `fortitude.toml` excludes the E001 false positives on preprocessor
+lines and vendored code. Adoption is staged: the CI job is report-only,
+and each rule category that reaches zero moves into the blocking
+`--select` gate of the `lint` job. **`OB` (obsolescent features) is clean
+and gated** since 2026-07: the type-specific intrinsics (`DSQRT`, `DLOG`,
+`DABS` in `dtorh`, `datan` in `num_vars`) were replaced by their generic
+forms, verified against the mpmath-pinned `dtorh` unit tests. Next
+category: `C003` (`external` procedures, 45).
 
 ### 4.5 Multi-rank (MPI) coverage gap — **closed for the fullstack layer**
 
@@ -172,9 +176,10 @@ executable) are still single-process.
    review the 113 `-Wmaybe-uninitialized` case by case and the 11
    interface-constrained unused dummies; when a module reaches zero,
    consider `-Werror`-listing it.
-4. **Fortitude ratchet**: clean `OB` (24), gate it; then `C003` (45), gate;
-   style categories via `fortitude check --fix` in one mechanical commit
-   each (S101 trailing whitespace is auto-fixable).
+4. **Fortitude ratchet**: ~~clean `OB`, gate it~~ **done** (blocking
+   `--select=OB` step in the `lint` job); next `C003` (45), gate; style
+   categories via `fortitude check --fix` in one mechanical commit each
+   (S101 trailing whitespace is auto-fixable).
 5. **Second-stage core expansion**: `X_utilities` and
    `PB3D_utilities::setup_par_id`/`setup_rich_id` unit suites (move
    `var_1D_type` to a light module); demote `use output_ops` to ldebug in

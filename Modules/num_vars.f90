@@ -80,7 +80,7 @@ module num_vars
     real(dp), parameter :: mem_scale_fac = 6.0                                  !< empirical scale factor of memory to calculate eq compared to just storing it 
 
     ! physical and mathematical variables
-    real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                !< \f$\pi\f$
+    real(dp), parameter :: pi=4_dp*atan(1.0_dp)                                !< \f$\pi\f$
     real(dp), parameter :: mu_0_original = 4E-7_dp*pi                           !< permeability of free space
     complex(dp), parameter :: iu = (0,1)                                        !< complex unit
 
