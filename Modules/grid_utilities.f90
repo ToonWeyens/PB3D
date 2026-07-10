@@ -187,7 +187,7 @@ contains
             use num_vars, only: norm_disc_prec_eq, rank
             use num_ops, only: calc_zero_HH
             use VMEC_vars, only: mnmax_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
@@ -301,7 +301,7 @@ contains
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -416,7 +416,7 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: mnmax_V, L_V_c, L_V_s, is_asym_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -471,7 +471,7 @@ contains
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -631,7 +631,8 @@ contains
     integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
         &result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, tol_zero
-        use num_utilities, only: spline, order_per_fun
+        use num_utilities, only: order_per_fun
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tor_diff_2D'
         
@@ -873,7 +874,7 @@ contains
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
                 &mnmax_V, is_asym_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -970,7 +971,7 @@ contains
             &result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
             use num_vars, only: norm_disc_prec_eq
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -1862,7 +1863,8 @@ contains
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
             &use_normalization, rank, tol_zero, RZ_0, &
             &compare_tor_pos_glob => compare_tor_pos
-        use num_utilities, only: c, calc_int, order_per_fun, spline
+        use num_utilities, only: c, calc_int, order_per_fun
+        use spline_utilities, only: spline
         use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
@@ -2898,7 +2900,8 @@ contains
     !!
     !! \return ierr
     integer function nufft(x,f,f_F,plot_name) result(ierr)
-        use num_utilities, only: order_per_fun, spline
+        use num_utilities, only: order_per_fun
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'nufft'
         

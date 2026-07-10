@@ -22,23 +22,41 @@ target_include_directories(testdrive PUBLIC ${CMAKE_BINARY_DIR}/mod/testdrive)
 #------------------------------------------------------------------------------
 # Unit tests
 #------------------------------------------------------------------------------
-add_executable(pb3d_unit_tests
+set(PB3D_UNIT_SOURCES
     unit/main.f90
     unit/test_str_utilities.f90
     unit/test_files_utilities.f90
     unit/test_dtorh.f90
 )
-set_target_properties(pb3d_unit_tests PROPERTIES
-    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/tests)
-target_link_libraries(pb3d_unit_tests PRIVATE pb3d_core testdrive)
-
-# one CTest entry per suite, so failures show up individually and suites can
-# be run in parallel
 set(PB3D_UNIT_SUITES
     str_utilities
     files_utilities
     dtorh
 )
+# the numerics suites need num_utilities/num_ops in pb3d_core (see the LAPACK
+# and ldebug conditions in the top-level CMakeLists.txt)
+if(PB3D_CORE_HAS_NUM)
+    list(APPEND PB3D_UNIT_SOURCES unit/test_num_utilities.f90)
+    list(APPEND PB3D_UNIT_SUITES num_utilities)
+endif()
+if(PB3D_CORE_HAS_NUM_OPS)
+    list(APPEND PB3D_UNIT_SOURCES unit/test_num_ops.f90)
+    list(APPEND PB3D_UNIT_SUITES num_ops)
+endif()
+
+add_executable(pb3d_unit_tests ${PB3D_UNIT_SOURCES})
+set_target_properties(pb3d_unit_tests PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/tests)
+target_link_libraries(pb3d_unit_tests PRIVATE pb3d_core testdrive)
+if(PB3D_CORE_HAS_NUM)
+    target_compile_definitions(pb3d_unit_tests PRIVATE PB3D_TEST_NUM)
+endif()
+if(PB3D_CORE_HAS_NUM_OPS)
+    target_compile_definitions(pb3d_unit_tests PRIVATE PB3D_TEST_NUM_OPS)
+endif()
+
+# one CTest entry per suite, so failures show up individually and suites can
+# be run in parallel
 foreach(suite IN LISTS PB3D_UNIT_SUITES)
     add_test(NAME unit_${suite} COMMAND pb3d_unit_tests ${suite})
     set_tests_properties(unit_${suite} PROPERTIES LABELS "unit")
@@ -148,11 +166,36 @@ if(PB3D_BUILD_EXECUTABLES)
 endif()
 
 #------------------------------------------------------------------------------
-# Physics regression tests (opt-in: need local equilibrium fixtures)
+# Physics regression tests
 #------------------------------------------------------------------------------
-# Pass -DPB3D_FIXTURE_DIR=<dir> at configure time to enable. The fixtures are
-# large binary equilibrium files kept outside the repository (see
-# Documentation/testing.md for provenance).
+# The equilibrium fixtures are committed xz-compressed under tests/fixtures
+# (cbm18a_extended_vac.12: 26 MB -> 5 MB) and decompressed into the build
+# tree at configure time, so the regression layer runs anywhere - including
+# CI - without external files. Passing -DPB3D_FIXTURE_DIR=<dir> overrides
+# this with a local fixture directory (see Documentation/testing.md).
+if(NOT PB3D_FIXTURE_DIR AND
+   EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cbm18a_extended_vac.12.xz)
+    find_program(XZ_EXECUTABLE xz)
+    if(XZ_EXECUTABLE)
+        set(PB3D_FIXTURE_DIR ${CMAKE_BINARY_DIR}/fixtures)
+        if(NOT EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+            message(STATUS "Decompressing regression fixtures to ${PB3D_FIXTURE_DIR}")
+            file(MAKE_DIRECTORY ${PB3D_FIXTURE_DIR})
+            execute_process(
+                COMMAND ${XZ_EXECUTABLE} -dkc
+                    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cbm18a_extended_vac.12.xz
+                OUTPUT_FILE ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
+                RESULT_VARIABLE _xz_res)
+            if(NOT _xz_res EQUAL 0)
+                message(WARNING "Fixture decompression failed - regression tests disabled")
+                unset(PB3D_FIXTURE_DIR)
+            endif()
+        endif()
+    else()
+        message(STATUS "xz not found - regression tests disabled (or pass PB3D_FIXTURE_DIR)")
+    endif()
+endif()
+
 if(TARGET PB3D AND PB3D_FIXTURE_DIR)
     if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
         add_test(NAME regression_cbm18a_fixed_bnd

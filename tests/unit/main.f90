@@ -16,7 +16,14 @@ program pb3d_tester
     use test_str_utilities, only: collect_str_utilities
     use test_files_utilities, only: collect_files_utilities
     use test_dtorh, only: collect_dtorh
-    use num_vars, only: rank, n_procs, prog_name
+#ifdef PB3D_TEST_NUM
+    use test_num_utilities, only: collect_num_utilities
+#endif
+#ifdef PB3D_TEST_NUM_OPS
+    use test_num_ops, only: collect_num_ops
+#endif
+    use num_vars, only: dp, rank, n_procs, prog_name, max_it_zero, tol_zero, &
+        &max_nr_backtracks_HH
     use messages, only: init_output
 
     implicit none
@@ -33,6 +40,9 @@ program pb3d_tester
     rank = 0
     n_procs = 1
     prog_name = 'TEST'
+    max_it_zero = 100                                                           ! zero-finder settings, normally set during input
+    tol_zero = 1.e-10_dp                                                        ! processing (see input_ops)
+    max_nr_backtracks_HH = 20
     call init_output()
 
     stat = 0
@@ -40,6 +50,12 @@ program pb3d_tester
     testsuites = [ &
         &new_testsuite("str_utilities", collect_str_utilities), &
         &new_testsuite("files_utilities", collect_files_utilities), &
+#ifdef PB3D_TEST_NUM
+        &new_testsuite("num_utilities", collect_num_utilities), &
+#endif
+#ifdef PB3D_TEST_NUM_OPS
+        &new_testsuite("num_ops", collect_num_ops), &
+#endif
         &new_testsuite("dtorh", collect_dtorh) &
         &]
 

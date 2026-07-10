@@ -121,7 +121,8 @@ contains
         use grid_utilities, only: trim_grid, calc_vec_comp
         use sol_utilities, only: calc_XUQ
         use eq_vars, only: R_0, B_0
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use MPI_utilities, only: get_ser_var
 #if ldebug
         use num_vars, only: use_pol_flux_F
@@ -1207,7 +1208,8 @@ contains
             &norm_disc_prec_eq, norm_disc_prec_X, norm_disc_prec_sol, rank, &
             &eq_job_nr, eq_jobs_lims, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
         use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var

@@ -136,7 +136,8 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &norm_disc_prec_eq
-            use num_utilities, only: con2dis, dis2con, round_with_tol, spline
+            use num_utilities, only: con2dis, dis2con, round_with_tol
+            use spline_utilities, only: spline
             use VMEC_vars, only: flux_p_V, flux_t_V
             use HELENA_vars, only: flux_p_H, flux_t_H
             use X_vars, only: min_r_sol, max_r_sol
@@ -654,7 +655,7 @@ contains
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X, X_grid_style
         use grid_utilities, only: coord_F2E
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_grid_X'
         
