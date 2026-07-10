@@ -120,6 +120,7 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_vac_3d.f90
         fullstack/test_splines.f90
         fullstack/test_calc_int_vol.f90
+        fullstack/test_read_HEL.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -233,6 +234,18 @@ if(NOT PB3D_FIXTURE_DIR AND
         endif()
     else()
         message(STATUS "xz not found - regression tests disabled (or pass PB3D_FIXTURE_DIR)")
+    endif()
+endif()
+
+# the read_HEL golden-file suite needs the fixture, so it is registered
+# here rather than with the other fullstack suites above
+if(TARGET pb3d_fullstack_tests AND PB3D_FIXTURE_DIR)
+    if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        add_test(NAME fullstack_read_HEL
+            COMMAND pb3d_fullstack_tests read_HEL)
+        set_tests_properties(fullstack_read_HEL PROPERTIES
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV};PB3D_FIXTURE_DIR=${PB3D_FIXTURE_DIR}"
+            LABELS "fullstack")
     endif()
 endif()
 

@@ -104,6 +104,12 @@ combined over all ranks.
   \(f = 1 - r^2 + i\cos\theta\), its second-order convergence, and the
   singleton-dimension convention (a missing angular dimension contributes
   a full turn \(2\pi\)).
+- **`read_HEL` (full-stack, needs the fixture)** — golden-file test of the
+  HELENA equilibrium parser on the committed cbm18a fixture: grid sizes,
+  profile values, MISHKA-normalization factors and flux-surface geometry
+  pinned; exact-by-construction relations (\(\iota = 1/q\),
+  \(\Phi' = q\,\Psi'\), \(\Psi' = 2\pi\)) and a trapezoidal cross-check of
+  \(\Phi = \int q \,\text{d}\Psi\) as implementation-independent guards.
 - **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
   analytical circular torus covered by field lines \(\zeta = \alpha +
   q\theta\):

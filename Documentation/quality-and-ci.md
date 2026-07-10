@@ -90,10 +90,10 @@ Notes:
   X·Y=I self-check under ldebug —, `transf_deriv`), `sol_utilities`
   (`calc_tot_sol_vec`/`calc_loc_sol_vec`), `grid_utilities`
   (`calc_eqd_grid`, `nufft`, `calc_int_vol`, `find_compr_range`).
-- **Golden-file parser test**: `HELENA_ops::read_HEL` is deterministic given
-  a fixture; the committed cbm18a file enables a parsing test that pins the
-  derived quantities (fluxes, safety factor, ellipticity) — full-stack layer
-  because of the PSPLINE post-processing.
+- **Golden-file parser test**: **done** — `tests/fullstack/test_read_HEL.f90`
+  pins `HELENA_ops::read_HEL` on the committed cbm18a fixture (grid sizes,
+  profiles, normalization factors, geometry, plus exact consistency
+  relations); full-stack layer because of the PSPLINE post-processing.
 - **Inherently heavy**: `MPI_utilities` (all collectives), the SLEPc/HDF5
   layers, the drivers — covered by fullstack/regression layers instead.
 
@@ -186,7 +186,8 @@ executable) are still single-process.
    `var_1D_type` to a light module); demote `use output_ops` to ldebug in
    `eq_utilities`/`sol_utilities`/`grid_utilities` and add their pure
    routines.
-6. **`read_HEL` golden-file test** against the committed cbm18a fixture.
+6. ~~**`read_HEL` golden-file test**~~ **Done**: `fullstack_read_HEL`
+   against the committed cbm18a fixture.
 7. ~~**Sanitizer job**~~ **Done**: the `sanitize` CI job runs the unit
    layer under `-fsanitize=address,undefined` with all findings fatal;
    full-stack ASAN under MPI remains noisy — nightly at most.
