@@ -105,11 +105,16 @@ endif()
 # These link against the complete pb3d_modules library and therefore need the
 # full dependency stack; they currently cover the vacuum module (Green's
 # function kernels against brute-force references, Green's identity on a
-# synthetic circular boundary, and the boundary potential solve). Single
-# MPI process (the executable runs in MPI singleton mode).
+# synthetic circular boundary, and the boundary potential solve). The suites
+# are rank-agnostic (they assert on globally gathered quantities, see
+# fullstack/fullstack_utils.f90): they run in MPI singleton mode by default
+# and are additionally registered under mpirun -n 2 and 4 below, which
+# exercises the 2-D block-cyclic ScaLAPACK distribution (blocksize 16)
+# instead of the single whole-matrix block.
 if(PB3D_BUILD_EXECUTABLES)
     add_executable(pb3d_fullstack_tests
         fullstack/main.f90
+        fullstack/fullstack_utils.f90
         fullstack/test_vac_kernels.f90
         fullstack/test_vac_greens.f90
         fullstack/test_vac_3d.f90
@@ -163,6 +168,37 @@ if(PB3D_BUILD_EXECUTABLES)
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             LABELS "fullstack")
     endforeach()
+
+    # Multi-rank rows for the suites with distributed linear algebra
+    # (vac_kernels is purely local kernel math, so multi-rank runs of it
+    # would only duplicate work). OMPI_ALLOW_RUN_AS_ROOT covers container
+    # use and is ignored by non-root/non-OpenMPI setups; --oversubscribe
+    # keeps -n 4 working on smaller CI runners.
+    set(PB3D_FULLSTACK_MPI_SUITES
+        vac_greens
+        vac_3d
+    )
+    if(MPIEXEC_EXECUTABLE)
+        set(_mpi_test_env "${PB3D_TEST_MPI_ENV}")
+        list(APPEND _mpi_test_env
+            "OMPI_ALLOW_RUN_AS_ROOT=1" "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+        set(_mpiexec_flags "")
+        if(OMPI_INFO_EXECUTABLE)
+            set(_mpiexec_flags "--oversubscribe")
+        endif()
+        foreach(np IN ITEMS 2 4)
+            foreach(suite IN LISTS PB3D_FULLSTACK_MPI_SUITES)
+                add_test(NAME fullstack_${suite}_np${np}
+                    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np}
+                        ${_mpiexec_flags}
+                        $<TARGET_FILE:pb3d_fullstack_tests> ${suite})
+                set_tests_properties(fullstack_${suite}_np${np} PROPERTIES
+                    ENVIRONMENT "${_mpi_test_env}"
+                    PROCESSORS ${np}
+                    LABELS "fullstack;mpi")
+            endforeach()
+        endforeach()
+    endif()
 endif()
 
 #------------------------------------------------------------------------------

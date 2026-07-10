@@ -82,8 +82,9 @@ contains
         w = [u(2)*v(3)-u(3)*v(2), u(3)*v(1)-u(1)*v(3), u(1)*v(2)-u(2)*v(1)]
     end function cross
 
-    !> Set up the synthetic style-1 vacuum on the torus (single process), and
-    !! the grid module variables that calc_GH_1 reads.
+    !> Set up the synthetic style-1 vacuum on the torus (the geometry arrays
+    !! are global, so every process fills them completely; only G, H and res
+    !! are distributed), and the grid module variables that calc_GH_1 reads.
     subroutine setup_torus_vac(vac,n_par,n_alpha_loc,ierr)
         use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use rich_vars, only: n_par_X
@@ -270,7 +271,15 @@ contains
     !! measured against its established offset (constant and interior
     !! harmonic: c = -4 pi; exterior harmonic: c = 0). The full offset scan
     !! is printed for diagnosis.
+    !!
+    !! The products with the distributed matrices are evaluated globally on
+    !! all processes (see fullstack_utils), so the assertions are identical
+    !! everywhere; processes outside the BLACS context report zero residuals.
     subroutine greens_residuals_3d(n_par,n_alpha_loc,res,ierr)
+        use num_vars, only: rank
+        use vac_vars, only: in_context
+        use fullstack_utils, only: dis_matvec
+
         integer, intent(in) :: n_par, n_alpha_loc                               ! resolution
         real(dp), intent(out) :: res(3)                                         ! residuals for the potentials
         integer, intent(out) :: ierr                                            ! error status
@@ -282,10 +291,11 @@ contains
         integer :: n_bnd                                                        ! number of boundary points
         real(dp) :: r_src                                                       ! distance to source
         real(dp), allocatable :: phi(:), dphi(:)                                ! potential and norm . grad phi
-        real(dp), allocatable :: lhs(:)                                         ! H phi - G dphi
+        real(dp), allocatable :: lhs(:), rhs(:)                                 ! H phi and G dphi
         real(dp) :: res_off(-2:2)                                               ! residuals vs offsets c = k 2 pi
         real(dp) :: scale_phi                                                   ! norm of 4 pi phi
 
+        res = 0._dp
         call setup_torus_vac(vac,n_par,n_alpha_loc,ierr)
         if (ierr.ne.0) return
         n_bnd = vac%n_bnd
@@ -293,39 +303,45 @@ contains
         ierr = calc_GH(vac)
         if (ierr.ne.0) return
 
-        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd))
+        if (in_context(vac%ctxt_HG)) then
+            allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd))
 
-        do kind = 1,3
-            do id = 1,n_bnd
+            do kind = 1,3
+                do id = 1,n_bnd
+                    select case (kind)
+                        case (1)                                                ! constant (interior harmonic)
+                            phi(id) = 1._dp
+                            dphi(id) = 0._dp
+                        case (2)                                                ! x (interior harmonic)
+                            phi(id) = vac%x_vec(id,1)
+                            dphi(id) = vac%norm(id,1)
+                        case (3)                                                ! 1/|x - x_src| (exterior harmonic, source inside)
+                            r_src = sqrt(sum((vac%x_vec(id,:)-x_src)**2))
+                            phi(id) = 1._dp/r_src
+                            dphi(id) = -sum(vac%norm(id,:)*&
+                                &(vac%x_vec(id,:)-x_src))/r_src**3
+                    end select
+                end do
+                ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                if (ierr.ne.0) return
+                ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
+                if (ierr.ne.0) return
+                lhs = lhs - rhs
+                scale_phi = maxval(abs(4._dp*pi*phi))
+                do id = -2,2
+                    res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/scale_phi
+                end do
+                if (rank.eq.0) write(error_unit,'(A,I6,A,I2,A,5ES10.2)') &
+                    &'   [3d identity] n = ',n_bnd,', potential ',kind,&
+                    &': residuals vs c = (-4,-2,0,2,4)pi: ',res_off
                 select case (kind)
-                    case (1)                                                    ! constant (interior harmonic)
-                        phi(id) = 1._dp
-                        dphi(id) = 0._dp
-                    case (2)                                                    ! x (interior harmonic)
-                        phi(id) = vac%x_vec(id,1)
-                        dphi(id) = vac%norm(id,1)
-                    case (3)                                                    ! 1/|x - x_src| (exterior harmonic, source inside)
-                        r_src = sqrt(sum((vac%x_vec(id,:)-x_src)**2))
-                        phi(id) = 1._dp/r_src
-                        dphi(id) = -sum(vac%norm(id,:)*&
-                            &(vac%x_vec(id,:)-x_src))/r_src**3
+                    case (1,2)                                                  ! interior: c = -4 pi
+                        res(kind) = res_off(-2)
+                    case (3)                                                    ! exterior: c = 0
+                        res(kind) = res_off(0)
                 end select
             end do
-            lhs = matmul(vac%H,phi) - matmul(vac%G,dphi)                        ! single process: local = global
-            scale_phi = maxval(abs(4._dp*pi*phi))
-            do id = -2,2
-                res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/scale_phi
-            end do
-            write(error_unit,'(A,I6,A,I2,A,5ES10.2)') '   [3d identity] n = ',&
-                &n_bnd,', potential ',kind,&
-                &': residuals vs c = (-4,-2,0,2,4)pi: ',res_off
-            select case (kind)
-                case (1,2)                                                      ! interior: c = -4 pi
-                    res(kind) = res_off(-2)
-                case (3)                                                        ! exterior: c = 0
-                    res(kind) = res_off(0)
-            end select
-        end do
+        end if
 
         call vac%dealloc()
     end subroutine greens_residuals_3d
@@ -343,8 +359,9 @@ contains
     !! exp(i n alpha + i (n q - m) theta) = exp(i n zeta - i m theta).
     subroutine test_response_1_vs_2(error)
         use X_vars, only: n_mod_X, modes_type
-        use num_vars, only: use_pol_flux_F, eq_style
+        use num_vars, only: use_pol_flux_F, eq_style, rank
         use vac_ops, only: calc_vac_res
+        use fullstack_utils, only: gather_res
 
         type(error_type), allocatable, intent(out) :: error
 
@@ -381,7 +398,9 @@ contains
         call check(error, ierr, 0, 'style-1 response failed')
         if (allocated(error)) return
         allocate(res1(n_mod,n_mod))
-        res1 = vac1%res
+        ierr = gather_res(vac1,res1)                                            ! response lives on the last process only
+        call check(error, ierr, 0, 'gathering style-1 response failed')
+        if (allocated(error)) return
 
         ! style 2: same boundary, axisymmetric machinery, same q
         ierr = vac2%init(2,n_bnd_2,2,[n_bnd_2,1],q_saf)
@@ -401,9 +420,12 @@ contains
         call check(error, ierr, 0, 'style-2 response failed')
         if (allocated(error)) return
         allocate(res2(n_mod,n_mod))
-        res2 = vac2%res
+        ierr = gather_res(vac2,res2)
+        call check(error, ierr, 0, 'gathering style-2 response failed')
+        if (allocated(error)) return
 
         do id = 1,n_mod
+            if (rank.ne.0) exit
             write(error_unit,'(A,I2,A,ES12.5,A,ES12.5,A,F7.3)') &
                 &'   [response 1 vs 2] m = ',mds%m(1,id),&
                 &': style 1 = ',real(res1(id,id)),&

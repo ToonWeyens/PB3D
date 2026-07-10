@@ -132,21 +132,26 @@ vendored code. Adoption is staged: the CI job is report-only; the ratchet is
 to clean one rule category at a time (start with `OB` obsolescent, 24
 findings, then `C003`), then add it to a blocking `--select` gate.
 
-### 4.5 Multi-rank (MPI) coverage gap
+### 4.5 Multi-rank (MPI) coverage gap — **closed for the fullstack layer**
 
-All CI tests currently run as a single MPI process. `mpirun -n 2` on the
-fullstack suites fails **because the test harnesses assume local = global**
-(plain `matmul` on distributed arrays), not because of known product bugs —
-but it means the block-cyclic distribution paths (BLACS grids ≥ 2 processes,
-`vec_dis2loc`/`mat_dis2loc` gathers, ghost exchanges, multi-process solves)
-are unexercised. This is the highest-value known blind spot.
+Originally, all CI tests ran as a single MPI process: the test harnesses
+assumed local = global (plain `matmul` on distributed arrays), leaving the
+block-cyclic distribution paths unexercised. The harnesses have since been
+made rank-agnostic (`tests/fullstack/fullstack_utils.f90`: distributed
+matrix-vector products through `pdgemv`, global gathers, response broadcast
+from the last process), and the `vac_greens`/`vac_3d` suites now also run
+under `mpirun -n 2` and `-n 4` in every CI leg — covering BLACS grids 1×2
+and 2×2, blocksize-16 block-cyclic G/H, `vec_dis2loc` gathers and
+multi-process STRUMPACK and `pdgesv` solves, with results identical to the
+single-process runs. Remaining gap: the *regression* decks (full PB3D
+executable) are still single-process.
 
 ## 5. Roadmap (ordered)
 
-1. **Rank-agnostic fullstack tests + multi-rank CI rows.** Rewrite the
-   vacuum test harnesses to gather distributed matrices with `mat_dis2loc`
-   before asserting; register each fullstack suite at `-n 1, 2, 4` via
-   `mpirun` in CTest. Closes §4.4's gap. (Moderate effort, high value.)
+1. ~~**Rank-agnostic fullstack tests + multi-rank CI rows.**~~ **Done** (see
+   §4.5): the vacuum test harnesses assert on globally gathered quantities
+   and the distributed suites are registered at `-n 1, 2, 4` via `mpirun`
+   in CTest. Follow-up: a multi-process regression deck.
 2. **Legacy-test conversion**: `test_splines` and `test_calc_int_vol` into
    the fullstack layer (analytic references already in the legacy code).
 3. **Warning burn-down**: fix the ~10 core-module warnings, then chip at the

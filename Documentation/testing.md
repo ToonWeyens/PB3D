@@ -32,12 +32,27 @@ from the regular build directory.
 |---|---|---|---|
 | Unit | `unit` | Fortran compiler only | test-drive suites against `pb3d_core` |
 | Smoke | `smoke` | full executable build | `PB3D`/`POST` usage-message checks |
-| Full-stack | `fullstack` | full executable build | test-drive suites against the complete `pb3d_modules` (currently: the vacuum module) |
+| Full-stack | `fullstack` | full executable build | test-drive suites against the complete `pb3d_modules` (currently: the vacuum module); the distributed suites also run under `mpirun -n 2` and `-n 4` |
 | Physics regression | `regression` | full build + `-DPB3D_FIXTURE_DIR=<dir>` | end-to-end eigenvalue anchors on local equilibrium fixtures |
 
 Select layers with labels: `ctest -L unit`, a single suite with
 `ctest -R unit_dtorh`, or run the test binary directly
 (`./tests/pb3d_unit_tests [suite [test]]`).
+
+The full-stack suites are **rank-agnostic**: they assert on globally
+gathered quantities (`tests/fullstack/fullstack_utils.f90` provides a
+distributed matrix-vector product through `pdgemv` and gathers through
+`vec_dis2loc`/`MPI_Bcast`), so the same assertions run identically on every
+process. The suites with distributed linear algebra (`vac_greens`,
+`vac_3d`) are registered three times: in MPI singleton mode (where the
+whole matrix is one ScaLAPACK block) and as `fullstack_<suite>_np2`/`_np4`
+under `mpirun`, where G and H genuinely live in the 2-D block-cyclic
+distribution (blocksize 16, BLACS grids 1×2 and 2×2). This covers the
+distribution machinery — descriptor setup, `lims_r`/`lims_c` index
+bookkeeping, `dgsum2d` gathers, multi-process STRUMPACK/`pdgesv` solves —
+that single-process runs bypass. Rank 0 reports to stderr; other ranks
+write to `pb3d_fullstack_tests_rank<r>.log`, and the failure count is
+combined over all ranks.
 
 ## What is currently covered
 
@@ -167,9 +182,11 @@ stacks are expected to be unaffected.
   magnitude of `vac%res` as it enters the SLEPc boundary condition
   (`set_BC_4`).
 - Full-stack tests for grid and equilibrium quantities.
-- More regression anchors: a VMEC fixed-boundary case and multi-process runs
-  (blocked on an `mpirun` launcher crash in Homebrew OpenMPI 5's prte on
-  macOS). The free-boundary anchor exists (`cbm18a_free_bnd`); comparing it
+- More regression anchors: a VMEC fixed-boundary case and multi-process
+  *end-to-end* runs (the full-stack suites already run at 2 and 4 processes;
+  the regression decks are still single-process, and macOS additionally has
+  an `mpirun` launcher crash in Homebrew OpenMPI 5's prte). The
+  free-boundary anchor exists (`cbm18a_free_bnd`); comparing it
   against an *external* code (e.g. MISHKA with vacuum) or against the
   fixed-boundary run on a differently-extended domain would further harden
   it.
