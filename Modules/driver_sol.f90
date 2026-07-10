@@ -284,13 +284,12 @@ contains
     integer function interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o) result(ierr)
         use X_utilities, only: is_necessary_X, trim_modes
         use X_vars, only: n_mod_X
-        use num_vars, only: rank
-        use eq_vars, only: max_flux_F
         use num_utilities, only: c
         use sol_utilities, only: interp_V_spline
-!#if ldebug
-        !use num_vars, only: ex_plot_style
-!#endif
+#if ldebug
+        use num_vars, only: rank
+        use eq_vars, only: max_flux_F
+#endif
         
         character(*), parameter :: rout_name = 'interp_V'
         

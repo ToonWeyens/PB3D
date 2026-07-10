@@ -975,8 +975,6 @@ contains
     end function calc_mult_3D_complex
     !> \private real constant version
     integer function calc_mult_0D_real(A,B,AB,n,transp) result(ierr)
-        character(*), parameter :: rout_name = 'calc_mult_0D_real'
-        
         ! input / output
         real(dp), intent(in) :: A(:)                                            !< input A
         real(dp), intent(in) :: B(:)                                            !< input B

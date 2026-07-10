@@ -186,7 +186,11 @@ endif() # PB3D_BUILD_EXECUTABLES
 add_library(dfftpack STATIC
     ${CMAKE_SOURCE_DIR}/Libraries/dfft.f
 )
-target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch)
+# -w: vendored code is not ours to lint (same policy as foul below and
+# fortitude.toml); without it, dfft.f alone contributes ~157 warnings under
+# -Wall -Wextra that the CI warning counter cannot reliably attribute,
+# because gfortran prints the file location on a separate line
+target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch -w)
 
 # libfoul - from Libraries/foul.f90
 add_library(foul STATIC

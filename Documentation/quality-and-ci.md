@@ -117,12 +117,21 @@ Notes:
 
 ### 4.3 Compiler warnings
 
-With `-Wall -Wextra` the full build emits **321** genuine warnings (the
-baseline in `.github/warnings-baseline.txt`; cpp quote-noise from
-apostrophes in comments and vendored `Libraries/` excluded). The dominant
-categories are unused imported symbols, real-equality comparisons and unused
-dummy arguments. The `fullstack` CI job fails if the count *rises* and asks
-for the baseline to be lowered when it falls — a pure ratchet.
+With `-Wall -Wextra` the full build originally emitted 321 counted warnings.
+The 2026-07 burn-down found that 157 of those actually came from the
+vendored `Libraries/dfft.f` (gfortran prints the file location on a
+separate line, so the counter's `Libraries/` filter never matched); the
+vendored targets now compile with `-w`, consistent with the fortitude
+policy. Of the genuinely-ours remainder, all unused variables/parameters/
+imports (most of them symbols used only inside `#if ldebug` blocks, now
+declared there), the impure-function-elimination hazard in
+`MPI_utilities::lock_return_acc`, a truncated error message and a real
+equality in the tests were fixed. The baseline
+(`.github/warnings-baseline.txt`) is now **124**: 113 `-Wmaybe-uninitialized`
+(mostly gfortran -O3 false positives; a case-by-case review is future work)
+and 11 `-Wunused-dummy-argument` (interface-constrained). The `fullstack`
+CI job fails if the count *rises* and asks for the baseline to be lowered
+when it falls — a pure ratchet.
 
 ### 4.4 Static analysis (fortitude 0.9)
 
@@ -158,9 +167,11 @@ executable) are still single-process.
 2. ~~**Legacy-test conversion**~~ **Done**: `test_splines` and
    `test_calc_int_vol` are fullstack suites (`splines`, `calc_int_vol`);
    `test_calc_D2_smooth` remains (ldebug-only symbol).
-3. **Warning burn-down**: fix the ~10 core-module warnings, then chip at the
-   321 baseline per module; when a module reaches zero, consider
-   `-Werror`-listing it.
+3. ~~**Warning burn-down**~~ **Done to 124** (see §4.3): vendored code
+   silenced with `-w`, all unused-symbol categories fixed. Remaining:
+   review the 113 `-Wmaybe-uninitialized` case by case and the 11
+   interface-constrained unused dummies; when a module reaches zero,
+   consider `-Werror`-listing it.
 4. **Fortitude ratchet**: clean `OB` (24), gate it; then `C003` (45), gate;
    style categories via `fortitude check --fix` in one mechanical commit
    each (S101 trailing whitespace is auto-fixable).

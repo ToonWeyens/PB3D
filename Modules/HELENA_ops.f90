@@ -81,8 +81,10 @@ contains
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero, &
-            &invert_top_bottom_H
+        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero
+#if ldebug
+        use num_vars, only: invert_top_bottom_H
+#endif
         use num_utilities, only: calc_int
         use spline_utilities, only: spline
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &

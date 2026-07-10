@@ -814,11 +814,13 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
+#if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+#endif
+
         ! initialize ierr
         ierr = 0
-        
+
 #if ldebug
         ! test sizes
         if (size(r_i).ne.size(V_i,3)) then

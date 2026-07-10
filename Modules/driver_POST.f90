@@ -1190,8 +1190,8 @@ contains
         use spline_utilities, only: spline
         use grid_utilities, only: extend_grid_F
         use PB3D_ops, only: reconstruct_PB3D_grid
-        use num_vars, only: rank, n_procs
 #if ldebug
+        use num_vars, only: rank, n_procs
         use grid_utilities, only: nufft
 #endif
         
@@ -1209,10 +1209,12 @@ contains
         integer :: id, jd, ld                                                   ! counters
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         real(dp) :: lim_theta(2)                                                ! theta limits
+#if ldebug
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
         real(dp), allocatable :: xy(:,:,:)                                      ! x and y
         real(dp), allocatable :: f(:,:,:)                                       ! Fourier components
         real(dp), allocatable :: f_loc(:,:)                                     ! local f
+#endif
         real(dp), allocatable :: XYZ_X(:,:,:,:)                                 ! X, Y and Z on output perturbation grid
         
         ! initialize ierr

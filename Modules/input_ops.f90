@@ -892,9 +892,9 @@ contains
             if (alpha_style.eq.1 .and. eq_style.eq.1 .and. &
                 &BC_style(2).ne.1) then
                 ierr = 1
-                err_msg = 'Free-boundary runs with a 3-D equilibrium need &
-                    &alpha_style 2 (multiple field lines): the vacuum &
-                    &boundary element method requires n_alpha > 1'
+                err_msg = 'Free-boundary 3-D runs need alpha_style 2 &
+                    &(multiple field lines): the vacuum BEM requires &
+                    &n_alpha > 1'
                 CHCKERR(err_msg)
             end if
 
