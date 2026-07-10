@@ -9,7 +9,9 @@ is needed).
 
 The unit tests build against a dependency-light subset of the code
 (`pb3d_core`: `num_vars`, `str_utilities`, `messages`, `files_utilities`,
-`dtorh`), so they compile with nothing but a Fortran compiler and CMake:
+`dtorh`, and - when LAPACK is available - `num_utilities` and `num_ops`,
+whose PSPLINE dependency was split off into `spline_utilities`), so they
+compile with nothing but a Fortran compiler, CMake and optionally LAPACK:
 
 ```bash
 cmake -S . -B build-tests -DPB3D_BUILD_EXECUTABLES=OFF
@@ -48,6 +50,12 @@ Select layers with labels: `ctest -L unit`, a single suite with
   - rejection of invalid arguments (\(z \le 1\)).
 - **`str_utilities`** — all public conversion/case/merge routines, pinning
   the exact output formats other modules rely upon.
+- **`num_utilities`** — trapezoidal integration vs analytic, finite-
+  difference weights vs the classical values, the Björck-Pereyra Vandermonde
+  solver, symmetric-storage indexing, sorting, LAPACK determinant/inverse,
+  polynomial extrapolation, GCD/LCM/factorial.
+- **`num_ops`** — the Householder (orders 1-3) and Zhang zero finders on
+  functions with known roots.
 - **`vac_kernels` (full-stack)** — the vacuum Green's function interval
   kernels (`vac_utilities::calc_GH_int_1/2`) against
   implementation-independent references: direct toroidal-harmonic
@@ -106,9 +114,11 @@ command should be reproducible from the comment.
 ## Physics regression layer
 
 Regression tests run the real `PB3D` executable on equilibrium fixtures and
-compare eigenvalues against recorded anchors. The fixtures are large binary
-files kept *outside* the repository; pass `-DPB3D_FIXTURE_DIR=<dir>` at
-configure time to enable the layer (tests are skipped silently otherwise).
+compare eigenvalues against recorded anchors. The fixtures are committed
+xz-compressed under `tests/fixtures/` (cbm18a: 26 MB → 5.2 MB) and
+decompressed into the build tree at configure time, so the layer runs from
+a fresh clone and in CI. Passing `-DPB3D_FIXTURE_DIR=<dir>` overrides this
+with a local fixture directory.
 
 Current anchors (see `tests/regression/`):
 
