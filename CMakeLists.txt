@@ -190,7 +190,10 @@ add_library(dfftpack STATIC
 # fortitude.toml); without it, dfft.f alone contributes ~157 warnings under
 # -Wall -Wextra that the CI warning counter cannot reliably attribute,
 # because gfortran prints the file location on a separate line
-target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch -w)
+# -fcheck=no-bounds: dfft.f declares its work arrays with the F77 idiom
+# DIMENSION WSAVE(1), so the Debug flag -fcheck=all stops every FFT call with
+# a false bounds error (seen in the free-boundary regression deck, issue #4)
+target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch -w -fcheck=no-bounds)
 
 # libfoul - from Libraries/foul.f90
 add_library(foul STATIC

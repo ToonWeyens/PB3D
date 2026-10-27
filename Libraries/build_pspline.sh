@@ -17,6 +17,17 @@ BUILD="$ROOT/build_macos"
 INSTALL="$ROOT/install"
 FC=gfortran
 FFLAGS="-O2 -fPIC -fallow-argument-mismatch -fallow-invalid-boz -std=legacy"
+# the one-line guard against the r8genxpkg heap overrun for nx = 3 (see the
+# patch header); kept next to this script, which CI copies along with it
+PATCH="$ROOT/pspline-r8genxpkg-nx3.patch"
+
+echo "=== 0. patch r8genxpkg (nx = 3 overrun) ==="
+[ -f "$PATCH" ] || { echo "patch file $PATCH not found"; exit 1; }
+if patch -p1 -N -s --dry-run -d "$ROOT" < "$PATCH" > /dev/null 2>&1; then
+    patch -p1 -N -d "$ROOT" < "$PATCH"
+else
+    echo "  already applied"
+fi
 
 rm -rf "$BUILD"
 mkdir -p "$BUILD" "$INSTALL/lib" "$INSTALL/include"

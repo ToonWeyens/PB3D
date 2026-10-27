@@ -127,12 +127,17 @@ policy. Of the genuinely-ours remainder, all unused variables/parameters/
 imports (most of them symbols used only inside `#if ldebug` blocks, now
 declared there), the impure-function-elimination hazard in
 `MPI_utilities::lock_return_acc`, a truncated error message and a real
-equality in the tests were fixed. The baseline
-(`.github/warnings-baseline.txt`) is now **124**: 113 `-Wmaybe-uninitialized`
-(mostly gfortran -O3 false positives; a case-by-case review is future work)
-and 11 `-Wunused-dummy-argument` (interface-constrained). The `fullstack`
-CI job fails if the count *rises* and asks for the baseline to be lowered
-when it falls — a pure ratchet.
+equality in the tests were fixed. Since issue #4 (step 1, October 2026) the
+counter counts unique source locations (`file:line:column`) in `Modules/`,
+`PB3D.f90` and `POST.f90`, taken from the location header gfortran prints
+before each diagnostic: a location warned about several times, or compiled
+into both `pb3d_core` and `pb3d_modules`, counts once, and `tests/` and
+`Libraries/` do not count. The baseline (`.github/warnings-baseline.txt`)
+is **74**: 63 `-Wmaybe-uninitialized` (mostly gfortran -O3 false positives;
+a case-by-case review is future work) and 11 `-Wunused-dummy-argument`
+(interface-constrained). The `fullstack` CI job fails if the count *rises*
+and asks for the baseline to be lowered when it falls — a pure ratchet; the
+test step runs regardless, so a ratchet failure never hides a test result.
 
 ### 4.4 Static analysis (fortitude 0.9)
 

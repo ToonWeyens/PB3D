@@ -101,14 +101,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
           git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh ~/Code/pspline/
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
           ~/Code/pspline/build_pspline.sh
 
       - name: Cache minimal LIBSTELL
@@ -138,17 +138,26 @@ jobs:
       - name: Build
         run: cmake --build build -j 2>&1 | tee build.log
 
+      # unique source locations (file:line:column) of warnings in Modules/,
+      # PB3D.f90 and POST.f90: gfortran prints the location header a few lines
+      # before (or on) the "Warning:" line, so the header seen last is the
+      # warning's location. A location warned about several times, or compiled
+      # into both pb3d_core and pb3d_modules, counts once; tests/ and
+      # Libraries/ do not count; the "missing terminating" diagnostics of
+      # apostrophes in comments are excluded as before.
       - name: Check warning baseline
         run: |
-          n=$(grep "Warning:" build.log | grep -v "missing terminating" \
-              | grep -vc "Libraries/" || true)
+          awk '/^[^ ].*\.(f90|F90|f):[0-9]+:[0-9]+:/ {loc=$1; sub(/:$/,"",loc)}
+               /Warning:/ && !/missing terminating/ {
+                 if (loc ~ /(Modules\/|PB3D\.f90|POST\.f90)/) print loc }' build.log \
+            | sort -u > warnings.txt
+          n=$(wc -l < warnings.txt)
           baseline=$(cat .github/warnings-baseline.txt)
           echo "### Compiler warnings: $n (baseline: $baseline)" >> $GITHUB_STEP_SUMMARY
           if [ "$n" -gt "$baseline" ]; then
             echo "FAIL: warning count $n exceeds baseline $baseline."
-            echo "New warnings:"
-            grep "Warning:" build.log | grep -v "missing terminating" \
-              | grep -v "Libraries/" | tail -30
+            echo "Warning locations:"
+            cat warnings.txt
             exit 1
           fi
           if [ "$n" -lt "$baseline" ]; then
@@ -156,6 +165,7 @@ jobs:
           fi
 
       - name: Test
+        if: always()
         run: ctest --test-dir build --output-on-failure
 
   # ---------------------------------------------------------------------------
@@ -186,14 +196,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
           git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh ~/Code/pspline/
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
           ~/Code/pspline/build_pspline.sh
 
       - name: Cache minimal LIBSTELL
@@ -248,21 +258,21 @@ jobs:
             libpetsc-complex3.19-dev libslepc-complex3.19-dev \
             libhdf5-openmpi-dev libnetcdff-dev \
             liblapack-dev libblas-dev libscalapack-openmpi-dev
-          pip install gcovr
+          pip install gcovr==8.8
 
       - name: Cache PSPLINE
         id: cache-pspline
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
           git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh ~/Code/pspline/
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
           ~/Code/pspline/build_pspline.sh
 
       - name: Cache minimal LIBSTELL
@@ -299,11 +309,13 @@ jobs:
       - name: Coverage report
         run: |
           gcovr -r . build --filter 'Modules/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn \
             --print-summary \
             --html-details coverage.html \
             --xml coverage.xml
           echo "### Coverage (Modules/)" >> $GITHUB_STEP_SUMMARY
-          gcovr -r . build --filter 'Modules/' 2>/dev/null \
+          gcovr -r . build --filter 'Modules/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn 2>/dev/null \
             | tail -n +3 | head -60 >> $GITHUB_STEP_SUMMARY || true
 
       - name: Upload coverage artifact
@@ -325,7 +337,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install fortitude
-        run: pip install fortitude-lint
+        run: pip install fortitude-lint==0.9.2
 
       # the ratchet: rule categories that have been cleaned completely are
       # gated here and may not regress (see Documentation/quality-and-ci.md

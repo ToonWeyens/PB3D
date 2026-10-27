@@ -44,24 +44,18 @@ cp "$INPUT" "$WORKDIR/input_deck"
 cd "$WORKDIR"
 
 # run one deck and extract the eigenvalue into EV
-# note: singleton MPI (no mpirun); retries for the known macOS MPI-I/O
-# flakiness, see cbm18a_fixed_bnd.sh
+# note: singleton MPI (no mpirun); one launch, no retries: a crash is a
+# failure (see cbm18a_fixed_bnd.sh)
 run_deck() {
     local deck=$1
-    local attempts=6
-    local ok=0
-    for attempt in $(seq 1 $attempts); do
-        rm -f PB3D_out*
-        "$PB3D_EXE" "$deck" "$EQ_FILE" > run.log 2>&1
-        if [ -f PB3D_out_EV_R_1.txt ]; then
-            ok=1
-            [ "$attempt" -gt 1 ] && echo "NOTE: needed $attempt attempts (known macOS MPI flakiness)"
-            break
-        fi
-        sleep 1
-    done
-    if [ "$ok" -ne 1 ]; then
-        echo "FAIL: no eigenvalue output file produced in $attempts attempts; log tail:"
+    rm -f PB3D_out*
+    if ! "$PB3D_EXE" "$deck" "$EQ_FILE" > run.log 2>&1; then
+        echo "FAIL: PB3D exited with status $?; log tail:"
+        tail -20 run.log
+        exit 1
+    fi
+    if [ ! -f PB3D_out_EV_R_1.txt ]; then
+        echo "FAIL: no eigenvalue output file produced; log tail:"
         tail -20 run.log
         exit 1
     fi

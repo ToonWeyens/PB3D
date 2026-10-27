@@ -191,14 +191,14 @@ Current anchors (see `tests/regression/`):
   mutually to 1e-5 (measured: 3.5e-8; style 2 additionally has a ~180×
   smaller spurious imaginary part and SLEPc residual).
 
-**Known flakiness (macOS)**: with Homebrew OpenMPI 5 and parallel HDF5 1.14,
-singleton-MPI PB3D runs intermittently die in the I/O layer (SIGTRAP or a
-failed `H5Fcreate`, roughly every other launch); successful runs reproduce
-eigenvalues to all digits, and the issue is insensitive to OMPI io/btl/osc
-component overrides, malloc debugging, and disappears under a debugger. The
-regression runner retries up to 6 times as mitigation. Root-causing (e.g.
-comparing against an MPICH-based stack) is open follow-up work; Linux/HPC
-stacks are expected to be unaffected.
+**The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
+failed `H5Fcreate` on about every other launch) were a heap overrun in
+PSPLINE: `r8genxpkg.f` writes `xpkg(4,4)` for three unevenly spaced points,
+8 bytes past the array, which glibc hides in malloc padding and the macOS
+allocator traps at a later allocation. `Libraries/build_pspline.sh` now
+applies the one-line guard `Libraries/pspline-r8genxpkg-nx3.patch`; the
+regression runners launch PB3D once and treat any crash as a failure
+(issue #4, step 1).
 
 ## Relation to the older test mechanisms
 
@@ -224,4 +224,4 @@ stacks are expected to be unaffected.
   against an *external* code (e.g. MISHKA with vacuum) or against the
   fixed-boundary run on a differently-extended domain would further harden
   it.
-- Root-cause the macOS singleton-MPI I/O flakiness (see above).
+- Report the PSPLINE `r8genxpkg` overrun upstream (github.com/ilonster/pspline).

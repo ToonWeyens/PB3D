@@ -149,6 +149,17 @@ MISHKA input for these: the archived `TEST_VAC/OLD/2.25/MISHKA/10/fort.10` with 
 - **CI.** Count unique `file:line` warnings and exclude `tests/`; run the test step with `if: always()`; add `--gcov-ignore-parse-errors=suspicious_hits.warn`; pin gcovr and fortitude.
 - **Gate.** 20 consecutive clean runs of both regression decks on the Mac in Release and Debug; eigenvalues bit-identical to R1; all CI jobs green including `_np2` and `_np4`.
 
+**Step 1 results (27 October 2026).** This step's commit. No physics line changed.
+
+- *PSPLINE.* `Libraries/pspline-r8genxpkg-nx3.patch` (the two-line guard, with the explanation in its header) is applied by `Libraries/build_pspline.sh` after the clone; CI copies the patch along with the script and keys its PSPLINE cache on both files. The Mac's `~/Code/pspline/install` was rebuilt the same way. Text for the upstream report is in the step 1 comment on issue 4; posting it on github.com/ilonster/pspline is Toon's call.
+- *Regression scripts.* One launch, a crash is a failure; the stale "fixture not committed" header and the flakiness paragraph of `Documentation/testing.md` replaced by the cause.
+- *Vendored FFT in Debug.* The free-boundary deck had never run on a Debug build: `Libraries/dfft.f` declares its work arrays with the F77 idiom `DIMENSION WSAVE(1)`, so `-fcheck=all` stops the first FFT call in `store_vac` with a false bounds error (20 of 20 launches). The `dfftpack` target now compiles with `-fcheck=no-bounds` next to its existing `-w` (one option in `CMakeLists.txt`). This was not in the report because its Debug runs were fixed-boundary only.
+- *CI.* Warning ratchet counts unique source locations in `Modules/`, `PB3D.f90`, `POST.f90` from gfortran's location headers (the old counter counted every repeated diagnostic and the duplicates of sources compiled into two targets, and could not see `tests/`); baseline 74 (63 maybe-uninitialized, 11 unused dummy arguments) measured on the Linux build of 2058627. Test step runs with `if: always()`. gcovr pinned to 8.8 with `--gcov-ignore-parse-errors=suspicious_hits.warn`; fortitude pinned to 0.9.2 (0.10.0, picked up unpinned on 27 October, adds rule OB091 and fails the OB gate on two labelled `DO` loops in `dtorh.f90`; the code is not changed for a linter).
+- *Gate.* Release: 20 of 20 clean launches of each deck, fixed eigenvalue identical to R1 (−4.0735999821004454e−2), free style 4 identical (−4.2348776924299336e−2), free style 2 spread 5e−12 relative (SLEPc). Debug: fixed 20 of 20, −4.0735999821102098e−2 (2e−12 from Release); free 20 of 20, style 4 −4.2348776924365450e−2, style 2 spread 1e−11. CI: the run on this commit is the first one with the new ratchet and the pins; its result is appended below once it has run.
+- *Learning for the plan.* The PSPLINE overrun was the whole "MPI flake"; nothing is wrong with OpenMPI 5 or parallel HDF5 on macOS. Debug builds of the vacuum path need the dfftpack exemption, so step 3's Debug sweeps (O5) are possible now. Free-boundary eigenvalues move at 1e−12 between launches, so "bit-identical" gates apply to fixed-boundary runs only.
+
+---
+
 ### Step 2: the HELENA shear
 
 - **Change.** One line. `Θ^α` is odd in θ, so the spline on a top-bottom symmetric equilibrium needs the odd condition (zero second derivative), `bcs(:,2)`. The comment on line 4354 says "zero first derivative" for `[2,2]`; it should say second.
