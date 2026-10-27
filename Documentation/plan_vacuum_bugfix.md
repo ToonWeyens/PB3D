@@ -40,12 +40,95 @@ Gate: R1 reproduces the report's numbers (−4.0736e−2 fixed at 0.75, −4.346
 
 Risk: MISHKA's recipe links `-fdefault-integer-8` against LAPACK. On macOS that needs an ILP64 LAPACK, or dropping the flag if `ppplib` tolerates it. If MISHKA cannot be built in a day, steps 3 and 4 fall back on R4 plus the bounds, and MISHKA moves to CI (Linux) later.
 
+### 2.1 Step 0 results (27 October 2026)
+
+All runs on the macOS machine (gfortran 16.1, PETSc 3.25.3 complex, SLEPc 3.25.1, singleton MPI), code 17b712c unchanged, Release build unless stated. ω² is ω²/ω_A² in the MISHKA normalisation, as PB3D prints it. The Snellius build (Toon: "this should be on Snellius") is reported separately when it is done.
+
+**R1 baseline table.** Regression deck cbm18a, n = 10, 20 modes, 200 radial and 100 parallel points (Simpson 3/8), `tol_SLEPC` 1e−6.
+
+| Run | ω² | Report |
+|---|---|---|
+| fixed, ψ 0.45 to 0.75 | −4.0735999821e−2 | −4.0736e−2 |
+| free style 2, to 0.75 | −4.3467138270e−2 | −4.3467e−2 |
+| free style 4, to 0.75 | −4.5574082987e−2 | −4.5574e−2 |
+| fixed, 0.45 to 1.0 | −4.2348778332e−2 | anchor −4.2349e−2 |
+| free style 2, to 1.0 | −4.2348778421e−2 | |
+| free style 4, to 1.0 | −4.2348776924e−2 | |
+| vacuum × 0 at 0.75 (diagnostic patch) | −4.3142687497e−2 | −4.3143e−2 |
+| vacuum × (−2π) at 0.75 | −4.2150080544e−2 | −4.2150e−2 |
+
+Edge diagnostics from the patched scratch build: |X_edge|/max|X| = 0.100 (× 1), 0.094 (× 0), 0.068 (× −2π); X_e† res X_e = −2.6476e−2 (× 1), +3.9853e−2 (× −2π); max|res − res†|/max|res| = 2.65e−5. The three ψ = 1.0 runs agree to 4e−8, so that deck cannot see the vacuum (report section 9). Gate R1 passed: every number of the report reproduces to five digits.
+
+Crashes: 9 of 15 launches of the regression decks on the unpatched build died (SIGTRAP or segfault) before the eigenvalue was written; the 800-point radial deck died 8 of 8 times. A scratch build of the same source linked against PSPLINE with the `r8genxpkg` guard applied ran 23 of 23 launches clean, with eigenvalues identical for the fixed deck and within 4e−13 relative for the free decks (SLEPc noise). That is the step 1 fix, confirmed in advance; step 1's gate tolerance should read 1e−10 relative, not bit-identical, for free-boundary runs.
+
+Unit-level numbers (`pb3d_fullstack_tests`): cylinder response `res` against the analytic value, m = 1 to 5: 1.0, 1.3, 1.6, 1.8, 1.9 % (report 1.0 to 1.9 %); Green-identity residuals halve from 51 to 101 boundary points (6.7e−2 → 3.5e−2, 3.5e−2 → 1.8e−2, 2.5e−2 → 1.3e−2: order 1); style 1 over style 2 response ratios m = 1 to 5: 1.002, 0.981, 0.957, 0.931, 0.906 (report 1.00 → 0.91). STRUMPACK's HSS solve fell back to ScaLAPACK on the 3-D test (residual 0.15).
+
+**O4 and L12, convergence orders** (fixed boundary, ψ 0.45 to 0.75, unpatched shear).
+
+| Direction | Values | Order |
+|---|---|---|
+| parallel points 97, 100, 193, 385 (Simpson 3/8) | −4.0824e−2, −4.0736e−2, −4.2082e−2, −4.2800e−2 | differences 1.26e−3 then 7.2e−4: about 0.8 (the end-interval error of the shear bug, report section 6) |
+| parallel 97 with `magn_int_style = 1` | −4.0118424e−2 | equals the report's table: that table used the trapezoid rule, the regression deck uses Simpson 3/8 |
+| radial points 100, 200, 400, 800, 1600 (left stencil, patched build) | −4.14807e−2, −4.07360e−2, −4.08179e−2, −4.08868e−2, −4.09221e−2 | differences 7.4e−4, −8.2e−5, −6.9e−5, −3.5e−5: not monotonic, at best order 1 |
+| radial 800, centred stencil | −4.20465e−2 | 2.8 % from the left stencil (report 2.7 %) |
+| HELENA `NRMAP` 201, 401, 801 at 200 radial points | −4.07128e−2, −4.07142e−2, −4.07360e−2 | 0.06 %: the equilibrium grid is not what limits the radial order |
+
+So the slow radial convergence lives in the solution discretisation or in the equilibrium-to-solution interpolation, not in HELENA's grid. Still out of scope (section 8), but every comparison below carries about 1 % of radial uncertainty on PB3D's side.
+
+**R2, the circular external-kink cases.** HELENA `hel12a` (PB3D-patched) on the PhD input `TEST_VAC/2.25/HELENA/fort.10`: ε = 0.33, flat Γ, B = 0.001, XIAB = 2.25, q₀ = 1.0411, q_a = 1.0382. The large-aspect-ratio variant: ε = 0.05, XIAB = 0.3035. A perfectly flat q (q₀ = q_a = 1.0378) is rejected by PB3D ("The code has to be adapted for reversed-shear regions still", `calc_eq_1`, error 3), so the committed variant has Γ = 1 − 0.02ψ (AGA = −0.02): q₀ = 1.0274, q_a = 1.0378. Both equilibria are committed as `tests/fixtures/circ_eps033_q104.12.xz` and `circ_eps005_q104.12.xz` with their HELENA inputs. PB3D on them, 17b712c, deck ψ 0.2 to 1.0, 200 radial, 100 parallel points, 10 modes, `BC_style 1 1` (fixed) and `1 2` (free):
+
+| Case | n | modes | fixed | free (style 2) |
+|---|---|---|---|---|
+| ε = 0.33 | 10 | 6 to 15 | +7.8446e−2 | +7.8190e−2 |
+| | 15 | 11 to 20 | +8.6149e−2 | −1.7221e−1 |
+| | 20 | 16 to 25 | +1.2056e−2 | −3.4585e−1 |
+| ε = 0.05 | 10 | | +7.7650e−2 | +7.7650e−2 |
+| | 15 | | +1.6146e−1 | −6.4661e−1 |
+| | 20 | | +4.8685e−2 | −4.0010e−1 |
+
+Fixed boundary is stable in every case, as it must be (no resonance inside). The free-boundary numbers are what the unfixed code gives; at n = 10 the vacuum changes nothing although |X_edge|/max|X| is 0.81 to 0.86 in the free runs. These are step 3's starting values. The VMEC twins were not made: there is no VMEC binary on this machine (VMEC++ exists in `~/Code/desc-vs-vmec`); they are first needed in step 5 and are made there.
+
+**R3, MISHKA.** The source that reads the 2017 HELENA format (`JS0, IAS` on the first line, `RAXIS, B0` after the metric) is `Simulations/MISHKA/Sources` (November 2017, MANZ = 21), not `Documents/PHD/MISHKA_simulations/Sources` (2015, old format, fails with "Bad integer for item 409"). Built with `gfortran -std=legacy -w -O2 -fdefault-integer-8 -fdefault-real-8` and linked against an ILP64 OpenBLAS (`spack install openblas+ilp64 symbol_suffix=none`); with 4-byte integers it segfaults at once. It reads the namelist from stdin and the mapping from `fort.12`, writes `fort.20`; the line `INSTABILITY FOUND : n ... q₀ q_a Re Im` gives Re = γ² = −ω²/ω_A². Validation: the archived PhD run (ε = 0.33, n = 10, `RWALL` = 3) reproduces to all printed digits, 0.433847, with the archived `fort.12`, and gives 0.433764 with the regenerated one. `RWALL` = 1 (fixed boundary) does not converge in the inverse vector iteration (99 iterations), so MISHKA is used for the free-boundary values only.
+
+| Case | n | RWALL 1.05 | 1.1 | 1.2 | 1.5 | 2 | 3 | 10 |
+|---|---|---|---|---|---|---|---|---|
+| ε = 0.05, flat q | 10 | 0.06443 | 0.33592 | 0.42327 | 0.43652 | 0.43662 | 0.43662 | 0.43663 |
+| | 15 | 0.36337 | 0.43842 | 0.45472 | 0.45576 | 0.45576 | 0.45576 | 0.45577 |
+| | 20 | 0.32596 | 0.34023 | 0.34223 | 0.34229 | 0.34229 | 0.34229 | 0.34229 |
+| ε = 0.05, Γ = 1 − 0.02ψ | 10 | 0.05473 | 0.32609 | 0.41342 | 0.42667 | | | 0.42679 |
+| | 15 | 0.35606 | 0.43109 | 0.44739 | 0.44843 | | | 0.44844 |
+| | 20 | 0.32160 | 0.33586 | 0.33786 | 0.33792 | | | 0.33792 |
+| ε = 0.33 | 10 | 0.10405 | 0.33363 | 0.41715 | 0.43343 | 0.43376 | 0.43376 | 0.43378 |
+| | 15 | 0.35788 | 0.42539 | 0.44123 | 0.44281 | 0.44282 | 0.44282 | 0.44283 |
+| | 20 | 0.30787 | 0.32065 | 0.32253 | 0.32262 | 0.32262 | 0.32262 | 0.32262 |
+
+Values are −ω²/ω_A² (positive = unstable). Converged in `RWALL` from 1.5 on: a wall at 1.5a or further is no wall for m ≥ 11.
+
+**R4, the cylinder.** Derived with sympy (`tests/reference/cyl_kink.py`): reduced-MHD energy with the exterior Laplace solution written out. Uniform current, zero pressure, uniform density, no wall:
+
+ω²/ω_A² = −(2/q_a²)(m − nq_a)(nq_a − m + 1), unstable for m − 1 < nq_a < m;
+
+with a conformal wall at b: −(m − nq_a)[(1 + λ)(nq_a − m) + 2]/q_a², λ = (1 + (a/b)^{2m})/(1 − (a/b)^{2m}), which closes the window to m − 2/(1 + λ) < nq_a < m. Against MISHKA on the flat ε = 0.05 case without a wall: 0.43660 vs 0.43663 (n = 10), 0.45590 vs 0.45577 (15), 0.34254 vs 0.34229 (20), i.e. 1e−4 to 7e−4. The wall factor (T2): MISHKA over formula between 0.9992 and 1.0011 for every `RWALL` ≥ 1.05 and every n. On ε = 0.33 the ratio is 0.990, 0.9755, 0.965 for n = 10, 15, 20, independent of the wall: the toroidal correction alone. On the Γ = 1 − 0.02ψ variant the ratio is 0.977, 0.984, 0.987, also wall-independent: the current peaking alone. Gates R3 and R4 passed.
+
+**R5.** The PhD MISHKA numbers (0.434, 0.429, 0.323 at n = 10, 16, 20, `RWALL` = 3) are reproduced by the rebuilt code and are within 1 to 4 % of the cylinder formula, so in 2017 MISHKA was right and PB3D's −0.298, −0.430, −0.330 were wrong.
+
+**Reference values for step 3** (free boundary, no wall, −ω²/ω_A²; PB3D must reach them within its own discretisation error, about 1 %, with the fixed boundary staying positive):
+
+| Case | n = 10 | n = 15 | n = 20 |
+|---|---|---|---|
+| ε = 0.33 (`circ_eps033_q104`) | 0.43378 | 0.44283 | 0.32262 |
+| ε = 0.05, Γ = 1 − 0.02ψ (`circ_eps005_q104`) | 0.42679 | 0.44844 | 0.33792 |
+
+MISHKA input for these: the archived `TEST_VAC/OLD/2.25/MISHKA/10/fort.10` with `NTOR` and `RWALL` changed (`IFAST = 1` shifts the m window with nq by itself; `DSURF = 1` is a flat density). Table kept as `tests/reference/mishka_circular.txt`.
+
+**Still open from step 0:** the same table on CI (CI is red for other reasons; step 1), the Snellius build and its 1, 2, 4-process runs (in progress), the VMEC twins (step 5).
+
 ## 3. Steps 1 to 8
 
 | Step | Bug (report #) | Change | Physics lines | Gate |
 |---|---|---|---|---|
 | 1 | Crashes on macOS (1); CI red (12) | PSPLINE guard applied by `Libraries/build_pspline.sh`; retries removed from the regression scripts; CI warning count de-duplicated, `if: always()` on the test step, gcovr flag | 0 | 20 of 20 clean runs of each regression deck; eigenvalues bit-identical to R1; CI green |
-| 2 | HELENA shear (2) | `bcs(:,1)` to `bcs(:,2)` at `eq_ops.f90:4409`, comment at 4354 corrected | 1 | predicted −4.0118e−2 to −4.3568e−2 at 97 parallel points; Δθ-independence; identity test; VMEC twin; POST energy 0.07 % |
+| 2 | HELENA shear (2) | `bcs(:,1)` to `bcs(:,2)` at `eq_ops.f90:4409`, comment at 4354 corrected | 1 | predicted −4.0118e−2 to −4.3568e−2 at 97 parallel points with `magn_int_style = 1` (the report's deck); the regression deck (`magn_int_style = 2`) gives −4.0824e−2 at 97 points and must reach the same converged value; Δθ-independence; identity test; VMEC twin; POST energy 0.07 % |
 | 3a | Vacuum sign (3) | none yet: the test | 0 | ordering test fails on current code: free (−4.3467e−2) lies outside [no-vacuum −4.3143e−2, fixed −4.0736e−2] |
 | 3b | Vacuum sign and factor (3) | the energy factor applied once, at the end of `calc_vac_res`, with the derivation in the comment; `res` symmetrised; POST's `if (1.eq.2` guard removed | 3 | ordering holds; circular case: fixed stable, free unstable, marginal point at the right nq_a; growth rates against R3 difference and R4; POST reproduces ω² |
 | 4 | Style 4 drops the vacuum (4); default (4) | (0,0) block assembled once before insertion; default back to `[1,2]` | about 6 | style 2 = style 4 at ψ = 0.75 to 1e-5; regression deck moved to 0.75; anchors re-set with 1e-3 |
@@ -70,7 +153,7 @@ Risk: MISHKA's recipe links `-fdefault-integer-8` against LAPACK. On macOS that 
 
 - **Change.** One line. `Θ^α` is odd in θ, so the spline on a top-bottom symmetric equilibrium needs the odd condition (zero second derivative), `bcs(:,2)`. The comment on line 4354 says "zero first derivative" for `[2,2]`; it should say second.
 - **Test first.** A parity test on cbm18a: S at the outboard midplane is not zero and does not change by more than 1e-4 between 97 and 193 parallel points. On the unfixed code it changes by 3.7 %.
-- **Predicted.** −4.0118e−2 becomes −4.3568e−2 at 97 points, −4.3571e−2 at 1537.
+- **Predicted.** −4.0118e−2 becomes −4.3568e−2 at 97 points, −4.3571e−2 at 1537. Step 0 established that the report's parallel-points table used `magn_int_style = 1` (trapezoid); with the regression deck's `magn_int_style = 2` (Simpson 3/8) the unpatched values are −4.0824e−2, −4.2082e−2, −4.2800e−2 at 97, 193, 385 points. The converged value is the gate, not the 97-point number.
 - **Independent checks.** (i) The identity J|∇ψ|²S + μ0 J B² σ = K (`test_S_HEL`, already in the code under `ldebug`) to 1e-6. (ii) The VMEC twin of cbm18a computes S from Fourier derivatives and never had the bug: HELENA and VMEC fixed-boundary ω² must agree to the VMEC fit accuracy (expected 1e-3). This check also depends on step 5 for VMEC; if they disagree, step 5 is pulled forward. (iii) POST energy reconstruction: E_pot/E_kin misses ω² by 5.0 % now and by 0.07 % after the fix.
 - **Anchors.** Fixed regression re-set to about −4.357e−2, tolerance 1e-3.
 - **More checks (section 4).** L8: the same equilibrium through the periodic branch (`ias = 1`) gives the same ω² as the symmetric branch. O1: the JCP 2017 PB3D curve, which predates the bug, is reproduced with the data-file settings. T8: the 1/n extrapolation reaches COBRA again. L3: ω² falls monotonically as `max_r_sol` and `n_mod_X` grow.
