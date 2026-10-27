@@ -1173,7 +1173,8 @@ contains
                                 &ind_tot(ind_cur(n_mod_X),1) + 1, &             ! total mode number
                                 &kd, &                                          ! lower limit in normal range
                                 &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)+ld-1,n_mod_X) + 1]    ! index in tables, shifted and wrapped around
+                                &modulo(ind_tot(ind_cur(n_mod_X),1)+1-nm_X(1,1),&
+                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
 #if ldebug
                             if (debug_setup_modes) then
                                 write(*,*) '    FINISHES', ind_cur(1), &
@@ -1189,7 +1190,8 @@ contains
                                 &ind_tot(ind_cur(1),1) - 1, &                   ! total mode number
                                 &kd, &                                          ! lower limit in normal range
                                 &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)-ld,n_mod_X) + 1]      ! index in tables, shifted and wrapped around
+                                &modulo(ind_tot(ind_cur(1),1)-1-nm_X(1,1),&
+                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
 #if ldebug
                             if (debug_setup_modes) then
                                 write(*,*) '    FINISHES', ind_cur(n_mod_X), &
@@ -1212,6 +1214,21 @@ contains
             ! close last total modes
             do ld = 1,size(ind_cur)
                 ind_tot(ind_cur(ld),3) = grid%n(3)
+            end do
+            
+            ! check that both tables agree: over its normal range, every mode
+            ! of ind_tot must find its own number in its slot of nm_X
+            do ld = 1,ind_id
+                do kd = ind_tot(ld,2),ind_tot(ld,3)
+                    if (nm_X(kd,ind_tot(ld,4)).ne.ind_tot(ld,1)) then
+                        ierr = 1
+                        err_msg = 'mode tables disagree at normal point '//&
+                            &trim(i2str(kd))//' for mode '//&
+                            &trim(i2str(ind_tot(ld,1)))//' in slot '//&
+                            &trim(i2str(ind_tot(ld,4)))
+                        CHCKERR(err_msg)
+                    end if
+                end do
             end do
             
             ! save in index information

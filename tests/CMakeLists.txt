@@ -66,6 +66,17 @@ foreach(suite IN LISTS PB3D_UNIT_SUITES)
     set_tests_properties(unit_${suite} PROPERTIES LABELS "unit")
 endforeach()
 
+# index logic of setup_modes (X_ops) replayed in python on the mode-window
+# sequences that broke the slot bookkeeping (issue #4, step 5)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME unit_setup_modes_sim
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reference/setup_modes_sim.py)
+    set_tests_properties(unit_setup_modes_sim PROPERTIES
+        PASS_REGULAR_EXPRESSION "PASS"
+        LABELS "unit")
+endif()
+
 #------------------------------------------------------------------------------
 # Smoke tests of the executables
 #------------------------------------------------------------------------------
