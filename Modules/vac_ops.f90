@@ -1781,6 +1781,28 @@ contains
                     ! axisymmetric response of the same boundary)
                     vac%res = -vac%res/((max_alpha-min_alpha)*pi)
                 end if
+                
+                ! Bring  res to  the surface-energy  Hessian as  it enters  the
+                ! potential-energy  matrix  A,  so  that  the  free  boundary
+                ! condition adds  X_e^H res X_e  (set_BC_2, set_BC_4)  and POST
+                ! adds the same term to  E_pot. The matrix A corresponds to 2 dW
+                ! with the  toroidal integral included  (alpha_fac = 2  pi for a
+                ! single  field line).  In the  large-aspect-ratio cylinder  the
+                ! vacuum  energy of  an edge  displacement equals  the  field-line
+                ! bending energy  of a  plasma layer of  thickness a/|m|  at the
+                ! edge, which  in A amounts  to 4 pi^2 (nq-m)^2  |X_e|^2 /  (mu_0
+                ! R_0  |m|),  while res  up  to  here  is -2  pi  (nq-m)^2 /  (mu_0
+                ! R_0 |m|)  (full-stack test  vac_response_cylinder).  Hence 2
+                ! dW_vac =  -2 pi X_e^H res  X_e: the sign because  the exterior
+                ! Neumann-to-Dirichlet map  of the BEM is  negative definite, the
+                ! 2 pi  the toroidal  integral. Checked  against MISHKA  on the
+                ! circular external kink (issue #4, step 3).
+                vac%res = -2._dp*pi*vac%res
+                
+                ! The exact  operator is Hermitian;  the discretization leaves
+                ! an asymmetry  of about 1E-5  that makes SLEPC reject  tightly
+                ! converged eigenvalues as complex. Keep the Hermitian part.
+                vac%res = 0.5_dp*(vac%res+conjg(transpose(vac%res)))
 #if ldebug
                 allocate(X_plot(n_mod_X,n_mod_X))
                 allocate(Y_plot(n_mod_X,n_mod_X))

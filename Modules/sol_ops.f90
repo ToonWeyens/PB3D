@@ -1532,8 +1532,8 @@ contains
         
         ! add vacuum energy if last process and first equilibrium job
         E_pot_int(7) = 0._dp
-        write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-        if (1.eq.2 .and. rank.eq.n_procs-1 .and. eq_job_nr.eq.size(eq_jobs_lims,2)) then
+        if (allocated(vac%res) .and. rank.eq.n_procs-1 .and. &
+            &eq_job_nr.eq.size(eq_jobs_lims,2)) then                            ! no vac%res for a fixed boundary
             do jd = 1,sol%n_mod
                 do kd = 1,sol%n_mod
                     E_pot_int(7) = E_pot_int(7) + &

@@ -336,11 +336,14 @@ contains
     !! In the cylinder limit, the decaying exterior solution for poloidal
     !! Fourier boundary data e^{i m theta} is proportional to r^-|m|, so the
     !! full chain of calc_vac_res (Neumann data (n q - m) e^{-i m theta},
-    !! exterior solve, projection with the integration rule) reduces to
-    !!    res_{m m'} = -2 pi (n q - m)^2 / (R_0 |m| mu_0) delta_{m m'},
-    !! with toroidal corrections of order a/R_0. This pins sign, scaling and
-    !! mode structure of the response that enters the SLEPc boundary
-    !! condition (set_BC_4).
+    !! exterior solve, projection with the integration rule, the factor -2 pi
+    !! that turns the Neumann-to-Dirichlet map into the surface-energy
+    !! Hessian) reduces to
+    !!    res_{m m'} = 4 pi^2 (n q - m)^2 / (R_0 |m| mu_0) delta_{m m'},
+    !! twice the vacuum energy of the edge displacement, with toroidal
+    !! corrections of order a/R_0. This pins sign, scaling and mode structure
+    !! of the response that enters the SLEPc boundary condition (set_BC_2,
+    !! set_BC_4) and POST's energy balance.
     subroutine test_response_cylinder(error)
         use X_vars, only: n_mod_X, modes_type
         use num_vars, only: use_pol_flux_F, eq_style, rank
@@ -405,7 +408,10 @@ contains
         do id = 1,n_mod
             do jd = 1,n_mod
                 if (id.eq.jd) then
-                    res_ana = -2._dp*pi*(prim_X_test*jq-mds%m(1,id))**2/&
+                    ! 2 dW_vac = 4 pi^2 (nq-m)^2 |X_e|^2 / (mu_0 R_0 |m|) in the
+                    ! cylinder: the Neumann-to-Dirichlet map -2 pi (nq-m)^2 /
+                    ! (mu_0 R_0 |m|) times the factor -2 pi of calc_vac_res
+                    res_ana = 4._dp*pi**2*(prim_X_test*jq-mds%m(1,id))**2/&
                         &(R_big*abs(mds%m(1,id))*vac_perm)
                     rel_diff = abs(real(res(id,id))-res_ana)/&
                         &abs(res_ana)

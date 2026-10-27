@@ -223,19 +223,25 @@ if(NOT PB3D_FIXTURE_DIR AND
     find_program(XZ_EXECUTABLE xz)
     if(XZ_EXECUTABLE)
         set(PB3D_FIXTURE_DIR ${CMAKE_BINARY_DIR}/fixtures)
-        if(NOT EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
-            message(STATUS "Decompressing regression fixtures to ${PB3D_FIXTURE_DIR}")
-            file(MAKE_DIRECTORY ${PB3D_FIXTURE_DIR})
-            execute_process(
-                COMMAND ${XZ_EXECUTABLE} -dkc
-                    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/cbm18a_extended_vac.12.xz
-                OUTPUT_FILE ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
-                RESULT_VARIABLE _xz_res)
-            if(NOT _xz_res EQUAL 0)
-                message(WARNING "Fixture decompression failed - regression tests disabled")
-                unset(PB3D_FIXTURE_DIR)
+        file(MAKE_DIRECTORY ${PB3D_FIXTURE_DIR})
+        # every committed *.12.xz (cbm18a and, since issue #4 step 0, the two
+        # circular external-kink cases)
+        file(GLOB _fixtures_xz ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.12.xz)
+        foreach(_fx ${_fixtures_xz})
+            get_filename_component(_fx_name ${_fx} NAME_WLE)
+            if(NOT EXISTS ${PB3D_FIXTURE_DIR}/${_fx_name})
+                message(STATUS "Decompressing regression fixture ${_fx_name} to ${PB3D_FIXTURE_DIR}")
+                execute_process(
+                    COMMAND ${XZ_EXECUTABLE} -dkc ${_fx}
+                    OUTPUT_FILE ${PB3D_FIXTURE_DIR}/${_fx_name}
+                    RESULT_VARIABLE _xz_res)
+                if(NOT _xz_res EQUAL 0)
+                    message(WARNING "Fixture decompression failed - regression tests disabled")
+                    unset(PB3D_FIXTURE_DIR)
+                    break()
+                endif()
             endif()
-        endif()
+        endforeach()
     else()
         message(STATUS "xz not found - regression tests disabled (or pass PB3D_FIXTURE_DIR)")
     endif()
@@ -254,6 +260,22 @@ if(TARGET pb3d_fullstack_tests AND PB3D_FIXTURE_DIR)
 endif()
 
 if(TARGET PB3D AND PB3D_FIXTURE_DIR)
+    # the HDF5 checks (shear, vacuum response matrix) need a python3 with h5py;
+    # pass -DPython3_EXECUTABLE=... to pick one. Without it the eigenvalue
+    # assertions still run and the HDF5 checks are skipped.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        execute_process(COMMAND ${Python3_EXECUTABLE} -c "import h5py"
+            RESULT_VARIABLE _h5py_res OUTPUT_QUIET ERROR_QUIET)
+    else()
+        set(_h5py_res 1)
+    endif()
+    if(_h5py_res EQUAL 0)
+        set(PB3D_TEST_PYTHON ${Python3_EXECUTABLE})
+    else()
+        set(PB3D_TEST_PYTHON "")
+        message(STATUS "python3 with h5py not found - the HDF5 regression checks are skipped")
+    endif()
     if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
         add_test(NAME regression_cbm18a_fixed_bnd
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_fixed_bnd.sh
@@ -269,22 +291,15 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_free_bnd.sh
                 $<TARGET_FILE:PB3D>
                 ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_free_bnd
-                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
+                ${PB3D_TEST_PYTHON})
         set_tests_properties(regression_cbm18a_free_bnd PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
-        # the shear check reads PB3D_out.h5 with h5py; registered only when a
-        # python3 with h5py is found (pass -DPython3_EXECUTABLE=... to pick one)
-        find_package(Python3 COMPONENTS Interpreter QUIET)
-        if(Python3_Interpreter_FOUND)
-            execute_process(COMMAND ${Python3_EXECUTABLE} -c "import h5py"
-                RESULT_VARIABLE _h5py_res OUTPUT_QUIET ERROR_QUIET)
-        else()
-            set(_h5py_res 1)
-        endif()
-        if(_h5py_res EQUAL 0)
+        # the shear check reads PB3D_out.h5 with h5py
+        if(PB3D_TEST_PYTHON)
             add_test(NAME regression_cbm18a_shear_HEL
                 COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_shear_HEL.sh
                     $<TARGET_FILE:PB3D>
@@ -296,10 +311,22 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 PASS_REGULAR_EXPRESSION "PASS"
                 ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
                 TIMEOUT 600)
-        else()
-            message(STATUS "python3 with h5py not found - regression_cbm18a_shear_HEL not registered")
         endif()
     else()
         message(STATUS "PB3D_FIXTURE_DIR set but cbm18a_extended_vac.12 not found - regression test skipped")
+    endif()
+    # the circular external kink against MISHKA (issue #4, steps 0 and 3)
+    if(EXISTS ${PB3D_FIXTURE_DIR}/circ_eps005_q104.12)
+        add_test(NAME regression_circ_eps005_free_bnd
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/circ_eps005_free_bnd.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_circ_eps005
+                ${PB3D_FIXTURE_DIR}/circ_eps005_q104.12
+                ${PB3D_TEST_PYTHON})
+        set_tests_properties(regression_circ_eps005_free_bnd PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
     endif()
 endif()

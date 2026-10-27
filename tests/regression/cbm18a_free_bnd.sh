@@ -3,7 +3,11 @@
 # the cbm18a case, using the vacuum response (BC_style(2) = 4) instead of a
 # fixed boundary.
 #
-# Usage: cbm18a_free_bnd.sh <PB3D-executable> <input-deck> <equilibrium-file>
+# Usage: cbm18a_free_bnd.sh <PB3D-executable> <input-deck> <equilibrium-file> [python3]
+#
+# With a python3 (with h5py) as fourth argument, the vacuum response matrix
+# of the style-2 run is also checked for Hermiticity and positive
+# semi-definiteness (check_vac_res.py; issue #4 step 3).
 #
 # The natural companion to cbm18a_fixed_bnd.sh: there, the *extended
 # pseudo-vacuum* HELENA equilibrium mimics the vacuum with a cold-plasma
@@ -30,6 +34,8 @@ set -u
 PB3D_EXE=$1
 INPUT=$2
 EQ_FILE=$3
+PYTHON=${4:-}
+CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
 ANCHOR=-4.5144e-2
 RTOL=1e-3
@@ -73,6 +79,9 @@ EV_4=$EV
 sed 's/BC_style                = 1 4/BC_style                = 1 2/' input_deck > input_deck_bc2
 run_deck input_deck_bc2
 EV_2=$EV
+if [ -n "$PYTHON" ]; then
+    "$PYTHON" "$CHECK" PB3D_out.h5 || exit 1
+fi
 
 echo "eigenvalues: style 4: $EV_4, style 2: $EV_2 (anchor: $ANCHOR, rtol: $RTOL)"
 awk -v ev4="$EV_4" -v ev2="$EV_2" -v anchor="$ANCHOR" -v rtol="$RTOL" \
