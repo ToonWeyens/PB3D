@@ -169,6 +169,18 @@ MISHKA input for these: the archived `TEST_VAC/OLD/2.25/MISHKA/10/fort.10` with 
 - **Anchors.** Fixed regression re-set to about −4.357e−2, tolerance 1e-3.
 - **More checks (section 4).** L8: the same equilibrium through the periodic branch (`ias = 1`) gives the same ω² as the symmetric branch. O1: the JCP 2017 PB3D curve, which predates the bug, is reproduced with the data-file settings. T8: the 1/n extrapolation reaches COBRA again. L3: ω² falls monotonically as `max_r_sol` and `n_mod_X` grow.
 
+**Step 2 results (27 October 2026).** This step's commit. One physics line changed (`eq_ops.f90`: `bcs(:,2)` instead of `bcs(:,1)` in the call of `calc_derived_S_from_deriv_HEL`), three comments corrected ("zero second derivative" for `[2,2]`).
+
+- *Test first.* `tests/regression/cbm18a_shear_HEL.sh` runs the fixed deck once and `check_shear_HEL.py` compares `eq_2/S` of `PB3D_out.h5` with the direct formula −(D_θh¹²/h²² − D_θh²² h¹²/h²²²)/J from the stored metric derivatives, over the whole HELENA grid, tolerance 1e−4 on max|S|, plus a non-zero outboard-midplane value. Before the fix: deviation 0.79 (a boundary layer from both midplanes, decaying by 3.7 per interval; at θ = 0 the stored S is 1e−9 of max|S| where the formula gives 3.4e−2), FAIL. After: 1.47e−5 on the whole grid, midplane value 4.33e−2 from both routes, PASS. Registered in CMake when a python3 with h5py is found (`-DPython3_EXECUTABLE`); CI installs h5py.
+- *Prediction met.* Fixed boundary ψ 0.45 to 0.75: 97 points with `magn_int_style = 1`: −4.3568189e−2 (predicted −4.35682e−2); Simpson 3/8 at 97, 193, 385, 100 points: −4.35691e−2, −4.35699e−2, −4.35714e−2, −4.35729e−2: converged to 1e−4 at 97 points where the unfixed code still moved by 5 % (−4.08e−2 to −4.28e−2).
+- *POST energy balance* (`plot_E_rec`, POST_style 1, 101 poloidal points): E_pot/E_kin = −4.35343e−2 against ω² = −4.35682e−2, 0.078 % (plan: 0.07 %). On the unfixed run the same POST gives 0.17 %, not the 5 % of the report; the report's POST settings are unknown, so only the fixed value is a gate number.
+- *L8, periodic branch.* HELENA cbm18a with `IAS = 1` needs `NCHI = 2^n`; at the same poloidal spacing (1024 points over 2π against 513 over π) PB3D gives −4.35487e−2 (periodic) against −4.35878e−2 (symmetric), 9e−4 apart, unchanged when HELENA's own poloidal resolution is doubled (NP 101 to 201: −4.35463e−2 to −4.35487e−2). The symmetric branch itself moves by 3.4e−4 between NCHI 401 and 513. So the two branches agree to 1e−3, the level of the discretisation, and no sharper; the residual is not the shear (both routes agree to 1e−5 now) and is left as an open item.
+- *New anchors.* Fixed deck −4.3573e−2, free deck (ψ = 1.0, styles 2 and 4) −4.5144e−2, both at 1e−3 relative. The free deck at ψ = 1.0 still cannot see the vacuum (styles agree to 1e−9); step 4 moves it. The free style 2 run at ψ = 0.75 now gives −4.6377e−2 and style 4 −4.7684e−2: the vacuum sign error is unchanged and is step 3's business.
+- *Not done.* The VMEC twin (ii) waits for step 5 as planned. MISHKA on the extended cbm18a fixture (q_a = 25, zero pressure beyond the pedestal) returns NaN from the first iteration with every density option tried, so C1/O1 on cbm18a is open; the circular cases work. COBRA (T8) is not built.
+- *Learning for the plan.* PB3D and POST exit silently with status 0 when a path exceeds 120 characters (POST from a long scratch directory wrote nothing at all); run from short paths. POST needs a `Data/` directory for its HDF5 plots. The regression anchors are now at 1e−3, as rule 5 asked.
+
+---
+
 ### Step 3: the vacuum sign and factor (axisymmetric)
 
 Split in two because the sign is certain and the factor is not.
@@ -390,6 +402,10 @@ Tests grow by a few hundred lines, all under `tests/`, plus two committed HELENA
 6. STRUMPACK HSS compression failing on 3-D kernels (LU fallback works; performance only).
 
 ## 9. What I am still not happy with
+
+- (added after step 2) The symmetric (`ias = 0`) and periodic (`ias = 1`) HELENA branches give ω² 9e−4 apart at equal poloidal spacing on cbm18a; the shear is not the cause. Not pursued in this plan.
+- (added after step 2) MISHKA returns NaN on the extended cbm18a fixture (zero pressure beyond the pedestal), so the cbm18a fixed-boundary cross-check C1/O1 is open; the circular cases are fine.
+
 
 - Step 3's factor rests on a derivation I have not done yet and on two numerical pins. If the pins disagree with the derivation and with each other, the step stops and the vacuum stays off until the derivation is settled; there is no shortcut.
 - The 3-D vacuum has no exact end-to-end reference beyond ε = 0 and smoothness in δ. That is a property of the problem, not of the plan.

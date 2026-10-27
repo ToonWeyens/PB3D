@@ -12,14 +12,12 @@
 # vac_ops. The two growth rates should be comparable (the pseudo-vacuum
 # construction was designed for exactly this correspondence).
 #
-# Anchor: omega^2/omega_A^2 = -4.2349e-2 (MISHKA normalization), single
-# process, established 2026-07-09 with distro PETSc 3.19/SLEPc 3.19
-# (complex), gfortran 13, Ubuntu 24.04. Bit-identical between the STRUMPACK
-# and ScaLAPACK vacuum solver paths; ~4% more unstable than the
-# fixed-boundary anchor of the same deck window, as expected from freeing
-# the boundary. Moves by ~1% when n_r_sol goes 200 -> 300 (normal radial
-# convergence; the anchor is defined at the deck's resolution). Asserted to
-# +-10% like the fixed-boundary anchor.
+# Anchor: omega^2/omega_A^2 = -4.5144e-2 (MISHKA normalization), single
+# process, established 2026-10-27 after the HELENA shear fix of issue #4
+# step 2 (before it: -4.2349e-2). Asserted to 1e-3 relative. NOTE: at
+# max_r_sol = 1.0 the edge displacement is 1e-8 of the peak, so this deck
+# cannot see the vacuum: fixed and free agree to 1e-8 here (issue #4,
+# report section 9); step 4 moves the deck to the pedestal foot.
 #
 # The deck is run twice: with the BC style it specifies (4, explicit
 # surface-energy minimization) and with BC style 2 (variational/Hermitian
@@ -33,8 +31,8 @@ PB3D_EXE=$1
 INPUT=$2
 EQ_FILE=$3
 
-ANCHOR=-4.2349e-2
-RTOL=0.10
+ANCHOR=-4.5144e-2
+RTOL=1e-3
 MUTUAL_RTOL=1e-5
 
 # fresh scratch dir, as PB3D writes several output files

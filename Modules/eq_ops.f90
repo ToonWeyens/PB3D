@@ -2957,7 +2957,7 @@ contains
         ! set up boundary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
             bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
-            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
+            bcs(:,2) = [2,2]                                                    ! theta(odd): zero second derivative
         else
             bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
             bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic
@@ -4351,7 +4351,7 @@ contains
                 ! set up boundary conditions for theta derivatives
                 if (ias.eq.0) then                                              ! top-bottom symmetric
                     bcs(:,1) = [1,1]                                            ! theta(even): zero first derivative
-                    bcs(:,2) = [2,2]                                            ! theta(odd): zero first derivative
+                    bcs(:,2) = [2,2]                                            ! theta(odd): zero second derivative
                 else
                     bcs(:,1) = [-1,-1]                                          ! theta(even): periodic
                     bcs(:,2) = [-1,-1]                                          ! theta(odd): periodic
@@ -4406,8 +4406,8 @@ contains
                 call calc_derived_sigma_from_e(eq_2,b_n,eq_2%sigma)
             case (2)                                                            ! HELENA
                 ! Calculate the shear S
-                ierr = calc_derived_s_from_deriv_hel(grid_eq,eq_2,bcs(:,1),&
-                    &bcs_val(:,1),eq_2%S)                                       ! even
+                ierr = calc_derived_s_from_deriv_hel(grid_eq,eq_2,bcs(:,2),&
+                    &bcs_val(:,2),eq_2%S)                                       ! odd: Theta^alpha is odd in theta
                 CHCKERR('')
         end select
         
@@ -7013,7 +7013,7 @@ contains
         ! set up boundary conditions
         if (ias.eq.0) then                                                      ! top-bottom symmetric
             bcs(:,1) = [1,1]                                                    ! theta(even): zero first derivative
-            bcs(:,2) = [2,2]                                                    ! theta(odd): zero first derivative
+            bcs(:,2) = [2,2]                                                    ! theta(odd): zero second derivative
         else
             bcs(:,1) = [-1,-1]                                                  ! theta(even): periodic
             bcs(:,2) = [-1,-1]                                                  ! theta(odd): periodic

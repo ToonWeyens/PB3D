@@ -275,6 +275,30 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             PASS_REGULAR_EXPRESSION "PASS"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        # the shear check reads PB3D_out.h5 with h5py; registered only when a
+        # python3 with h5py is found (pass -DPython3_EXECUTABLE=... to pick one)
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            execute_process(COMMAND ${Python3_EXECUTABLE} -c "import h5py"
+                RESULT_VARIABLE _h5py_res OUTPUT_QUIET ERROR_QUIET)
+        else()
+            set(_h5py_res 1)
+        endif()
+        if(_h5py_res EQUAL 0)
+            add_test(NAME regression_cbm18a_shear_HEL
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_shear_HEL.sh
+                    $<TARGET_FILE:PB3D>
+                    ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                    ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
+                    ${Python3_EXECUTABLE})
+            set_tests_properties(regression_cbm18a_shear_HEL PROPERTIES
+                LABELS "regression"
+                PASS_REGULAR_EXPRESSION "PASS"
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+                TIMEOUT 600)
+        else()
+            message(STATUS "python3 with h5py not found - regression_cbm18a_shear_HEL not registered")
+        endif()
     else()
         message(STATUS "PB3D_FIXTURE_DIR set but cbm18a_extended_vac.12 not found - regression test skipped")
     endif()

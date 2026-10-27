@@ -95,6 +95,7 @@ jobs:
             libpetsc-complex3.19-dev libslepc-complex3.19-dev \
             libhdf5-openmpi-dev libnetcdff-dev \
             liblapack-dev libblas-dev libscalapack-openmpi-dev
+          pip install h5py==3.16.0
 
       - name: Cache PSPLINE
         id: cache-pspline
@@ -258,7 +259,7 @@ jobs:
             libpetsc-complex3.19-dev libslepc-complex3.19-dev \
             libhdf5-openmpi-dev libnetcdff-dev \
             liblapack-dev libblas-dev libscalapack-openmpi-dev
-          pip install gcovr==8.8
+          pip install gcovr==8.8 h5py==3.16.0
 
       - name: Cache PSPLINE
         id: cache-pspline
