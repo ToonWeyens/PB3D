@@ -7,9 +7,11 @@
 !! The geometry is an analytical circular torus
 !!    x = (R cos zeta, R sin zeta, a sin theta),   R = R_0 + a cos theta,
 !! covered by field lines zeta = alpha + q theta on a product grid
-!! (theta, alpha) in [0,2 pi] x [0,2 pi] (both ends included; the map is a
-!! shear, so this tiles the torus once, with the standard trapezoidal
-!! half-weights on the duplicated edges). In PB3D's flux coordinates
+!! (theta, alpha) in [0,2 pi] x [0,2 pi), theta with both ends included
+!! (trapezoidal half-weights on the duplicated edge) and alpha without its
+!! end point, exactly as PB3D lays out its field lines (rich_ops:
+!! calc_eqd_grid with excl_last; the map is a shear, so this tiles the torus
+!! once). In PB3D's flux coordinates
 !! (alpha, psi, theta) the exact geometric quantities are
 !!    e_theta = dx/dtheta|_alpha,   e_alpha = dx/dalpha,
 !!    norm    = J nabla psi = e_theta x e_alpha,
@@ -48,7 +50,8 @@ contains
         testsuite = [ &
             &new_unittest("GH_int_1_singular", test_int_1_singular), &
             &new_unittest("greens_identity_3d", test_greens_identity_3d), &
-            &new_unittest("response_1_vs_2", test_response_1_vs_2) &
+            &new_unittest("response_1_vs_2", test_response_1_vs_2), &
+            &new_unittest("point_source_3d", test_point_source_3d) &
             &]
     end subroutine collect_vac_3d
 
@@ -56,22 +59,41 @@ contains
     ! helpers
     !--------------------------------------------------------------------------
 
-    !> Position and flux-coordinate tangents on the field line.
-    pure subroutine torus(theta,alpha,x,e_theta,e_alpha)
+    !> Position and flux-coordinate tangents on the field line, for the
+    !! circular torus or, with a ripple amplitude delta, for the rippled torus
+    !! with minor radius a(zeta) = a_min (1 + delta cos(N_rip zeta)).
+    pure subroutine torus(theta,alpha,x,e_theta,e_alpha,delta)
         real(dp), intent(in) :: theta, alpha                                    ! angles
         real(dp), intent(out) :: x(3)                                           ! position
         real(dp), intent(out), optional :: e_theta(3), e_alpha(3)               ! tangents
+        real(dp), intent(in), optional :: delta                                 ! ripple amplitude
 
+        integer, parameter :: N_rip = 5                                         ! ripple periods
         real(dp) :: R, zeta                                                     ! major radius, toroidal angle
+        real(dp) :: a, da                                                       ! minor radius and its zeta derivative
+        real(dp) :: dR_t, dz_t, dR_a, dz_a                                      ! derivatives of R and z along theta and alpha
 
-        R = R_0 + a_min*cos(theta)
         zeta = alpha + q_saf*theta
-        x = [R*cos(zeta), R*sin(zeta), a_min*sin(theta)]
-        if (present(e_theta)) e_theta = &
-            &[-a_min*sin(theta)*cos(zeta) - R*sin(zeta)*q_saf, &
-            & -a_min*sin(theta)*sin(zeta) + R*cos(zeta)*q_saf, &
-            &  a_min*cos(theta)]
-        if (present(e_alpha)) e_alpha = [-R*sin(zeta), R*cos(zeta), 0._dp]
+        a = a_min
+        da = 0._dp
+        if (present(delta)) then
+            a = a_min*(1._dp + delta*cos(N_rip*zeta))
+            da = -a_min*delta*N_rip*sin(N_rip*zeta)
+        end if
+        R = R_0 + a*cos(theta)
+        x = [R*cos(zeta), R*sin(zeta), a*sin(theta)]
+        if (present(e_theta)) then
+            dR_t = da*q_saf*cos(theta) - a*sin(theta)
+            dz_t = da*q_saf*sin(theta) + a*cos(theta)
+            e_theta = [dR_t*cos(zeta) - R*sin(zeta)*q_saf, &
+                &dR_t*sin(zeta) + R*cos(zeta)*q_saf, dz_t]
+        end if
+        if (present(e_alpha)) then
+            dR_a = da*cos(theta)
+            dz_a = da*sin(theta)
+            e_alpha = [dR_a*cos(zeta) - R*sin(zeta), &
+                &dR_a*sin(zeta) + R*cos(zeta), dz_a]
+        end if
     end subroutine torus
 
     !> Cross product.
@@ -85,13 +107,14 @@ contains
     !> Set up the synthetic style-1 vacuum on the torus (the geometry arrays
     !! are global, so every process fills them completely; only G, H and res
     !! are distributed), and the grid module variables that calc_GH_1 reads.
-    subroutine setup_torus_vac(vac,n_par,n_alpha_loc,ierr)
+    subroutine setup_torus_vac(vac,n_par,n_alpha_loc,ierr,delta)
         use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use rich_vars, only: n_par_X
 
         type(vac_type), intent(inout) :: vac                                    ! vacuum variables
         integer, intent(in) :: n_par, n_alpha_loc                               ! points per field line, number of field lines
         integer, intent(out) :: ierr                                            ! error status
+        real(dp), intent(in), optional :: delta                                 ! ripple amplitude
 
         integer :: id, jd, kd                                                   ! counters
         real(dp) :: theta, alpha                                                ! angles
@@ -109,11 +132,11 @@ contains
         if (ierr.ne.0) return
 
         do jd = 1,n_alpha_loc
-            alpha = 2._dp*pi*(jd-1)/(n_alpha_loc-1)
+            alpha = 2._dp*pi*(jd-1)/n_alpha_loc                                 ! end point excluded, as in PB3D
             do id = 1,n_par
                 theta = 2._dp*pi*(id-1)/(n_par-1)
                 kd = id + (jd-1)*n_par
-                call torus(theta,alpha,x,e_theta=e_t,e_alpha=e_a)
+                call torus(theta,alpha,x,e_theta=e_t,e_alpha=e_a,delta=delta)
                 vac%x_vec(kd,:) = x
                 vac%norm(kd,:) = cross(e_t,e_a)                                 ! J nabla psi
                 vac%h_fac(kd,1) = sum(e_a**2)                                   ! g_alpha,alpha
@@ -266,6 +289,123 @@ contains
         end do
     end subroutine test_greens_identity_3d
 
+    !> Manufactured exterior potential through the whole style-1 chain.
+    !!
+    !! A point source on the magnetic axis, phi = 1/|x - x_src|, is harmonic
+    !! outside the surface and decays, and its normal data norm . grad phi
+    !! are exact. solve_Phi_BEM (style 1: no diagonal shift, the row-sum
+    !! diagonal of calc_GH_1 already selects the exterior) must then return
+    !! phi on the surface to discretization accuracy, and the error must fall
+    !! with resolution. Run on the circular torus and on a rippled torus
+    !! a(zeta) = a (1 + 0.1 cos 5 zeta), both with PB3D's field-line grid
+    !! (alpha without its end point). This pins the orientation of the
+    !! normal, the alpha weights and the exterior solve at once (issue #4,
+    !! step 6b): with the old alpha spacing (n_alpha - 1) and a grid with the
+    !! end point duplicated, the system had two identical rows.
+    subroutine test_point_source_3d(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: n_pars(2) = [41,81]                               ! points per field line, two resolutions
+        integer, parameter :: n_alphas(2) = [40,80]                             ! field lines
+        real(dp), parameter :: deltas(2) = [0._dp,0.1_dp]                       ! ripple amplitudes
+        real(dp), parameter :: tol = 5.e-2_dp                                   ! relative tolerance at the fine resolution
+
+        integer :: ierr, kind, ires                                             ! error status, counters
+        real(dp) :: err(2)                                                      ! solution errors at the two resolutions
+
+        do kind = 1,2
+            do ires = 1,2
+                call point_source_error(n_pars(ires),n_alphas(ires),&
+                    &deltas(kind),err(ires),ierr)
+                call check(error, ierr, 0, 'point-source solve failed')
+                if (allocated(error)) return
+            end do
+            call check(error, err(2).lt.tol, &
+                &'point-source solution error too large for ripple '//&
+                &trim(r2str(deltas(kind)))//': '//trim(r2str(err(2))))
+            if (allocated(error)) return
+            call check(error, err(2).lt.0.85_dp*err(1), &
+                &'no convergence for ripple '//trim(r2str(deltas(kind)))//&
+                &': '//trim(r2str(err(1)))//' -> '//trim(r2str(err(2))))
+            if (allocated(error)) return
+        end do
+    end subroutine test_point_source_3d
+
+    !> Solve the style-1 exterior problem for the point-source potential on
+    !! the (rippled) torus at a given resolution and return the relative
+    !! error of the boundary trace, max |Phi - phi| / max |phi|. Processes
+    !! outside the BLACS context report zero.
+    subroutine point_source_error(n_par,n_alpha_loc,delta,err,ierr)
+        use num_vars, only: rank
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc
+        use vac_ops, only: solve_Phi_BEM
+        use fullstack_utils, only: n_col1_loc, vec_glob2dis
+
+        integer, intent(in) :: n_par, n_alpha_loc                               ! resolution
+        real(dp), intent(in) :: delta                                           ! ripple amplitude
+        real(dp), intent(out) :: err                                            ! relative solution error
+        integer, intent(out) :: ierr                                            ! error status
+
+        real(dp), parameter :: x_src(3) = [R_0,0._dp,0._dp]                     ! source on the magnetic axis
+
+        type(vac_type) :: vac                                                   ! vacuum variables
+        integer :: id                                                           ! counter
+        integer :: n_bnd                                                        ! number of boundary points
+        integer :: n_col1                                                       ! local number of columns of R and Phi
+        integer :: desc_RPhi(9)                                                 ! descriptor for R and Phi
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of R and Phi
+        real(dp) :: r_src                                                       ! distance to source
+        real(dp), allocatable :: phi(:), dphi(:)                                ! potential and norm . grad phi
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        real(dp), allocatable :: phi_num(:)                                     ! gathered numerical solution
+
+        err = 0._dp
+        call setup_torus_vac(vac,n_par,n_alpha_loc,ierr,delta=delta)
+        if (ierr.ne.0) return
+        n_bnd = vac%n_bnd
+
+        ierr = calc_GH(vac)
+        if (ierr.ne.0) return
+
+        if (in_context(vac%ctxt_HG)) then
+            allocate(phi(n_bnd),dphi(n_bnd))
+            do id = 1,n_bnd
+                r_src = sqrt(sum((vac%x_vec(id,:)-x_src)**2))
+                phi(id) = 1._dp/r_src
+                dphi(id) = -sum(vac%norm(id,:)*(vac%x_vec(id,:)-x_src))/&
+                    &r_src**3
+            end do
+
+            n_col1 = n_col1_loc(vac)
+            call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
+            allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+            allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+            if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+            Phi_mat = 0._dp
+            call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+                &max(1,vac%n_loc(1)),ierr)
+            if (ierr.ne.0) return
+
+            ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],&
+                &[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+            if (ierr.ne.0) return
+
+            allocate(phi_num(n_bnd))
+            ierr = vec_dis2loc(vac%ctxt_HG,&
+                &reshape(Phi_mat(1:vac%n_loc(1),:),[vac%n_loc(1)*n_col1]),&
+                &vac%lims_r,phi_num)
+            if (ierr.ne.0) return
+
+            err = maxval(abs(phi_num-phi))/maxval(abs(phi))
+            if (rank.eq.0) write(error_unit,'(A,I6,A,F5.2,A,ES10.2)') &
+                &'   [point source] n = ',n_bnd,', ripple ',delta,&
+                &': max |Phi - phi| / max |phi| = ',err
+        end if
+
+        call vac%dealloc()
+    end subroutine point_source_error
+
     !> Assemble the style-1 matrices on the torus at a given resolution and
     !! return the identity residuals for the three test potentials, each
     !! measured against its established offset (constant and interior
@@ -365,9 +505,12 @@ contains
 
         type(error_type), allocatable, intent(out) :: error
 
-        integer, parameter :: n_par = 61                                        ! points per field line
-        integer, parameter :: n_alpha_loc = 60                                  ! field lines
-        integer, parameter :: n_bnd_2 = 201                                     ! boundary points for style 2
+        ! the style-1 response converges at first order towards the style-2
+        ! one (ratios 0.952 to 0.849 for m = 1 to 5 at 61 x 60, 0.972 to
+        ! 0.908 at 101 x 100, with PB3D's field-line grid; issue #4, step 6b)
+        integer, parameter :: n_par = 81                                        ! points per field line
+        integer, parameter :: n_alpha_loc = 80                                  ! field lines
+        integer, parameter :: n_bnd_2 = 301                                     ! boundary points for style 2
         integer, parameter :: n_mod = 5                                         ! poloidal modes m = 1..n_mod
         real(dp), parameter :: tol_diag = 0.15_dp                               ! relative tolerance on the diagonal
         real(dp), parameter :: tol_offdiag = 0.10_dp                            ! off-diagonal tolerance, rel. to largest diagonal

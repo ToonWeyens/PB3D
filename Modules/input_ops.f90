@@ -1115,10 +1115,12 @@ contains
     !!
     !! \return ierr
     integer function read_input_eq() result(ierr)
-        use num_vars, only: eq_style, use_pol_flux_E, eq_i
+        use num_vars, only: eq_style, use_pol_flux_E, eq_i, alpha_style
         use VMEC_ops, only: read_VMEC
+        use VMEC_vars, only: nfp_V
         use HELENA_ops, only: read_HEL
-        use grid_vars, only: n_r_in
+        use grid_vars, only: n_r_in, n_alpha
+        use num_utilities, only: LCM
         
         character(*), parameter :: rout_name = 'read_input_eq'
         
@@ -1133,6 +1135,19 @@ contains
             case (1)                                                            ! VMEC
                 ierr = read_VMEC(n_r_in,use_pol_flux_E)
                 CHCKERR('')
+                
+                ! The sum over n_alpha  field lines aliases every toroidal
+                ! harmonic that  is a multiple of  n_alpha into the  average,
+                ! so  if n_alpha  and the  field period  share a  factor, the
+                ! field-period harmonic  LCM(n_alpha, N_fp)  puts a  spurious
+                ! linear 3-D term into the averaged coefficients (issue #4).
+                if (alpha_style.eq.2 .and. n_alpha.gt.1 .and. &
+                    &LCM(n_alpha,nfp_V).lt.n_alpha*nfp_V) call writo(&
+                    &'n_alpha = '//trim(i2str(n_alpha))//' and the field &
+                    &period '//trim(i2str(nfp_V))//' share a factor: the &
+                    &toroidal average aliases the harmonic '//&
+                    &trim(i2str(LCM(n_alpha,nfp_V)))//'; choose n_alpha &
+                    &coprime to the field period',warning=.true.)
             case (2)                                                            ! HELENA
                 ierr = read_HEL(n_r_in,use_pol_flux_E)
                 CHCKERR('')

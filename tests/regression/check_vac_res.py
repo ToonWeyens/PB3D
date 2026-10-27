@@ -36,8 +36,16 @@ def main():
     tol_psd = float(sys.argv[2]) if len(sys.argv) > 2 else 1e-8
     tol_herm = float(sys.argv[3]) if len(sys.argv) > 3 else 1e-10
     with h5py.File(fname, 'r') as f:
-        res = read(f, 'vac/RE_res') + 1j*read(f, 'vac/IM_res')
-        sec = read(f, 'vac/sec_X').astype(int)
+        # HELENA runs write the group 'vac', VMEC runs one 'vac_R_<level>' per
+        # Richardson level: take the last one
+        groups = sorted(k for k in f.keys() if k == 'vac' or k.startswith('vac_R_'))
+        if not groups:
+            print('FAIL: no vacuum group in', fname)
+            return 1
+        grp = groups[-1]
+        res = read(f, grp + '/RE_res') + 1j*read(f, grp + '/IM_res')
+        sec = read(f, grp + '/sec_X').astype(int)
+    print('group', grp)
     res = res[:, :, 0, 0] if res.ndim == 4 else res
     scale = np.abs(res).max()
     herm = np.abs(res - res.conj().T).max()/scale

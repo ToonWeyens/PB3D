@@ -590,6 +590,11 @@ contains
             G => vac%G
             H => vac%H
             ext_in = .false.
+            ! both styles accumulate into G and H; after a Richardson step
+            ! the field-line arrays still hold the interlaced copy of the
+            ! previous level (store_vac_VMEC), which would be counted twice
+            G = 0._dp
+            H = 0._dp
         end if
         
         ! call specific procedure for vacuum style
@@ -836,7 +841,7 @@ contains
         ! initialize variables
         dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
         if (n_alpha.gt.1) then
-            dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+            dalpha = (max_alpha-min_alpha)/n_alpha*pi                           ! field lines exclude the end point (rich_ops)
         else
             ! a single field line makes the transverse cell size (and with it
             ! the singular self-integrals and the integration rule weights of
@@ -1564,7 +1569,7 @@ contains
             if (vac%style.eq.1) then
                 dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
                 if (n_alpha.gt.1) then
-                    dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+                    dalpha = (max_alpha-min_alpha)/n_alpha*pi                   ! field lines exclude the end point (rich_ops)
                 else
                     dalpha = 0._dp
                 end if
@@ -1776,9 +1781,11 @@ contains
                     !    line label as well, so it carries an extra factor of
                     !    the alpha span compared to the per-zeta-mode
                     !    normalization of the axisymmetric style.
-                    ! (both established empirically by the full-stack test
-                    ! response_1_vs_2 against the independently validated
-                    ! axisymmetric response of the same boundary)
+                    ! (the sign is confirmed by the full-stack test
+                    ! point_source_3d, which solves for a known exterior
+                    ! potential with these normal data; the ratio to the
+                    ! axisymmetric response converges to 1 at first order in
+                    ! response_1_vs_2)
                     vac%res = -vac%res/((max_alpha-min_alpha)*pi)
                 end if
                 
