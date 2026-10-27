@@ -9,26 +9,28 @@
 # of the style-2 run is also checked for Hermiticity and positive
 # semi-definiteness (check_vac_res.py; issue #4 step 3).
 #
-# The natural companion to cbm18a_fixed_bnd.sh: there, the *extended
-# pseudo-vacuum* HELENA equilibrium mimics the vacuum with a cold-plasma
-# layer and the boundary is held fixed; here, the plasma boundary is free
-# and the vacuum response is computed by the boundary element method of
-# vac_ops. The two growth rates should be comparable (the pseudo-vacuum
-# construction was designed for exactly this correspondence).
+# The natural companion to cbm18a_fixed_bnd.sh: same deck window (psi 0.45 to
+# 0.75, where the n = 10 mode still has an edge amplitude of 0.1 of its
+# peak), but the boundary is free and the vacuum response is computed by the
+# boundary element method of vac_ops. The vacuum can only add energy, so the
+# free-boundary eigenvalue must lie between the no-vacuum value (-4.6041e-2,
+# measured with a diagnostic build in issue #4 step 3) and the fixed-boundary
+# one (-4.3573e-2, cbm18a_fixed_bnd.sh); the test asserts the upper bound.
 #
-# Anchor: omega^2/omega_A^2 = -4.5144e-2 (MISHKA normalization), single
-# process, established 2026-10-27 after the HELENA shear fix of issue #4
-# step 2 (before it: -4.2349e-2). Asserted to 1e-3 relative. NOTE: at
-# max_r_sol = 1.0 the edge displacement is 1e-8 of the peak, so this deck
-# cannot see the vacuum: fixed and free agree to 1e-8 here (issue #4,
-# report section 9); step 4 moves the deck to the pedestal foot.
+# Anchors (MISHKA normalization, single process, established 2026-10-27 after
+# issue #4 steps 2 and 3, asserted to 1e-3 relative):
+#   BC_style(2) = 2, variational (Hermitian) imposition: -4.5019e-2. This is
+#     the validated style: on the circular external-kink fixture it agrees
+#     with MISHKA to 1 % (circ_eps005_free_bnd.sh).
+#   BC_style(2) = 4, explicit natural-boundary-condition row: -4.4712e-2.
+#     NOT validated: it differs from style 2 by 0.7 % here and by much more on
+#     the circular case, independently of the radial resolution (issue #4,
+#     step 4); it is anchored only so that a change shows up. Use style 2.
 #
-# The deck is run twice: with the BC style it specifies (4, explicit
-# surface-energy minimization) and with BC style 2 (variational/Hermitian
-# imposition of the same natural boundary condition). The two eigenvalues
-# are asserted against the anchor and, mutually, to 1e-5 relative (they
-# agree to ~3e-8 when established: two independent discretizations of the
-# same physics).
+# The deck specifies style 4; the script runs it as given and then with
+# style 2. With a python3 (with h5py) as fourth argument, the vacuum response
+# matrix of the style-2 run is also checked for Hermiticity and positive
+# semi-definiteness (check_vac_res.py; issue #4 step 3).
 set -u
 
 PB3D_EXE=$1
@@ -37,9 +39,10 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.5144e-2
+ANCHOR_2=-4.5019e-2
+ANCHOR_4=-4.4712e-2
 RTOL=1e-3
-MUTUAL_RTOL=1e-5
+FIXED=-4.3573e-2
 
 # fresh scratch dir, as PB3D writes several output files
 WORKDIR=$(mktemp -d)
@@ -83,16 +86,15 @@ if [ -n "$PYTHON" ]; then
     "$PYTHON" "$CHECK" PB3D_out.h5 || exit 1
 fi
 
-echo "eigenvalues: style 4: $EV_4, style 2: $EV_2 (anchor: $ANCHOR, rtol: $RTOL)"
-awk -v ev4="$EV_4" -v ev2="$EV_2" -v anchor="$ANCHOR" -v rtol="$RTOL" \
-    -v mrtol="$MUTUAL_RTOL" 'BEGIN {
+echo "eigenvalues: style 4: $EV_4 (anchor: $ANCHOR_4), style 2: $EV_2 (anchor: $ANCHOR_2, rtol: $RTOL, fixed: $FIXED)"
+awk -v ev4="$EV_4" -v ev2="$EV_2" -v a4="$ANCHOR_4" -v a2="$ANCHOR_2" \
+    -v rtol="$RTOL" -v fixed="$FIXED" 'BEGIN {
     ok = 1
-    rel4 = (ev4 - anchor) / anchor; if (rel4 < 0) rel4 = -rel4
-    rel2 = (ev2 - anchor) / anchor; if (rel2 < 0) rel2 = -rel2
-    relm = (ev4 - ev2) / anchor; if (relm < 0) relm = -relm
+    rel4 = (ev4 - a4) / a4; if (rel4 < 0) rel4 = -rel4
+    rel2 = (ev2 - a2) / a2; if (rel2 < 0) rel2 = -rel2
     if (rel4 > rtol) { print "FAIL: style 4 deviation", rel4; ok = 0 }
     if (rel2 > rtol) { print "FAIL: style 2 deviation", rel2; ok = 0 }
-    if (relm > mrtol) { print "FAIL: mutual deviation", relm; ok = 0 }
-    if (ok) { print "PASS: deviations", rel4, rel2, "mutual", relm; exit 0 }
+    if (ev2 > fixed) { print "FAIL: free boundary more stable than fixed:", ev2, ">", fixed; ok = 0 }
+    if (ok) { print "PASS: deviations", rel4, rel2, "free below fixed"; exit 0 }
     exit 1
 }'

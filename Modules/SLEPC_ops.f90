@@ -1209,6 +1209,12 @@ contains
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
         !
+        ! Not validated: with  the edge block assembled once  (issue #4, step
+        ! 4) it still differs from the  variational style 2 by 0.7 % on cbm18a
+        ! at psi =  0.75 and by far  more on the circular  external kink, with
+        ! no dependence  on the  radial resolution, while  style 2  agrees with
+        ! MISHKA to 1 %. Use style 2.
+        !
         ! Makes use of mds.
         !> \private
         integer function set_BC_4(r_id,r_id_loc,X,A,B,n_r) result(ierr)
@@ -1239,8 +1245,8 @@ contains
                 &': Explicit introduction of surface energy minimization',&
                 &persistent=.true.)
             
-            ! initialize local blocks
-            allocate(loc_block(n_mod_X,n_mod_X,2))
+            ! initialize local blocks (1,2: V1^T and vac for A, B; 3,4: V_2)
+            allocate(loc_block(n_mod_X,n_mod_X,4))
             
             ! set up ndc
             select case (norm_disc_style_sol)
@@ -1267,38 +1273,42 @@ contains
             end do
             loc_block(:,:,1) = loc_block(:,:,1) + vac%res
             
-            ! set block r_id + (0,0)
-            ierr = insert_block_mat(mds,loc_block(:,:,1)*ndc(1+st_size),A,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            ! set block r_id + (0,0)
-            ierr = insert_block_mat(mds,loc_block(:,:,2)*ndc(1+st_size),B,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            
             ! -------------!
             ! BLOCKS ~ V_2 !
             ! -------------!
             ! fill local blocks for A and B
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
-                    loc_block(k,m,1) = &
+                    loc_block(k,m,3) = &
                         &con(sum(X%PV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
-                    loc_block(k,m,2) = &
+                    loc_block(k,m,4) = &
                         &con(sum(X%KV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
             
-            ! set block r_id + (0,-st_size:0)
-            do jd = -st_size,0
-                ierr = insert_block_mat(mds,loc_block(:,:,1)*&
+            ! set block r_id + (0,0): V1^T and vac together with the jd = 0 part
+            ! of V_2, inserted once (the blocks overwrite the row, so a second
+            ! insertion at (0,0) would drop the first: that lost the vacuum and
+            ! V1^T until issue #4, step 4)
+            ierr = insert_block_mat(mds,(loc_block(:,:,1)+&
+                &loc_block(:,:,3)*ndc(1+st_size))*ndc(1+st_size),A,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
+            ierr = insert_block_mat(mds,(loc_block(:,:,2)+&
+                &loc_block(:,:,4)*ndc(1+st_size))*ndc(1+st_size),B,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
+            
+            ! set block r_id + (0,-st_size:-1)
+            do jd = -st_size,-1
+                ierr = insert_block_mat(mds,loc_block(:,:,3)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),A,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(mds,loc_block(:,:,2)*&
+                ierr = insert_block_mat(mds,loc_block(:,:,4)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),B,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)

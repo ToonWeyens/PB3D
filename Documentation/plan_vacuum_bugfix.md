@@ -219,6 +219,16 @@ Split in two because the sign is certain and the factor is not.
 - **Default.** Back to `[1,2]`, Toon's choice since 2017. One line.
 - **Checks.** Style 2 and style 4 agree to 1e-5 at ψ = 0.75 with a nonzero edge displacement (they agree to 3.5e−8 today only because the edge displacement at ψ = 1 is 2e−8). The free-boundary regression deck moves to `max_r_sol = 0.75`, runs both styles, asserts the ordering of step 3a, and is anchored to 1e-3. The circular HELENA fixture (xz) is committed with a second regression deck anchored to R3 and R4. L6: the natural-boundary-condition residual of the style-2 eigenvector at the edge falls with resolution.
 
+**Step 4 results (27 October 2026).** This step's commit. Lines: the (0,0) edge block of `set_BC_4` assembled once (V1† + vac + the jd = 0 part of V2) and the V2 loop from −st_size to −1, about eight lines moved; the default `BC_style = [1,2]` (one line).
+
+- *The overwrite is gone, but style 4 is not equivalent to style 2.* cbm18a at ψ = 0.75: style 4 −4.4712e−2 against style 2 −4.5019e−2 (before the fix style 4 gave −4.7684e−2, dropping the vacuum and V1†). The gap is 3.1e−4, 3.3e−4, 3.4e−4 at 200, 400, 800 radial points: it does not shrink. On the circular ε = 0.05 case style 4 gives −0.106, −0.292, −0.288 at n = 10, 15, 20 against style 2's −0.430, −0.452, −0.339 (and −0.112 at 400 radial points), while style 2 matches MISHKA to 1 %. So the explicit natural-boundary-condition row has an inconsistency of its own, which is what Toon's 2017 note ("boundary style 4 does not work well yet") already said; the overwrite was not its only cause. The gate "style 2 = style 4 to 1e−5" therefore fails, and the plan is re-evaluated as follows: style 4 stays in the code with the overwrite fixed, is marked "not validated, use style 2" in its header comment, and is no longer counted as a cross-check of style 2; the validated cross-checks of the vacuum are MISHKA on the circular fixtures and the energy balance. At ψ = 1.0 both styles still agree to 4e−10, where the edge displacement is 1e−8.
+- *Default.* `[1,2]`, as it was from 2017 to July 2026.
+- *Regression deck.* The free deck now runs at ψ = 0.75 (edge amplitude 0.1), style 2 anchored at −4.5019e−2 and style 4 at −4.4712e−2 (both 1e−3; the style-4 anchor only so that a change shows), asserts free ≤ fixed (−4.3573e−2), and runs the response-matrix check on the style-2 output. Regression layer 4 of 4 on Release and the free deck on Debug pass.
+- *Not done.* L6 (natural-boundary-condition residual of the style-2 eigenvector) was not computed; the circular regression already pins style 2 against an external code.
+- *Learning for the plan.* A one-sided derivative in a replaced matrix row is not a second discretisation of the variational condition: the two differ at O(1) in the edge treatment. If style 4 is ever wanted, it needs its own derivation against the discrete energy (the backward stencil gives the edge row of the variational scheme a factor step·ndc_e = 11/6 on the bulk terms relative to the surface term, which the explicit row ignores). Out of scope here.
+
+---
+
 ### Step 5: `setup_modes`
 
 - **Bug.** With `X_style = 2` the mode window follows nq. `nm_X` puts mode number m in slot modulo(m − m_min(1), M) + 1, which depends only on m. `ind_tot` computes a new mode's slot from the slot of the mode created last plus the sub-step, which equals the same thing only while the window moves up. For nq < 0 (every VMEC case, because PB3D flips VMEC's q), reversed shear, or jitter in flat q, two active modes share a slot and the coupling coefficients are mixed without a message.
@@ -418,6 +428,7 @@ Tests grow by a few hundred lines, all under `tests/`, plus two committed HELENA
 ## 9. What I am still not happy with
 
 - (added after step 2) The symmetric (`ias = 0`) and periodic (`ias = 1`) HELENA branches give ω² 9e−4 apart at equal poloidal spacing on cbm18a; the shear is not the cause. Not pursued in this plan.
+- (added after step 4) BC style 4 (explicit natural-boundary-condition row) is inconsistent with the variational style 2 at O(1) in the edge treatment, independently of the overwrite that step 4 removed; kept, marked not validated, not the default.
 - (added after step 3) POST's energy reconstruction is 7 % off on the circular m = 11 edge mode even for a fixed boundary (0.07 % on cbm18a): a plot-grid accuracy problem of POST, not pursued here.
 - (added after step 2) MISHKA returns NaN on the extended cbm18a fixture (zero pressure beyond the pedestal), so the cbm18a fixed-boundary cross-check C1/O1 is open; the circular cases are fine.
 
