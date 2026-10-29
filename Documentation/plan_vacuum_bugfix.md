@@ -59,6 +59,20 @@ All runs on the macOS machine (gfortran 16.1, PETSc 3.25.3 complex, SLEPc 3.25.1
 
 Edge diagnostics from the patched scratch build: |X_edge|/max|X| = 0.100 (× 1), 0.094 (× 0), 0.068 (× −2π); X_e† res X_e = −2.6476e−2 (× 1), +3.9853e−2 (× −2π); max|res − res†|/max|res| = 2.65e−5. The three ψ = 1.0 runs agree to 4e−8, so that deck cannot see the vacuum (report section 9). Gate R1 passed: every number of the report reproduces to five digits.
 
+**Figures (added 29 October 2026; `Documentation/figures/step0/make_figures.py` makes them from the fixtures and the step-0 output files).**
+
+![cbm18a flux surfaces](figures/step0/cbm18a_cross_section.png)
+
+The cbm18a fixture is HELENA's extended pseudo-vacuum equilibrium: the pressure gradient vanishes at ψ_N = 0.70, and from there to the HELENA boundary at ψ_N = 1 the domain carries neither pressure gradient nor current. Lengths are in units of R_mag, as PB3D normalises them. The plasma edge (ψ_N = 0.70) has half-width 0.333 R_mag about R = 0.969 R_mag; the HELENA boundary has half-width 0.555 R_mag about R = 0.832 R_mag, so the pseudo-vacuum surfaces shift outboard and the magnetic axis sits 0.17 R_mag outside the centre of the HELENA boundary. The regression decks solve from ψ_N = 0.45 to 0.75 (shaded): their boundary lies 7 % of the plasma minor radius outside the plasma edge, in the pseudo-vacuum, with q = 3.71 there against 3.02 at the plasma edge. The ψ_N = 1.0 decks put the boundary at the HELENA edge, where q = 25.
+
+![cbm18a profiles](figures/step0/cbm18a_profiles.png)
+
+Pressure, q, shear s = 2 (ψ/q) dq/dψ and F = R B_φ against ψ_N. The pedestal: p/p(0) = 0.92 at ψ_N = 0.45, 0.33 at 0.60, 0.03 at 0.65, zero from 0.70. q runs from 1.05 on axis to 3.02 at the plasma edge; the rational surfaces q = m/10 with m = 15 to 36 lie inside the solution window. The shear rises from 1.5 at ψ_N = 0.45 to 5.4 at the plasma edge and 6.4 at the deck boundary, with a flat stretch around ψ_N = 0.6. F is constant in the pseudo-vacuum, as it must be without current.
+
+![cbm18a eigenfunctions](figures/step0/cbm18a_eigenfunctions.png)
+
+The R1 eigenfunctions at ψ_max = 0.75, fixed and free with style 2, code 17b712c. Top: |X_m| for the 20 modes that follow nq (m = 5 to 47 over the window). The mode peaks at ψ_N = 0.58 with m = 20 and 21; its amplitude at the deck boundary is zero for the fixed run and 0.100 of the maximum for the free run, the number given above. Bottom: Re X in the poloidal plane at ζ = 0, rebuilt from the X_m with θ the HELENA straight-field-line angle. The mode balloons on the outboard side and is negligible at the inner edge of the window.
+
 Crashes: 9 of 15 launches of the regression decks on the unpatched build died (SIGTRAP or segfault) before the eigenvalue was written; the 800-point radial deck died 8 of 8 times. A scratch build of the same source linked against PSPLINE with the `r8genxpkg` guard applied ran 23 of 23 launches clean, with eigenvalues identical for the fixed deck and within 4e−13 relative for the free decks (SLEPc noise). That is the step 1 fix, confirmed in advance; step 1's gate tolerance should read 1e−10 relative, not bit-identical, for free-boundary runs.
 
 Unit-level numbers (`pb3d_fullstack_tests`): cylinder response `res` against the analytic value, m = 1 to 5: 1.0, 1.3, 1.6, 1.8, 1.9 % (report 1.0 to 1.9 %); Green-identity residuals halve from 51 to 101 boundary points (6.7e−2 → 3.5e−2, 3.5e−2 → 1.8e−2, 2.5e−2 → 1.3e−2: order 1); style 1 over style 2 response ratios m = 1 to 5: 1.002, 0.981, 0.957, 0.931, 0.906 (report 1.00 → 0.91). STRUMPACK's HSS solve fell back to ScaLAPACK on the 3-D test (residual 0.15).
@@ -87,6 +101,10 @@ So the slow radial convergence lives in the solution discretisation or in the eq
 | | 20 | | +4.8685e−2 | −4.0010e−1 |
 
 Fixed boundary is stable in every case, as it must be (no resonance inside). The free-boundary numbers are what the unfixed code gives; at n = 10 the vacuum changes nothing although |X_edge|/max|X| is 0.81 to 0.86 in the free runs. These are step 3's starting values. The VMEC twins were not made: there is no VMEC binary on this machine (VMEC++ exists in `~/Code/desc-vs-vmec`); they are first needed in step 5 and are made there.
+
+![circular cases](figures/step0/circular_cases.png)
+
+The two circular fixtures: flux surfaces and q. With q between 1.027 and 1.041 and the lowest rational surfaces of the decks at q = 11/10, 16/15 and 21/20, no mode of the decks resonates inside the plasma, so the fixed-boundary values must be positive and every instability is an external kink: m = 11, 16, 21 for n = 10, 15, 20.
 
 **R3, MISHKA.** The source that reads the 2017 HELENA format (`JS0, IAS` on the first line, `RAXIS, B0` after the metric) is `Simulations/MISHKA/Sources` (November 2017, MANZ = 21), not `Documents/PHD/MISHKA_simulations/Sources` (2015, old format, fails with "Bad integer for item 409"). Built with `gfortran -std=legacy -w -O2 -fdefault-integer-8 -fdefault-real-8` and linked against an ILP64 OpenBLAS (`spack install openblas+ilp64 symbol_suffix=none`); with 4-byte integers it segfaults at once. It reads the namelist from stdin and the mapping from `fort.12`, writes `fort.20`; the line `INSTABILITY FOUND : n ... q₀ q_a Re Im` gives Re = γ² = −ω²/ω_A². Validation: the archived PhD run (ε = 0.33, n = 10, `RWALL` = 3) reproduces to all printed digits, 0.433847, with the archived `fort.12`, and gives 0.433764 with the regenerated one. `RWALL` = 1 (fixed boundary) does not converge in the inverse vector iteration (99 iterations), so MISHKA is used for the free-boundary values only.
 
