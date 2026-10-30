@@ -3137,7 +3137,7 @@ contains
     !> \private individual version
     integer function calc_jac_V_ind(grid,eq,deriv) result(ierr)
         use VMEC_utilities, only: fourier2real
-        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V
+        use VMEC_vars, only: jac_V_c, jac_V_s, is_asym_V, mn_V_nyq
         
         character(*), parameter :: rout_name = 'calc_jac_V_ind'
         
@@ -3162,7 +3162,7 @@ contains
         ierr = fourier2real(jac_V_c(:,grid%i_min:grid%i_max,deriv(1)),&
             &jac_V_s(:,grid%i_min:grid%i_max,deriv(1)),grid%trigon_factors,&
             &eq%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)),&
-            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)])
+            &sym=[.true.,is_asym_V],deriv=[deriv(2),deriv(3)],mn=mn_V_nyq)
         CHCKERR('')
     end function calc_jac_V_ind
     !> \private array version
@@ -5206,7 +5206,7 @@ contains
             use num_utilities, only: calc_int, c
             use spline_utilities, only: spline
             use num_vars, only: norm_disc_prec_eq
-            use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V
+            use VMEC_vars, only: B_V_sub_s, B_V_sub_c, is_asym_V, mn_V_nyq
             use VMEC_utilities, only: fourier2real
             
             character(*), parameter :: rout_name = 'test_sigma_VMEC'
@@ -5252,7 +5252,7 @@ contains
                     &B_V_sub_c(:,grid_eq%i_min:grid_eq%i_max,id),&
                     &B_V_sub_s(:,grid_eq%i_min:grid_eq%i_max,id),&
                     &grid_eq%trigon_factors,B_V(:,:,:,id),&
-                    &[.true.,is_asym_V])
+                    &[.true.,is_asym_V],mn=mn_V_nyq)
                 CHCKERR('')
             end do
             
@@ -7364,7 +7364,8 @@ contains
         use grid_utilities, only: trim_grid
         use num_utilities, only: c
         use VMEC_utilities, only: fourier2real
-        use VMEC_vars, only: B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, is_asym_V
+        use VMEC_vars, only: B_V_sub_s, B_V_sub_c, B_V_c, B_V_s, is_asym_V, &
+            &mn_V_nyq
         
         character(*), parameter :: rout_name = 'test_B_F'
         
@@ -7417,14 +7418,14 @@ contains
                     ierr = fourier2real(&
                         &B_V_sub_c(:,norm_id_f(1):norm_id_f(2),id),&
                         &B_V_sub_s(:,norm_id_f(1):norm_id_f(2),id),&
-                        &grid_eq%trigon_factors(:,:,:,norm_id(1):&
-                        &norm_id(2),:),res(:,:,:,id))
+                        &grid_eq%trigon_factors(:,:,norm_id(1):&
+                        &norm_id(2),:,:),res(:,:,:,id),mn=mn_V_nyq)
                     CHCKERR('')
                 end do
                 ierr = fourier2real(B_V_c(:,norm_id_f(1):norm_id_f(2)),&
                     &B_V_s(:,norm_id_f(1):norm_id_f(2)),&
-                    &grid_eq%trigon_factors(:,:,:,norm_id(1):norm_id(2),:),&
-                    &res(:,:,:,4),[.true.,is_asym_V])
+                    &grid_eq%trigon_factors(:,:,norm_id(1):norm_id(2),:,:),&
+                    &res(:,:,:,4),[.true.,is_asym_V],mn=mn_V_nyq)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 res(:,:,:,1) = &

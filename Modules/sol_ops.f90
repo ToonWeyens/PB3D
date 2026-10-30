@@ -268,7 +268,7 @@ contains
         grid_out%loc_r_E = grid_sol%loc_r_E
         if (eq_style.eq.1) allocate(grid_out%trigon_factors(&
             &size(grid_X%trigon_factors,1),size(grid_X%trigon_factors,2),&
-            &size(grid_X%trigon_factors,3),grid_out%loc_n_r,&
+            &grid_out%loc_n_r,size(grid_X%trigon_factors,4),&
             &size(grid_X%trigon_factors,5)))                                    ! VMEC
         select case (X_grid_style)
             case (1,3)                                                          ! equilibrium or enriched
@@ -293,12 +293,12 @@ contains
                         CHCKERR('')
                         if (eq_style.eq.1) then                                 ! VMEC
                             do td = 1,size(grid_X%trigon_factors,5)
-                                do kd = 1,size(grid_X%trigon_factors,1)
+                                do kd = 1,size(grid_X%trigon_factors,4)
                                     ierr = spline(grid_X%loc_r_F,&
-                                        &grid_X%trigon_factors(kd,id,jd,:,td),&
+                                        &grid_X%trigon_factors(id,jd,:,kd,td),&
                                         &grid_sol%loc_r_F,&
                                         &grid_out%trigon_factors&
-                                        &(kd,id,jd,:,td),ord=norm_disc_prec_X)
+                                        &(id,jd,:,kd,td),ord=norm_disc_prec_X)
                                     CHCKERR('')
                                 end do
                             end do

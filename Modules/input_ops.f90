@@ -1166,13 +1166,14 @@ contains
     !!  norm_disc_prec_eq, \c norm_disc_style_sol, \c n_r_in, \c n_r_eq, \c
     !!  n_r_sol, \c debug_version
     !!  -  \c misc_in_V: \c is_asym_V,  \c is_freeb_V, \c mnmax_V,  \c mpol_V, \c
-    !!  ntor_V, \c gam_V
+    !!  ntor_V, \c nfp_V, \c gam_V, \c mnmax_nyq_V, \c mpol_tf, \c ntor_tf
     !!  - \c flux_t_V
     !!  - \c flux_p_V
     !!  - \c pres_V
     !!  - \c rot_t_V
     !!  - \c q_saf_V
     !!  - \c mn_V
+    !!  - \c mn_V_nyq
     !!  - \c R_V_c
     !!  - \c R_V_s
     !!  - \c Z_V_c
@@ -1222,8 +1223,9 @@ contains
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
             &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
-            &jac_V_s, mnmax_V, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
-            &flux_p_V, nfp_V, B_V_sub_c, B_V_sub_s
+            &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
+            &flux_p_V, nfp_V, B_V_sub_c, B_V_sub_s, mnmax_nyq_V, mn_V_nyq, &
+            &mpol_tf, ntor_tf
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
         use VMEC_vars, only: B_V_c, B_V_s, J_V_sup_int
@@ -1336,12 +1338,13 @@ contains
                 allocate(in_1D_loc%loc_i_min(1),&
                     &in_1D_loc%loc_i_max(1))
                 in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [7]
+                in_1D_loc%loc_i_max = [10]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(7))
+                allocate(in_1D_loc%p(10))
                 in_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,mpol_V*1._dp,&
-                    &ntor_V*1._dp,nfp_V*1._dp,gam_V]
+                    &ntor_V*1._dp,nfp_V*1._dp,gam_V,mnmax_nyq_V*1._dp,&
+                    &mpol_tf*1._dp,ntor_tf*1._dp]
                 if (is_asym_V) in_1D_loc%p(1) = 1._dp
                 if (is_freeb_V) in_1D_loc%p(2) = 1._dp
                 
@@ -1426,6 +1429,18 @@ contains
                 allocate(in_1D_loc%p(size(mn_V)))
                 in_1D_loc%p = reshape(mn_V,[size(mn_V)])
                 
+                ! mn_V_nyq
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'mn_V_nyq'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,1]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(mn_V_nyq)))
+                in_1D_loc%p = reshape(mn_V_nyq,[size(mn_V_nyq)])
+                
                 ! RZL_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'RZL_V'
@@ -1450,13 +1465,13 @@ contains
                 allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
                 allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
                 in_1D_loc%loc_i_min = [1,1,0,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,size(jac_V_c,3)-1,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,size(jac_V_c,3)-1,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*size(jac_V_c,3)))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq*size(jac_V_c,3)))
                 in_1D_loc%p = reshape([jac_V_c(:,in_limits(1):in_limits(2),:),&
                     &jac_V_s(:,in_limits(1):in_limits(2),:)],&
-                    &[2*mnmax_V*n_r_eq*size(jac_V_c,3)])
+                    &[2*mnmax_nyq_V*n_r_eq*size(jac_V_c,3)])
                 
                 ! B_V_sub
                 in_1D_loc => in_1D(id); id = id+1
@@ -1464,14 +1479,14 @@ contains
                 allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
                 allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
                 in_1D_loc%loc_i_min = [1,1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,3,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,3,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*3))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq*3))
                 in_1D_loc%p = reshape([&
                     &B_V_sub_c(:,in_limits(1):in_limits(2),:),&
                     &B_V_sub_s(:,in_limits(1):in_limits(2),:)],&
-                    &[2*mnmax_V*n_r_eq*3])
+                    &[2*mnmax_nyq_V*n_r_eq*3])
                 
 #if ldebug
                 ! B_V
@@ -1480,12 +1495,12 @@ contains
                 allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
                 allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
                 in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq))
                 in_1D_loc%p = reshape([B_V_c(:,in_limits(1):in_limits(2)),&
-                    &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
+                    &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_nyq_V*n_r_eq])
                 
                 ! J_V_sup_int
                 in_1D_loc => in_1D(id); id = id+1

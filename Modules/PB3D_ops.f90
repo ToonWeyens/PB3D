@@ -57,7 +57,8 @@ contains
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
             &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
             &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, flux_p_V, &
-            &nfp_V, B_V_sub_c, B_V_sub_s
+            &nfp_V, B_V_sub_c, B_V_sub_s, mnmax_nyq_V, mn_V_nyq, mpol_tf, &
+            &ntor_tf
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
         use VMEC_vars, only: B_V_c, B_V_s, J_V_sup_int
@@ -170,6 +171,15 @@ contains
                 ntor_V = nint(dum_1D(5))
                 nfp_V = nint(dum_1D(6))
                 gam_V = dum_1D(7)
+                if (size(dum_1D).lt.10) then
+                    ierr = 1
+                    err_msg = 'PB3D output predates the Nyquist mode set &
+                        &(version 2.49): rerun PB3D'
+                    CHCKERR(err_msg)
+                end if
+                mnmax_nyq_V = nint(dum_1D(8))
+                mpol_tf = nint(dum_1D(9))
+                ntor_tf = nint(dum_1D(10))
                 call dealloc_var_1D(var_1D)
                 
                 ! flux_t_V
@@ -222,6 +232,15 @@ contains
                 mn_V = nint(dum_2D)
                 call dealloc_var_1D(var_1D)
                 
+                ! mn_V_nyq
+                ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),&
+                    &'mn_V_nyq')
+                CHCKERR('')
+                call conv_1D2ND(var_1D,dum_2D)
+                allocate(mn_V_nyq(mnmax_nyq_V,2))
+                mn_V_nyq = nint(dum_2D)
+                call dealloc_var_1D(var_1D)
+                
                 ! RZL_V
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'RZL_V')
                 CHCKERR('')
@@ -244,8 +263,8 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'jac_V')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_4D)
-                allocate(jac_V_c(mnmax_V,n_r_eq,0:max_deriv))
-                allocate(jac_V_s(mnmax_V,n_r_eq,0:max_deriv))
+                allocate(jac_V_c(mnmax_nyq_V,n_r_eq,0:max_deriv))
+                allocate(jac_V_s(mnmax_nyq_V,n_r_eq,0:max_deriv))
                 jac_V_c = dum_4D(:,:,:,1)
                 jac_V_s = dum_4D(:,:,:,2)
                 call dealloc_var_1D(var_1D)
@@ -254,8 +273,8 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'B_V_sub')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_4D)
-                allocate(B_V_sub_c(mnmax_V,n_r_eq,3))
-                allocate(B_V_sub_s(mnmax_V,n_r_eq,3))
+                allocate(B_V_sub_c(mnmax_nyq_V,n_r_eq,3))
+                allocate(B_V_sub_s(mnmax_nyq_V,n_r_eq,3))
                 B_V_sub_c = dum_4D(:,:,:,1)
                 B_V_sub_s = dum_4D(:,:,:,2)
                 call dealloc_var_1D(var_1D)
@@ -265,8 +284,8 @@ contains
                 ierr = read_HDF5_arr(var_1D,PB3D_name,trim(data_name),'B_V')
                 CHCKERR('')
                 call conv_1D2ND(var_1D,dum_3D)
-                allocate(B_V_c(mnmax_V,n_r_eq))
-                allocate(B_V_s(mnmax_V,n_r_eq))
+                allocate(B_V_c(mnmax_nyq_V,n_r_eq))
+                allocate(B_V_s(mnmax_nyq_V,n_r_eq))
                 B_V_c = dum_3D(:,:,1)
                 B_V_s = dum_3D(:,:,2)
                 call dealloc_var_1D(var_1D)

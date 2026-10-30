@@ -50,8 +50,6 @@ contains
         real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: jac_s_H(:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
-        integer, allocatable :: nyq_id(:)                                       ! index in the Nyquist mode set of every mode of mn_V
-        integer :: jd                                                           ! counter
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
         real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
 #if ldebug
@@ -138,33 +136,23 @@ contains
         mn_V(:,1) = nint(xm(1:mnmax_V))
         mn_V(:,2) = nint(xn(1:mnmax_V))
         
-        ! The Jacobian, |B| and the  covariant components of B are stored on
-        ! VMEC's  Nyquist mode  set (xm_nyq,  xn_nyq), which  is larger  than
-        ! (mpol, ntor)  and ordered  on its  own grid of  m and  n, so  its
-        ! first  mnmax  entries  are  the  main  modes  only  when  the  two
-        ! sets coincide  (ntor = 0,  or files written  with mnmax_nyq =
-        ! mnmax). Taking gmnc(1:mnmax) etc.  mislabelled 143 of 150 modes of
-        ! a VMEC++  file with  ntor = 6  and moved  a fixed-boundary eigenvalue
-        ! by 37 %  (issue #4, step 6f). Map every mode of mn_V onto its place
-        ! in the Nyquist set; the extra Nyquist modes are dropped, as before.
-        allocate(nyq_id(mnmax_V))
-        nyq_id = 0
-        do id = 1,mnmax_V
-            do jd = 1,mnmax_nyq
-                if (nint(xm_nyq(jd)).eq.mn_V(id,1) .and. &
-                    &nint(xn_nyq(jd)).eq.mn_V(id,2)) then
-                    nyq_id(id) = jd
-                    exit
-                end if
-            end do
-            if (nyq_id(id).eq.0) then
-                ierr = 1
-                err_msg = 'VMEC mode (m,n) = ('//trim(i2str(mn_V(id,1)))//&
-                    &','//trim(i2str(mn_V(id,2)))//') is not in the Nyquist &
-                    &mode set of the file'
-                CHCKERR(err_msg)
-            end if
-        end do
+        ! The Jacobian, |B| and the covariant  components of B live on VMEC's
+        ! Nyquist mode set (xm_nyq, xn_nyq),  which is larger than (mpol, ntor)
+        ! and  ordered on  its  own grid  of m  and  n; only  for  ntor =  0 or
+        ! mnmax_nyq = mnmax does  it start with the main  modes. Taking its first
+        ! mnmax entries mislabelled 143 of 150 modes of a VMEC++ file with ntor
+        ! = 6 (issue #4, step 6f). The set  is kept whole, with its own mode
+        ! list; fourier2real evaluates any mode list from the one-angle
+        ! trigonometric basis, whose extent covers both sets (step 9).
+        mnmax_nyq_V = mnmax_nyq
+        allocate(mn_V_nyq(mnmax_nyq_V,2))
+        mn_V_nyq(:,1) = nint(xm_nyq(1:mnmax_nyq_V))
+        mn_V_nyq(:,2) = nint(xn_nyq(1:mnmax_nyq_V))
+        mpol_tf = max(mpol_V,maxval(mn_V_nyq(:,1))+1)
+        ntor_tf = max(ntor_V,maxval(abs(mn_V_nyq(:,2)))/nfp_V)
+        call writo('Nyquist mode set: '//trim(i2str(mnmax_nyq_V))//&
+            &' modes, m up to '//trim(i2str(maxval(mn_V_nyq(:,1))))//&
+            &', n up to '//trim(i2str(maxval(abs(mn_V_nyq(:,2)))/nfp_V)))
         
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
@@ -179,23 +167,23 @@ contains
         allocate(Z_V_s(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_c(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_s(mnmax_V,n_r_in,0:max_deriv+1))
-        allocate(jac_V_c(mnmax_V,n_r_in,0:max_deriv))
-        allocate(jac_V_s(mnmax_V,n_r_in,0:max_deriv))
+        allocate(jac_V_c(mnmax_nyq_V,n_r_in,0:max_deriv))
+        allocate(jac_V_s(mnmax_nyq_V,n_r_in,0:max_deriv))
         allocate(L_c_H(mnmax_V,n_r_in,0:0))
         allocate(L_s_H(mnmax_V,n_r_in,0:0))
-        allocate(jac_c_H(mnmax_V,n_r_in,0:0))
-        allocate(jac_s_H(mnmax_V,n_r_in,0:0))
+        allocate(jac_c_H(mnmax_nyq_V,n_r_in,0:0))
+        allocate(jac_s_H(mnmax_nyq_V,n_r_in,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
         R_V_c(:,:,0) = rmnc(1:mnmax_V,:)
         Z_V_s(:,:,0) = zmns(1:mnmax_V,:)
         L_s_H(:,:,0) = lmns(1:mnmax_V,:)
-        jac_c_H(:,:,0) = gmnc(nyq_id,:)
+        jac_c_H(:,:,0) = gmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             R_V_s(:,:,0) = rmns(1:mnmax_V,:)
             Z_V_c(:,:,0) = zmnc(1:mnmax_V,:)
             L_c_H(:,:,0) = lmnc(1:mnmax_V,:)
-            jac_s_H(:,:,0) = gmns(nyq_id,:)
+            jac_s_H(:,:,0) = gmns(1:mnmax_nyq_V,:)
         else
             R_V_s = 0._dp
             Z_V_c = 0._dp
@@ -230,7 +218,7 @@ contains
         
         ! up to order 2, half mesh: also extrapolate
         do kd = 0,2
-            do id = 1,mnmax_V
+            do id = 1,mnmax_nyq_V
                 ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
                     &jac_c_H(id,2:n_r_in,0),r_V,jac_V_c(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
@@ -290,46 +278,46 @@ contains
         pres_V(:,3:) = 0._dp
         
         ! allocate helper variables
-        allocate(B_V_sub_c_M(mnmax_V,n_r_in,3)); B_V_sub_c_M = 0._dp
-        allocate(B_V_sub_s_M(mnmax_V,n_r_in,3)); B_V_sub_s_M = 0._dp
+        allocate(B_V_sub_c_M(mnmax_nyq_V,n_r_in,3)); B_V_sub_c_M = 0._dp
+        allocate(B_V_sub_s_M(mnmax_nyq_V,n_r_in,3)); B_V_sub_s_M = 0._dp
 #if ldebug
-        allocate(B_V_c_H(mnmax_V,n_r_in)); B_V_c_H = 0._dp
-        allocate(B_V_s_H(mnmax_V,n_r_in)); B_V_s_H = 0._dp
+        allocate(B_V_c_H(mnmax_nyq_V,n_r_in)); B_V_c_H = 0._dp
+        allocate(B_V_s_H(mnmax_nyq_V,n_r_in)); B_V_s_H = 0._dp
 #endif
         
         ! store in helper variables
-        B_V_sub_s_M(:,:,1) = bsubsmns(nyq_id,:)
-        B_V_sub_c_M(:,:,2) = bsubumnc(nyq_id,:)
-        B_V_sub_c_M(:,:,3) = bsubvmnc(nyq_id,:)
+        B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_nyq_V,:)
+        B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_nyq_V,:)
+        B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_sub_c_M(:,:,1) = bsubsmnc(nyq_id,:)
-            B_V_sub_s_M(:,:,2) = bsubumns(nyq_id,:)
-            B_V_sub_s_M(:,:,3) = bsubvmns(nyq_id,:)
+            B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_nyq_V,:)
+            B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_nyq_V,:)
+            B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_nyq_V,:)
         else
             B_V_sub_c_M(:,:,1) = 0._dp
             B_V_sub_s_M(:,:,2) = 0._dp
             B_V_sub_s_M(:,:,3) = 0._dp
         end if
 #if ldebug
-        B_V_c_H(:,:) = bmnc(nyq_id,:)
+        B_V_c_H(:,:) = bmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_s_H(:,:) = bmns(nyq_id,:)
+            B_V_s_H(:,:) = bmns(1:mnmax_nyq_V,:)
         else
             B_V_s_H(:,:) = 0._dp
         end if
 #endif
         
         ! allocate FM variables
-        allocate(B_V_sub_c(mnmax_V,n_r_in,3))
-        allocate(B_V_sub_s(mnmax_V,n_r_in,3))
+        allocate(B_V_sub_c(mnmax_nyq_V,n_r_in,3))
+        allocate(B_V_sub_s(mnmax_nyq_V,n_r_in,3))
 #if ldebug
-        allocate(B_V_c(mnmax_V,n_r_in))
-        allocate(B_V_s(mnmax_V,n_r_in))
+        allocate(B_V_c(mnmax_nyq_V,n_r_in))
+        allocate(B_V_s(mnmax_nyq_V,n_r_in))
         allocate(J_V_sup_int(n_r_in,2))
 #endif
         
         ! half mesh: extrapolate
-        do id = 1,mnmax_V
+        do id = 1,mnmax_nyq_V
             do kd = 2,3
                 ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
                     &B_V_sub_c_M(id,2:n_r_in,kd),r_V,B_V_sub_c(id,:,kd),&
@@ -342,7 +330,7 @@ contains
             end do
         end do
 #if ldebug
-        do id = 1,mnmax_V
+        do id = 1,mnmax_nyq_V
             ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
                 &B_V_c_H(id,2:n_r_in),r_V,B_V_c(id,:),&
                 &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)

@@ -1744,10 +1744,10 @@ contains
             allocate(grid_out%trigon_factors(&
                 &size(grid_in%trigon_factors,1),&
                 &size(grid_in%trigon_factors,2),&
-                &size(grid_in%trigon_factors,3),&
-                &grid_out%loc_n_r,2))
+                &grid_out%loc_n_r,&
+                &size(grid_in%trigon_factors,4),2))
             grid_out%trigon_factors = &
-                &grid_in%trigon_factors(:,:,:,i_lim_out(1):i_lim_out(2),:)
+                &grid_in%trigon_factors(:,:,i_lim_out(1):i_lim_out(2),:,:)
         end if
     end function trim_grid
     
