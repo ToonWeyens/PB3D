@@ -130,6 +130,17 @@ with a conformal wall at b: −(m − nq_a)[(1 + λ)(nq_a − m) + 2]/q_a², λ 
 
 **R5.** The PhD MISHKA numbers (0.434, 0.429, 0.323 at n = 10, 16, 20, `RWALL` = 3) are reproduced by the rebuilt code and are within 1 to 4 % of the cylinder formula, so in 2017 MISHKA was right and PB3D's −0.298, −0.430, −0.330 were wrong.
 
+**R5, revisited 30 October 2026.** After step 3 the code reproduces these numbers. Same case (`circ_eps033_q104`, the PhD's 2.25 case regenerated with the rebuilt HELENA), free boundary, style 2, no wall, PB3D at the branch tip on Snellius. MISHKA prints γ² = −ω²/ω_A² and PB3D prints ω²/ω_A², so the signs are the two conventions, not a disagreement; a wall at 3a is no wall for these m (MISHKA is converged in `RWALL` from 1.5 on), so the PhD's `RWALL` = 3 values and today's no-wall values are the same quantity.
+
+| n | MISHKA 2017, `RWALL` 3 | MISHKA now, `RWALL` 3 / no wall | PB3D 2017 | PB3D now, free | PB3D now, fixed |
+|---|---|---|---|---|---|
+| 10 | 0.434 | 0.433764 / 0.433779 | −0.298 | −0.443831 (+2.3 %) | +0.078430 |
+| 15 | | – / 0.442830 | | −0.452884 (+2.3 %) | +0.086149 |
+| 16 | 0.429 | 0.429036 / 0.429043 | −0.430 | −0.438604 (+2.2 %) | +0.075200 |
+| 20 | 0.323 | 0.322621 / 0.322624 | −0.330 | −0.329400 (+2.1 %) | +0.012068 |
+
+The 2017 PB3D values were wrong because the vacuum entered the energy with the wrong sign and without the factor 2π (step 3); the near-agreement at n = 16 and 20 was luck, the n = 10 value being 31 % low. The remaining 2.1 to 2.3 % is the toroidal correction that PB3D's high-n ordering drops and MISHKA's full MHD keeps: it grows with ε (0.3 to 0.8 % on the ε = 0.05 fixture, 2.1 to 2.3 % here), and MISHKA over the cylinder formula on ε = 0.33 is 0.990, 0.9755, 0.965 at n = 10, 15, 20 at every wall radius, so it does not come from the vacuum. PB3D lands within 1.5 % of the cylinder value, which is the discretisation error of the response diagonal. MISHKA's fixed-boundary run does not converge, so the planned comparison of free minus fixed between the codes could not be made; the absolute free-boundary values are compared instead. The fixed-boundary column shows every case is an external kink.
+
 **Reference values for step 3** (free boundary, no wall, −ω²/ω_A²; PB3D must reach them within its own discretisation error, about 1 %, with the fixed boundary staying positive):
 
 | Case | n = 10 | n = 15 | n = 20 |
@@ -139,7 +150,34 @@ with a conformal wall at b: −(m − nq_a)[(1 + λ)(nq_a − m) + 2]/q_a², λ 
 
 MISHKA input for these: the archived `TEST_VAC/OLD/2.25/MISHKA/10/fort.10` with `NTOR` and `RWALL` changed (`IFAST = 1` shifts the m window with nq by itself; `DSURF = 1` is a flat density). Table kept as `tests/reference/mishka_circular.txt`.
 
-**Still open from step 0:** the same table on CI (CI is red for other reasons; step 1), the Snellius build and its 1, 2, 4-process runs (in progress), the VMEC twins (step 5).
+**Open items of step 0, closed 30 October 2026.**
+
+*The same table on CI.* CI showed only the output of failing tests, so it kept no record of the eigenvalues it computed; since 2d1363b the fullstack and coverage jobs upload the ctest log as an artifact. The branch tip on the three platforms, one process:
+
+| deck | macOS (gfortran 16, PETSc 3.25, no MUMPS) | Snellius (gfortran 14.2, PETSc 3.25 with MUMPS) | CI, Ubuntu 24.04 (gfortran 13, PETSc 3.19) |
+|---|---|---|---|
+| cbm18a fixed, ψ 0.45 to 0.75 | −4.3572898102123836e−2 | −4.3572898102173241e−2 | −4.3572898102188728e−2 |
+| cbm18a free, style 2 | −4.5018998767843765e−2 | −4.5018998767941465e−2 | −4.5018998768032115e−2 |
+| cbm18a free, style 4 | −4.4712139717450083e−2 | −4.4712139717485277e−2 | −4.4712139717494936e−2 |
+| circular ε = 0.05 free | −4.3033715881358026e−1 | −4.3033715881628887e−1 | −4.3033715881637524e−1 |
+
+The spread is 1e−12 to 6e−12 relative: the same numbers everywhere (the coverage job, a second Ubuntu build, agrees with the fullstack job to 1e−12 as well). The 17b712c baseline itself never ran on a green CI, because CI was repaired in step 1 and step 2 changed the numbers in the same hour; the CI numbers are those of the tip.
+
+*The Snellius build and its 1, 2, 4-process runs.* Snellius runs the branch tip: ctest Release 23 of 23 pass (272 s), Debug 19 of 22 at first: the three regression decks segfaulted in gfortran 14.2's bounds-checking code (next paragraph); with that check dropped the Debug fixed deck gives the Release value to all digits (−4.3572898102173241e−2), and the Debug regression rerun is queued (`ctest-dbg-stack`), to be read from the Snellius logs once the SSH agent is unlocked again. One process reproduces the Mac to 1e−12 (table above). Two and four processes shift every eigenvalue towards stability:
+
+| deck | 2 processes | 4 processes |
+|---|---|---|
+| cbm18a fixed, 200 radial points | +2.4e−5 | +1.8e−5 |
+| cbm18a fixed, 400 and 800 radial points | +2.6e−5, +2.6e−5 | – |
+| cbm18a free, style 2 | +2.4e−5 | +1.8e−5 |
+| cbm18a free, style 4 | +2.4e−5 | +1.8e−5 |
+| circular ε = 0.05 free | +1.6e−6 | +4.9e−6 |
+
+(relative to the one-process value). The shift is the same for the fixed and free cbm18a decks, so it is not the vacuum, and the same at 200, 400 and 800 radial points, so it is not the discretisation at the process boundaries. SLEPc's relative residual of the accepted eigenpair is 2e−2 for the cbm18a decks and 6e−12 for the circular deck (the decks ask `tol_SLEPC` = 1e−6 under shift-and-invert), and the shift is ten times smaller on the circular deck. With `tol_SLEPC` tightened to 1e−8, 1e−10 and 1e−12 on the fixed cbm18a deck the two-process shift is queued (`reg-fixed-tol8`, `tol10`, `tol12` at 1, 2, 4 processes) and read from `~/pb3d/logs/jobs_tol.log` when the SSH agent is unlocked again. The solver tolerance is the first suspect because the circular deck, whose eigenpair is converged to 6e−12, shifts ten times less; but it still shifts by 2e−6 to 5e−6, so at least that part is not the tolerance. Until the series is read the shift stays an open item (section 9).
+
+Along the way: the fixed cbm18a eigenvalue at 200, 400, 800 radial points is −4.35729e−2, −4.36594e−2, −4.37296e−2, differences 8.7e−5 and 7.0e−5, which is the slow radial convergence already noted in step 0 (O4, open).
+
+*The VMEC twins.* `wout_circ_eps033_q104.nc` (a5c8c41) is made from the HELENA fixture by PB3D's `--export_HEL` (boundary Fourier modes, pressure and iota as splines against toroidal flux, R_0 = B_0 = 1) and VMEC++, 3 s, force residual 1e−15; recipe `tests/reference/make_vmec_twin.sh`. q runs from 1.04112 on axis to 1.03821 at the edge in both files. Fixed-boundary eigenvalues, HELENA against VMEC: n = 10: +7.8430e−2 against +7.9716e−2 (1.6 %); n = 16: +7.5200e−2 against +7.6434e−2 (1.6 %); n = 20: +1.2068e−2 against +1.2266e−2 (1.6 %). The n = 10 pair is now the regression test `regression_circ_eps033_vmec_twin` (2.5 % allowed). The free-boundary comparison through the 3-D vacuum is step 6e and is reported in the steps 5 and 6 comment.
 
 ## 3. Steps 1 to 8
 
@@ -283,6 +321,36 @@ Split in two because the sign is certain and the factor is not.
 - *6d, aliasing.* After `read_VMEC`, a warning when `n_alpha` divides the field period (alpha_style 2, n_alpha > 1): on W7-X (N_fp = 5) with n_alpha = 10 the run prints "n_alpha = 10 and the field period 5 share a factor: the toroidal average aliases the harmonic 10"; with n_alpha = 16 it does not. The condition is a shared factor, LCM(n_alpha, N_fp) < n_alpha N_fp, not only "n_alpha divides N_fp" as the plan said: n_alpha = 10 does not divide 5 but aliases the second field-period harmonic.
 - *Gate.* Release: 20 of 24 CTest entries pass; the four failures are the `_np2` and `_np4` rows (`mpirun`), which segfault at launch on this Mac for any program (known, section 0 rule 6) and run on CI. Debug (`-fcheck=all`, `-ffpe-trap=invalid`): the whole 3-D suite passes, ratios 0.965 to 0.886 at 81 × 80, point-source errors identical to Release. W7-X smoke test (`wout_w7x.nc` with the field reversed, edge window ψ 0.85 to 1, n = 10, 8 modes, 61 parallel points, 16 field lines, style 2 as the boundary condition, style 1 as the vacuum): fixed +6.2316e−2, free +6.2295e−2, so free ≤ fixed holds, and `res` is Hermitian positive definite at this resolution (smallest eigenvalue +0.066, largest +27). At 121 parallel points, however, `res` changes by 29 % and 4 of its 8 eigenvalues are negative (−3.1 to +32), and STRUMPACK's HSS compression fails on every W7-X solve (residuals 1e3 to 1e13, LU fallback). Sixteen field lines over five periods do not resolve the W7-X boundary; the 3-D vacuum on W7-X is unconverged at any resolution tried today, and L2 at the finer resolution fails. This is the open finding of step 6, to be taken up with the field-line resolution study (L10) and the C6 comparison.
 - *Open from step 6:* 6e and 6f (need a VMEC run of the circular twin: VMEC++ exists in `~/Code/desc-vs-vmec`, `hel2vmec.sh` in the archive needs PB3D's `--export_HEL`), T5, L7 (rotation by 2π/N_fp), L10, L11, C5, C6, C9, T7. The Snellius build (scripts under `scripts/snellius/`, untracked, unverified) stalled when the SSH agent locked; both budgets expire on 31 October 2026.
+
+**Step 6e results (30 October 2026).** The VMEC twin of the circular ε = 0.33 case (`wout_circ_eps033_q104.nc`, made with `tests/reference/make_vmec_twin.sh`, commit a5c8c41) through the style-1 3-D vacuum (`alpha_style 2`, the circular deck otherwise), against the HELENA style-2 result and MISHKA, on Snellius at the branch tip. Fixed boundary first: HELENA against VMEC +7.8430e−2 / +7.9716e−2 at n = 10 (1.6 %), +7.5200e−2 / +7.6434e−2 (1.6 %) at n = 16, +1.2068e−2 / +1.2266e−2 (1.6 %) at n = 20; the n = 10 pair is a regression test. Free boundary, n = 10 (HELENA style 2: −0.443831; MISHKA: 0.433779; cylinder: 0.4383):
+
+| n_alpha | 4 (Mac) | 8 | 16 | 32 | 64 | 128 |
+|---|---|---|---|---|---|---|
+| ω²/ω_A² | +0.050011 | −0.356288 | −0.671667 | −0.194866 | −0.083333 | −0.049255 |
+
+n = 16 (HELENA style 2: −0.438604): −0.366688 at 64 lines, −0.346848 at 128. n = 20 at 64 and 128 lines is queued on Snellius and read later. Neither series heads for the HELENA value.
+
+**The gate fails, and the eigenvalue is the wrong instrument.** The free-boundary eigenvalues do not converge to the HELENA value −0.443831 as n_alpha grows; from 32 lines on they climb towards the fixed-boundary value. Two things are going on.
+
+*Branch hopping.* PB3D asks SLEPc for the eigenvalue nearest `EV_guess` = −0.3 (`EPSSetTarget` under shift-and-invert, `n_sol_requested` = 1), not for the most unstable one. When the vacuum term is wrong the kink branch moves away from −0.3 and another eigenvalue is reported. The same explains why the step-3 scale scan was not monotone in the scale (−0.545, −0.155, −0.430, −0.080 for 0, −1, −2π, −4π at n = 10). The response matrix `res` is the quantity to compare, not the eigenvalue.
+
+*The response is three times too small.* Diagonal of `res` of the VMEC twin (style 1, 3-D) over the diagonal of the HELENA fixture (style 2, axisymmetric), same case, n = 10 (Mac runs, identical to Snellius to 1e−11):
+
+| field lines × parallel points | m = 6 | 8 | 10 | 11 | 12 | 14 | 15 |
+|---|---|---|---|---|---|---|---|
+| 8 × 100 | 0.95 | 4.37 | 1.76 | 1.30 | 1.14 | 1.35 | 1.73 |
+| 16 × 100 | 0.24 | 0.27 | 0.37 | 0.46 | 0.60 | 1.12 | 1.58 |
+| 32 × 100 | 0.249 | 0.229 | 0.215 | 0.209 | 0.206 | 0.205 | 0.208 |
+| 32 × 200 | 0.267 | 0.252 | 0.243 | 0.240 | 0.239 | 0.242 | 0.247 |
+| 64 × 100 | 0.293 | 0.280 | 0.271 | 0.267 | 0.264 | 0.259 | 0.257 |
+| 64 × 200 | 0.289 | 0.275 | 0.263 | 0.257 | 0.251 | 0.241 | 0.236 |
+| 128 × 100 | 0.306 | 0.296 | 0.288 | 0.284 | 0.281 | 0.275 | 0.273 |
+
+Below 32 lines the toroidal variation exp(i n α) is aliased (3 points per wavelength at 32). From 32 lines on the ratio converges in n_alpha at order about 1.8 to 0.29 ± 0.01; doubling the parallel points moves it by ±0.02. At n = 5 with 64 lines, the same 12.8 points per toroidal wavelength as n = 10 with 128, the ratio is 0.30 to 0.26 for m = 5 to 14: the deficit does not depend on n at equal resolution. The boundary points and normals the two paths store agree to five digits (|J∇ψ| = 0.66243 at the outboard midplane in both), and the 3-D `res` is Hermitian and positive definite (smallest eigenvalue 0.17 at 128 lines, `check_vac_res.py`).
+
+The unit test `response_1_vs_2`, which compares the two styles on an analytic torus, was run with n = 10 and m = 6 to 15 instead of its n = 2 and m = 1 to 5 (scratch change, not committed): ratios 0.78 to 0.70 at 40 lines and 0.85 to 0.76 at 80 lines, converging towards 1 at first order as at n = 2. So the 3-D method on the analytic torus is within 25 % of the axisymmetric one at this resolution, and the same method on the real equilibrium is a factor 3.0 to 3.4 below that. The factor sits in what differs between the two: the data `store_vac_VMEC` hands to the kernels (`h_fac`, the metric of the field-line coordinates, is the one input not checked against the analytic torus), the parametrisation of the field lines, or the test's own style-2 reference, which has never been compared with the cylinder formula and would hide a common factor. The factor is close to π; the one place a π enters is `vac%res = -vac%res/((max_alpha-min_alpha)*pi)`, but `min_alpha` and `max_alpha` are 0 and 2 in the test and in the run alike, so that line alone does not explain it.
+
+*Verdict.* Step 6e's gate (the circular VMEC twin through the style-1 vacuum equals the HELENA style-2 result and R3) fails by a factor of about 3 in the response. No 3-D free-boundary number of PB3D can be trusted until the factor is found, and the W7-X runs of step 6 carry it too. Next, in this order: (i) the unit test's style-2 response on its torus against the cylinder formula; (ii) `h_fac` from `store_vac_VMEC` against the analytic metric of the circular twin; (iii) the HELENA fixture through the style-1 path (the style is chosen from `eq_style` in `store_vac`, a one-line switch for a scratch build) to separate the equilibrium representation from the method. The decks are in `tests/regression`, the twin in `tests/fixtures`, and every run above takes seconds to minutes on one core.
 
 ---
 
@@ -467,7 +535,10 @@ Tests grow by a few hundred lines, all under `tests/`, plus two committed HELENA
 
 - (added after step 2) The symmetric (`ias = 0`) and periodic (`ias = 1`) HELENA branches give ω² 9e−4 apart at equal poloidal spacing on cbm18a; the shear is not the cause. Not pursued in this plan.
 - (added after step 6) The W7-X vacuum response at 16 field lines changes by 29 % between 61 and 121 parallel points and is not positive definite at 121: the 3-D BEM on W7-X is unconverged, and no run today says what resolution it needs (L10 first, then C6).
-- (added after step 6) Steps 6e and 6f need VMEC runs of the circular twin; VMEC++ in `~/Code/desc-vs-vmec` is the candidate, `hel2vmec.sh` the recipe. Open.
+- (added after step 6, closed 30 October 2026) Steps 6e and 6f needed VMEC runs of the circular twin: the twin exists (`tests/fixtures/wout_circ_eps033_q104.nc.xz`, recipe `tests/reference/make_vmec_twin.sh`, PB3D's `--export_HEL` and VMEC++), fixed boundary agrees with HELENA to 1.6 %. 6f (the ripple) is still open.
+- (added 30 October 2026, step 6e) The style-1 (3-D) vacuum response of the circular VMEC twin converges to 0.29 of the axisymmetric style-2 response of the same case (n = 10 and n = 5, 32 to 128 field lines, 100 to 200 parallel points), while the analytic-torus unit test at n = 10 gives 0.76 to 0.85 at 80 lines. A factor of about 3 is missing in the real-equilibrium style-1 path or hidden in the test's reference; the 6e gate fails until it is found (step 6e results). PB3D reports the eigenvalue nearest `EV_guess` = −0.3, so eigenvalue series hop branches when the vacuum term is wrong; compare `res`.
+- (added 30 October 2026, step 0 open items) Two and four MPI processes shift every eigenvalue by +2.4e−5 and +1.8e−5 relative on the cbm18a decks (+1.6e−6 and +4.9e−6 on the circular deck), independent of the radial resolution; SLEPc's relative residual is 2e−2 on cbm18a with `tol_SLEPC` = 1e−6 under shift-and-invert, 6e−12 on the circular deck. Tolerance series queued on Snellius (`reg-fixed-tol8`, `tol10`, `tol12`), to be read (step 0 closed items).
+- (added 30 October 2026, step 0 open items) gfortran 14.2 and 14.3 miscompile `-fcheck=bounds` for the `T_EF(:,:,:,c([1,1],.false.),...)` pattern (a function with an array-constructor argument inside the subscript of an actual argument), so every Debug regression deck segfaulted on Snellius; 13.3 and 16.1 are fine. Reproducer `tests/reference/gfortran14_bounds_repro.f90`; CMake drops `-fcheck=bounds` for gfortran 14.x. Worth a GCC bug report; the Debug build on gfortran 14 has no bounds checking until then.
 - (added after step 5) Negative n is rejected in `calc_norm_range_PB3D_X` ("angular array has to have a length of at least 1"), so the n → −n invariance (L7) cannot be run; the cbm18a VMEC file is not a twin of the HELENA fixture and its fixed-boundary run with the regression window does not converge. Both open.
 - (added after step 4) BC style 4 (explicit natural-boundary-condition row) is inconsistent with the variational style 2 at O(1) in the edge treatment, independently of the overwrite that step 4 removed; kept, marked not validated, not the default.
 - (added after step 3) POST's energy reconstruction is 7 % off on the circular m = 11 edge mode even for a fixed boundary (0.07 % on cbm18a): a plot-grid accuracy problem of POST, not pursued here.
