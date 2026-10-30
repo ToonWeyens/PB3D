@@ -1954,7 +1954,9 @@ contains
     !! For a constant, the three Cartesian coordinates and \f$x^2 - y^2\f$,
     !! harmonic inside the surface, and for two potentials harmonic outside
     !! it and decaying, a point source on the magnetic axis at \f$\zeta = 0\f$
-    !! and a ring of point sources along the whole magnetic axis, the residual
+    !! and a ring of point sources along the whole magnetic axis, with unit
+    !! weights and with weights \f$\cos(n \zeta)\f$ for the primary mode number
+    !! \f$n\f$ (the toroidal structure of the modes), the residual
     !! of the Green identity \f$\overline{\text{H}} \phi -
     !! \overline{\text{G}} \partial_n \phi - c \phi\f$ is printed for
     !! \f$c = -4\pi, -2\pi, 0, 2\pi, 4\pi\f$, scaled by \f$\max |4 \pi \phi|\f$
@@ -1981,8 +1983,8 @@ contains
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
 
         ! local variables
-        integer, parameter :: n_pot = 7                                         ! number of test potentials
-        integer, parameter :: n_ring = 64                                       ! sources along the magnetic axis
+        integer, parameter :: n_pot = 8                                         ! number of test potentials
+        integer, parameter :: n_ring = 256                                      ! sources along the magnetic axis
         integer :: id, kd                                                       ! counters
         integer :: n_bnd                                                        ! number of boundary points
         integer :: n_col1                                                       ! local number of columns of a global column vector
@@ -1990,6 +1992,7 @@ contains
         integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of right-hand side and solution
         logical :: rank_o                                                       ! output rank
         real(dp) :: x_ring(n_ring,3)                                            ! sources along the magnetic axis
+        real(dp) :: w_ring(n_ring)                                              ! their weights
         real(dp) :: zeta_k                                                      ! toroidal angle of a source
         real(dp) :: d_min                                                       ! smallest distance of the surface to the sources
         real(dp) :: res_off(-2:2)                                               ! identity residuals for offsets c = k 2 pi
@@ -2034,8 +2037,8 @@ contains
             &persistent=rank_o)
         call lvl_ud(1)
         call writo('CHECKVAC source n_bnd='//trim(i2str(n_bnd))//' x_src='//&
-            &trim(r2str(x_ring(1,1)))//' '//trim(r2str(x_ring(1,2)))//' '//&
-            &trim(r2str(x_ring(1,3))),persistent=rank_o)
+            &trim(r2strt(x_ring(1,1)))//' '//trim(r2strt(x_ring(1,2)))//' '//&
+            &trim(r2strt(x_ring(1,3))),persistent=rank_o)
 
         allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),phi_num(n_bnd))
 
@@ -2051,7 +2054,7 @@ contains
             do id = -2,2
                 res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
                     &maxval(abs(4._dp*pi*phi))
-                res_str = trim(res_str)//' '//trim(r2str(res_off(id)))
+                res_str = trim(res_str)//' '//trim(r2strt(res_off(id)))
             end do
             call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
                 &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
@@ -2067,7 +2070,7 @@ contains
         call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
             &max(1,vac%n_loc(1)),ierr)
         CHCKERR('descinit failed')
-        do kd = n_pot-1,n_pot
+        do kd = n_pot-2,n_pot
             call set_pot(kd)
             if (n_col1.gt.0) call vec_glob2dis(dphi,R_mat(:,1))
             Phi_mat = 0._dp
@@ -2081,9 +2084,9 @@ contains
             err_max = maxval(abs(phi_num-phi))/maxval(abs(phi))
             err_2 = sqrt(sum((phi_num-phi)**2)/sum(phi**2))
             call writo('CHECKVAC solve '//trim(pot_name)//' n_bnd='//&
-                &trim(i2str(n_bnd))//' min_dist='//trim(r2str(d_min))//&
-                &' err_max='//trim(r2str(err_max))//' err_2='//&
-                &trim(r2str(err_2)),persistent=rank_o)
+                &trim(i2str(n_bnd))//' min_dist='//trim(r2strt(d_min))//&
+                &' err_max='//trim(r2strt(err_max))//' err_2='//&
+                &trim(r2strt(err_2)),persistent=rank_o)
         end do
 
         call lvl_ud(-1)
@@ -2121,21 +2124,29 @@ contains
                         phi(id) = vac%x_vec(id,1)**2 - vac%x_vec(id,2)**2
                         dphi(id) = 2._dp*(vac%x_vec(id,1)*vac%norm(id,1) - &
                             &vac%x_vec(id,2)*vac%norm(id,2))
-                    case (6,7)                                                  ! point source(s) inside: exterior harmonic
-                        if (kd.eq.6) then
-                            pot_name = 'point_source'
-                            n_src = 1
-                        else
-                            pot_name = 'axis_ring'
-                            n_src = n_ring
-                        end if
+                    case (6,7,8)                                                ! point source(s) inside: exterior harmonic
+                        select case (kd)
+                            case (6)
+                                pot_name = 'point_source'
+                                n_src = 1
+                                w_ring(1) = 1._dp
+                            case (7)
+                                pot_name = 'axis_ring'
+                                n_src = n_ring
+                                w_ring = 1._dp
+                            case (8)
+                                pot_name = 'axis_ring_n'
+                                n_src = n_ring
+                                w_ring = [(cos(vac%prim_X*2._dp*pi*(ld-1)/&
+                                    &n_ring),ld=1,n_ring)]
+                        end select
                         phi(id) = 0._dp
                         dphi(id) = 0._dp
                         do ld = 1,n_src
                             r_src = sqrt(sum((vac%x_vec(id,:)-x_ring(ld,:))**2))
                             d_min = min(d_min,r_src)
-                            phi(id) = phi(id) + 1._dp/r_src
-                            dphi(id) = dphi(id) - sum(vac%norm(id,:)*&
+                            phi(id) = phi(id) + w_ring(ld)/r_src
+                            dphi(id) = dphi(id) - w_ring(ld)*sum(vac%norm(id,:)*&
                                 &(vac%x_vec(id,:)-x_ring(ld,:)))/r_src**3
                         end do
                 end select

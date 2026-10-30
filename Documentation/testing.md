@@ -136,10 +136,24 @@ combined over all ranks.
     interior harmonics satisfy \((H+4\pi I)\phi = G\,\text{d}\phi\) and
     exterior ones \(H\phi = G\,\text{d}\phi\) (opposite roles to style 2!),
     converging with resolution;
+  - a manufactured exterior potential (point source on the magnetic axis)
+    through the whole style-1 chain, on the circular and on a rippled
+    torus: the solve returns the boundary trace to 2 % at 81×80 and the
+    error falls with resolution;
   - the vacuum response of the axisymmetric boundary computed with the
     full 3-D machinery against the (independently validated) axisymmetric
     result: diagonals agree to 0.2 % (m = 1) through 9 % (m = 5, 12 points
-    per poloidal wavelength) at 61×60.
+    per poloidal wavelength) at 61×60, and the five ratios at 81×80 are
+    held to 0.5 % of their recorded values;
+  - `exact_exterior_2d` (catalogue item T4 of issue #4): the exact toroidal
+    harmonics \(\sqrt{\cosh\eta - \cos\theta}\,F^n_{k-1/2}(\cosh\eta)
+    \cos k\theta\) of the circular torus, \(F = P\) exterior and \(F = Q\)
+    interior, through the axisymmetric (style 2) chain: identity residuals
+    1e-3 to 1.2e-2 and solution errors 0.9 to 2.4 % at 301 boundary points
+    for n = 2, k = 1 to 5 and n = 10, k = 6 to 15, halving at 601 (first
+    order). Style 2 takes the normal data as \(-J\nabla\psi\cdot\nabla\phi\)
+    with the inward \(J\nabla\psi\) of the fixture, the opposite sign of
+    style 1.
 
 ## Adding a test suite
 

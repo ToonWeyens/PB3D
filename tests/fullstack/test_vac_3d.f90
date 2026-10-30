@@ -51,7 +51,8 @@ contains
             &new_unittest("GH_int_1_singular", test_int_1_singular), &
             &new_unittest("greens_identity_3d", test_greens_identity_3d), &
             &new_unittest("response_1_vs_2", test_response_1_vs_2), &
-            &new_unittest("point_source_3d", test_point_source_3d) &
+            &new_unittest("point_source_3d", test_point_source_3d), &
+            &new_unittest("exact_exterior_2d", test_exact_exterior_2d) &
             &]
     end subroutine collect_vac_3d
 
@@ -485,6 +486,215 @@ contains
 
         call vac%dealloc()
     end subroutine greens_residuals_3d
+
+    !> Exact harmonics of the circular torus through the axisymmetric (style
+    !! 2) chain: catalogue item T4 of issue #4.
+    !!
+    !! In toroidal coordinates (eta, theta_t, phi) with focal radius
+    !! c = sqrt(R_0^2 - a^2) the circular torus is the surface cosh eta_0 =
+    !! R_0 / a, and
+    !!    sqrt(cosh eta - cos theta_t) F^n_{k-1/2}(cosh eta) cos(k theta_t) cos(n phi)
+    !! is harmonic for the toroidal functions F = P (first kind: regular on
+    !! the axis and at infinity, so an exterior potential) and F = Q (second
+    !! kind: regular at the focal ring, so an interior one). Their boundary
+    !! data are exact (the gradient by central differences in (R, Z) of the
+    !! closed form, the toroidal functions from dtorh1 at order n), so the
+    !! assembled operators must satisfy H phi = G dphi for the Q family and
+    !! (H + 4 pi) phi = G dphi for the P family, and solve_Phi_BEM must return
+    !! the P-family boundary traces, with errors that fall with the number of
+    !! boundary points. This pins the axisymmetric vacuum at finite aspect
+    !! ratio, poloidal mode coupling included, where the cylinder test (the
+    !! limit a/R_0 -> 0) and MISHKA (1 %) cannot. Measured on 31 October 2026
+    !! (issue #4): identity residuals 1e-3 to 1.2e-2 and solution errors 0.9 to
+    !! 2.4 % at 301 points for n = 2, k = 1 to 5 and n = 10, k = 6 to 15,
+    !! halving at 601 points.
+    subroutine test_exact_exterior_2d(error)
+        use num_vars, only: eq_style, rank
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc
+        use vac_ops, only: solve_Phi_BEM
+        use fullstack_utils, only: n_col1_loc, vec_glob2dis, dis_matvec
+
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: n_bnds(2) = [301,601]                             ! boundary points, two resolutions
+        integer, parameter :: n_tors(2) = [2,10]                                ! toroidal mode numbers
+        integer, parameter :: k_min(2) = [1,6]                                  ! lowest poloidal mode number per n
+        integer, parameter :: k_max(2) = [5,15]                                 ! highest poloidal mode number per n
+        real(dp), parameter :: tol_fine = 3.e-2_dp                              ! residuals and solution error at the fine resolution (measured: up to 1.5e-2)
+        real(dp), parameter :: conv = 0.8_dp                                    ! largest allowed error ratio fine / coarse (measured 0.50 to 0.72: first order)
+
+        type(vac_type) :: vac                                                   ! style-2 vacuum variables
+        integer :: ierr, id, kd, ires, itor                                     ! error status, counters
+        integer :: n_bnd, n_tor                                                 ! current resolution and toroidal mode number
+        integer :: n_col1                                                       ! local columns of the right-hand side
+        integer :: desc_RPhi(9)                                                 ! descriptor of right-hand side and solution
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits
+        integer :: eq_style_old                                                 ! saved module state
+        real(dp) :: t, R                                                        ! angle and major radius
+        real(dp) :: errs(3,2)                                                   ! interior residual, exterior residual, solution error at the two resolutions
+        real(dp), allocatable :: phi(:), dphi(:), lhs(:), rhs(:), phi_num(:)    ! boundary data, products, solution
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+
+        eq_style_old = eq_style
+        eq_style = 2                                                            ! axisymmetric machinery
+
+        tor: do itor = 1,2
+            n_tor = n_tors(itor)
+            do kd = k_min(itor),k_max(itor)
+                do ires = 1,2
+                    n_bnd = n_bnds(ires)
+                    errs(:,ires) = 0._dp
+
+                    ierr = vac%init(2,n_bnd,n_tor,[n_bnd,1],q_saf)
+                    call check(error, ierr, 0, 'style-2 init failed')
+                    if (allocated(error)) exit tor
+                    do id = 1,n_bnd
+                        t = 2._dp*pi*(id-1)/(n_bnd-1)
+                        R = R_0 + a_min*cos(t)
+                        vac%ang(id,1) = t
+                        vac%x_vec(id,:) = [R, a_min*sin(t)]
+                        vac%norm(id,:) = [-R*a_min*cos(t), -R*a_min*sin(t)]
+                        vac%dnorm(id,:) = [a_min*sin(t)*(a_min*cos(t)+R), &
+                            &a_min*(a_min*sin(t)**2-R*cos(t))]
+                    end do
+                    ierr = calc_GH(vac)
+                    call check(error, ierr, 0, 'style-2 matrices failed')
+                    if (allocated(error)) exit tor
+
+                    if (in_context(vac%ctxt_HG)) then
+                        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),&
+                            &phi_num(n_bnd))
+
+                        ! interior family: H phi = G dphi
+                        do id = 1,n_bnd
+                            call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
+                                &vac%norm(id,:),n_tor,kd,.false.,phi(id),dphi(id))
+                        end do
+                        ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                        if (ierr.eq.0) ierr = dis_matvec(vac,vac%G,vac%desc_G,&
+                            &dphi,rhs)
+                        call check(error, ierr, 0, 'matrix-vector product failed')
+                        if (allocated(error)) exit tor
+                        errs(1,ires) = maxval(abs(lhs-rhs))/maxval(abs(4._dp*pi*phi))
+
+                        ! exterior family: (H + 4 pi) phi = G dphi, and the solve
+                        do id = 1,n_bnd
+                            call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
+                                &vac%norm(id,:),n_tor,kd,.true.,phi(id),dphi(id))
+                        end do
+                        ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                        if (ierr.eq.0) ierr = dis_matvec(vac,vac%G,vac%desc_G,&
+                            &dphi,rhs)
+                        call check(error, ierr, 0, 'matrix-vector product failed')
+                        if (allocated(error)) exit tor
+                        errs(2,ires) = maxval(abs(lhs+4._dp*pi*phi-rhs))/&
+                            &maxval(abs(4._dp*pi*phi))
+                        n_col1 = n_col1_loc(vac)
+                        call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),&
+                            &lims_c_R)
+                        allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+                        allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+                        if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+                        Phi_mat = 0._dp
+                        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,&
+                            &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+                        if (ierr.eq.0) ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,&
+                            &[n_bnd,1],[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+                        if (ierr.eq.0) ierr = vec_dis2loc(vac%ctxt_HG,&
+                            &reshape(Phi_mat(1:vac%n_loc(1),:),&
+                            &[vac%n_loc(1)*n_col1]),vac%lims_r,phi_num)
+                        call check(error, ierr, 0, 'exterior solve failed')
+                        if (allocated(error)) exit tor
+                        errs(3,ires) = maxval(abs(phi_num-phi))/maxval(abs(phi))
+
+                        if (rank.eq.0) write(error_unit,&
+                            &'(A,I3,A,I3,A,I5,A,3ES10.2)') &
+                            &'   [exact 2d] n = ',n_tor,', k = ',kd,&
+                            &', n_bnd = ',n_bnd,&
+                            &': residual interior, exterior, solve error ',&
+                            &errs(:,ires)
+
+                        deallocate(phi,dphi,lhs,rhs,phi_num,R_mat,Phi_mat,&
+                            &lims_c_R)
+                    end if
+                    call vac%dealloc()
+                end do
+
+                ! processes outside the context report zeros and pass
+                do id = 1,3
+                    call check(error, errs(id,2).lt.tol_fine, &
+                        &'n = '//trim(i2str(n_tor))//', k = '//trim(i2str(kd))//&
+                        &': error '//trim(i2str(id))//' too large at '//&
+                        &trim(i2str(n_bnds(2)))//' points: '//&
+                        &trim(r2str(errs(id,2))))
+                    if (allocated(error)) exit tor
+                    call check(error, errs(id,2).le.conv*errs(id,1), &
+                        &'n = '//trim(i2str(n_tor))//', k = '//trim(i2str(kd))//&
+                        &': error '//trim(i2str(id))//' does not fall: '//&
+                        &trim(r2str(errs(id,1)))//' -> '//trim(r2str(errs(id,2))))
+                    if (allocated(error)) exit tor
+                end do
+            end do
+        end do tor
+
+        eq_style = eq_style_old
+    contains
+        !> Boundary value and normal data of the toroidal harmonic of order
+        !! n and degree k - 1/2 at (R, Z): the gradient by central differences
+        !! of the closed form (step 1e-5: truncation 1e-10, dtorh1 noise 1e-6).
+        subroutine tor_harm(R,Z,norm,n,k,exterior,phi,dphi)
+            real(dp), intent(in) :: R, Z                                        ! position
+            real(dp), intent(in) :: norm(2)                                     ! normal vector (R, Z components)
+            integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
+            logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
+            real(dp), intent(out) :: phi, dphi                                  ! value and normal derivative
+
+            real(dp), parameter :: h = 1.e-5_dp                                 ! difference step
+
+            phi = tor_val(R,Z,n,k,exterior)
+            ! the axisymmetric kernels take the normal data with the opposite
+            ! sign of the field-line ones: -norm . grad phi, with norm the
+            ! (inward) J nabla psi of the fixture; both identities below hold
+            ! to 1e-3 with this sign and fail at order one with the other
+            dphi = -(norm(1)*(tor_val(R+h,Z,n,k,exterior)-&
+                &tor_val(R-h,Z,n,k,exterior))/(2._dp*h) + &
+                &norm(2)*(tor_val(R,Z+h,n,k,exterior)-&
+                &tor_val(R,Z-h,n,k,exterior))/(2._dp*h))
+        end subroutine tor_harm
+
+        !> The toroidal harmonic at (R, Z).
+        real(dp) function tor_val(R,Z,n,k,exterior) result(val)
+            use dtorh, only: dtorh1
+
+            real(dp), intent(in) :: R, Z                                        ! position
+            integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
+            logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
+
+            integer :: newn, ierr_loc                                           ! dtorh1 outputs
+            real(dp) :: c, d1, d2, eta, s, cth, sth, th                         ! toroidal coordinates
+            real(dp) :: pl(0:k), ql(0:k)                                        ! toroidal functions
+
+            c = sqrt(R_0**2-a_min**2)
+            d1 = sqrt((R+c)**2+Z**2)
+            d2 = sqrt((R-c)**2+Z**2)
+            eta = log(d1/d2)
+            s = sqrt((R**2+Z**2-c**2)**2 + 4._dp*c**2*Z**2)
+            cth = (R**2+Z**2-c**2)/s
+            sth = 2._dp*c*Z/s
+            th = atan2(sth,cth)
+            ierr_loc = dtorh1(cosh(eta),n,k,pl,ql,newn)
+            if (ierr_loc.ne.0 .or. newn.lt.k) then
+                val = huge(1._dp)
+                return
+            end if
+            if (exterior) then
+                val = sqrt(cosh(eta)-cth)*pl(k)*cos(k*th)
+            else
+                val = sqrt(cosh(eta)-cth)*ql(k)*cos(k*th)
+            end if
+        end function tor_val
+    end subroutine test_exact_exterior_2d
 
     !> The vacuum response of the axisymmetric circular boundary, calculated
     !! with the field-line 3-D machinery (style 1), against the same response
