@@ -514,6 +514,14 @@ contains
         integer, parameter :: n_mod = 5                                         ! poloidal modes m = 1..n_mod
         real(dp), parameter :: tol_diag = 0.15_dp                               ! relative tolerance on the diagonal
         real(dp), parameter :: tol_offdiag = 0.10_dp                            ! off-diagonal tolerance, rel. to largest diagonal
+        ! the ratios at 81 x 80 as recorded on 30 October 2026 (gfortran 14 and
+        ! 16, ScaLAPACK and STRUMPACK agree to 1e-6); asserted to 0.5 % so that
+        ! a change of the surface weights shows: the field-line spacing
+        ! 2 pi / (n_alpha - 1) instead of 2 pi / n_alpha moves them by 1.25 %,
+        ! inside tol_diag but not inside this (issue #4, step 7 mutation check)
+        real(dp), parameter :: ratio_rec(5) = &
+            &[0.965_dp,0.946_dp,0.926_dp,0.906_dp,0.886_dp]
+        real(dp), parameter :: tol_ratio = 0.005_dp                             ! tolerance on the recorded ratios
 
         type(vac_type) :: vac1, vac2                                            ! style-1 and style-2 vacuum variables
         type(modes_type) :: mds                                                 ! minimal modes variables
@@ -588,6 +596,13 @@ contains
                     call check(error, rel_diff.lt.tol_diag, &
                         &'diagonal response mismatch for m = '//&
                         &trim(i2str(id))//': '//trim(r2str(rel_diff)))
+                    if (allocated(error)) exit
+                    rel_diff = abs(real(res1(id,id))/real(res2(id,id))-&
+                        &ratio_rec(id))/ratio_rec(id)
+                    call check(error, rel_diff.lt.tol_ratio, &
+                        &'style 1 over style 2 ratio for m = '//&
+                        &trim(i2str(id))//' moved from its recorded value '//&
+                        &trim(r2str(ratio_rec(id)))//' by '//trim(r2str(rel_diff)))
                 else
                     call check(error, abs(res1(id,jd)).lt.tol_offdiag*&
                         &diag_max, &

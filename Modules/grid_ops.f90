@@ -1018,6 +1018,7 @@ contains
         integer, allocatable :: temp_lim(:)                                     ! temporary limit
         integer, allocatable :: eq_limits_tot(:,:)                              ! total equilibrium limits
         logical :: no_outer_trim_loc                                            ! local no_outer_trim
+        integer, parameter :: ghost_interp = 20                                 ! ghost region for the spline interpolation of interp_V
         
         ! initialize ierr
         ierr = 0
@@ -1029,6 +1030,19 @@ contains
         
         ! determine eq_limits: smallest eq range comprising X range
         call find_compr_range(grid%r_F,r_F_sol(sol_limits),eq_limits)
+        
+        ! Widen the range  by a ghost region on both  sides: interp_V fits a
+        ! cubic spline  over exactly this local  range to bring the  X variables
+        ! onto the solution  grid, and a spline's end conditions  reach a few
+        ! intervals inward  (the not-a-knot  end effect decays  by a  factor
+        ! 2 - sqrt(3), about 0.27, per interval), so without the margin the
+        ! interpolated  coefficients  near  a  process  interface  depend  on the
+        ! decomposition at  the level of  the interpolation error  (about 1E-6
+        ! relative  in the  eigenvalue, issue  #4). 20  intervals bring  the end
+        ! effect below 1E-11. (The larger 2E-5 shift between process counts was
+        ! the ownership of overlapping ranges in redistribute_var.)
+        eq_limits(1) = max(eq_limits(1)-ghost_interp,1)
+        eq_limits(2) = min(eq_limits(2)+ghost_interp,grid%n(3))
         
         ! get lowest equilibrium limits to be  able to setup an output grid that
         ! starts at index 1

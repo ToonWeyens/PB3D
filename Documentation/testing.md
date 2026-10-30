@@ -179,9 +179,16 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   HELENA (writes the extended mapping format including `RAXIS, B0` and the
   full R/Z maps) on the original cbm18a input. Cross-platform, one process:
   macOS (gfortran 16, PETSc 3.25), Ubuntu CI (gfortran 13, PETSc 3.19) and
-  Snellius (gfortran 14, PETSc 3.25 with MUMPS) agree to 1e-11 relative;
-  with 2 and 4 processes the eigenvalue shifts by 2e-5 relative (issue #4,
-  open item).
+  Snellius (gfortran 14, PETSc 3.25 with MUMPS) agree to 1e-11 relative.
+  With 2, 3 and 4 processes the eigenvalue agrees to 1.5e-8 since the owner
+  rule in `redistribute_var` (30 October 2026); before, it shifted by 2e-5
+  because the overlap of two process ranges was filled from the lower rank's
+  ghost region.
+- `cbm18a_fixed_bnd_np2`, `_np4` (opt-in, `-DPB3D_TEST_MPI_REGRESSION=ON`):
+  the same deck with one process and under `mpirun -n 2` / `-n 4`, eigenvalues
+  required to agree to 1e-6. Needs a distributed LU in PETSc (MUMPS or
+  SuperLU_DIST), which the Snellius build has and the CI and macOS builds do
+  not; the 1e-3 anchor rows cannot see a decomposition-dependent shift.
 - `cbm18a_free_bnd`: the same deck **free-boundary** with the vacuum
   response, exercising the whole vacuum chain `store_vac_HEL` → `calc_GH` →
   `calc_vac_res` (exterior BEM solve) → `set_BC`. Style 2 (variational,
@@ -237,10 +244,11 @@ regression runners launch PB3D once and treat any crash as a failure
   magnitude of `vac%res` as it enters the SLEPc boundary condition
   (`set_BC_4`).
 - Full-stack tests for grid and equilibrium quantities.
-- Multi-process *end-to-end* regression runs: the full-stack suites run at 2
-  and 4 processes, the regression decks are single-process in CI (macOS has
-  an `mpirun` launcher crash in Homebrew OpenMPI 5's prte). On Snellius the
-  decks run at 1, 2 and 4 processes and the 2e-5 shift above is the open
-  question (issue #4). The external-code comparison of the free boundary
-  exists since step 3 (`circ_eps005_free_bnd` against MISHKA).
+- Multi-process *end-to-end* regression runs in CI: the full-stack suites
+  run at 2 and 4 processes everywhere, the regression decks are
+  single-process in CI (its PETSc has no distributed LU; macOS has an
+  `mpirun` launcher crash in Homebrew OpenMPI 5's prte). The opt-in
+  `cbm18a_fixed_bnd_np2`/`_np4` rows run on Snellius. The external-code
+  comparison of the free boundary exists since step 3 (`circ_eps005_free_bnd`
+  against MISHKA).
 - Report the PSPLINE `r8genxpkg` overrun upstream (github.com/ilonster/pspline).

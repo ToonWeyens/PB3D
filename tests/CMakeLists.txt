@@ -221,6 +221,10 @@ if(PB3D_BUILD_EXECUTABLES)
     endif()
 endif()
 
+option(PB3D_TEST_MPI_REGRESSION
+    "Also run the cbm18a fixed-boundary regression deck under mpirun -n 2 and 4 and require the eigenvalue to agree with the one-process run to 1e-6 (needs a distributed LU in PETSc, e.g. MUMPS)"
+    OFF)
+
 #------------------------------------------------------------------------------
 # Physics regression tests
 #------------------------------------------------------------------------------
@@ -324,6 +328,25 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 PASS_REGULAR_EXPRESSION "PASS"
                 ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
                 TIMEOUT 600)
+        endif()
+        # multi-process consistency of the eigenvalue (issue #4: the 2e-5 shift of
+        # redistribute_var sat inside the 1e-3 anchor tolerance); opt-in because
+        # more than one process needs a distributed LU inside PETSc
+        if(PB3D_TEST_MPI_REGRESSION AND MPIEXEC_EXECUTABLE)
+            foreach(np IN ITEMS 2 4)
+                add_test(NAME regression_cbm18a_fixed_bnd_np${np}
+                    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_fixed_bnd_np.sh
+                        $<TARGET_FILE:PB3D>
+                        ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                        ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
+                        "${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${_mpiexec_flags}")
+                set_tests_properties(regression_cbm18a_fixed_bnd_np${np} PROPERTIES
+                    LABELS "regression;mpi"
+                    PASS_REGULAR_EXPRESSION "PASS"
+                    ENVIRONMENT "${_mpi_test_env}"
+                    PROCESSORS ${np}
+                    TIMEOUT 900)
+            endforeach()
         endif()
     else()
         message(STATUS "PB3D_FIXTURE_DIR set but cbm18a_extended_vac.12 not found - regression test skipped")

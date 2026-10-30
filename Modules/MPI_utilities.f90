@@ -341,13 +341,14 @@ contains
         integer :: id, jd                                                       ! counters
         integer, allocatable :: lims_tot(:,:)                                   ! limits of all processes
         integer, allocatable :: lims_dis_tot(:,:)                               ! redistributed limits of all processes
+        integer, allocatable :: lims_eff_tot(:,:)                               ! owned (non-overlapping) limits of all processes
+        integer, allocatable :: id_start(:,:)                                   ! first global index destination jd takes from source id
         integer, allocatable :: temp_lim(:)                                     ! temporary variable
         integer, allocatable :: n_vars(:,:)                                     ! number of values to be received and sent from each process (row: to, column: from)
         integer, allocatable :: nr_sen(:)                                       ! number of values to be sent to each process from this process
         integer, allocatable :: nr_rec(:)                                       ! number of values to be received from each process to this process
         integer, allocatable :: id_rec(:)                                       ! starting position of variable to be received in local memory (starting at 0)
         integer, allocatable :: id_sen(:)                                       ! starting position of variable to be sent in local memory (starting at 0)
-        integer :: max_loc                                                      ! local maximum
         
         ! initialize ierr
         ierr = 0
@@ -370,16 +371,41 @@ contains
         !   (c d)
         ! means that  process 0  gets a  from process  0 and  b from  process 1.
         ! Process 1 gets c from process 0 and d from process 1.
+        ! The  source  ranges  may  overlap:  the  grids  carry  ghost  regions
+        ! (4 norm_disc_prec_eq points  on either side of  the equilibrium range,
+        ! norm_disc_prec_sol on  the solution range,  and so on)  and every
+        ! process hands in its whole local  range. The old loop filled each
+        ! destination  from  the  sources  in  rank  order,  so  the  overlap
+        ! after  an interface  came from  the  lower rank's  ghost region,  whose
+        ! values are the  less accurate ones there  (radial derivatives and
+        ! interpolations  near the  end of  that  process' range):  with 2  or 4
+        ! processes the perturbation matrices differed from the one-process ones
+        ! in the 12 to 16 rows after each interface by up to 2E-5 relative, and
+        ! the eigenvalues  by 2E-5  (issue #4).  Every point  is now  taken from
+        ! its owner:  the overlap of two  neighbours is split  in the middle,
+        ! the convention of trim_grid, which is the  true owner boundary for the
+        ! symmetric ghost regions.
+        allocate(lims_eff_tot(2,n_procs))
+        lims_eff_tot = lims_tot
+        do id = 2,n_procs
+            if (lims_tot(1,id).le.lims_tot(2,id-1)) then                        ! overlap between id-1 and id
+                lims_eff_tot(1,id) = lims_tot(1,id) + &
+                    &ceiling((lims_tot(2,id-1)-lims_tot(1,id)+1._dp)/2)
+                lims_eff_tot(2,id-1) = lims_eff_tot(1,id) - 1
+            end if
+        end do
+        
+        ! set up the number of values that destination jd receives from source
+        ! id: the intersection of jd's range with id's owned range
         allocate(n_vars(n_procs,n_procs))
+        allocate(id_start(n_procs,n_procs))
         n_vars = 0
+        id_start = 0
         do jd = 1,n_procs
-            max_loc = lims_dis_tot(1,jd)
             do id = 1,n_procs
-                if (lims_tot(2,id).ge.max_loc) then
-                    n_vars(jd,id) = min(lims_tot(2,id),lims_dis_tot(2,jd)) - &
-                        &max_loc + 1
-                    max_loc = max_loc + n_vars(jd,id)
-                end if
+                id_start(jd,id) = max(lims_dis_tot(1,jd),lims_eff_tot(1,id))
+                n_vars(jd,id) = max(0,min(lims_dis_tot(2,jd),&
+                    &lims_eff_tot(2,id)) - id_start(jd,id) + 1)
             end do
         end do
         
@@ -396,10 +422,10 @@ contains
         allocate(id_rec(n_procs))
         allocate(id_sen(n_procs))
         do id = 1,n_procs
-            nr_rec(id) = n_vars(rank+1,id)
-            nr_sen(id) = n_vars(id,rank+1)
-            id_rec(id) = sum(n_vars(rank+1,1:id-1))
-            id_sen(id) = sum(n_vars(id,1:rank)) + lims_dis_tot(1,id) - lims(1)
+            nr_rec(id) = n_vars(rank+1,id)                                      ! received from source id
+            nr_sen(id) = n_vars(id,rank+1)                                      ! sent to destination id
+            id_rec(id) = id_start(rank+1,id) - lims_dis(1)                      ! where it lands in the local destination array
+            id_sen(id) = id_start(id,rank+1) - lims(1)                          ! where it starts in the local source array
         end do
         
         call MPI_Alltoallv(var,nr_sen,id_sen,MPI_DOUBLE_PRECISION,&
