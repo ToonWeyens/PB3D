@@ -164,8 +164,8 @@ contains
         
         ! a coefficient set that is zero everywhere (e.g. the sine coefficients
         ! of a stellarator-symmetric equilibrium) costs nothing
-        if (sym_loc(1)) sym_loc(1) = any(varf_c.ne.0._dp)
-        if (sym_loc(2)) sym_loc(2) = any(varf_s.ne.0._dp)
+        if (sym_loc(1)) sym_loc(1) = any(abs(varf_c).gt.0._dp)
+        if (sym_loc(2)) sym_loc(2) = any(abs(varf_s).gt.0._dp)
         need(1) = (sym_loc(1) .and. i_c.eq.1) .or. (sym_loc(2) .and. i_s.eq.1)
         need(2) = (sym_loc(1) .and. i_c.eq.2) .or. (sym_loc(2) .and. i_s.eq.2)
         
@@ -198,7 +198,7 @@ contains
         allocate(cs(dims(1),dims(2),2))
         do kd = 1,dims(3)
             do id = 1,n_mod
-                if (varf_c(id,kd).eq.0._dp .and. varf_s(id,kd).eq.0._dp) cycle
+                if (abs(varf_c(id,kd)).le.0._dp .and. abs(varf_s(id,kd)).le.0._dp) cycle
                 
                 ! cos(m theta - n zeta) =
                 !   cos(m theta) cos(n zeta) + sin(m theta) sin(n zeta)
