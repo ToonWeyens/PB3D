@@ -15,6 +15,7 @@ module vac_utilities
     implicit none
     private
     public calc_GH_int_1, calc_GH_int_2, vec_dis2loc, mat_dis2loc, &
+        &n_col1_loc, vec_glob2dis, dis_matvec, &
         &interlaced_vac_copy
     
 contains
@@ -542,4 +543,81 @@ contains
         ! clean up
         deallocate(loc_A,loc_B)
     end function interlaced_vac_copy
+    !> \public Number of local columns this process owns of a global column vector:
+    !! the single column sits in the first block, owned by process column 0.
+    integer function n_col1_loc(vac) result(res)
+        use vac_vars, only: in_context
+        
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+
+        if (in_context(vac%ctxt_HG) .and. vac%ind_p(2).eq.0) then
+            res = 1
+        else
+            res = 0
+        end if
+    end function n_col1_loc
+
+    !> \public Scatter a global column vector into its local block-cyclic rows.
+    !!
+    !! \c x_dis is the flattened local array of size n_loc(1) * n_col1_loc();
+    !! processes that do not own the column receive nothing.
+    subroutine vec_glob2dis(vac,x_glob,x_dis)
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: x_glob(:)                                       !< global vector
+        real(dp), intent(out) :: x_dis(:)                                       !< local part (flattened)
+
+        integer :: i_rd, rd, rdl                                                ! subrow index, global and local row
+
+        x_dis = 0._dp
+        if (n_col1_loc(vac).eq.0) return
+        do i_rd = 1,size(vac%lims_r,2)
+            do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                rdl = sum(vac%lims_r(2,1:i_rd-1)-vac%lims_r(1,1:i_rd-1)+1) + &
+                    &rd-vac%lims_r(1,i_rd)+1
+                x_dis(rdl) = x_glob(rd)
+            end do
+        end do
+    end subroutine vec_glob2dis
+
+    !> \public Distributed matrix-vector product y = A x.
+    !!
+    !! \c A is a local part of a distributed n_bnd x n_bnd matrix with
+    !! descriptor \c desc_A (e.g. vac%H with vac%desc_H), \c x_glob is
+    !! globally replicated, and \c y_glob is returned complete on all
+    !! processes in the context (zero outside it). Used by the exact-potential
+    !! checks of the vacuum operators (vac_ops.check_vac_exact() and the
+    !! full-stack tests).
+    integer function dis_matvec(vac,A,desc_A,x_glob,y_glob) result(ierr)
+        use vac_vars, only: in_context
+
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: A(:,:)                                          !< local part of distributed matrix
+        integer, intent(in) :: desc_A(BLACSCTXTSIZE)                            !< descriptor of A
+        real(dp), intent(in) :: x_glob(:)                                       !< global input vector
+        real(dp), intent(out) :: y_glob(:)                                      !< global result vector
+
+        integer :: n_col1                                                       ! local number of columns of the vector
+        integer :: n_flat                                                       ! true local size of the vector
+        integer :: desc_x(BLACSCTXTSIZE)                                        ! descriptor for x and y
+        real(dp), allocatable :: x_dis(:), y_dis(:)                             ! local vector parts
+
+        ierr = 0
+        y_glob = 0._dp
+        if (.not.in_context(vac%ctxt_HG)) return
+
+        n_col1 = n_col1_loc(vac)
+        n_flat = vac%n_loc(1)*n_col1
+        allocate(x_dis(max(1,n_flat)),y_dis(max(1,n_flat)))                     ! at least 1 element for ScaLAPACK dummies
+        call vec_glob2dis(vac,x_glob,x_dis)
+        y_dis = 0._dp
+
+        call descinit(desc_x,vac%n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        if (ierr.ne.0) return
+
+        call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,A,1,1,desc_A,&
+            &x_dis,1,1,desc_x,1,0._dp,y_dis,1,1,desc_x,1)
+
+        ierr = vec_dis2loc(vac%ctxt_HG,y_dis(1:n_flat),vac%lims_r,y_glob)       ! all processes receive
+    end function dis_matvec
 end module vac_utilities

@@ -157,7 +157,7 @@ contains
     subroutine greens_residuals(n_bnd,res,ierr)
         use num_vars, only: rank
         use vac_vars, only: in_context
-        use fullstack_utils, only: dis_matvec
+        use vac_utilities, only: dis_matvec
 
         integer, intent(in) :: n_bnd                                            ! number of boundary points
         real(dp), intent(out) :: res(3)                                         ! residuals for the potentials
@@ -264,7 +264,7 @@ contains
     subroutine test_solve_roundtrip(error)
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc
-        use fullstack_utils, only: n_col1_loc, vec_glob2dis
+        use vac_utilities, only: n_col1_loc, vec_glob2dis
 
         type(error_type), allocatable, intent(out) :: error
 

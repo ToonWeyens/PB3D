@@ -341,7 +341,7 @@ contains
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc
         use vac_ops, only: solve_Phi_BEM
-        use fullstack_utils, only: n_col1_loc, vec_glob2dis
+        use vac_utilities, only: n_col1_loc, vec_glob2dis
 
         integer, intent(in) :: n_par, n_alpha_loc                               ! resolution
         real(dp), intent(in) :: delta                                           ! ripple amplitude
@@ -419,7 +419,7 @@ contains
     subroutine greens_residuals_3d(n_par,n_alpha_loc,res,ierr)
         use num_vars, only: rank
         use vac_vars, only: in_context
-        use fullstack_utils, only: dis_matvec
+        use vac_utilities, only: dis_matvec
 
         integer, intent(in) :: n_par, n_alpha_loc                               ! resolution
         real(dp), intent(out) :: res(3)                                         ! residuals for the potentials
@@ -513,7 +513,7 @@ contains
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc
         use vac_ops, only: solve_Phi_BEM
-        use fullstack_utils, only: n_col1_loc, vec_glob2dis, dis_matvec
+        use vac_utilities, only: n_col1_loc, vec_glob2dis, dis_matvec
 
         type(error_type), allocatable, intent(out) :: error
 
