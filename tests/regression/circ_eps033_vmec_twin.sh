@@ -4,18 +4,18 @@
 # twin wout_circ_eps033_q104.nc (issue #4, step 6e; made from the HELENA file
 # with tests/reference/make_vmec_twin.sh: PB3D --export_HEL, then VMEC++) must
 # give the same fixed-boundary eigenvalue for the n = 10 external kink, m = 11,
-# which no vacuum enters. The two equilibrium codes differ in the Fourier fit of
-# the boundary and in the radial coordinate (VMEC's toroidal flux against
-# HELENA's poloidal flux), so the agreement is 1.6 % (HELENA +7.8430e-2, VMEC
-# +7.9716e-2 on 30 October 2026); the test asks for 2.5 %. The VMEC value is
-# also anchored at 1e-3, as the regression layer's only fixed-boundary VMEC
-# number, so that a change in the VMEC path shows.
+# which no vacuum enters: HELENA +7.84304e-2, VMEC +7.84306e-2 (2.4e-6 apart) on
+# 30 October 2026, once PB3D's reference field B_0 is the (0,0) mode of |B| on
+# the axis; with the old B_0 (all modes summed at theta = zeta = 0) the VMEC
+# value was +7.9716e-2, 1.6 % off. The test asks for 1e-4 between the twins and
+# anchors the VMEC value at 1e-3, as the regression layer's only fixed-boundary
+# VMEC number, so that a change in the VMEC path shows.
 #
 # The twin is then run free-boundary through the 3-D vacuum (style 1:
 # alpha_style 2, 64 field lines, the deck's 100 parallel points). The response
 # of this first-order boundary-element method is 0.80 of the axisymmetric one
-# at this resolution (converging to 1), so the eigenvalue, -0.52743 on
-# 30 October 2026, lies 19 % below the HELENA style-2 value -0.44383; the test
+# at this resolution (converging to 1), so the eigenvalue, -0.51892 on
+# 30 October 2026, lies 17 % below the HELENA style-2 value -0.44383; the test
 # anchors it at 1e-3, asks for 25 % and for free below fixed. This pins the
 # orientation of the normal that store_vac_VMEC hands to the kernels: with the
 # outward normal the response was 0.27 of the axisymmetric one and the
@@ -29,10 +29,10 @@ INPUT=$2
 HEL_FILE=$3
 WOUT_FILE=$4
 
-ANCHOR_VMEC=7.9716e-2
+ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
-TWIN_RTOL=0.025
-ANCHOR_FREE=-5.2743e-1
+TWIN_RTOL=1e-4
+ANCHOR_FREE=-5.1892e-1
 HEL_FREE=-4.4383e-1
 FREE_RTOL=0.25
 N_ALPHA=64

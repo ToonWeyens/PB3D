@@ -19,7 +19,8 @@ module VMEC_ops
         &jcuru, jcurv, &                                                        ! poloidal (FM) and toroidal (FM) current
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
-        &gmnc, gmns                                                             ! Jacobian in VMEC coordinates
+        &gmnc, gmns, &                                                          ! Jacobian in VMEC coordinates
+        &mnmax_nyq, xm_nyq, xn_nyq                                              ! the Nyquist mode set of jac, B and B_sub
     use VMEC_vars
     
     implicit none
@@ -49,6 +50,8 @@ contains
         real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: jac_s_H(:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: nyq_id(:)                                       ! index in the Nyquist mode set of every mode of mn_V
+        integer :: jd                                                           ! counter
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
         real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
 #if ldebug
@@ -90,7 +93,18 @@ contains
         else
             flux_name = 'toroidal'
         end if
-        B_0_V = sum(1.5*bmnc(:,2)-0.5_dp*bmnc(:,3))                             ! convert to full mesh
+        ! |B| on the magnetic axis as its (m,n) = (0,0) Fourier component, the
+        ! toroidal average.  Summing all modes  gives |B| at theta  = zeta = 0,
+        ! which for a 3-D equilibrium depends on the toroidal origin and made
+        ! the normalized  eigenvalues of  a rippled torus  vary linearly  with
+        ! the ripple amplitude while the physics  is even in it (issue #4, step
+        ! 6f). bmnc lives  on the Nyquist mode set  and on the half  mesh; its
+        ! first two interior values are extrapolated to the axis.
+        B_0_V = 0._dp
+        do id = 1,mnmax_nyq
+            if (nint(xm_nyq(id)).eq.0 .and. nint(xn_nyq(id)).eq.0) &
+                &B_0_V = B_0_V + 1.5_dp*bmnc(id,2) - 0.5_dp*bmnc(id,3)
+        end do
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
@@ -124,6 +138,34 @@ contains
         mn_V(:,1) = nint(xm(1:mnmax_V))
         mn_V(:,2) = nint(xn(1:mnmax_V))
         
+        ! The Jacobian, |B| and the  covariant components of B are stored on
+        ! VMEC's  Nyquist mode  set (xm_nyq,  xn_nyq), which  is larger  than
+        ! (mpol, ntor)  and ordered  on its  own grid of  m and  n, so  its
+        ! first  mnmax  entries  are  the  main  modes  only  when  the  two
+        ! sets coincide  (ntor = 0,  or files written  with mnmax_nyq =
+        ! mnmax). Taking gmnc(1:mnmax) etc.  mislabelled 143 of 150 modes of
+        ! a VMEC++  file with  ntor = 6  and moved  a fixed-boundary eigenvalue
+        ! by 37 %  (issue #4, step 6f). Map every mode of mn_V onto its place
+        ! in the Nyquist set; the extra Nyquist modes are dropped, as before.
+        allocate(nyq_id(mnmax_V))
+        nyq_id = 0
+        do id = 1,mnmax_V
+            do jd = 1,mnmax_nyq
+                if (nint(xm_nyq(jd)).eq.mn_V(id,1) .and. &
+                    &nint(xn_nyq(jd)).eq.mn_V(id,2)) then
+                    nyq_id(id) = jd
+                    exit
+                end if
+            end do
+            if (nyq_id(id).eq.0) then
+                ierr = 1
+                err_msg = 'VMEC mode (m,n) = ('//trim(i2str(mn_V(id,1)))//&
+                    &','//trim(i2str(mn_V(id,2)))//') is not in the Nyquist &
+                    &mode set of the file'
+                CHCKERR(err_msg)
+            end if
+        end do
+        
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
         
@@ -148,12 +190,12 @@ contains
         R_V_c(:,:,0) = rmnc(1:mnmax_V,:)
         Z_V_s(:,:,0) = zmns(1:mnmax_V,:)
         L_s_H(:,:,0) = lmns(1:mnmax_V,:)
-        jac_c_H(:,:,0) = gmnc(1:mnmax_V,:)
+        jac_c_H(:,:,0) = gmnc(nyq_id,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             R_V_s(:,:,0) = rmns(1:mnmax_V,:)
             Z_V_c(:,:,0) = zmnc(1:mnmax_V,:)
             L_c_H(:,:,0) = lmnc(1:mnmax_V,:)
-            jac_s_H(:,:,0) = gmns(1:mnmax_V,:)
+            jac_s_H(:,:,0) = gmns(nyq_id,:)
         else
             R_V_s = 0._dp
             Z_V_c = 0._dp
@@ -256,22 +298,22 @@ contains
 #endif
         
         ! store in helper variables
-        B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_V,:)
-        B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_V,:)
-        B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_V,:)
+        B_V_sub_s_M(:,:,1) = bsubsmns(nyq_id,:)
+        B_V_sub_c_M(:,:,2) = bsubumnc(nyq_id,:)
+        B_V_sub_c_M(:,:,3) = bsubvmnc(nyq_id,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_V,:)
-            B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_V,:)
-            B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_V,:)
+            B_V_sub_c_M(:,:,1) = bsubsmnc(nyq_id,:)
+            B_V_sub_s_M(:,:,2) = bsubumns(nyq_id,:)
+            B_V_sub_s_M(:,:,3) = bsubvmns(nyq_id,:)
         else
             B_V_sub_c_M(:,:,1) = 0._dp
             B_V_sub_s_M(:,:,2) = 0._dp
             B_V_sub_s_M(:,:,3) = 0._dp
         end if
 #if ldebug
-        B_V_c_H(:,:) = bmnc(1:mnmax_V,:)
+        B_V_c_H(:,:) = bmnc(nyq_id,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_s_H(:,:) = bmns(1:mnmax_V,:)
+            B_V_s_H(:,:) = bmns(nyq_id,:)
         else
             B_V_s_H(:,:) = 0._dp
         end if

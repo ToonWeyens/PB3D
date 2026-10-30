@@ -202,15 +202,15 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
 - `circ_eps033_vmec_twin`: the circular ε = 0.33 HELENA fixture and its VMEC
   twin `wout_circ_eps033_q104.nc` (made from the HELENA file by
   `tests/reference/make_vmec_twin.sh`: PB3D `--export_HEL`, then VMEC++) give
-  the same fixed-boundary eigenvalue at n = 10 within 2.5 % (measured 1.6 %,
-  the boundary fit and the radial coordinate differing between the codes);
-  the VMEC value \(+7.9716\times10^{-2}\) is anchored at 1e-3 as the
+  the same fixed-boundary eigenvalue at n = 10 within 1e-4 (measured 2.4e-6
+  once B_0 is the toroidal average of |B| on the axis; 1.6 % with the old
+  B_0); the VMEC value \(+7.8431\times10^{-2}\) is anchored at 1e-3 as the
   layer's only VMEC number. The twin is then run free-boundary through the
-  3-D vacuum (`alpha_style 2`, 64 field lines): \(-5.2743\times10^{-1}\),
+  3-D vacuum (`alpha_style 2`, 64 field lines): \(-5.1892\times10^{-1}\),
   anchored at 1e-3, below the fixed value and within 25 % of the HELENA
   style-2 result \(-4.4383\times10^{-1}\) (the first-order BEM error at this
   resolution), which pins the orientation of the normal that
-  `store_vac_VMEC` hands to the kernels (issue #4, step 6e).
+  `store_vac_VMEC` hands to the kernels (issue #4, steps 6e and 6f).
 
 **The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
 failed `H5Fcreate` on about every other launch) were a heap overrun in
