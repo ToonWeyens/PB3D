@@ -253,9 +253,20 @@ contains
                 ! grid point to save is last local
                 r_id = grid%loc_n_r
                 
-                ! calculate Cartesian components of J nabla psi
-                !   = J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
-                !   = J_F T_F^V(1,2) (T_C^V)^T (e^C)
+                ! calculate Cartesian components of - J nabla psi
+                !   = - J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
+                !   = - J_F T_F^V(1,2) (T_C^V)^T (e^C)
+                ! The  minus sign  is  the convention  of  the kernels:  calc_GH
+                ! takes  the inward  normal, as  store_vac_HEL provides  it for
+                ! the  axisymmetric style  and as  the analytic  torus of  the
+                ! full-stack test  does (its normal  is e_theta x  e_alpha, which
+                ! points inward  for a  left-handed (alpha, psi,  theta) frame).
+                ! With +J nabla psi the off-diagonal H has the wrong sign, the
+                ! row-sum identity then sets a  wrong diagonal, and the response
+                ! of  the circular  VMEC twin  came out  3 to  4 times  too small
+                ! against the  HELENA one;  with -J nabla  psi the  two agree
+                ! within  the first-order  discretization error,  as  in  the
+                ! full-stack test response_1_vs_2 (issue #4, step 6e).
                 allocate(norm_com_C(grid%n(1),grid%n(2),3))
                 norm_com_C = 0._dp
                 allocate(T_CV_loc(size(eq_2%T_VC,1),size(eq_2%T_VC,2),1:1,&
@@ -264,7 +275,7 @@ contains
                     &[0,0,0])
                 CHCKERR('')
                 do id = 1,3
-                    norm_com_C(:,:,id) = eq_2%jac_FD(:,:,r_id,0,0,0) * &
+                    norm_com_C(:,:,id) = - eq_2%jac_FD(:,:,r_id,0,0,0) * &
                         &eq_2%T_EF(:,:,r_id,c([1,2],.false.),0,0,0)*&
                         &T_CV_loc(:,:,1,c([id,1],.false.),0,0,0)                ! Cylindrical contravariant components
                 end do
