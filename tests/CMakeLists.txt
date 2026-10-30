@@ -236,8 +236,10 @@ if(NOT PB3D_FIXTURE_DIR AND
         set(PB3D_FIXTURE_DIR ${CMAKE_BINARY_DIR}/fixtures)
         file(MAKE_DIRECTORY ${PB3D_FIXTURE_DIR})
         # every committed *.12.xz (cbm18a and, since issue #4 step 0, the two
-        # circular external-kink cases)
-        file(GLOB _fixtures_xz ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.12.xz)
+        # circular external-kink cases) and *.nc.xz (the VMEC twin of the
+        # eps = 0.33 circular case, issue #4 step 6e)
+        file(GLOB _fixtures_xz ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.12.xz
+                               ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/*.nc.xz)
         foreach(_fx ${_fixtures_xz})
             get_filename_component(_fx_name ${_fx} NAME_WLE)
             if(NOT EXISTS ${PB3D_FIXTURE_DIR}/${_fx_name})
@@ -335,6 +337,21 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 ${PB3D_FIXTURE_DIR}/circ_eps005_q104.12
                 ${PB3D_TEST_PYTHON})
         set_tests_properties(regression_circ_eps005_free_bnd PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
+    endif()
+    # the HELENA fixture against its VMEC twin, fixed boundary (issue #4, step 6e)
+    if(EXISTS ${PB3D_FIXTURE_DIR}/circ_eps033_q104.12 AND
+       EXISTS ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc)
+        add_test(NAME regression_circ_eps033_vmec_twin
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/circ_eps033_vmec_twin.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_circ_eps033
+                ${PB3D_FIXTURE_DIR}/circ_eps033_q104.12
+                ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc)
+        set_tests_properties(regression_circ_eps033_vmec_twin PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
