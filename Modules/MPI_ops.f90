@@ -244,7 +244,7 @@ contains
     !!
     !! \return ierr
     integer function broadcast_input_opts() result(ierr)
-        use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
+        use num_vars, only: max_str_ln, ltest, check_vac, max_it_zero, rank, &
             &max_it_rich, tol_zero, n_procs, n_sol_requested, tol_rich, &
             &max_nr_backtracks_HH, sol_n_procs, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
@@ -284,6 +284,8 @@ contains
             
             ! variables that are sent for every program style:
             call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(check_vac,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

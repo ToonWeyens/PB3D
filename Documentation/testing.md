@@ -63,7 +63,9 @@ combined over all ranks.
   axisymmetric vacuum response (`vac_ops::calc_GH_2`):
   - values of \(P_{n-1/2}(z)\), \(Q_{n-1/2}(z)\) against 30-digit mpmath
     references (54 points, including the BEM-relevant near-singular regime
-    \(z \to 1^+\)), at 1e-11 relative tolerance;
+    \(z \to 1^+\)), at 1e-11 relative tolerance, and 32 more at the degrees
+    of peeling-ballooning modes, n = 20 to 80 (catalogue item T11 of issue
+    #4; measured worst case 1.4e-11, tolerance 5e-11);
   - the three-term recurrence in the degree;
   - rejection of invalid arguments (\(z \le 1\)).
 - **`str_utilities`** — all public conversion/case/merge routines, pinning

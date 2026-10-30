@@ -35,7 +35,7 @@ contains
             &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
             &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST, &
             &sol_n_procs, n_procs, POST_output_full, POST_output_sol, &
-            &EV_guess, solver_SLEPC_style, plot_vac_pot, min_Rvac_plot, &
+            &EV_guess, solver_SLEPC_style, plot_vac_pot, check_vac, min_Rvac_plot, &
             &max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, n_vac_plot, &
             &alpha_style, X_grid_style, max_njq_change
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
@@ -71,7 +71,7 @@ contains
             &rich_restart_lvl, min_n_par_X, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot, alpha_style, max_nr_backtracks_HH, &
             &magn_int_style, ex_plot_style, n_alpha, solver_SLEPC_style, &
-            &X_grid_style, max_njq_change
+            &X_grid_style, max_njq_change, check_vac
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_size, &
@@ -303,6 +303,7 @@ contains
             plot_B = .false.                                                    ! do not plot the magnetic field
             plot_J = .false.                                                    ! do not plot the current
             plot_flux_q = .false.                                               ! do not plot the flux quantities
+            check_vac = .false.                                                 ! do not check the 3-D vacuum operators with exact potentials
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation

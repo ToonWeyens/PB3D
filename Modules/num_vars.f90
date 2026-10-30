@@ -16,7 +16,7 @@ module num_vars
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, X_grid_style, matrix_SLEPC_style, plot_resonance, &
         &plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, plot_sol_xi, &
-        &plot_sol_Q, plot_E_rec, plot_vac_pot, ltest, use_pol_flux_E, &
+        &plot_sol_Q, plot_E_rec, plot_vac_pot, check_vac, ltest, use_pol_flux_E, &
         &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
         &norm_disc_prec_eq, K_style, EV_guess, norm_disc_prec_X, &
         &norm_disc_prec_sol, norm_disc_style_sol, &
@@ -108,6 +108,7 @@ module num_vars
     logical :: plot_sol_xi                                                      !< whether to plot plasma perturbation of solution in POST
     logical :: plot_sol_Q                                                       !< whether to plot magnetic perturbation of solution in POST
     logical :: plot_vac_pot                                                     !< whether to plot vacuum potential in POST
+    logical :: check_vac                                                        !< whether to check the 3-D vacuum operators with exact potentials on the equilibrium surface
     logical :: plot_E_rec                                                       !< whether to plot energy reconstruction in POST
     logical :: ltest                                                            !< whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   !< whether poloidal flux is used in E coords.

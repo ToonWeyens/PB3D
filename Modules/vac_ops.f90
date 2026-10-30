@@ -1477,7 +1477,7 @@ contains
         use MPI
         use rich_vars, only: rich_lvl, n_par_X
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
-            &use_pol_flux_F, rank, n_procs
+            &use_pol_flux_F, rank, n_procs, check_vac
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X
         use vac_vars, only: set_loc_lims, in_context
@@ -1565,6 +1565,12 @@ contains
         ! calculate matrices G and H
         ierr = calc_GH(vac)
         CHCKERR('')
+        
+        ! check the operators with exact potentials if requested
+        if (check_vac .and. vac%style.eq.1) then
+            ierr = check_vac_exact(vac)
+            CHCKERR('')
+        end if
         
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
@@ -1940,7 +1946,253 @@ contains
         call writo('Done calculating vacuum quantities')
     end function calc_vac_res
     
-    !> Calculate vacuum potential at some positions that are not resonant.
+    !> Checks the style-1 (3-D) vacuum operators on the equilibrium surface
+    !! itself with potentials whose boundary data are exact (issue #4: the
+    !! checks T5 and T6 of the validation catalogue on the real surface, not
+    !! on the analytic torus of the full-stack tests).
+    !!
+    !! For a constant, the three Cartesian coordinates and \f$x^2 - y^2\f$,
+    !! harmonic inside the surface, and for two potentials harmonic outside
+    !! it and decaying, a point source on the magnetic axis at \f$\zeta = 0\f$
+    !! and a ring of point sources along the whole magnetic axis, the residual
+    !! of the Green identity \f$\overline{\text{H}} \phi -
+    !! \overline{\text{G}} \partial_n \phi - c \phi\f$ is printed for
+    !! \f$c = -4\pi, -2\pi, 0, 2\pi, 4\pi\f$, scaled by \f$\max |4 \pi \phi|\f$
+    !! (interior potentials satisfy the identity with \f$c = -4\pi\f$,
+    !! exterior ones with \f$c = 0\f$, as calc_GH_1 builds the diagonal; see
+    !! the full-stack test greens_identity_3d). Then the exterior problem is
+    !! solved for the two exterior potentials with solve_Phi_BEM() and the
+    !! boundary trace is compared with the exact one. The point source is
+    !! the sharper test when the axis comes close to the surface, the ring
+    !! varies on the scale of the minor radius everywhere.
+    !!
+    !! Every number is printed on a line starting with CHECKVAC so that it can
+    !! be collected from the log. Switched on with the input \c check_vac.
+    !! Only for style 1, whose surface points are Cartesian.
+    integer function check_vac_exact(vac) result(ierr)
+        use num_vars, only: rank, n_procs
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc
+        use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, mn_V, mnmax_V
+
+        character(*), parameter :: rout_name = 'check_vac_exact'
+
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+
+        ! local variables
+        integer, parameter :: n_pot = 7                                         ! number of test potentials
+        integer, parameter :: n_ring = 64                                       ! sources along the magnetic axis
+        integer :: id, kd                                                       ! counters
+        integer :: n_bnd                                                        ! number of boundary points
+        integer :: n_col1                                                       ! local number of columns of a global column vector
+        integer :: desc_RPhi(BLACSCTXTSIZE)                                     ! descriptor for right-hand side and solution
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of right-hand side and solution
+        logical :: rank_o                                                       ! output rank
+        real(dp) :: x_ring(n_ring,3)                                            ! sources along the magnetic axis
+        real(dp) :: zeta_k                                                      ! toroidal angle of a source
+        real(dp) :: d_min                                                       ! smallest distance of the surface to the sources
+        real(dp) :: res_off(-2:2)                                               ! identity residuals for offsets c = k 2 pi
+        real(dp) :: err_max, err_2                                              ! errors of the exterior solution
+        real(dp), allocatable :: phi(:), dphi(:)                                ! potential and norm . grad phi
+        real(dp), allocatable :: lhs(:), rhs(:)                                 ! H phi and G dphi
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
+        character(len=max_str_ln) :: pot_name                                   ! name of test potential
+        character(len=max_str_ln) :: res_str                                    ! residuals as string
+
+        ! initialize ierr
+        ierr = 0
+
+        if (.not.in_context(vac%ctxt_HG)) return
+
+        rank_o = rank.eq.n_procs-1
+        n_bnd = vac%n_bnd
+
+        ! sources on the magnetic axis: the m = 0 modes of R and Z at the
+        ! first radial point, cos(m theta - n zeta) convention, placed with
+        ! the same toroidal angle as the boundary points (R_V_c is normalized
+        ! like them); source 1 is at zeta = 0
+        do kd = 1,n_ring
+            zeta_k = 2._dp*pi*(kd-1)/n_ring
+            x_ring(kd,:) = 0._dp
+            do id = 1,mnmax_V
+                if (mn_V(id,1).eq.0) then
+                    x_ring(kd,1) = x_ring(kd,1) + &
+                        &R_V_c(id,1,0)*cos(mn_V(id,2)*zeta_k) - &
+                        &R_V_s(id,1,0)*sin(mn_V(id,2)*zeta_k)
+                    x_ring(kd,3) = x_ring(kd,3) + &
+                        &Z_V_c(id,1,0)*cos(mn_V(id,2)*zeta_k) - &
+                        &Z_V_s(id,1,0)*sin(mn_V(id,2)*zeta_k)
+                end if
+            end do
+            x_ring(kd,2) = x_ring(kd,1)*sin(zeta_k)
+            x_ring(kd,1) = x_ring(kd,1)*cos(zeta_k)
+        end do
+
+        call writo('Check of the vacuum operators with exact potentials',&
+            &persistent=rank_o)
+        call lvl_ud(1)
+        call writo('CHECKVAC source n_bnd='//trim(i2str(n_bnd))//' x_src='//&
+            &trim(r2str(x_ring(1,1)))//' '//trim(r2str(x_ring(1,2)))//' '//&
+            &trim(r2str(x_ring(1,3))),persistent=rank_o)
+
+        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),phi_num(n_bnd))
+
+        ! Green identities
+        do kd = 1,n_pot
+            call set_pot(kd)
+            ierr = dis_matvec(vac%H,vac%desc_H,phi,lhs)
+            CHCKERR('')
+            ierr = dis_matvec(vac%G,vac%desc_G,dphi,rhs)
+            CHCKERR('')
+            lhs = lhs - rhs
+            res_str = ''
+            do id = -2,2
+                res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
+                    &maxval(abs(4._dp*pi*phi))
+                res_str = trim(res_str)//' '//trim(r2str(res_off(id)))
+            end do
+            call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
+                &trim(res_str),persistent=rank_o)
+        end do
+
+        ! exterior solves
+        n_col1 = 0
+        if (vac%ind_p(2).eq.0) n_col1 = 1                                       ! the single column sits in the first block
+        call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
+        allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+        allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        CHCKERR('descinit failed')
+        do kd = n_pot-1,n_pot
+            call set_pot(kd)
+            if (n_col1.gt.0) call vec_glob2dis(dphi,R_mat(:,1))
+            Phi_mat = 0._dp
+            ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],&
+                &[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+            CHCKERR('')
+            ierr = vec_dis2loc(vac%ctxt_HG,&
+                &reshape(Phi_mat(1:vac%n_loc(1),:),[vac%n_loc(1)*n_col1]),&
+                &vac%lims_r,phi_num)
+            CHCKERR('')
+            err_max = maxval(abs(phi_num-phi))/maxval(abs(phi))
+            err_2 = sqrt(sum((phi_num-phi)**2)/sum(phi**2))
+            call writo('CHECKVAC solve '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' min_dist='//trim(r2str(d_min))//&
+                &' err_max='//trim(r2str(err_max))//' err_2='//&
+                &trim(r2str(err_2)),persistent=rank_o)
+        end do
+
+        call lvl_ud(-1)
+    contains
+        ! Sets phi and dphi = norm . grad phi for test potential kd.
+        !> \private
+        subroutine set_pot(kd)
+            integer, intent(in) :: kd                                           ! which potential
+
+            integer :: id, ld                                                   ! counters
+            integer :: n_src                                                    ! number of sources
+            real(dp) :: r_src                                                   ! distance to a source
+
+            d_min = huge(1._dp)
+            do id = 1,n_bnd
+                select case (kd)
+                    case (1)                                                    ! constant (interior harmonic)
+                        pot_name = 'constant'
+                        phi(id) = 1._dp
+                        dphi(id) = 0._dp
+                    case (2)                                                    ! x (interior harmonic)
+                        pot_name = 'x'
+                        phi(id) = vac%x_vec(id,1)
+                        dphi(id) = vac%norm(id,1)
+                    case (3)                                                    ! y (interior harmonic)
+                        pot_name = 'y'
+                        phi(id) = vac%x_vec(id,2)
+                        dphi(id) = vac%norm(id,2)
+                    case (4)                                                    ! z (interior harmonic)
+                        pot_name = 'z'
+                        phi(id) = vac%x_vec(id,3)
+                        dphi(id) = vac%norm(id,3)
+                    case (5)                                                    ! x^2 - y^2 (interior harmonic)
+                        pot_name = 'x2-y2'
+                        phi(id) = vac%x_vec(id,1)**2 - vac%x_vec(id,2)**2
+                        dphi(id) = 2._dp*(vac%x_vec(id,1)*vac%norm(id,1) - &
+                            &vac%x_vec(id,2)*vac%norm(id,2))
+                    case (6,7)                                                  ! point source(s) inside: exterior harmonic
+                        if (kd.eq.6) then
+                            pot_name = 'point_source'
+                            n_src = 1
+                        else
+                            pot_name = 'axis_ring'
+                            n_src = n_ring
+                        end if
+                        phi(id) = 0._dp
+                        dphi(id) = 0._dp
+                        do ld = 1,n_src
+                            r_src = sqrt(sum((vac%x_vec(id,:)-x_ring(ld,:))**2))
+                            d_min = min(d_min,r_src)
+                            phi(id) = phi(id) + 1._dp/r_src
+                            dphi(id) = dphi(id) - sum(vac%norm(id,:)*&
+                                &(vac%x_vec(id,:)-x_ring(ld,:)))/r_src**3
+                        end do
+                end select
+            end do
+        end subroutine set_pot
+
+        ! Scatter a global column vector into its local block-cyclic rows.
+        !> \private
+        subroutine vec_glob2dis(x_glob,x_dis)
+            real(dp), intent(in) :: x_glob(:)                                   ! global vector
+            real(dp), intent(out) :: x_dis(:)                                   ! local part
+
+            integer :: i_rd, rd, rdl                                            ! subrow index, global and local row
+
+            x_dis = 0._dp
+            do i_rd = 1,size(vac%lims_r,2)
+                do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                    rdl = sum(vac%lims_r(2,1:i_rd-1)-vac%lims_r(1,1:i_rd-1)+1)+&
+                        &rd-vac%lims_r(1,i_rd)+1
+                    x_dis(rdl) = x_glob(rd)
+                end do
+            end do
+        end subroutine vec_glob2dis
+
+        ! Distributed matrix-vector product y = A x with x replicated and y
+        ! returned complete on every process in the context.
+        !> \private
+        integer function dis_matvec(A,desc_A,x_glob,y_glob) result(ierr)
+            real(dp), intent(in) :: A(:,:)                                      ! local part of distributed matrix
+            integer, intent(in) :: desc_A(BLACSCTXTSIZE)                        ! its descriptor
+            real(dp), intent(in) :: x_glob(:)                                   ! global input vector
+            real(dp), intent(out) :: y_glob(:)                                  ! global result vector
+
+            integer :: n_col1_loc                                               ! local number of columns of the vector
+            integer :: n_flat                                                   ! local size of the vector
+            integer :: desc_x(BLACSCTXTSIZE)                                    ! descriptor for x and y
+            real(dp), allocatable :: x_dis(:), y_dis(:)                         ! local vector parts
+
+            ierr = 0
+            y_glob = 0._dp
+            n_col1_loc = 0
+            if (vac%ind_p(2).eq.0) n_col1_loc = 1
+            n_flat = vac%n_loc(1)*n_col1_loc
+            allocate(x_dis(max(1,n_flat)),y_dis(max(1,n_flat)))
+            x_dis = 0._dp
+            if (n_col1_loc.gt.0) call vec_glob2dis(x_glob,x_dis)
+            y_dis = 0._dp
+            call descinit(desc_x,vac%n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+                &max(1,vac%n_loc(1)),ierr)
+            if (ierr.ne.0) return
+            call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,A,1,1,desc_A,&
+                &x_dis,1,1,desc_x,1,0._dp,y_dis,1,1,desc_x,1)
+            ierr = vec_dis2loc(vac%ctxt_HG,y_dis(1:n_flat),vac%lims_r,y_glob)
+        end function dis_matvec
+    end function check_vac_exact
+
+!> Calculate vacuum potential at some positions that are not resonant.
     !!
     !! This  is done  by  using the  relation  between  H and  G  on the  plasma
     !! boundary,
