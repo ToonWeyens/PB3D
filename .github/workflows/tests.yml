@@ -169,6 +169,15 @@ jobs:
         if: always()
         run: ctest --test-dir build --output-on-failure
 
+      # the regression tests print their eigenvalues, but ctest shows only the
+      # output of failing tests: keep the complete log of every test
+      - name: Upload ctest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-fullstack
+          path: build/Testing/Temporary/LastTest.log
+
   # ---------------------------------------------------------------------------
   # Full stack in Debug with the ldebug code paths compiled in and the full
   # gfortran runtime checking active. The regression layer is excluded for
@@ -306,6 +315,15 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      # the regression tests print their eigenvalues, but ctest shows only the
+      # output of failing tests: keep the complete log of every test
+      - name: Upload ctest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-coverage
+          path: build/Testing/Temporary/LastTest.log
 
       - name: Coverage report
         run: |
