@@ -1,0 +1,44 @@
+# Doxygen configuration for PB3D
+#
+# The sources are extensively annotated with Doxygen comments (!> / !!,
+# \cite, LaTeX formulas). This configuration builds the HTML reference:
+#     doxygen Doxyfile
+# Output lands in doc/html. CI builds it on every push (see
+# .github/workflows/tests.yml) and publishes the result as an artifact.
+
+PROJECT_NAME           = "PB3D"
+PROJECT_BRIEF          = "Peeling-Ballooning in 3-D"
+PROJECT_NUMBER         = 2.48
+
+INPUT                  = Modules PB3D.f90 POST.f90 README.md
+USE_MDFILE_AS_MAINPAGE = README.md
+FILE_PATTERNS          = *.f90
+RECURSIVE              = NO
+
+OPTIMIZE_FOR_FORTRAN   = YES
+EXTENSION_MAPPING      = f90=FortranFree
+
+# the sources are preprocessed (PB3D_macros.h, wrappers.h, ldebug)
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+INCLUDE_PATH           = include
+PREDEFINED             = ldebug=1 PB3D_WITH_STRUMPACK=1
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+OUTPUT_DIRECTORY       = doc
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+USE_MATHJAX            = YES
+CITE_BIB_FILES         =
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_LOGFILE           = doc/doxygen-warnings.log
+
+HAVE_DOT               = NO
+SOURCE_BROWSER         = YES

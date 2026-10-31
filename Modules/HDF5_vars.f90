@@ -7,18 +7,21 @@ module HDF5_vars
     use messages
     use str_utilities, only: i2str, r2str, r2strt
     use HDF5
-    
+    use var_1D_vars, only: var_1D_type, dealloc_var_1D, max_dim_var_1D
+
     implicit none
     private
-    public init_HDF5, dealloc_XML_str, dealloc_var_1D, &
+    ! var_1D_type, dealloc_var_1D and max_dim_var_1D moved to the
+    ! dependency-light var_1D_vars and are re-exported here for
+    ! compatibility
+    public init_HDF5, dealloc_XML_str, dealloc_var_1D, var_1D_type, &
         &xmf_fmt, XDMF_num_types, XDMF_format_types, XDMF_geom_types, &
         &XDMF_top_types, XDMF_att_types, XDMF_center_types, XDMF_grid_types, &
         &max_dim_var_1D
-    
+
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      !< max. length of xml string
     character(len=6) :: xmf_fmt = '(999A)'                                      !< format to write the xmf file
-    integer, parameter :: max_dim_var_1D = 100000                               !< maximum dimension of var_1D
     
     ! XDMF possibilities
     character(len=max_str_ln) :: XDMF_num_types(2)                              !< possible XDMF number types
@@ -43,19 +46,8 @@ module HDF5_vars
         character(len=max_str_ln) :: name                                       !< name of files (without extensions ".h5" and ".xmf")
     end type HDF5_file_type
     
-    !> 1D  equivalent  of multidimensional  variables,  used  for internal  HDF5
-    !! storage.
-    type, public :: var_1D_type
-        real(dp), allocatable :: p(:)                                           !< 1D equivalent of data of variable
-        integer, allocatable :: tot_i_min(:)                                    !< total min.of indices of variable
-        integer, allocatable :: tot_i_max(:)                                    !< total max.of indices of variable
-        integer, allocatable :: loc_i_min(:)                                    !< group min.of indices of variable
-        integer, allocatable :: loc_i_max(:)                                    !< group max.of indices of variable
-        character(len=max_str_ln) :: var_name                                   !< name of variable
-    end type var_1D_type
-    
     ! interfaces
-    
+
     !> \public Deallocates XML_str_type.
     interface dealloc_XML_str
         !> \public
@@ -64,16 +56,6 @@ module HDF5_vars
         module procedure dealloc_XML_str_arr
     end interface
 
-    !> \public Deallocates 1D variable.
-    interface dealloc_var_1D
-        !> \public
-        module procedure dealloc_var_1D_ind
-        !> \public
-        module procedure dealloc_var_1D_arr
-        !> \public
-        module procedure dealloc_var_1D_arr_2
-    end interface
-    
 contains
     !> Initializes the HDF5 types.
     !!
@@ -131,43 +113,4 @@ contains
         type(XML_str_type), intent(out) :: XML_str                              !< XML string to be deallocated
     end subroutine dealloc_XML_str_ind
     
-    !> \private rank 2 array version
-    subroutine dealloc_var_1D_arr_2(var_1D)
-        ! input / output
-        type(var_1D_type), intent(inout), allocatable :: var_1D(:,:)            !< array of 1D variables to be deallocated
-        
-        ! local variables
-        integer :: id, jd                                                       ! counters
-        
-        ! deallocate individual arrays
-        do jd = 1,size(var_1D,2)
-            do id = 1,size(var_1D,1)
-                call dealloc_var_1D_ind(var_1D(id,jd))
-            end do
-        end do
-        
-        ! deallocate the array
-        deallocate(var_1D)
-    end subroutine dealloc_var_1D_arr_2
-    !> \private array version
-    subroutine dealloc_var_1D_arr(var_1D)
-        ! input / output
-        type(var_1D_type), intent(inout), allocatable :: var_1D(:)              !< array of 1D variables to be deallocated
-        
-        ! local variables
-        integer :: id                                                           ! counter
-        
-        ! deallocate individual arrays
-        do id = 1,size(var_1D)
-            call dealloc_var_1D_ind(var_1D(id))
-        end do
-        
-        ! deallocate the array
-        deallocate(var_1D)
-    end subroutine dealloc_var_1D_arr
-    !> \private individual version
-    subroutine dealloc_var_1D_ind(var_1D)
-        ! input / output
-        type(var_1D_type), intent(out) :: var_1D                                !< 1D variable to be deallocated
-    end subroutine dealloc_var_1D_ind
 end module HDF5_vars

@@ -177,12 +177,12 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &do_execute_command_line, output_name, prog_name, print_mem_usage, &
+            &do_execute_command_line, output_name, prog_name, &
             &swap_angles, jump_to_sol, export_HEL, plot_VMEC_modes, &
             &compare_tor_pos, invert_top_bottom_H
         use rich_vars, only: no_guess
 #if ldebug
-        use num_vars, only: ltest
+        use num_vars, only: ltest, print_mem_usage
 #endif
         
         character(*), parameter :: rout_name = 'open_input'

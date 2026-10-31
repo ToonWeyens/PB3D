@@ -1,0 +1,20 @@
+# Fortitude (Fortran linter) configuration for PB3D.
+#
+# Adoption is staged (see Documentation/quality-and-ci.md): CI currently runs
+# fortitude as a NON-BLOCKING report, because the legacy code has ~15k
+# findings, most of them stylistic (trailing whitespace, line length,
+# 'use' without 'only'). The intended ratchet: fix one rule category at a
+# time, then move it into the blocking gate.
+#
+# E001 is excluded: fortitude parses raw source and misreports the
+# C-preprocessor lines (#include <PB3D_macros.h>, #if ldebug) that every
+# module uses.
+
+[check]
+ignore = ["E001"]
+line-length = 132
+
+[check.per-file-ignores]
+# vendored code is not ours to lint
+"tests/vendor/*" = ["ALL"]
+"Libraries/*" = ["ALL"]

@@ -3,21 +3,28 @@
 !------------------------------------------------------------------------------!
 module vac_vars
 #include <PB3D_macros.h>
+#ifdef PB3D_WITH_STRUMPACK
     use StrumpackDensePackage
+#endif
     use str_utilities
     use messages
     use num_vars, only: dp, max_name_ln, iu, weight_dp, max_str_ln
     use grid_vars, only: grid_type
-    
+
     implicit none
-    
+
     private
-    public copy_vac, set_loc_lims, in_context
+    public copy_vac, set_loc_lims, in_context, BLACSCTXTSIZE
 #if ldebug
     public n_alloc_vacs
 #endif
-    
+
     ! global variables
+#ifndef PB3D_WITH_STRUMPACK
+    ! (these come from StrumpackDensePackage when PB3D is built with STRUMPACK)
+    integer, parameter :: BLACSCTXTSIZE = 9                                     !< length of a ScaLAPACK descriptor
+    integer, external :: numroc, indxl2g                                        !< ScaLAPACK index computation functions
+#endif
     integer, parameter :: bs = 16                                               !< Blocksize of the 2D block-cyclic distribution
 #if ldebug
     integer :: n_alloc_vacs                                                     !< nr. of allocated vacs \ldebug

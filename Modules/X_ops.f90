@@ -1061,7 +1061,7 @@ contains
         use X_vars, only: n_mod_X, min_n_X, min_m_X, max_n_X, max_m_X
         use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_modes'
         
@@ -1173,7 +1173,8 @@ contains
                                 &ind_tot(ind_cur(n_mod_X),1) + 1, &             ! total mode number
                                 &kd, &                                          ! lower limit in normal range
                                 &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)+ld-1,n_mod_X) + 1]    ! index in tables, shifted and wrapped around
+                                &modulo(ind_tot(ind_cur(n_mod_X),1)+1-nm_X(1,1),&
+                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
 #if ldebug
                             if (debug_setup_modes) then
                                 write(*,*) '    FINISHES', ind_cur(1), &
@@ -1189,7 +1190,8 @@ contains
                                 &ind_tot(ind_cur(1),1) - 1, &                   ! total mode number
                                 &kd, &                                          ! lower limit in normal range
                                 &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_id,4)-ld,n_mod_X) + 1]      ! index in tables, shifted and wrapped around
+                                &modulo(ind_tot(ind_cur(1),1)-1-nm_X(1,1),&
+                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
 #if ldebug
                             if (debug_setup_modes) then
                                 write(*,*) '    FINISHES', ind_cur(n_mod_X), &
@@ -1212,6 +1214,21 @@ contains
             ! close last total modes
             do ld = 1,size(ind_cur)
                 ind_tot(ind_cur(ld),3) = grid%n(3)
+            end do
+            
+            ! check that both tables agree: over its normal range, every mode
+            ! of ind_tot must find its own number in its slot of nm_X
+            do ld = 1,ind_id
+                do kd = ind_tot(ld,2),ind_tot(ld,3)
+                    if (nm_X(kd,ind_tot(ld,4)).ne.ind_tot(ld,1)) then
+                        ierr = 1
+                        err_msg = 'mode tables disagree at normal point '//&
+                            &trim(i2str(kd))//' for mode '//&
+                            &trim(i2str(ind_tot(ld,1)))//' in slot '//&
+                            &trim(i2str(ind_tot(ld,4)))
+                        CHCKERR(err_msg)
+                    end if
+                end do
             end do
             
             ! save in index information
@@ -1772,7 +1789,7 @@ contains
         ! m/n or iota = n/m.
         !> \private
         real(dp) function jq_fun(pt) result(res)
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             ! input / output
             real(dp), intent(in) :: pt                                          ! normal position at which to evaluate
@@ -2096,7 +2113,8 @@ contains
     integer function calc_U(grid_eq,grid_X,eq_1,eq_2,X) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, U_style, &
             &norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use input_utilities, only: get_log, pause_prog
         use eq_vars, only: vac_perm
 #if ldebug
@@ -2645,7 +2663,8 @@ contains
         &result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, X_grid_style
         use eq_vars, only: vac_perm
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         
@@ -2877,7 +2896,8 @@ contains
     integer function calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X) &
         &result(ierr)
         use num_vars, only: K_style, norm_disc_prec_X, X_grid_style
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
         
@@ -3082,7 +3102,8 @@ contains
             &alpha_style, X_grid_style
         use X_utilities, only: is_necessary_X
         use X_vars, only: n_mod_X
-        use num_utilities, only: c, spline
+        use num_utilities, only: c
+        use spline_utilities, only: spline
         use grid_vars, only: min_par_X, max_par_X, n_alpha
         use rich_vars, only: rich_lvl
         

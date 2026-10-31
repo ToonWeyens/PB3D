@@ -185,7 +185,7 @@ contains
     !!
     !! \return ierr
     integer function test_splines() result(ierr)
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         use num_vars, only: tol_zero
         
         character(*), parameter :: rout_name = 'test_splines'

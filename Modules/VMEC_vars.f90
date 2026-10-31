@@ -22,6 +22,7 @@ module VMEC_vars
     public dealloc_VMEC, &
         &R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, jac_V_s, mnmax_V, &
         &mpol_V, ntor_V, mn_V, pres_V, rot_t_V, q_saf_V, is_asym_V, flux_t_V, &
+        &mnmax_nyq_V, mn_V_nyq, mpol_tf, ntor_tf, &
         &flux_p_V, VMEC_version, gam_V, is_freeb_V, nfp_V, B_0_V, rmin_surf, &
         &rmax_surf, aspr_V, beta_V, B_V_sub_s, B_V_sub_c
 #if ldebug
@@ -29,7 +30,11 @@ module VMEC_vars
 #endif
     
     ! global variables
-    integer, allocatable :: mn_V(:,:)                                           !< m and n of modes
+    integer, allocatable, target :: mn_V(:,:)                                   !< m and n of modes
+    integer, allocatable, target :: mn_V_nyq(:,:)                               !< m and n of the Nyquist mode set, on which VMEC stores the Jacobian, |B| and B_i
+    integer :: mnmax_nyq_V                                                      !< number of modes of the Nyquist set
+    integer :: mpol_tf                                                          !< poloidal extent of the trigonometric basis: m = 0 .. mpol_tf-1 (covers both mode sets)
+    integer :: ntor_tf                                                          !< toroidal extent of the trigonometric basis: n = -ntor_tf .. ntor_tf
     real(dp) :: B_0_V                                                           !< the magnitude of B at the magnetic axis, \f$\theta = \zeta = 0\f$
     real(dp), allocatable :: flux_t_V(:,:)                                      !< toroidal flux
     real(dp), allocatable :: flux_p_V(:,:)                                      !< poloidal flux
@@ -71,6 +76,7 @@ contains
         deallocate(flux_t_V)
         deallocate(flux_p_V)
         deallocate(mn_V)
+        if (allocated(mn_V_nyq)) deallocate(mn_V_nyq)
         deallocate(R_V_c)
         deallocate(R_V_s)
         deallocate(Z_V_c)

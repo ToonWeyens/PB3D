@@ -6,7 +6,7 @@ module PB3D_utilities
     use str_utilities
     use messages
     use num_vars, only: dp, pi, max_str_ln, max_name_ln
-    use HDF5_vars, only: var_1D_type
+    use var_1D_vars, only: var_1D_type
 
     implicit none
     private

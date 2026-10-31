@@ -66,7 +66,8 @@ contains
         &eq_2,X,sol,X_id,XUQ_style,time,XUQ,deriv) result(ierr)
         
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
-        use num_utilities, only: con2dis, spline
+        use num_utilities, only: con2dis
+        use spline_utilities, only: spline
         use X_utilities, only: trim_modes
 #if ldebug
         use eq_vars, only: max_flux_F
@@ -580,7 +581,7 @@ contains
         &deriv) result(ierr)
         use num_vars, only: X_style, norm_disc_prec_sol
         use X_vars, only: n_mod_X
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
         
@@ -799,7 +800,7 @@ contains
     integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,ivs_stat) &
         &result(ierr)
         
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'interp_V_spline'
         
@@ -813,11 +814,13 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
+#if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+#endif
+
         ! initialize ierr
         ierr = 0
-        
+
 #if ldebug
         ! test sizes
         if (size(r_i).ne.size(V_i,3)) then

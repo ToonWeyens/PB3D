@@ -281,12 +281,14 @@ contains
             call PetscViewerASCIIOpen(PETSC_COMM_WORLD,trim(file_name),&
                 &file_viewer,ierr)
             CHCKERR('Unable to open file viewer')
-            !call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
-            call PetscViewerSetFormat(file_viewer,PETSC_VIEWER_ASCII_MATLAB,ierr)
+            !call PetscViewerPushFormat(file_viewer,PETSC_VIEWER_ASCII_DENSE,ierr)
+            call PetscViewerPushFormat(file_viewer,PETSC_VIEWER_ASCII_MATLAB,ierr)
             CHCKERR('Unable to set format')
             !call MatView(mat_loc,file_viewer,ierr)
             call MatView(mat,file_viewer,ierr)
             CHCKERR('Unable to write matrix to file')
+            call PetscViewerPopFormat(file_viewer,ierr)
+            CHCKERR('Unable to pop format')
             call PetscViewerDestroy(file_viewer,ierr)
             CHCKERR('Unable to destroy file viewer')
             !if (rank.eq.0) then
@@ -507,15 +509,6 @@ contains
         CHCKERR('')
         i_lims = [grid_sol_trim%i_min, grid_sol_trim%i_max]
         
-        ! for BC_style 3 with symmetric finite differences, extend the grid
-        if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
-            n_r = n_r + ndps
-            if (rank.eq.sol_n_procs-1) then
-                loc_n_r = loc_n_r + ndps
-                i_lims(2) = i_lims(2) + ndps
-            end if
-        end if
-        
         ! setup matrix A and B
         select case (matrix_SLEPC_style)
             case (1)                                                            ! sparse
@@ -657,9 +650,6 @@ contains
             CHCKERR(err_msg)
             r_sol_start = r_sol_start/n_mod_X                                   ! count per block
             r_sol_end = r_sol_end/n_mod_X                                       ! count per block
-            if (norm_disc_style_sol.eq.1 .and. BC_style(2).eq.3) then
-                if (rank.eq.sol_n_procs-1) r_sol_end = r_sol_end - ndps
-            end if
             if (rank.lt.sol_n_procs) then
                 if (grid_sol_trim%i_min.ne.r_sol_start+1) then
                     ierr = 1
@@ -802,17 +792,34 @@ contains
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables
-            real(dp) :: mat_info(MAT_INFO_SIZE)                                 ! information about matrix
-            
+            ! (MatInfo became a derived type in the PETSc 3.22 Fortran
+            ! overhaul; before that it was an array indexed by MAT_INFO_*)
+#if PETSC_VERSION_GE(3,22,0)
+            MatInfo :: mat_info                                                 ! information about matrix
+#else
+            MatInfo :: mat_info(MAT_INFO_SIZE)                                  ! information about matrix
+#endif
+
             ! initialize ierr
             ierr = 0
-            
+
             call lvl_ud(1)
-            
+
             select case (matrix_SLEPC_style)
                 case (1)                                                        ! sparse
                     call MatGetInfo(mat,MAT_GLOBAL_SUM,mat_info,ierr)
                     CHCKERR('')
+#if PETSC_VERSION_GE(3,22,0)
+                    call writo('memory usage: '//&
+                        &trim(r2strt(mat_info%memory*1.E-6_dp))//&
+                        &' MB')
+                    call writo('nonzero''s allocated: '//&
+                        &trim(r2strt(mat_info%nz_allocated)))
+                    if (mat_info%nz_unneeded.gt.0._dp) then
+                        call writo('of which unused: '//&
+                            &trim(r2strt(mat_info%nz_unneeded)))
+                    end if
+#else
                     call writo('memory usage: '//&
                         &trim(r2strt(mat_info(MAT_INFO_MEMORY)*1.E-6_dp))//&
                         &' MB')
@@ -822,6 +829,7 @@ contains
                         call writo('of which unused: '//&
                             &trim(r2strt(mat_info(MAT_INFO_NZ_UNNEEDED))))
                     end if
+#endif
                 case (2)                                                        ! shell
                     call writo('shell matrix')
             end select
@@ -904,27 +912,28 @@ contains
     !!  2. left finite differences
     !!
     !! Possibilities for \c BC_style:
-    !!  -# Set to zero:
+    !!  -# Set to zero (fixed boundary):
     !!      - An  artificial Eigenvalue  \c EV_BC is  introduced by  setting the
     !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
     !!      off-diagonal elements to zero.
     !!  -# Minimization of surface energy through asymmetric fin. differences:
-    !!      - For symmetric finite differences, the last \c ndps grid points are
-    !!      treated asymmetrically in order not go  over the edge and the vacuum
-    !!      term is added to the edge element.
-    !!      -  For left  differences, this  is already  standard, so  the method
-    !!      becomes identical to 2.
-    !!  -# Minimization of surface energy through extension of grid:
-    !!      - For  symmetric finite differences,  \c ndps extra grid  points are
-    !!      introduced after the  edge and the vacuum term is  added to the edge
-    !!      element.
-    !!      - For left finite differences, the  vacuum term is just added to the
-    !!      edge element, so this method becomes idential to 3.
+    !!      -  The natural  boundary condition  is imposed  variationally: the
+    !!      edge row  is assembled like  any bulk row  (with one-sided
+    !!      stencils; natively for left differences, through the \c ndc_ind
+    !!      shifting for central ones)  and the vacuum term  is added to the
+    !!      edge diagonal  block. In contrast to  style 4 this keeps  A and B
+    !!      Hermitian. Agrees  with style 4 to  8 significant digits  on the
+    !!      cbm18a free-boundary benchmark, with much  cleaner numerics (see
+    !!      Documentation/testing.md).
+    !!  -# REMOVED (was: minimization of surface energy through extension of
+    !!      grid - never implemented beyond a stub; use style 4).
     !!  -# Explicit introduction of the surface energy minimization:
     !!      -  The equation  due  to  the minimization  of  the  vacuum term  is
     !!      introduced explicitely  as an asymmetric finite  difference equation
-    !!      in the last row.
-    !! -This is done using left finite differences.
+    !!      in the  last row, using  left finite differences:  V1^T X +  V2 X' +
+    !!      vac X =  0 (and the kinetic  analogue in B). This  breaks the
+    !!      Hermiticity of A  and B but is verified  end-to-end (see
+    !!      Documentation/testing.md).
     !!
     !! Makes use of n_r.
     !!
@@ -994,8 +1003,6 @@ contains
                 end select
             case (2)
                 n_max = 1                                                       ! only 1 element carries vacuum contribution
-            case (3)
-                n_max = 1                                                       ! only 1 element carries vacuum contribution
             case (4)
                 n_max = 1                                                       ! only last element carries BC
             case default
@@ -1058,9 +1065,6 @@ contains
                         CHCKERR('')
                     case (2)
                         ierr = set_BC_2(kd-1,A)                                 ! indices start at 0
-                        CHCKERR('')
-                    case (3)
-                        ierr = set_BC_3(kd-1,A)                                 ! indices start at 0
                         CHCKERR('')
                     case (4)
                         ierr = set_BC_4(kd-1,kd-grid_sol%i_min+1,X,A,B,&
@@ -1161,65 +1165,55 @@ contains
         
         ! set BC style 2:
         ! Minimization of surface energy through asymmetric fin. differences
+        !
+        ! The  bulk assembly  (fill_mat  through set_bulk_lims)  already
+        ! includes  the  edge  row  as a  variational  row:  its  stencils
+        ! are  one-sided  (either  natively,  for  left differences,  or
+        ! through  the ndc_ind  shifting for  central differences),  and
+        ! V_1 blocks  carry their Hermitian-conjugate  mirrors. The  only
+        ! boundary term  of the  energy functional  is the  vacuum term
+        ! X_edge^dagger vac X_edge, whose  Hessian is added  here to  the
+        ! edge diagonal block of A (a  pure surface term: no  integration
+        ! step size). The natural boundary condition
+        !   (V_1^dagger X + V_2 X' + vac X)|_edge = 0
+        ! then  emerges  from the  discrete  stationarity  of  the  energy
+        ! instead  of  being imposed  as  an  explicit equation  (style
+        ! 4),  which  keeps  A  and  B  Hermitian  up  to  the  (small)
+        ! non-Hermiticity of the discretized vac%res itself.
         !> \private
         integer function set_BC_2(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
-            
+
             ! input / output
             integer, intent(in) :: r_id                                         ! position at which to set BC
             Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
-            
+
             ! initialize ierr
             ierr = 0
-            
+
             ! user output
             call writo('Boundary style at row '//trim(i2str(r_id+1))//&
                 &': Minimization of surface energy through asymmetric finite &
                 & differences',persistent=.true.)
-            
+
             ! -------------!
             ! BLOCKS ~ vac !
             ! -------------!
             ! add block to r_id + (0,0)
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
             ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_2
-        
-        ! set BC style 3:
-        ! Minimization of surface energy through extension of grid
-        !> \private
-        integer function set_BC_3(r_id,A) result(ierr)
-            character(*), parameter :: rout_name = 'set_BC_3'
-            
-            ! input / output
-            integer, intent(in) :: r_id                                         ! position at which to set BC
-            Mat, intent(inout) :: A                                             ! Matrices A from A X = lambda B X
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Minimization of surface energy through extension of grid',&
-                &persistent=.true.)
-            
-            ! -------------!
-            ! BLOCKS ~ vac !
-            ! -------------!
-            ! add block to r_id + (0,0)
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            ierr = insert_block_mat(mds,vac%res,A,r_id,[0,0],n_r,&
-                &ind_insert=.true.)
-            CHCKERR('')
-        end function set_BC_3
-        
+
         ! set  BC style 4:
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
+        !
+        ! Not validated: with  the edge block assembled once  (issue #4, step
+        ! 4) it still differs from the  variational style 2 by 0.7 % on cbm18a
+        ! at psi =  0.75 and by far  more on the circular  external kink, with
+        ! no dependence  on the  radial resolution, while  style 2  agrees with
+        ! MISHKA to 1 %. Use style 2.
         !
         ! Makes use of mds.
         !> \private
@@ -1251,8 +1245,8 @@ contains
                 &': Explicit introduction of surface energy minimization',&
                 &persistent=.true.)
             
-            ! initialize local blocks
-            allocate(loc_block(n_mod_X,n_mod_X,2))
+            ! initialize local blocks (1,2: V1^T and vac for A, B; 3,4: V_2)
+            allocate(loc_block(n_mod_X,n_mod_X,4))
             
             ! set up ndc
             select case (norm_disc_style_sol)
@@ -1279,38 +1273,42 @@ contains
             end do
             loc_block(:,:,1) = loc_block(:,:,1) + vac%res
             
-            ! set block r_id + (0,0)
-            ierr = insert_block_mat(mds,loc_block(:,:,1)*ndc(1+st_size),A,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            ! set block r_id + (0,0)
-            ierr = insert_block_mat(mds,loc_block(:,:,2)*ndc(1+st_size),B,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            
             ! -------------!
             ! BLOCKS ~ V_2 !
             ! -------------!
             ! fill local blocks for A and B
             do m = 1,n_mod_X
                 do k = 1,n_mod_X
-                    loc_block(k,m,1) = &
+                    loc_block(k,m,3) = &
                         &con(sum(X%PV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
-                    loc_block(k,m,2) = &
+                    loc_block(k,m,4) = &
                         &con(sum(X%KV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
                         &[k,m],.true.)                                          ! symmetric matrices need con()
                 end do
             end do
             
-            ! set block r_id + (0,-st_size:0)
-            do jd = -st_size,0
-                ierr = insert_block_mat(mds,loc_block(:,:,1)*&
+            ! set block r_id + (0,0): V1^T and vac together with the jd = 0 part
+            ! of V_2, inserted once (the blocks overwrite the row, so a second
+            ! insertion at (0,0) would drop the first: that lost the vacuum and
+            ! V1^T until issue #4, step 4)
+            ierr = insert_block_mat(mds,(loc_block(:,:,1)+&
+                &loc_block(:,:,3)*ndc(1+st_size))*ndc(1+st_size),A,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
+            ierr = insert_block_mat(mds,(loc_block(:,:,2)+&
+                &loc_block(:,:,4)*ndc(1+st_size))*ndc(1+st_size),B,r_id,&
+                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
+            CHCKERR('')
+            
+            ! set block r_id + (0,-st_size:-1)
+            do jd = -st_size,-1
+                ierr = insert_block_mat(mds,loc_block(:,:,3)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),A,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)
                 CHCKERR('')
-                ierr = insert_block_mat(mds,loc_block(:,:,2)*&
+                ierr = insert_block_mat(mds,loc_block(:,:,4)*&
                     &ndc(jd+st_size+1)*ndc(1+st_size),B,&
                     &r_id,[0,jd],n_r,overwrite=.true.,&
                     &ind_insert=.true.)
@@ -1489,7 +1487,7 @@ contains
                     CHCKERR('Failed to create vector')
                     
                     ! get pointer
-                    call VecGetArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    call VecGetArray(guess_vec(kd),guess_vec_ptr,ierr)
                     CHCKERR('Failed to get pointer')
                     
                     ! copy the values
@@ -1500,7 +1498,7 @@ contains
                         &= guess_vec_ptr(size(sol%vec(:,:,kd)))                 ! some BC's have a grid extension
                     
                     ! return pointer
-                    call VecRestoreArrayF90(guess_vec(kd),guess_vec_ptr,ierr)
+                    call VecRestoreArray(guess_vec(kd),guess_vec_ptr,ierr)
                     CHCKERR('Failed to restore pointer')
                     
                     !! visualize guess
@@ -1695,8 +1693,15 @@ contains
         call sol%init(mds,grid_sol_trim,max_n_EV)
         
         ! create solution vector
+        ! (PETSC_NULL_SCALAR_ARRAY only exists from PETSc 3.22 on; older
+        ! versions pass the scalar PETSC_NULL_SCALAR for a null array)
+#if PETSC_VERSION_GE(3,22,0)
+        call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&
+            &n_r*n_mod_X,PETSC_NULL_SCALAR_ARRAY,sol_vec,ierr)
+#else
         call VecCreateMPIWithArray(PETSC_COMM_WORLD,one,loc_n_r*n_mod_X,&
             &n_r*n_mod_X,PETSC_NULL_SCALAR,sol_vec,ierr)
+#endif
         CHCKERR('Failed to create MPI vector with arrays')
         
         ! set up EV error string and format string:
@@ -1841,7 +1846,7 @@ contains
                 call MatDuplicate(A,MAT_SHARE_NONZERO_PATTERN,err_mat,ierr)
                 err_msg = 'failed to duplicate mat into err_mat'
                 CHCKERR(err_msg)
-                call MatCopy(A,err_mat,MAT_SHARE_NONZERO_PATTERN,ierr)          ! err_mat has same structure as A
+                call MatCopy(A,err_mat,SAME_NONZERO_PATTERN,ierr)               ! err_mat has same structure as A
                 CHCKERR('Failed to copy mat into mat_loc')
                 call MatAXPY(err_mat,-sol%val(id),B,DIFFERENT_NONZERO_PATTERN,&
                     &ierr)                                                      ! for some reason, SAME_NONZERO_PATTERN does not work
@@ -1996,18 +2001,19 @@ contains
             ! input / output
             PetscInt, intent(inout) :: id                                       ! id of faulty values
             PetscInt, intent(inout) :: max_id                                   ! maximum id
-            PetscBool, intent(in), optional :: remove_next                      ! whether all next values have to be removed as well
-            
+            logical, intent(in), optional :: remove_next                        ! whether all next values have to be removed as well
+
             ! local variables
             PetscScalar, allocatable :: sol_val_loc(:)                          ! local copy of sol_val
             PetscScalar, allocatable :: sol_vec_loc(:,:,:)                      ! local copy of sol_vec
-            PetscBool :: remove_next_loc = .false.                              ! local copy of remove_next
-            
+            logical :: remove_next_loc                                          ! local copy of remove_next
+
             ! only remove if faulty solutions are not optionally retained
             if (retain_all_sol) then
                 id = id+1                                                       ! increment the solution
             else
                 ! set up local remove_next
+                remove_next_loc = .false.
                 if (present(remove_next)) remove_next_loc = remove_next
                 
                 ! save old arrays

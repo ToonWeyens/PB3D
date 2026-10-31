@@ -6,76 +6,155 @@
 module vac_utilities
 #include <PB3D_macros.h>
 #include <wrappers.h>
-    use StrumpackDensePackage
     use str_utilities
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
-    use vac_vars, only: vac_type
+    use vac_vars, only: vac_type, BLACSCTXTSIZE
 
     implicit none
     private
     public calc_GH_int_1, calc_GH_int_2, vec_dis2loc, mat_dis2loc, &
+        &n_col1_loc, vec_glob2dis, dis_matvec, &
         &interlaced_vac_copy
     
 contains
     !> Calculate  G_ij  and   H_ij  on  an  interval  for   field  line  aligned
     !! configurations.
     !!
-    !! The indices for the  source variables are <tt>[left:right,dim]</tt> where
-    !! \c dim is the Cartesian dimension. The same holds for \c ql.
+    !! The source variables  are given on a stencil of  four consecutive points
+    !! of the field line, <tt>[1:4,dim]</tt>  with \c dim the Cartesian dimension;
+    !! the interval  is the one between  stencil points \c i_int  and \c i_int+1.
+    !! Each endpoint  receives the kernel  integrated over  its half  of the
+    !! interval,  normalized to  the  half-cell weight  \f$\Delta p  \Delta a /
+    !! 2\f$ that  calc_GH_1 applies, so that  a constant kernel  returns its
+    !! value.
     !!
-    !! For  subintegrals  close  to  the singularity,  the  procedure  uses  the
-    !! analytical approximation.
+    !! Far from the influence point, more  than \c n_near interval lengths away,
+    !! the  kernel  value  at  the  endpoint  is used,  which  amounts  to  the
+    !! trapezoidal  rule along  the field  line. Closer,  the kernel  is
+    !! integrated  over  the  half-interval  with 8-point  Gauss-Legendre  on
+    !! the cubic  interpolant of position  and normal through  the stencil.
+    !! This resolves  the variation of  the kernel along  a neighbouring field
+    !! line: where the field lines run almost toroidally, as at the bean tips
+    !! of W7-X,  they are packed  far closer  (0.007 \f$R_0\f$) than  the points
+    !! along them (0.06 \f$R_0\f$), the  kernel seen along the neighbouring line
+    !! is a peak much narrower than the point spacing, and sampling it at the
+    !! points  gives  errors  of order  one  whose  sign depends  on how  the
+    !! points of neighbouring lines  happen to line up (issue #4,  31 October
+    !! 2026: the fractional part of \f$q \Delta\theta / \Delta\alpha\f$ sorted
+    !! every W7-X grid into far too large and plausible responses).
     !!
-    !! \note This routine does not calculate the contribution \f$2\beta\f$.
-    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol)
+    !! For  subintegrals adjacent  to the  singularity (i.e.  with the  influence
+    !! point as  one of  their endpoints), the  contribution of  the singular
+    !! endpoint is  replaced by the analytical  integral of the kernel  over its
+    !! grid half-cell.  In field-aligned coordinates,  with \f$\delta p\f$ along
+    !! the field  line (metric \f$g_{\theta\theta}\f$  = <tt>h_fac(3)</tt>)  and
+    !! \f$\delta a\f$  the field  line label  (metric \f$g_{\alpha\alpha}\f$  =
+    !! <tt>h_fac(1)</tt>, coupling \f$g_{\alpha\theta}\f$ = <tt>h_fac(2)</tt>),
+    !! the squared distance near the singular point is the quadratic form
+    !! \f$ g_{\theta\theta} \delta p^2 + 2 g_{\alpha\theta} \delta p \delta a
+    !!  + g_{\alpha\alpha} \delta a^2 \f$,
+    !! and with  the metric-normalized  half-cell sizes  \f$U = \sqrt{g_{\theta
+    !! \theta}} \Delta p/2\f$, \f$V = \sqrt{g_{\alpha\alpha}} \Delta a/2\f$ and
+    !! nonorthogonality  \f$s  = g_{\alpha\theta}  /  \sqrt{g_{\alpha\alpha}
+    !! g_{\theta\theta}}\f$, the exact primitive is
+    !! \f[ \int_0^U \int_{-V}^{V} \frac{\text{d}u \text{d}v}
+    !!  {\sqrt{u^2+2suv+v^2}} =
+    !!  U \ln\left(\frac{V+sU+D_+}{-V+sU+D_-}\right) +
+    !!  V \ln\left(\frac{U+sV+D_+}{-U+sV+D_-}\right), \quad
+    !!  D_\pm = \sqrt{U^2 \pm 2sUV + V^2}. \f]
+    !! In the  same units  as the  regular kernel  values, the singular endpoint
+    !! contribution is then
+    !! \f$-2 F / (\Delta p \Delta a \sqrt{g_{\alpha\alpha} g_{\theta\theta}})
+    !! \f$.
+    !!
+    !! (The previous  expression had  the same  logarithm twice,  diverged for
+    !! orthogonal  coordinates  and  had  the  wrong  sign;  it  is  verified
+    !! against brute-force quadrature in the full-stack tests.)
+    !!
+    !! \note This routine does not calculate the contribution \f$2\beta\f$: the
+    !! diagonal  of  H is  overwritten  by  calc_GH_1 through  the  constant-
+    !! potential row-sum identity, so  the singular H returned  here (the crude
+    !! approximation <tt>h_fac(4) G</tt>) never enters the final system.
+    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol,i_int)
         ! input / output
         real(dp), intent(inout) :: G(2)                                         !< G
         real(dp), intent(inout) :: H(2)                                         !< H
-        real(dp), intent(in) :: x_s(2,3)                                        !< position vector at left and right limit of source interval
+        real(dp), intent(in) :: x_s(4,3)                                        !< position vector at the four stencil points
         real(dp), intent(in) :: x_in(3)                                         !< position vector at which to calculate influence
-        real(dp), intent(in) :: norm_s(2,3)                                     !< normal vector at left and right limit of source interval
+        real(dp), intent(in) :: norm_s(4,3)                                     !< normal vector at the four stencil points
         real(dp), intent(in) :: h_fac_in(4)                                     !< metric factors at which to calculate influence
         real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
         real(dp), intent(in) :: tol                                             !< tolerance on distance between points
-        
+        integer, intent(in) :: i_int                                            !< stencil index of the left point of the interval (1, 2 or 3)
+
         ! local variables
-        integer :: kd                                                           ! counter
+        integer, parameter :: n_gl = 8                                          ! Gauss-Legendre points per half-interval
+        real(dp), parameter :: n_near = 4._dp                                   ! near-field range in interval lengths
+        real(dp), parameter :: gl_x(n_gl) = [&
+            &-0.9602898564975363_dp, -0.7966664774136267_dp, &
+            &-0.5255324099163290_dp, -0.1834346424956498_dp, &
+            & 0.1834346424956498_dp,  0.5255324099163290_dp, &
+            & 0.7966664774136267_dp,  0.9602898564975363_dp]                    ! Gauss-Legendre abscissas on [-1,1]
+        real(dp), parameter :: gl_w(n_gl) = [&
+            &0.1012285362903763_dp, 0.2223810344533745_dp, &
+            &0.3137066458778873_dp, 0.3626837833783620_dp, &
+            &0.3626837833783620_dp, 0.3137066458778873_dp, &
+            &0.2223810344533745_dp, 0.1012285362903763_dp]                      ! Gauss-Legendre weights on [-1,1]
+        integer :: kd, jd                                                       ! counters
         real(dp) :: r2(2)                                                       ! distance between source and influence points
-        real(dp) :: E_fac                                                       ! factor E
-        real(dp) :: sineps                                                      ! sin(eps)
-        real(dp) :: dum_fac(2)                                                  ! dummy factors
-        
+        real(dp) :: s_no                                                        ! nonorthogonality g_at/sqrt(g_aa g_tt)
+        real(dp) :: U_hc, V_hc                                                  ! metric-normalized half-cell sizes
+        real(dp) :: D_pm(2)                                                     ! D_+ and D_-
+        real(dp) :: F_int                                                       ! primitive of the half-cell integral
+        real(dp) :: s, l(4)                                                     ! stencil parameter and cubic Lagrange weights
+        real(dp) :: d_q(3), n_q(3), r_q                                         ! relative position, normal and distance at a quadrature point
+        logical :: near                                                         ! interval within n_near lengths of the influence point
+
         ! initialize
         G = 0._dp
         H = 0._dp
-        
+
         ! calculate distance between source points
         do kd = 1,2
-            r2(kd) = sum((x_s(kd,:)-x_in)**2)
+            r2(kd) = sum((x_s(i_int+kd-1,:)-x_in)**2)
         end do
-        
-        ! check for (near-)singular point
-        if (minval(r2).le.tol) then
-            E_fac = sqrt(h_fac_in(1)/h_fac_in(3))*step_size(2)/step_size(1)     ! |e_alpha|/|e_theta| d_par_X / d_par_X
-            sineps = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
-            dum_fac(1) = sqrt(1+2*E_fac*sineps+E_fac**2)
-            dum_fac(2) = sqrt(1-2*E_fac*sineps+E_fac**2)
-            G = -0.5_dp/sqrt(h_fac_in(1)) * step_size(1) * (&
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &- E_fac/sineps**2* &
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &)
-            H = h_fac_in(4)*G
-        else
-            G = -1._dp/sqrt(r2)
-            do kd = 1,2
-                H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**(-3)
-            end do
-        end if
+        near = minval(r2).lt.n_near**2*sum((x_s(i_int+1,:)-x_s(i_int,:))**2)
+
+        do kd = 1,2
+            if (r2(kd).le.tol) then                                             ! singular endpoint: analytical half-cell integral
+                s_no = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
+                U_hc = sqrt(h_fac_in(3))*step_size(1)/2._dp
+                V_hc = sqrt(h_fac_in(1))*step_size(2)/2._dp
+                D_pm(1) = sqrt(U_hc**2+2*s_no*U_hc*V_hc+V_hc**2)
+                D_pm(2) = sqrt(U_hc**2-2*s_no*U_hc*V_hc+V_hc**2)
+                F_int = U_hc*log(abs((V_hc+s_no*U_hc+D_pm(1))/&
+                    &(-V_hc+s_no*U_hc+D_pm(2)))) + &
+                    &V_hc*log(abs((U_hc+s_no*V_hc+D_pm(1))/&
+                    &(-U_hc+s_no*V_hc+D_pm(2))))
+                G(kd) = -2._dp*F_int/(step_size(1)*step_size(2)*&
+                    &sqrt(h_fac_in(1)*h_fac_in(3)))
+                H(kd) = h_fac_in(4)*G(kd)                                       ! crude; overwritten by the row-sum identity in calc_GH_1
+            else if (near) then                                                 ! near endpoint: kernel integrated over its half-interval
+                do jd = 1,n_gl
+                    s = i_int-1 + 0.25_dp*(2*kd-1+gl_x(jd))                     ! stencil parameter, nodes at 0, 1, 2, 3
+                    l = [-(s-1)*(s-2)*(s-3)/6._dp, s*(s-2)*(s-3)/2._dp, &
+                        &-s*(s-1)*(s-3)/2._dp, s*(s-1)*(s-2)/6._dp]
+                    d_q = matmul(l,x_s) - x_in
+                    n_q = matmul(l,norm_s)
+                    r_q = sqrt(sum(d_q**2))
+                    G(kd) = G(kd) - 0.5_dp*gl_w(jd)/r_q
+                    H(kd) = H(kd) + 0.5_dp*gl_w(jd)*sum(n_q*d_q)/r_q**3
+                end do
+            else                                                                ! far endpoint: kernel value
+                G(kd) = -1._dp/sqrt(r2(kd))
+                ! dipole kernel norm.(x_s-x_in)/|x_s-x_in|^3, i.e. the
+                ! directional derivative of G along the source normal
+                H(kd) = sum(norm_s(i_int+kd-1,:)*(x_s(i_int+kd-1,:)-x_in))*&
+                    &(-G(kd))**3
+            end if
+        end do
     end subroutine calc_GH_int_1
     
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
@@ -222,9 +301,7 @@ contains
     integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,proc) result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'vec_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for vector
         real(dp), intent(in) :: vec_dis(:)                                      !< distributed vector
@@ -276,9 +353,7 @@ contains
         &result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'mat_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for matrix
         real(dp), intent(in) :: mat_dis(:,:)                                    !< distributed matrix
@@ -515,4 +590,81 @@ contains
         ! clean up
         deallocate(loc_A,loc_B)
     end function interlaced_vac_copy
+    !> \public Number of local columns this process owns of a global column vector:
+    !! the single column sits in the first block, owned by process column 0.
+    integer function n_col1_loc(vac) result(res)
+        use vac_vars, only: in_context
+        
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+
+        if (in_context(vac%ctxt_HG) .and. vac%ind_p(2).eq.0) then
+            res = 1
+        else
+            res = 0
+        end if
+    end function n_col1_loc
+
+    !> \public Scatter a global column vector into its local block-cyclic rows.
+    !!
+    !! \c x_dis is the flattened local array of size n_loc(1) * n_col1_loc();
+    !! processes that do not own the column receive nothing.
+    subroutine vec_glob2dis(vac,x_glob,x_dis)
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: x_glob(:)                                       !< global vector
+        real(dp), intent(out) :: x_dis(:)                                       !< local part (flattened)
+
+        integer :: i_rd, rd, rdl                                                ! subrow index, global and local row
+
+        x_dis = 0._dp
+        if (n_col1_loc(vac).eq.0) return
+        do i_rd = 1,size(vac%lims_r,2)
+            do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                rdl = sum(vac%lims_r(2,1:i_rd-1)-vac%lims_r(1,1:i_rd-1)+1) + &
+                    &rd-vac%lims_r(1,i_rd)+1
+                x_dis(rdl) = x_glob(rd)
+            end do
+        end do
+    end subroutine vec_glob2dis
+
+    !> \public Distributed matrix-vector product y = A x.
+    !!
+    !! \c A is a local part of a distributed n_bnd x n_bnd matrix with
+    !! descriptor \c desc_A (e.g. vac%H with vac%desc_H), \c x_glob is
+    !! globally replicated, and \c y_glob is returned complete on all
+    !! processes in the context (zero outside it). Used by the exact-potential
+    !! checks of the vacuum operators (vac_ops.check_vac_exact() and the
+    !! full-stack tests).
+    integer function dis_matvec(vac,A,desc_A,x_glob,y_glob) result(ierr)
+        use vac_vars, only: in_context
+
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: A(:,:)                                          !< local part of distributed matrix
+        integer, intent(in) :: desc_A(BLACSCTXTSIZE)                            !< descriptor of A
+        real(dp), intent(in) :: x_glob(:)                                       !< global input vector
+        real(dp), intent(out) :: y_glob(:)                                      !< global result vector
+
+        integer :: n_col1                                                       ! local number of columns of the vector
+        integer :: n_flat                                                       ! true local size of the vector
+        integer :: desc_x(BLACSCTXTSIZE)                                        ! descriptor for x and y
+        real(dp), allocatable :: x_dis(:), y_dis(:)                             ! local vector parts
+
+        ierr = 0
+        y_glob = 0._dp
+        if (.not.in_context(vac%ctxt_HG)) return
+
+        n_col1 = n_col1_loc(vac)
+        n_flat = vac%n_loc(1)*n_col1
+        allocate(x_dis(max(1,n_flat)),y_dis(max(1,n_flat)))                     ! at least 1 element for ScaLAPACK dummies
+        call vec_glob2dis(vac,x_glob,x_dis)
+        y_dis = 0._dp
+
+        call descinit(desc_x,vac%n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        if (ierr.ne.0) return
+
+        call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,A,1,1,desc_A,&
+            &x_dis,1,1,desc_x,1,0._dp,y_dis,1,1,desc_x,1)
+
+        ierr = vec_dis2loc(vac%ctxt_HG,y_dis(1:n_flat),vac%lims_r,y_glob)       ! all processes receive
+    end function dis_matvec
 end module vac_utilities

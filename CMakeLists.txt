@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.47
+    VERSION 2.48
     LANGUAGES Fortran C CXX
     DESCRIPTION "Peeling Ballooning in 3D"
 )
@@ -17,6 +17,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Options
 option(PB3D_ENABLE_DEBUG "Enable debug mode (ldebug preprocessor flag)" OFF)
 option(PB3D_ENABLE_INFINIBAND "Enable InfiniBand support (lIB preprocessor flag)" OFF)
+option(PB3D_BUILD_EXECUTABLES "Build the PB3D and POST executables (requires the full dependency stack: PETSc, SLEPc, HDF5, NetCDF, PSPLINE, LIBSTELL, ...)" ON)
+
+# CTest integration; provides the BUILD_TESTING option (default ON).
+# With PB3D_BUILD_EXECUTABLES=OFF, only the dependency-light core library and
+# its unit tests are built, which requires no external libraries at all.
+include(CTest)
 
 # Build type defaults to Release
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -53,7 +59,22 @@ set(CMAKE_Fortran_PREPROCESS ON)
 # Note: -fimplicit-none is intentionally not global to support legacy libraries like dfftpack
 if(PB3D_COMPILER_GNU)
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fbacktrace -fno-omit-frame-pointer -fallow-argument-mismatch")
-    set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -g -Wall -Wextra -pedantic -finit-real=snan -ffpe-trap=invalid -fcheck=all")
+    # no -pedantic: it re-promotes the argument mismatches in vendored F77
+    # (Libraries/dfft.f) to hard errors despite -fallow-argument-mismatch
+    set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -g -Wall -Wextra -finit-real=snan -ffpe-trap=invalid -fcheck=all")
+    # gfortran 14.2 and 14.3 miscompile the bounds check of a subscript that
+    # calls a function with an array-constructor argument inside an actual
+    # argument, as in eq_2%T_EF(:,:,:,c([1,1],.false.),...) throughout eq_ops:
+    # the check reads a garbage index or segfaults inside c (issue #4; the
+    # standalone reproducer is tests/reference/gfortran14_bounds_repro.f90;
+    # gfortran 13.3 and 16.1 are fine). Those versions get a Debug build
+    # without -fcheck=bounds instead of none at all.
+    if(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL 14 AND
+       CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 15)
+        string(REPLACE "-fcheck=all" "-fcheck=all,no-bounds"
+               CMAKE_Fortran_FLAGS_DEBUG "${CMAKE_Fortran_FLAGS_DEBUG}")
+        message(STATUS "gfortran ${CMAKE_Fortran_COMPILER_VERSION}: Debug build without -fcheck=bounds (compiler bug, see CMakeLists.txt)")
+    endif()
     set(CMAKE_Fortran_FLAGS_RELEASE "-O3")
     set(CMAKE_Fortran_FLAGS_RELWITHDEBINFO "-O2 -g")
 endif()
@@ -88,9 +109,14 @@ endif()
 # Find dependencies
 #------------------------------------------------------------------------------
 
-# MPI
-find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
-message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
+# MPI: needed by the full build always, and by the core library only in debug
+# mode (messages.f90 uses MPI for memory monitoring under ldebug)
+if(PB3D_BUILD_EXECUTABLES OR PB3D_ENABLE_DEBUG)
+    find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
+    message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
+endif()
+
+if(PB3D_BUILD_EXECUTABLES)
 
 # PETSc (uses its own CMake config)
 find_package(PkgConfig REQUIRED)
@@ -145,8 +171,10 @@ if(STRUMPACK_LIBRARY AND STRUMPACK_INCLUDE_DIR)
     message(STATUS "  Include dir: ${STRUMPACK_INCLUDE_DIR}")
 else()
     set(STRUMPACK_FOUND FALSE)
-    message(WARNING "STRUMPACK-Dense not found. Vacuum module will not work.")
-    message(STATUS "  Set STRUMPACK_DIR to point to STRUMPACK-Dense-1.1.1 directory")
+    message(STATUS "STRUMPACK-Dense not found - the vacuum module will solve its \
+boundary-element system with ScaLAPACK (pdgesv) instead of STRUMPACK's \
+compressed solver. Set STRUMPACK_DIR to a STRUMPACK-Dense-1.1.1 build to \
+use the latter.")
 endif()
 
 # PSPLINE (custom find module)
@@ -161,6 +189,8 @@ message(STATUS "Found LIBSTELL: ${LIBSTELL_LIBRARIES}")
 find_package(LAPACK)
 find_package(BLAS)
 
+endif() # PB3D_BUILD_EXECUTABLES
+
 #------------------------------------------------------------------------------
 # Internal libraries
 #------------------------------------------------------------------------------
@@ -169,13 +199,83 @@ find_package(BLAS)
 add_library(dfftpack STATIC
     ${CMAKE_SOURCE_DIR}/Libraries/dfft.f
 )
-target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch)
+# -w: vendored code is not ours to lint (same policy as foul below and
+# fortitude.toml); without it, dfft.f alone contributes ~157 warnings under
+# -Wall -Wextra that the CI warning counter cannot reliably attribute,
+# because gfortran prints the file location on a separate line
+# -fcheck=no-bounds: dfft.f declares its work arrays with the F77 idiom
+# DIMENSION WSAVE(1), so the Debug flag -fcheck=all stops every FFT call with
+# a false bounds error (seen in the free-boundary regression deck, issue #4)
+target_compile_options(dfftpack PRIVATE -O2 -funroll-loops -fexpensive-optimizations -fallow-argument-mismatch -w -fcheck=no-bounds)
 
 # libfoul - from Libraries/foul.f90
 add_library(foul STATIC
     ${CMAKE_SOURCE_DIR}/Libraries/foul.f90
 )
 target_compile_options(foul PRIVATE -O2 -w)
+set_target_properties(foul PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/foul)
+target_include_directories(foul PUBLIC ${CMAKE_BINARY_DIR}/mod/foul)
+
+#------------------------------------------------------------------------------
+# Dependency-light core library
+#
+# The leaf modules of the dependency tree: everything here compiles with just
+# a Fortran compiler (plus MPI in debug mode), without PETSc/SLEPc/HDF5/
+# NetCDF/PSPLINE/LIBSTELL. The unit tests in tests/ build against this
+# library, so they remain available on machines without the full stack.
+#------------------------------------------------------------------------------
+set(PB3D_CORE_SOURCES
+    Modules/num_vars.f90
+    Modules/str_utilities.f90
+    Modules/messages.f90
+    Modules/files_utilities.f90
+    Modules/dtorh.f90
+    # light type modules and the pure index logic built on them
+    Modules/var_1D_vars.f90
+    Modules/grid_vars.f90
+    Modules/X_vars.f90
+    Modules/PB3D_utilities.f90
+)
+
+# num_utilities (pure numerics: integration, finite-difference weights, index
+# helpers, zero finders, ...) needs LAPACK for its 0-D determinant/inverse and
+# polynomial extrapolation; since the spline wrappers were split off into
+# spline_utilities it has no other external dependency. num_ops additionally
+# uses output_ops (HDF5) under ldebug, so it only joins the core in non-debug
+# configurations.
+find_package(LAPACK QUIET)
+set(PB3D_CORE_HAS_NUM FALSE)
+if(LAPACK_FOUND)
+    list(APPEND PB3D_CORE_SOURCES Modules/num_utilities.f90)
+    # X_utilities only needs num_utilities (the index helper c)
+    list(APPEND PB3D_CORE_SOURCES Modules/X_utilities.f90)
+    set(PB3D_CORE_HAS_NUM TRUE)
+    if(NOT PB3D_ENABLE_DEBUG)
+        list(APPEND PB3D_CORE_SOURCES Modules/num_ops.f90)
+        set(PB3D_CORE_HAS_NUM_OPS TRUE)
+    endif()
+else()
+    message(STATUS "LAPACK not found - num_utilities/num_ops unit tests disabled")
+endif()
+
+add_library(pb3d_core OBJECT ${PB3D_CORE_SOURCES})
+set_target_properties(pb3d_core PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/core)
+target_include_directories(pb3d_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/core
+)
+target_link_libraries(pb3d_core PUBLIC foul)
+if(LAPACK_FOUND)
+    target_link_libraries(pb3d_core PUBLIC ${LAPACK_LIBRARIES})
+endif()
+if(PB3D_ENABLE_DEBUG)
+    # messages.f90 uses MPI under ldebug (memory monitoring)
+    target_link_libraries(pb3d_core PUBLIC MPI::MPI_Fortran)
+endif()
+
+if(PB3D_BUILD_EXECUTABLES)
 
 #------------------------------------------------------------------------------
 # Module source files (order matters for Fortran module dependencies)
@@ -188,6 +288,7 @@ set(PB3D_MODULE_SOURCES
     # Messages and utilities
     Modules/messages.f90
     Modules/num_utilities.f90
+    Modules/spline_utilities.f90
     Modules/num_ops.f90
     Modules/files_utilities.f90
 
@@ -197,6 +298,7 @@ set(PB3D_MODULE_SOURCES
     Modules/MPI_ops.f90
 
     # HDF5 modules
+    Modules/var_1D_vars.f90
     Modules/HDF5_vars.f90
     Modules/HDF5_utilities.f90
     Modules/HDF5_ops.f90
@@ -267,9 +369,15 @@ set(PB3D_MODULE_SOURCES
 #------------------------------------------------------------------------------
 add_library(pb3d_modules OBJECT ${PB3D_MODULE_SOURCES})
 
+# Keep the .mod files of the full module library separate from those of
+# pb3d_core (the core sources are compiled into both targets)
+set_target_properties(pb3d_modules PROPERTIES
+    Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/full)
+
 # Include directories
 target_include_directories(pb3d_modules PUBLIC
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -287,6 +395,7 @@ target_link_libraries(pb3d_modules PUBLIC
 
 if(STRUMPACK_FOUND)
     target_include_directories(pb3d_modules PUBLIC ${STRUMPACK_INCLUDE_DIRS})
+    target_compile_definitions(pb3d_modules PRIVATE PB3D_WITH_STRUMPACK)
 endif()
 
 #------------------------------------------------------------------------------
@@ -299,6 +408,7 @@ add_executable(PB3D
 
 target_include_directories(PB3D PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -350,6 +460,7 @@ add_executable(POST
 
 target_include_directories(POST PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/mod/full
     ${PSPLINE_INCLUDE_DIRS}
     ${LIBSTELL_INCLUDE_DIRS}
     ${HDF5_Fortran_INCLUDE_DIRS}
@@ -398,6 +509,15 @@ install(TARGETS PB3D POST
     RUNTIME DESTINATION bin
 )
 
+endif() # PB3D_BUILD_EXECUTABLES
+
+#------------------------------------------------------------------------------
+# Tests
+#------------------------------------------------------------------------------
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
 #------------------------------------------------------------------------------
 # Summary
 #------------------------------------------------------------------------------
@@ -410,15 +530,19 @@ message(STATUS "  Fortran:        ${CMAKE_Fortran_COMPILER}")
 message(STATUS "  Compiler ID:    ${CMAKE_Fortran_COMPILER_ID}")
 message(STATUS "  Debug mode:     ${PB3D_ENABLE_DEBUG}")
 message(STATUS "  InfiniBand:     ${PB3D_ENABLE_INFINIBAND}")
+message(STATUS "  Executables:    ${PB3D_BUILD_EXECUTABLES}")
+message(STATUS "  Testing:        ${BUILD_TESTING}")
 message(STATUS "")
-message(STATUS "Dependencies:")
-message(STATUS "  MPI:            ${MPI_Fortran_COMPILER}")
-message(STATUS "  PETSc:          ${PETSC_VERSION}")
-message(STATUS "  SLEPc:          ${SLEPC_VERSION}")
-message(STATUS "  HDF5:           ${HDF5_VERSION}")
-message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
-message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
-message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
-message(STATUS "  PSPLINE:        ${PSPLINE_FOUND}")
-message(STATUS "  LIBSTELL:       ${LIBSTELL_FOUND}")
-message(STATUS "")
+if(PB3D_BUILD_EXECUTABLES)
+    message(STATUS "Dependencies:")
+    message(STATUS "  MPI:            ${MPI_Fortran_COMPILER}")
+    message(STATUS "  PETSc:          ${PETSC_VERSION}")
+    message(STATUS "  SLEPc:          ${SLEPC_VERSION}")
+    message(STATUS "  HDF5:           ${HDF5_VERSION}")
+    message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
+    message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
+    message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
+    message(STATUS "  PSPLINE:        ${PSPLINE_FOUND}")
+    message(STATUS "  LIBSTELL:       ${LIBSTELL_FOUND}")
+    message(STATUS "")
+endif()

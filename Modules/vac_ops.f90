@@ -14,16 +14,29 @@
 !!      - The  integration in the poloidal  angle is done using  the collocation
 !!      method.
 !!
-!! The final matrix equation is solved through Strumpack \cite Meiser2016.
+!! The final  matrix equation is  solved through Strumpack  \cite Meiser2016,
+!! or through ScaLAPACK when PB3D was built without Strumpack.
 !!
 !! \see See \cite Weyens3D.
 !!
-!! \todo The vacuum part of PB3D is still under construction and not usable yet.
+!! Status: verified by  the full-stack test suite  in tests/fullstack (see
+!! Documentation/testing.md): the axisymmetric building blocks (kernels,
+!! singular integrals, assembled G and H, boundary potential solve,
+!! response against the analytical cylinder limit), the free-boundary
+!! chain end-to-end (regression_cbm18a_free_bnd), and the 3-D field-line
+!! machinery (singular half-cell kernel, jump relations, response of an
+!! axisymmetric boundary cross-checked between the two styles). The 3-D
+!! style requires at least 2 field lines (n_alpha > 1, i.e. alpha_style 2,
+!! which is the recommended mode for 3-D runs anyway): single-field-line
+!! Weyl coverage would need per-point transverse spacings (three-distance
+!! theorem) and is deliberately not implemented.
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
 #include <wrappers.h>
+#ifdef PB3D_WITH_STRUMPACK
     use StrumpackDensePackage
+#endif
     use str_utilities
     use messages
     use output_ops
@@ -31,14 +44,20 @@ module vac_ops
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_2_type, modes_type
-    use vac_vars, only: copy_vac, &
+    use vac_vars, only: copy_vac, BLACSCTXTSIZE, &
         &vac_type
 
     implicit none
     private
-    public store_vac, calc_vac_res, print_output_vac, vac_pot_plot
+    public store_vac, calc_vac_res, print_output_vac, vac_pot_plot, &
+        &calc_GH, solve_Phi_BEM                                                 ! calc_GH and solve_Phi_BEM are exported for the full-stack test suite
 #if ldebug
     public debug_calc_GH, debug_calc_vac_res, debug_vac_pot_plot
+#endif
+
+#ifndef PB3D_WITH_STRUMPACK
+    ! (comes from StrumpackDensePackage when PB3D is built with STRUMPACK)
+    integer, external :: numroc                                                 !< ScaLAPACK index computation function
 #endif
     
     ! global variables
@@ -234,9 +253,20 @@ contains
                 ! grid point to save is last local
                 r_id = grid%loc_n_r
                 
-                ! calculate Cartesian components of J nabla psi
-                !   = J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
-                !   = J_F T_F^V(1,2) (T_C^V)^T (e^C)
+                ! calculate Cartesian components of - J nabla psi
+                !   = - J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
+                !   = - J_F T_F^V(1,2) (T_C^V)^T (e^C)
+                ! The  minus sign  is  the convention  of  the kernels:  calc_GH
+                ! takes  the inward  normal, as  store_vac_HEL provides  it for
+                ! the  axisymmetric style  and as  the analytic  torus of  the
+                ! full-stack test  does (its normal  is e_theta x  e_alpha, which
+                ! points inward  for a  left-handed (alpha, psi,  theta) frame).
+                ! With +J nabla psi the off-diagonal H has the wrong sign, the
+                ! row-sum identity then sets a  wrong diagonal, and the response
+                ! of  the circular  VMEC twin  came out  3 to  4 times  too small
+                ! against the  HELENA one;  with -J nabla  psi the  two agree
+                ! within  the first-order  discretization error,  as  in  the
+                ! full-stack test response_1_vs_2 (issue #4, step 6e).
                 allocate(norm_com_C(grid%n(1),grid%n(2),3))
                 norm_com_C = 0._dp
                 allocate(T_CV_loc(size(eq_2%T_VC,1),size(eq_2%T_VC,2),1:1,&
@@ -245,7 +275,7 @@ contains
                     &[0,0,0])
                 CHCKERR('')
                 do id = 1,3
-                    norm_com_C(:,:,id) = eq_2%jac_FD(:,:,r_id,0,0,0) * &
+                    norm_com_C(:,:,id) = - eq_2%jac_FD(:,:,r_id,0,0,0) * &
                         &eq_2%T_EF(:,:,r_id,c([1,2],.false.),0,0,0)*&
                         &T_CV_loc(:,:,1,c([id,1],.false.),0,0,0)                ! Cylindrical contravariant components
                 end do
@@ -337,10 +367,7 @@ contains
             
             ! initialize ierr
             ierr = 0
-            
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            
+
             ! user output
             call writo('Start storing vacuum quantities')
             
@@ -489,6 +516,11 @@ contains
     !! the integral between the  last point on a field line  and the first point
     !! on the next field lines needs to be left out.
     !!
+    !! \note For style 1 the kernel  is integrated along the field line within
+    !! four interval  lengths of the  influence point (vac_utilities.calc_gh_int_1),
+    !! because  neighbouring field  lines can  lie much  closer together  than
+    !! the points along them.
+    !!
     !! \todo For  3-D vacuums,  step sizes  are constant.  Subsequent Richardson
     !! levels should therefore make use of the fact that the contribution to the
     !! points inherited from  the previous levels can be just  scaled by 1/2 and
@@ -499,14 +531,13 @@ contains
     integer function calc_GH(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in) &
         &result(ierr)
         
-        use num_vars, only: rank
         use vac_vars, only: in_context
         use vac_utilities, only: vec_dis2loc
 #if ldebug
-        use num_vars, only: n_procs
+        use num_vars, only: rank, n_procs
         use vac_utilities, only: mat_dis2loc
 #endif
-        
+
         character(*), parameter :: rout_name = 'calc_GH'
         
         ! input / output
@@ -519,7 +550,9 @@ contains
         
         ! local variables
         integer :: n_r                                                          ! number of rows
+#if ldebug
         integer :: id, jd                                                       ! counters
+#endif
         integer, pointer :: lims_r(:,:)                                         ! row limits
         real(dp), pointer :: G(:,:)                                             ! G
         real(dp), pointer :: H(:,:)                                             ! H
@@ -573,6 +606,11 @@ contains
             G => vac%G
             H => vac%H
             ext_in = .false.
+            ! both styles accumulate into G and H; after a Richardson step
+            ! the field-line arrays still hold the interlaced copy of the
+            ! previous level (store_vac_VMEC), which would be counted twice
+            G = 0._dp
+            H = 0._dp
         end if
         
         ! call specific procedure for vacuum style
@@ -777,12 +815,11 @@ contains
     integer function calc_GH_1(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in,ext_in) &
         &result(ierr)
         
-        use vac_utilities, only: calc_GH_int_1
+        use vac_utilities, only: calc_GH_int_1, dis_matvec
         use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use rich_vars, only: n_par_X
         use num_vars, only: tol_zero
         use vac_vars, only: in_context
-        use vac_utilities, only: vec_dis2loc
         
         character(*), parameter :: rout_name = 'calc_GH_1'
         
@@ -801,26 +838,39 @@ contains
         integer :: rd, cd                                                       ! global counters for row and column
         integer :: rdl, cdl                                                     ! local counters for row and column, used for G and H
         integer :: lims_c_loc(2)                                                ! local column limits
-        integer :: desc_res(BLACSCTXTSIZE)                                      ! descriptor for the result
+        integer :: st                                                           ! first point of the four-point stencil along the field line
         real(dp) :: dpar_X                                                      ! step size in par_X 
         real(dp) :: dalpha                                                      ! step size in alpha
         real(dp) :: tol_loc                                                     ! local tolerance on rho for singular points
         real(dp) :: G_loc(2)                                                    ! local G
         real(dp) :: H_loc(2)                                                    ! local H
-        real(dp), allocatable :: res(:,:)                                       ! sums of rows of H and vector of ones
-        real(dp), allocatable :: loc_res(:)                                     ! local res
-        
+        real(dp), allocatable :: loc_res(:)                                     ! global vector: diagonal values or data
+        real(dp), allocatable :: lin_res(:)                                     ! global vector: matrix-vector products
+        character(len=max_str_ln) :: err_msg                                    ! error message
+
         ! initialize ierr
         ierr = 0
         
         call writo('Using field-line 3-D Boundary Element Method')
-        
+
         ! initialize variables
         dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
         if (n_alpha.gt.1) then
-            dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+            dalpha = (max_alpha-min_alpha)/n_alpha*pi                           ! field lines exclude the end point (rich_ops)
         else
-            dalpha = 0._dp
+            ! a single field line makes the transverse cell size (and with it
+            ! the singular self-integrals and the integration rule weights of
+            ! calc_vac_res) degenerate; covering the surface with one long
+            ! field line through Weyl's theorem needs an effective transverse
+            ! spacing that is not implemented
+            ierr = 1
+            err_msg = '3-D vacuum needs at least 2 field lines (n_alpha > 1)'
+            CHCKERR(err_msg)
+        end if
+        if (vac%n_ang(1).lt.4) then
+            ierr = 1
+            err_msg = '3-D vacuum needs at least 4 points per field line'
+            CHCKERR(err_msg)
         end if
         
         ! set up local tolerance
@@ -843,28 +893,40 @@ contains
                     ! iterate over all pairs of columns of this subcolumn
                     ! (upper limit is one lower as lims_c_loc
                     col: do cd = lims_c_loc(1),lims_c_loc(2)-1
+                        ! skip the interval that bridges two field lines: its
+                        ! geometry connects unrelated points
+                        if (mod(cd,vac%n_ang(1)).eq.0) cycle col
+                        
                         ! set local column index
                         cdl = sum(vac%lims_c(2,1:i_cd-1)-&
                             &vac%lims_c(1,1:i_cd-1)+1) + &
                             &cd-vac%lims_c(1,i_cd)+1
                         
+                        ! four-point stencil along the field line, one-sided
+                        ! at its ends
+                        st = (cd-1)/vac%n_ang(1)*vac%n_ang(1)                   ! last point of the previous field line
+                        st = max(st+1,min(cd-1,st+vac%n_ang(1)-3))
+                        
                         ! calculate contributions to H and G
                         call calc_GH_int_1(G_loc,H_loc,&
-                            &vac%x_vec(cd:cd+1,:),x_vec_in(rd,:),&
-                            &vac%norm(cd:cd+1,:),vac%h_fac(rd,:),&
-                            &[dpar_X,dalpha],tol_loc**2)
-                        
+                            &vac%x_vec(st:st+3,:),x_vec_in(rd,:),&
+                            &vac%norm(st:st+3,:),vac%h_fac(rd,:),&
+                            &[dpar_X,dalpha],tol_loc**2,cd-st+1)
+
                         ! loop over left and right side of interval
+                        ! (the contributions are weighted with the half-cell
+                        ! surface element dpar dalpha / 2, so that G and H are
+                        ! true discretized surface operators, consistently
+                        ! with the absolute -4 pi row-sum identity that sets
+                        ! the H diagonal below, and with the axisymmetric
+                        ! style, which carries its weights internally as well)
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &             ! lower local bound
                                 &cd+kd.le.vac%lims_c(2,i_cd)) then              ! upper local bound
-                                ! cycle if first or last global point
-                                if (.not.on_field_line(cd,kd,vac%n_ang(1))) &
-                                    &cycle
                                 G_in(rdl,cdl+kd) = G_in(rdl,cdl+kd) + &
-                                    &G_loc(1+kd)
+                                    &G_loc(1+kd)*dpar_X*dalpha/2._dp
                                 H_in(rdl,cdl+kd) = H_in(rdl,cdl+kd) + &
-                                    &H_loc(1+kd)
+                                    &H_loc(1+kd)*dpar_X*dalpha/2._dp
                             end if
                         end do
                     end do col
@@ -872,105 +934,75 @@ contains
             end do row
         end do subrows
         
-        ! if in context  and not external, indirctly  calculate contribution due
-        ! to fundament solution through constant potential
+        ! if in context and not external, set the diagonals: H through the
+        ! constant potential, G through the linear potentials
         if (in_context(vac%ctxt_HG) .and. .not.ext_in) then
-            if (vac%lims_c(1,1).eq.1) then                                      ! this process owns (part of) first column
-                allocate(res(vac%n_loc(1),2))
-            else
-                allocate(res(0,2))
-            end if
-            call descinit(desc_res,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed for res')
+            allocate(loc_res(vac%n_bnd),lin_res(vac%n_bnd))
             
-            ! set diagonal of H to zero
-            ! iterate over all subrows: position of singular point
-            subrows2: do i_rd = 1,size(lims_r_in,2)
-                ! iterate over all rows of this subrow
-                row2: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    ! set local row index
-                    rdl = sum(lims_r_in(2,1:i_rd-1)-&
-                        &lims_r_in(1,1:i_rd-1)+1) + &
-                        &rd-lims_r_in(1,i_rd)+1
-                    
-                    ! iterate over all subcolumns: subintegrals
-                    subcols2: do i_cd = 1,size(vac%lims_c,2)
-                        cd = rd
-                        if (vac%lims_c(1,i_cd).le.cd .and. &
-                            &cd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            ! set local column index
-                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                &vac%lims_c(1,1:i_cd-1)+1) + &
-                                &cd-vac%lims_c(1,i_cd)+1
-                            
-                            ! set diagonal of H to zero
-                            H_in(rdl,cdl) = 0._dp
-                        end if
-                    end do subcols2
-                end do row2
-            end do subrows2
-            
-            ! set res(1) to ones
-            res(:,1) = 1._dp
-            
-            ! calculate sum of rows of H
-            call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,vac%H,1,1,&
-                &vac%desc_H,res(:,1),1,1,desc_res,1,0._dp,res(:,2),&
-                &1,1,desc_res,1)
-            
-            ! add 4pi
-            res(:,2) = res(:,2) + 4*pi
-            
-            ! distribute to all processes
-            allocate(loc_res(vac%n_bnd))
-            ierr = vec_dis2loc(vac%ctxt_HG,res(:,2),vac%lims_r,loc_res,&
-                &proc=-1)
+            ! H: the row-sum identity H 1 = -4 pi 1 (interior harmonic 1)
+            loc_res = 0._dp
+            call set_diag(H_in,loc_res,.false.)                                 ! diagonal of H to zero
+            loc_res = 1._dp
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,loc_res,lin_res)             ! sum of rows of H
             CHCKERR('')
+            loc_res = -lin_res-4*pi
+            call set_diag(H_in,loc_res,.false.)
             
-            ! Put in diagonal of H
-            ! iterate over all subrows: position of singular point
-            subrows3: do i_rd = 1,size(lims_r_in,2)
-                ! iterate over all rows of this subrow
-                row3: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    ! set local row index
-                    rdl = sum(lims_r_in(2,1:i_rd-1)-&
-                        &lims_r_in(1,1:i_rd-1)+1) + &
-                        &rd-lims_r_in(1,i_rd)+1
-                    
-                    ! iterate over all subcolumns: subintegrals
-                    subcols3: do i_cd = 1,size(vac%lims_c,2)
-                        cd = rd
-                        if (vac%lims_c(1,i_cd).le.cd .and. &
-                            &cd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            ! set local column index
-                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                &vac%lims_c(1,1:i_cd-1)+1) + &
-                                &cd-vac%lims_c(1,i_cd)+1
-                            
-                            ! set diagonal of H to inverse of sum
-                            H_in(rdl,cdl) = - loc_res(rd)
-                        end if
-                    end do subcols3
-                end do row3
-            end do subrows3
+            ! G: the identity H x - G norm_x = -4 pi x for the linear interior
+            ! harmonics x, y, z, projected on the normal: the analytical
+            ! half-cell integral of calc_GH_int_1 is exact for the singular
+            ! cell, but the one-point rule across the neighbouring field lines
+            ! leaves a first-order error that depends on the lattice of
+            ! points; the identity absorbs it into the diagonal, as the row
+            ! sum does for H (issue #4, 31 October 2026)
+            lin_res = 0._dp
+            do kd = 1,3
+                ierr = dis_matvec(vac,vac%H,vac%desc_H,vac%x_vec(:,kd),loc_res)
+                CHCKERR('')
+                lin_res = lin_res + vac%norm(:,kd)*(loc_res+4*pi*vac%x_vec(:,kd))
+                ierr = dis_matvec(vac,vac%G,vac%desc_G,vac%norm(:,kd),loc_res)
+                CHCKERR('')
+                lin_res = lin_res - vac%norm(:,kd)*loc_res
+            end do
+            lin_res = lin_res/sum(vac%norm**2,2)
+            call set_diag(G_in,lin_res,.true.)
             
             ! clean up
-            deallocate(res)
-            deallocate(loc_res)
+            deallocate(loc_res,lin_res)
         end if
     contains
-        ! checks whether an interval is on the field line
-        logical function on_field_line(cd,kd,n_ang) result(res)
+        ! Sets the diagonal of the local matrix A_in to vec, or adds vec to it.
+        subroutine set_diag(A_in,vec,add)
             ! input / output
-            integer, intent(in) :: cd                                           ! position of interval on field line
-            integer, intent(in) :: kd                                           ! left or right point of interval
-            integer, intent(in) :: n_ang                                        ! number of points on field line
+            real(dp), intent(in), pointer :: A_in(:,:)                          ! local matrix
+            real(dp), intent(in) :: vec(:)                                      ! global vector of diagonal values
+            logical, intent(in) :: add                                          ! add instead of set
             
-            res = .true.
-            if (mod(cd,n_ang).eq.1 .and. kd.eq.0) res = .false.                 ! start of field line
-            if (mod(cd,n_ang).eq.0 .and. kd.eq.1) res = .false.                 ! end of field line
-        end function on_field_line
+            ! local variables
+            integer :: i_rd, i_cd                                               ! index of subrow and column
+            integer :: rd                                                       ! global row
+            integer :: rdl, cdl                                                 ! local row and column
+            
+            do i_rd = 1,size(lims_r_in,2)
+                do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
+                    rdl = sum(lims_r_in(2,1:i_rd-1)-lims_r_in(1,1:i_rd-1)+1) &
+                        &+ rd-lims_r_in(1,i_rd)+1
+                    do i_cd = 1,size(vac%lims_c,2)
+                        if (vac%lims_c(1,i_cd).le.rd .and. &
+                            &rd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
+                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
+                                &vac%lims_c(1,1:i_cd-1)+1) + &
+                                &rd-vac%lims_c(1,i_cd)+1
+                            if (add) then
+                                A_in(rdl,cdl) = A_in(rdl,cdl) + vec(rd)
+                            else
+                                A_in(rdl,cdl) = vec(rd)
+                            end if
+                        end if
+                    end do
+                end do
+            end do
+        end subroutine set_diag
     end function calc_GH_1
     
     !> \public Calculates matrices \c G and \c H in axisymmetric configurations.
@@ -985,8 +1017,10 @@ contains
         use vac_utilities, only: calc_GH_int_2
         use MPI_utilities, only: get_ser_var
         use num_ops, only: calc_zero_HH, calc_zero_Zhang
+#if ldebug
         use num_vars, only: rank
-        
+#endif
+
         character(*), parameter :: rout_name = 'calc_GH_2'
         
         ! input / output
@@ -1004,6 +1038,7 @@ contains
         integer :: rd, cd                                                       ! global counters for row and column
         integer :: rdl, cdl                                                     ! local counters for row and column, used for G and H
         integer :: max_n                                                        ! maximum degree
+        integer :: n_abs                                                        ! absolute value of toroidal mode number
         integer :: lims_c_loc(2)                                                ! local column limits
         real(dp) :: b_coeff(2)                                                  ! sum_k=1^n 2/2k-1 for n and n-1
         real(dp) :: tol_loc                                                     ! local tolerance on rho for singular points
@@ -1037,13 +1072,17 @@ contains
         ierr = 0
         
         call writo('Using axisymmetric Boundary Element Method')
-        
+
         ! set up b_coeff and local tolerance
+        ! (the kernels only depend on |n|: the toroidal decomposition of the
+        ! Green's function contains Q_{|m|-1/2}, equivalently
+        ! Q_{-nu-1} = Q_{nu} for the half-integer degrees involved)
+        n_abs = abs(vac%prim_X)
         b_coeff = 0._dp
-        do kd = 1,vac%prim_X
+        do kd = 1,n_abs
             b_coeff(2) = b_coeff(2) + 2._dp/(2*kd-1)
         end do
-        b_coeff(1) = b_coeff(2) - 2._dp/(2*vac%prim_X-1)
+        b_coeff(1) = b_coeff(2) - 2._dp/(2*n_abs-1)
         err_msg = calc_zero_Zhang(tol_loc,fun_tol,&
             &[1.E-10_dp,&                                                       ! very low lower limit
             &exp(-2*b_coeff(2))])                                               ! upper limit for -1/2ln(x) = b
@@ -1063,8 +1102,8 @@ contains
         allocate(was_calc(1:n_r_in,1:vac%n_bnd))
         was_calc = .false.                                                      ! will remain false if external influence
         allocate(ql(1:n_r_in,1:vac%n_bnd,2))
-        allocate(pl_loc(0:max(vac%prim_X,1)))
-        allocate(ql_loc(0:max(vac%prim_X,1)))
+        allocate(pl_loc(0:max(n_abs,1)))
+        allocate(ql_loc(0:max(n_abs,1)))
 #if ldebug
         rho2_lims = [huge(1._dp),-huge(1._dp)]
         gamma_lims = [huge(1._dp),-huge(1._dp)]
@@ -1131,28 +1170,24 @@ contains
                             err_msg = 'The solutions did not converge for &
                                 &rho^2 = '//trim(r2str(rho2(cd)))//&
                                 &' and n = '//trim(i2str(vac%prim_X))
-                            if (vac%prim_X.gt.0) then                           ! positive n
-                                ierr = dtorh1(arg(cd),0,vac%prim_X,pl_loc,&
+                            if (n_abs.gt.0) then                                ! nonzero n: kernels for |n|
+                                ierr = dtorh1(arg(cd),0,n_abs,pl_loc,&
                                     &ql_loc,max_n)
                                 CHCKERR('')
-                                if (max_n.lt.vac%prim_X) then
+                                if (max_n.lt.n_abs) then
                                     ierr = 1
                                     CHCKERR(err_msg)
                                 end if
-                                ql(rd,cd,:) = ql_loc(vac%prim_X-1:vac%prim_X)
-                            else if (vac%prim_X.eq.0) then
+                                ql(rd,cd,:) = ql_loc(n_abs-1:n_abs)
+                            else                                                ! n = 0
                                 ierr = dtorh1(arg(cd),0,1,pl_loc,ql_loc,max_n)
                                 CHCKERR('')
-                                if (max_n.lt.vac%prim_X) then
+                                if (max_n.lt.n_abs) then
                                     ierr = 1
                                     CHCKERR(err_msg)
                                 end if
                                 ql(rd,cd,1) = ql_loc(1)                         ! Q_-3/2 = Q_1/2
                                 ql(rd,cd,2) = ql_loc(0)                         ! Q_-1/2
-                            else                                                ! negative n
-                                ierr = 1
-                                err_msg = 'negative n not yet implemented'      ! SHOULD JUST BE Q_{n-1/2} = Q_{-n-1/2}
-                                CHCKERR('')
                             end if
                             if (.not.ext_in) was_calc(rd,cd) = .true.
                         end if
@@ -1165,7 +1200,7 @@ contains
                                     &sing_col(cd) = .true.
                                 !!Aij(cd) = 0._dp
                             else
-                                Aij(cd) = 0.5_dp*(vac%prim_X - 0.5_dp) * &
+                                Aij(cd) = 0.5_dp*(n_abs - 0.5_dp) * &
                                     &(x_vec_in(rd,1) * &
                                     &(vac%norm(rd,1)*vac%dnorm(rd,2)-&
                                     &vac%norm(rd,2)*vac%dnorm(rd,1))/&
@@ -1175,7 +1210,7 @@ contains
                         else
                             Aij(cd) = 2._dp*x_vec_in(rd,1)*vac%x_vec(cd,1) / &
                                 &(4._dp*x_vec_in(rd,1)*vac%x_vec(cd,1)+&
-                                &rho2(cd)) *(vac%prim_X - 0.5_dp) * &
+                                &rho2(cd)) *(n_abs - 0.5_dp) * &
                                 &(- 2._dp/rho2(cd) * sum(vac%norm(cd,:)*&
                                 &(vac%x_vec(cd,:)-x_vec_in(rd,:))) + &
                                 &vac%norm(cd,1)/vac%x_vec(cd,1))
@@ -1245,7 +1280,7 @@ contains
                             &vac%x_vec(cd:cd+1,:),x_vec_in(rd,:),&
                             &vac%norm(cd:cd+1,:),vac%norm(rd,:),&
                             &Aij(cd:cd+1),ql(rd,cd:cd+1,:),&
-                            &tol_loc**2,b_coeff,vac%prim_X)
+                            &tol_loc**2,b_coeff,n_abs)
                         
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &
@@ -1418,7 +1453,7 @@ contains
         use MPI
         use rich_vars, only: rich_lvl, n_par_X
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
-            &use_pol_flux_F, rank, n_procs
+            &use_pol_flux_F, rank, n_procs, check_vac
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X
         use vac_vars, only: set_loc_lims, in_context
@@ -1507,23 +1542,36 @@ contains
         ierr = calc_GH(vac)
         CHCKERR('')
         
+        ! check the operators with exact potentials if requested
+        if (check_vac .and. vac%style.eq.1) then
+            ierr = check_vac_exact(vac)
+            CHCKERR('')
+        end if
+        
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! user output
+#ifdef PB3D_WITH_STRUMPACK
             call writo('Use STRUMPack to solve system',persistent=rank_o)
+#else
+            call writo('Use ScaLAPACK to solve system',persistent=rank_o)
+#endif
             call lvl_ud(1)
             
             ! set step sizes if 3-D vacuum
             if (vac%style.eq.1) then
                 dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
                 if (n_alpha.gt.1) then
-                    dalpha = (max_alpha-min_alpha)/(n_alpha-1)*pi
+                    dalpha = (max_alpha-min_alpha)/n_alpha*pi                   ! field lines exclude the end point (rich_ops)
                 else
                     dalpha = 0._dp
                 end if
             end if
             
             ! set secondary mode numbers
+            ! (can be already allocated if the vacuum was reconstructed, e.g.
+            ! on the HELENA Richardson-restart path)
+            if (allocated(vac%sec_X)) deallocate(vac%sec_X)
             allocate(vac%sec_X(n_mod_X))
             if (use_pol_flux_F) then
                 vac%sec_X = mds%m(size(mds%m,1),:)
@@ -1622,8 +1670,12 @@ contains
                     end do subrows
                 end do col
             end do subcols
-            call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
-            
+#if ldebug
+            if (debug_calc_vac_res) then
+                call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
+            end if
+#endif
+
             ! solve for Phi
             ierr = solve_Phi_BEM(vac,EP,Phi,[vac%n_bnd,2*n_mod_X],&
                 &[vac%n_loc(1),n_loc(2)],lims_c_loc,desc_PhiEP)
@@ -1662,8 +1714,8 @@ contains
                         select case (vac%style)
                             case (1)                                            ! field-line 3-D
                                 I_loc = dpar_X*dalpha
-                                if ((rd-1)/vac%n_ang(1).eq.0 .or. &             ! first point on field line
-                                    &(rd-1)/vac%n_ang(1).eq.vac%n_ang(1)-1) &   ! last point on field line
+                                if (mod(rd-1,vac%n_ang(1))+1.eq.1 .or. &        ! first point on field line
+                                    &mod(rd-1,vac%n_ang(1))+1.eq.vac%n_ang(1)) &! last point on field line
                                     &I_loc = I_loc*0.5_dp
                             case (2)                                            ! axisymmetric
                                 I_loc = 0.5_dp*&
@@ -1707,6 +1759,50 @@ contains
                     &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
                     &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
                 vac%res = vac%res/vac_perm
+                if (vac%style.eq.1) then
+                    ! bring the field-line 3-D result to the same convention
+                    ! as the axisymmetric one, against which the response (and
+                    ! its use in the SLEPC boundary condition) is anchored:
+                    !  - the style-1 boundary operators expect normal data
+                    !    along J nabla psi, which for the flux coordinates
+                    !    (alpha,psi,theta) points opposite to the -J nabla psi
+                    !    data convention of the axisymmetric style, so Phi
+                    !    (and with it the response, which is linear in Phi
+                    !    but keeps the physical data in the projection) picks
+                    !    up a minus sign;
+                    !  - the style-1 projection integrates over the field
+                    !    line label as well, so it carries an extra factor of
+                    !    the alpha span compared to the per-zeta-mode
+                    !    normalization of the axisymmetric style.
+                    ! (the sign is confirmed by the full-stack test
+                    ! point_source_3d, which solves for a known exterior
+                    ! potential with these normal data; the ratio to the
+                    ! axisymmetric response converges to 1 at first order in
+                    ! response_1_vs_2)
+                    vac%res = -vac%res/((max_alpha-min_alpha)*pi)
+                end if
+                
+                ! Bring  res to  the surface-energy  Hessian as  it enters  the
+                ! potential-energy  matrix  A,  so  that  the  free  boundary
+                ! condition adds  X_e^H res X_e  (set_BC_2, set_BC_4)  and POST
+                ! adds the same term to  E_pot. The matrix A corresponds to 2 dW
+                ! with the  toroidal integral included  (alpha_fac = 2  pi for a
+                ! single  field line).  In the  large-aspect-ratio cylinder  the
+                ! vacuum  energy of  an edge  displacement equals  the  field-line
+                ! bending energy  of a  plasma layer of  thickness a/|m|  at the
+                ! edge, which  in A amounts  to 4 pi^2 (nq-m)^2  |X_e|^2 /  (mu_0
+                ! R_0  |m|),  while res  up  to  here  is -2  pi  (nq-m)^2 /  (mu_0
+                ! R_0 |m|)  (full-stack test  vac_response_cylinder).  Hence 2
+                ! dW_vac =  -2 pi X_e^H res  X_e: the sign because  the exterior
+                ! Neumann-to-Dirichlet map  of the BEM is  negative definite, the
+                ! 2 pi  the toroidal  integral. Checked  against MISHKA  on the
+                ! circular external kink (issue #4, step 3).
+                vac%res = -2._dp*pi*vac%res
+                
+                ! The exact  operator is Hermitian;  the discretization leaves
+                ! an asymmetry  of about 1E-5  that makes SLEPC reject  tightly
+                ! converged eigenvalues as complex. Keep the Hermitian part.
+                vac%res = 0.5_dp*(vac%res+conjg(transpose(vac%res)))
 #if ldebug
                 allocate(X_plot(n_mod_X,n_mod_X))
                 allocate(Y_plot(n_mod_X,n_mod_X))
@@ -1826,7 +1922,242 @@ contains
         call writo('Done calculating vacuum quantities')
     end function calc_vac_res
     
-    !> Calculate vacuum potential at some positions that are not resonant.
+    !> Checks the style-1 (3-D) vacuum operators on the equilibrium surface
+    !! itself with potentials whose boundary data are exact (issue #4: the
+    !! checks T5 and T6 of the validation catalogue on the real surface, not
+    !! on the analytic torus of the full-stack tests).
+    !!
+    !! For a constant, the three Cartesian coordinates and \f$x^2 - y^2\f$,
+    !! harmonic inside the surface, and for two potentials harmonic outside
+    !! it and decaying, a point source on the magnetic axis at \f$\zeta = 0\f$
+    !! and a ring of point sources along the whole magnetic axis, with unit
+    !! weights and with weights \f$\cos(n \zeta)\f$ for the primary mode number
+    !! \f$n\f$ (the toroidal structure of the modes), the residual
+    !! of the Green identity \f$\overline{\text{H}} \phi -
+    !! \overline{\text{G}} \partial_n \phi - c \phi\f$ is printed for
+    !! \f$c = -4\pi, -2\pi, 0, 2\pi, 4\pi\f$, scaled by \f$\max |4 \pi \phi|\f$
+    !! (interior potentials satisfy the identity with \f$c = -4\pi\f$,
+    !! exterior ones with \f$c = 0\f$, as calc_GH_1 builds the diagonal; see
+    !! the full-stack test greens_identity_3d). Then the exterior problem is
+    !! solved for the two exterior potentials with solve_Phi_BEM() and the
+    !! boundary trace is compared with the exact one. The point source is
+    !! the sharper test when the axis comes close to the surface, the ring
+    !! varies on the scale of the minor radius everywhere.
+    !!
+    !! Every number is printed on a line starting with CHECKVAC so that it can
+    !! be collected from the log. Switched on with the input \c check_vac.
+    !! Only for style 1, whose surface points are Cartesian.
+    integer function check_vac_exact(vac) result(ierr)
+        use num_vars, only: rank, n_procs
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc, n_col1_loc, vec_glob2dis, &
+            &dis_matvec
+        use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, mn_V, mnmax_V
+
+        character(*), parameter :: rout_name = 'check_vac_exact'
+
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+
+        ! local variables
+        integer, parameter :: n_pot = 8                                         ! number of test potentials
+        integer, parameter :: n_ring = 256                                      ! sources along the magnetic axis
+        integer :: id, kd                                                       ! counters
+        integer :: n_bnd                                                        ! number of boundary points
+        integer :: n_col1                                                       ! local number of columns of a global column vector
+        integer :: desc_RPhi(BLACSCTXTSIZE)                                     ! descriptor for right-hand side and solution
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of right-hand side and solution
+        logical :: rank_o                                                       ! output rank
+        real(dp) :: x_ring(n_ring,3)                                            ! sources along the magnetic axis
+        real(dp) :: w_ring(n_ring)                                              ! their weights
+        real(dp) :: zeta_k                                                      ! toroidal angle of a source
+        real(dp) :: d_min                                                       ! smallest distance of the surface to the sources
+        real(dp) :: res_off(-2:2)                                               ! identity residuals for offsets c = k 2 pi
+        real(dp) :: err_max, err_2                                              ! errors of the exterior solution
+        real(dp), allocatable :: phi(:), dphi(:)                                ! potential and norm . grad phi
+        real(dp), allocatable :: lhs(:), rhs(:)                                 ! H phi and G dphi
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
+        character(len=max_str_ln) :: pot_name                                   ! name of test potential
+        character(len=max_str_ln) :: res_str                                    ! residuals as string
+        integer :: file_i                                                       ! file unit of the per-point output
+        real(dp) :: c_exp                                                       ! expected offset of the identity
+
+        ! initialize ierr
+        ierr = 0
+
+        if (.not.in_context(vac%ctxt_HG)) return
+
+        rank_o = rank.eq.n_procs-1
+        n_bnd = vac%n_bnd
+
+        ! sources on the magnetic axis: the m = 0 modes of R and Z at the
+        ! first radial point, cos(m theta - n zeta) convention, placed with
+        ! the same toroidal angle as the boundary points (R_V_c is normalized
+        ! like them); source 1 is at zeta = 0
+        do kd = 1,n_ring
+            zeta_k = 2._dp*pi*(kd-1)/n_ring
+            x_ring(kd,:) = 0._dp
+            do id = 1,mnmax_V
+                if (mn_V(id,1).eq.0) then
+                    x_ring(kd,1) = x_ring(kd,1) + &
+                        &R_V_c(id,1,0)*cos(mn_V(id,2)*zeta_k) - &
+                        &R_V_s(id,1,0)*sin(mn_V(id,2)*zeta_k)
+                    x_ring(kd,3) = x_ring(kd,3) + &
+                        &Z_V_c(id,1,0)*cos(mn_V(id,2)*zeta_k) - &
+                        &Z_V_s(id,1,0)*sin(mn_V(id,2)*zeta_k)
+                end if
+            end do
+            x_ring(kd,2) = x_ring(kd,1)*sin(zeta_k)
+            x_ring(kd,1) = x_ring(kd,1)*cos(zeta_k)
+        end do
+
+        call writo('Check of the vacuum operators with exact potentials',&
+            &persistent=rank_o)
+        call lvl_ud(1)
+        call writo('CHECKVAC source n_bnd='//trim(i2str(n_bnd))//' x_src='//&
+            &trim(r2strt(x_ring(1,1)))//' '//trim(r2strt(x_ring(1,2)))//' '//&
+            &trim(r2strt(x_ring(1,3))),persistent=rank_o)
+
+        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),phi_num(n_bnd))
+
+        ! Green identities
+        do kd = 1,n_pot
+            call set_pot(kd)
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+            CHCKERR('')
+            ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
+            CHCKERR('')
+            lhs = lhs - rhs
+            res_str = ''
+            do id = -2,2
+                res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
+                    &maxval(abs(4._dp*pi*phi))
+                res_str = trim(res_str)//' '//trim(r2strt(res_off(id)))
+            end do
+            call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
+                &trim(res_str),persistent=rank_o)
+            c_exp = 0._dp
+            if (kd.le.5) c_exp = -4._dp*pi                                      ! interior harmonics
+            call write_points('check_vac_identity_'//trim(pot_name)//'.dat',&
+                &abs(lhs-c_exp*phi)/maxval(abs(4._dp*pi*phi)))
+        end do
+
+        ! exterior solves
+        n_col1 = n_col1_loc(vac)
+        call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
+        allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+        allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        CHCKERR('descinit failed')
+        do kd = n_pot-2,n_pot
+            call set_pot(kd)
+            if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+            Phi_mat = 0._dp
+            ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],&
+                &[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+            CHCKERR('')
+            ierr = vec_dis2loc(vac%ctxt_HG,&
+                &reshape(Phi_mat(1:vac%n_loc(1),:),[vac%n_loc(1)*n_col1]),&
+                &vac%lims_r,phi_num)
+            CHCKERR('')
+            err_max = maxval(abs(phi_num-phi))/maxval(abs(phi))
+            err_2 = sqrt(sum((phi_num-phi)**2)/sum(phi**2))
+            call writo('CHECKVAC solve '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' min_dist='//trim(r2strt(d_min))//&
+                &' err_max='//trim(r2strt(err_max))//' err_2='//&
+                &trim(r2strt(err_2)),persistent=rank_o)
+            call write_points('check_vac_solve_'//trim(pot_name)//'.dat',&
+                &abs(phi_num-phi)/maxval(abs(phi)))
+        end do
+
+        call lvl_ud(-1)
+    contains
+        ! Writes a per-point quantity with the point's parallel and field-line
+        ! indices and position, for the localization of the errors.
+        !> \private
+        subroutine write_points(file_name,val)
+            character(*), intent(in) :: file_name                               ! file name
+            real(dp), intent(in) :: val(:)                                      ! value per boundary point
+            
+            integer :: id                                                       ! counter
+            
+            if (.not.rank_o) return
+            open(newunit=file_i,file=file_name,status='replace')
+            write(file_i,'(A)') '# id i_par i_line x y z value'
+            do id = 1,n_bnd
+                write(file_i,'(3I7,4ES15.7)') id, mod(id-1,vac%n_ang(1))+1, &
+                    &(id-1)/vac%n_ang(1)+1, vac%x_vec(id,:), val(id)
+            end do
+            close(file_i)
+        end subroutine write_points
+        
+        ! Sets phi and dphi = norm . grad phi for test potential kd.
+        !> \private
+        subroutine set_pot(kd)
+            integer, intent(in) :: kd                                           ! which potential
+
+            integer :: id, ld                                                   ! counters
+            integer :: n_src                                                    ! number of sources
+            real(dp) :: r_src                                                   ! distance to a source
+
+            d_min = huge(1._dp)
+            do id = 1,n_bnd
+                select case (kd)
+                    case (1)                                                    ! constant (interior harmonic)
+                        pot_name = 'constant'
+                        phi(id) = 1._dp
+                        dphi(id) = 0._dp
+                    case (2)                                                    ! x (interior harmonic)
+                        pot_name = 'x'
+                        phi(id) = vac%x_vec(id,1)
+                        dphi(id) = vac%norm(id,1)
+                    case (3)                                                    ! y (interior harmonic)
+                        pot_name = 'y'
+                        phi(id) = vac%x_vec(id,2)
+                        dphi(id) = vac%norm(id,2)
+                    case (4)                                                    ! z (interior harmonic)
+                        pot_name = 'z'
+                        phi(id) = vac%x_vec(id,3)
+                        dphi(id) = vac%norm(id,3)
+                    case (5)                                                    ! x^2 - y^2 (interior harmonic)
+                        pot_name = 'x2-y2'
+                        phi(id) = vac%x_vec(id,1)**2 - vac%x_vec(id,2)**2
+                        dphi(id) = 2._dp*(vac%x_vec(id,1)*vac%norm(id,1) - &
+                            &vac%x_vec(id,2)*vac%norm(id,2))
+                    case (6,7,8)                                                ! point source(s) inside: exterior harmonic
+                        select case (kd)
+                            case (6)
+                                pot_name = 'point_source'
+                                n_src = 1
+                                w_ring(1) = 1._dp
+                            case (7)
+                                pot_name = 'axis_ring'
+                                n_src = n_ring
+                                w_ring = 1._dp
+                            case (8)
+                                pot_name = 'axis_ring_n'
+                                n_src = n_ring
+                                w_ring = [(cos(vac%prim_X*2._dp*pi*(ld-1)/&
+                                    &n_ring),ld=1,n_ring)]
+                        end select
+                        phi(id) = 0._dp
+                        dphi(id) = 0._dp
+                        do ld = 1,n_src
+                            r_src = sqrt(sum((vac%x_vec(id,:)-x_ring(ld,:))**2))
+                            d_min = min(d_min,r_src)
+                            phi(id) = phi(id) + w_ring(ld)/r_src
+                            dphi(id) = dphi(id) - w_ring(ld)*sum(vac%norm(id,:)*&
+                                &(vac%x_vec(id,:)-x_ring(ld,:)))/r_src**3
+                        end do
+                end select
+            end do
+        end subroutine set_pot
+    end function check_vac_exact
+
+!> Calculate vacuum potential at some positions that are not resonant.
     !!
     !! This  is done  by  using the  relation  between  H and  G  on the  plasma
     !! boundary,
@@ -2152,23 +2483,41 @@ contains
     !> \public Calculates potential  \c Phi on boundary of BEM  in terms of some
     !! right-hand side .
     !!
-    !! This is done by solving with STRUMPack the system of equations
-    !!  \f$\overline{\text{H}}\overline{\Phi} =
-    !!  \overline{\text{G}}\overline{\text{R}}\f$,
+    !! This is done by solving the system of equations
+    !!  \f$\left(\overline{\text{H}} + 4\pi\overline{\text{I}}\right)
+    !!  \overline{\Phi} = \overline{\text{G}}\overline{\text{R}}\f$,
     !! where \f$\overline{\text{R}}\f$ is the right-hand side, for example equal
     !! to \f$\overline{\text{E}}\overline{\text{P}}\f$  to solve in  function of
     !! the individual Fourier modes.
+    !!
+    !! The  \f$4\pi\f$ diagonal  term selects  the vacuum  (exterior) side  of
+    !! the  boundary:  the assembled  \f$\overline{\text{H}}\f$  satisfies the
+    !! interior identity  \f$\overline{\text{H}}\overline{\phi} =
+    !! \overline{\text{G}}\overline{\text{D}\phi}\f$ for potentials  that  are
+    !! harmonic inside  the boundary, whereas potentials that  are harmonic in
+    !! the vacuum and decay at infinity satisfy
+    !! \f$\left(\overline{\text{H}} +
+    !! 4\pi\overline{\text{I}}\right)\overline{\phi} =
+    !! \overline{\text{G}}\overline{\text{D}\phi}\f$
+    !! (both relations  are verified  numerically in the  full-stack tests. It
+    !! also  makes the  system  nonsingular  when the  first  and last  points
+    !! of  a  closed  boundary  coincide,  as they  do  for  HELENA:  the  two
+    !! corresponding rows of \f$\overline{\text{H}}\f$ alone are identical.)
+    !!
+    !! The linear  system is solved  with STRUMPack when PB3D  was configured
+    !! with it, and with ScaLAPACK LU (\c pdgesv) otherwise.
     integer function solve_Phi_BEM(vac,R,Phi,n_RPhi,n_loc_RPhi,lims_c_RPhi,&
         &desc_RPhi) result(ierr)
-        
+
         use vac_vars, only: in_context
+        use num_vars, only: check_vac, rank, n_procs
 #if ldebug
         use grid_vars, only: min_par_X, max_par_X
         use rich_vars, only: n_par_X
 #endif
-        
+
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
-        
+
         ! input / output
         type(vac_type), intent(in), target :: vac                               !< vacuum variables
         real(dp), intent(inout), target :: Phi(:,:)                             !< \f$\overline{\Phi}\f$
@@ -2177,15 +2526,35 @@ contains
         integer, intent(in) :: n_loc_RPhi(2)                                    !< local \c n for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
         integer, intent(in) :: lims_c_RPhi(:,:)                                 !< local limits for row and columns of \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
         integer, intent(in), target :: desc_RPhi(BLACSCTXTSIZE)                 !< descriptor for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
-        
+
         ! local variables
         integer, target :: desc_GR(BLACSCTXTSIZE)                               ! descriptor for GR
-        real(dp) :: SDP_err                                                     ! error
+        integer :: rd                                                           ! global counter for row
+        integer :: rdl2, cdl2                                                   ! local counters for the diagonal
+        integer :: i_rd2, i_cd2                                                 ! index of subrow and subcol for the diagonal
+        integer :: info_loc                                                     ! info variable for ScaLAPACK
+        integer, allocatable :: ipiv(:)                                         ! pivot variable for the LU
+        integer :: iwork_q(1)                                                   ! integer workspace query
+        integer, allocatable :: iwork(:)                                        ! integer workspace of the condition estimate
+        real(dp) :: anorm, rcond                                                ! 1-norm of the operator and its reciprocal condition number
+        real(dp) :: work_q(1)                                                   ! workspace query
+        real(dp), allocatable :: work(:)                                        ! workspace of the condition estimate
+        real(dp), external :: pdlange                                           ! ScaLAPACK matrix norm
+        logical :: solved_ok                                                    ! whether a verified solution was obtained
+        real(dp) :: diag_shift                                                  ! diagonal shift selecting the exterior side
         real(dp), allocatable, target :: GR(:,:)                                ! GR
-        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H and H itself
+        real(dp), allocatable, target :: H_ext(:,:)                             ! H + shift I, the exterior operator
+        character(len=max_str_ln) :: err_msg                                    ! error message
+#ifdef PB3D_WITH_STRUMPACK
+        real(dp) :: SDP_err                                                     ! error
+        real(dp) :: norms_loc(2)                                                ! squared norms of residual and right-hand side
+        real(dp), allocatable :: res_check(:,:)                                 ! residual of the compressed solve
+        real(dp), allocatable, target :: H_sdp(:,:)                             ! copy of H_ext for the compressed solver
+        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H_sdp and H_sdp itself
         type(C_PTR) :: CdescGR, CGR                                             ! C pointers to descriptor of GR and GR itself
         type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
-        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H Phi = GR
+        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H_sdp Phi = GR
+#endif
 #if ldebug
         integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
         integer :: id                                                           ! counter
@@ -2196,32 +2565,80 @@ contains
         character(len=max_str_ln) :: plot_name                                  ! plot name
         real(dp), allocatable :: ang(:)                                         ! angle
 #endif
-        
+
         ! initialize ierr
         ierr = 0
-        
+
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! allocate auxililary matrices
             allocate(GR(vac%n_loc(1),n_loc_RPhi(2)))
-            
+
             ! initialize descriptors
             call descinit(desc_GR,vac%n_bnd,n_RPhi(2),vac%bs,vac%bs,0,0,&
                 &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
             CHCKERR('descinit failed for GR')
-            
+
             ! calculate GR
             call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,vac%G,1,1,&
                 &vac%desc_G,R,1,1,desc_RPhi,0._dp,GR,1,1,desc_GR)
-            
+
+            ! set up the exterior operator H + shift I in a local copy,
+            ! iterating over the local blocks to find the diagonal elements
+            !
+            ! The shift selects  the vacuum (exterior) side of  the boundary,
+            ! as  established by  the jump-relation  measurements in  the
+            ! full-stack tests:
+            !  - style 2 (axisymmetric): the assembled H with its -2 beta
+            !    diagonal satisfies the interior identity H phi = G dphi, so
+            !    the exterior needs H + 4 pi I;
+            !  - style 1 (field-line 3-D): the H diagonal is constructed in
+            !    calc_GH_1 from the row-sum identity H 1 = -4 pi 1, which,
+            !    with the inward-pointing normal J nabla psi, already shifts
+            !    the operator to the exterior convention: exterior harmonics
+            !    satisfy H phi = G dphi directly and no shift is needed
+            !    (interior ones then satisfy (H + 4 pi I) phi = G dphi).
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    diag_shift = 0._dp
+                case default                                                    ! axisymmetric
+                    diag_shift = 4._dp*pi
+            end select
+            allocate(H_ext(size(vac%H,1),size(vac%H,2)))
+            H_ext = vac%H
+            subrows: do i_rd2 = 1,size(vac%lims_r,2)
+                subcols: do i_cd2 = 1,size(vac%lims_c,2)
+                    diag: do rd = max(vac%lims_r(1,i_rd2),&
+                        &vac%lims_c(1,i_cd2)), min(vac%lims_r(2,i_rd2),&
+                        &vac%lims_c(2,i_cd2))                                   ! global diagonal indices in this block
+                        rdl2 = sum(vac%lims_r(2,1:i_rd2-1)-&
+                            &vac%lims_r(1,1:i_rd2-1)+1) + &
+                            &rd-vac%lims_r(1,i_rd2)+1
+                        cdl2 = sum(vac%lims_c(2,1:i_cd2-1)-&
+                            &vac%lims_c(1,1:i_cd2-1)+1) + &
+                            &rd-vac%lims_c(1,i_cd2)+1
+                        H_ext(rdl2,cdl2) = H_ext(rdl2,cdl2) + diag_shift
+                    end do diag
+                end do subcols
+            end do subrows
+
+            solved_ok = .false.
+
+#ifdef PB3D_WITH_STRUMPACK
+            ! try the compressed (HSS) solver first, on a copy of the
+            ! operator so that the original stays available for the residual
+            ! check and the possible fallback below
+            allocate(H_sdp(size(H_ext,1),size(H_ext,2)))
+            H_sdp = H_ext
+
             ! set C pointers
-            CH = C_LOC(vac%H)
+            CH = C_LOC(H_sdp)
             CdescH = C_LOC(vac%desc_H)
             CGR = C_LOC(GR)
             CdescGR = C_LOC(desc_GR)
             CPhi = C_LOC(Phi)
             CdescPhi = C_LOC(desc_RPhi)
-            
+
             ! initialize the solver and set parameters
             call SDP_F90_double_init(SDP_loc,vac%MPI_Comm)
             SDP_loc%use_HSS=1
@@ -2233,64 +2650,138 @@ contains
             SDP_loc%tol_HSS=1D-12
             SDP_loc%steps_IR=10
             SDP_loc%tol_IR=1D-10
-            
+
             ! compression
             call SDP_F90_double_compress_A(SDP_loc,CH,CdescH)
-            
+
 #if ldebug
             ! accuracy checking
             SDP_err = SDP_F90_double_check_compression(SDP_loc,CH,CdescH)
 #endif
-            
+
             ! factorization
             call SDP_F90_double_factor(SDP_loc,CH,CdescH)
-            
-            ! solve H Phi = G R
+
+            ! solve (H + shift I) Phi = G R
             call SDP_F90_double_solve(SDP_loc,CPhi,CdescPhi,CGR,CdescGR)
-            
+
 #if ldebug
             ! accuracy checking
             SDP_err = SDP_F90_double_check_solution(SDP_loc,CH,CdescH,CPhi,&
                 &CdescPhi,CGR,CdescGR)
 #endif
-            
+
             ! iterative refinement
             SDP_err = SDP_F90_double_refine(SDP_loc,CH,CdescH,CPhi,CdescPhi,&
                 &CGR,CdescGR)
-            
+            deallocate(H_sdp)
+
+            ! Verify the solution: the randomized HSS compression can fail
+            ! silently when the boundary operator has higher off-diagonal
+            ! ranks than the hard-coded sampling parameters can capture
+            ! (observed for the field-line 3-D style at moderate sizes). The
+            ! residual is checked against the uncompressed operator, and on
+            ! failure the solve falls back to ScaLAPACK LU below.
+            allocate(res_check(vac%n_loc(1),n_loc_RPhi(2)))
+            res_check = GR
+            call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,H_ext,1,1,&
+                &vac%desc_H,Phi,1,1,desc_RPhi,-1._dp,res_check,1,1,desc_GR)
+            norms_loc(1) = sum(res_check**2)
+            norms_loc(2) = sum(GR**2)
+            call dgsum2d(vac%ctxt_HG,'all',' ',2,1,norms_loc,2,-1,-1)
+            deallocate(res_check)
+            if (norms_loc(1).le.1.E-12_dp*norms_loc(2)) then                    ! relative residual <= 1e-6
+                solved_ok = .true.
+            else
+                call writo('The STRUMPACK solution has a relative residual '//&
+                    &trim(r2strt(sqrt(norms_loc(1)/max(norms_loc(2),&
+                    &tiny(1._dp)))))//' - falling back to ScaLAPACK LU',&
+                    &warning=.true.)
+            end if
+#endif
+
+            if (.not.solved_ok) then
+                ! solve (H + shift I) Phi = G R with ScaLAPACK LU (pdgetrf and
+                ! pdgetrs, what pdgesv does): the right-hand side is
+                ! overwritten with the solution and the matrix destroyed
+                ! (which is why H_ext is a copy). With check_vac the
+                ! reciprocal condition number in the 1-norm is estimated
+                ! between the two (pdgecon) and printed as a CHECKVAC line.
+                Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                        ! same distribution
+                allocate(ipiv(vac%n_loc(1)+vac%bs))
+                ipiv = 0
+                if (check_vac) then
+                    allocate(work(vac%n_loc(2)+vac%bs))
+                    anorm = pdlange('1',vac%n_bnd,vac%n_bnd,H_ext,1,1,&
+                        &vac%desc_H,work)
+                    deallocate(work)
+                end if
+                call pdgetrf(vac%n_bnd,vac%n_bnd,H_ext,1,1,vac%desc_H,ipiv,&
+                    &info_loc)
+                if (info_loc.ne.0) then
+                    ierr = 1
+                    err_msg = 'pdgetrf failed with info '//trim(i2str(info_loc))
+                    CHCKERR(err_msg)
+                end if
+                if (check_vac) then
+                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                        &rcond,work_q,-1,iwork_q,-1,info_loc)
+                    allocate(work(int(work_q(1))),iwork(iwork_q(1)))
+                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                        &rcond,work,size(work),iwork,size(iwork),info_loc)
+                    deallocate(work,iwork)
+                    call writo('CHECKVAC condition n_bnd='//&
+                        &trim(i2str(vac%n_bnd))//' norm1='//trim(r2strt(anorm))//&
+                        &' cond1='//trim(r2strt(1._dp/max(rcond,tiny(1._dp)))),&
+                        &persistent=rank.eq.n_procs-1)
+                end if
+                call pdgetrs('N',vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,&
+                    &Phi,1,1,desc_RPhi,info_loc)
+                if (info_loc.ne.0) then
+                    ierr = 1
+                    err_msg = 'pdgetrs failed with info '//trim(i2str(info_loc))
+                    CHCKERR(err_msg)
+                end if
+                deallocate(ipiv)
+            end if
+
 #if ldebug
+#ifdef PB3D_WITH_STRUMPACK
             ! statistics
             call SDP_F90_double_print_statistics(SDP_loc)
-            
+#endif
+
             ! user output
-            subcols: do i_cd = 1,size(lims_c_RPhi,2)
+            ! set global angle (the same for every subrow and column; the
+            ! subrow slices below use global indices, so ang has to span
+            ! the whole boundary, also when the rows are distributed over
+            ! multiple block-cyclic subrows)
+            allocate(ang(vac%n_bnd))
+            select case (vac%style)
+                case (1)                                                        ! field-line 3-D
+                    do id = 1,vac%n_ang(1)
+                        ang(id:id+vac%n_ang(1)*(vac%n_ang(2)-1):&
+                            &vac%n_ang(1)) = &
+                            &pi * (min_par_X + (id-1)*&
+                            &(max_par_X-min_par_X)/(n_par_X-1))
+                    end do
+                case (2)                                                        ! axisymmetric
+                    ang = reshape(vac%ang,[vac%n_bnd])
+            end select
+
+            subcols2: do i_cd = 1,size(lims_c_RPhi,2)
                 col: do cd = lims_c_RPhi(1,i_cd),lims_c_RPhi(2,i_cd)
                     ! set local column index
                     cdl = sum(lims_c_RPhi(2,1:i_cd-1)-&
                         &lims_c_RPhi(1,1:i_cd-1)+1) + &
                         &cd-lims_c_RPhi(1,i_cd)+1
-                    
+
                     subrows2: do i_rd = 1,size(vac%lims_r,2)
                         ! set local row limits
                         lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
                             &vac%lims_r(1,1:i_rd-1)+1) + &
                             &vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
-                        
-                        ! set angle
-                        allocate(ang(vac%lims_r(2,i_rd)-vac%lims_r(1,i_rd)+1))
-                        select case (vac%style)
-                            case (1)                                            ! field-line 3-D
-                                do id = 1,vac%n_ang(1)
-                                    ang(id:&
-                                        &id+vac%n_ang(1)*(vac%n_ang(2)-1):&
-                                        &vac%n_ang(1)) = &
-                                        &pi * (min_par_X + (id-1)*&
-                                        &(max_par_X-min_par_X)/(n_par_X-1))
-                                end do
-                            case (2)                                            ! axisymmetric
-                                ang = reshape(vac%ang,[vac%n_bnd])
-                        end select
-                        
+
                         ! output
                         plot_title = 'for column '//trim(i2str(cd))//&
                             &' and starting row '//&
@@ -2304,16 +2795,18 @@ contains
                             &draw=.false.)
                         call draw_ex(['Phi '//trim(plot_title)],&
                             &'Phi'//trim(plot_name),1,1,.false.)
-                        
-                        ! clean up
-                        deallocate(ang)
                     end do subrows2
                 end do col
-            end do subcols
+            end do subcols2
+
+            ! clean up
+            deallocate(ang)
 #endif
-            
+
+#ifdef PB3D_WITH_STRUMPACK
             ! destroy Strumpack object
             call SDP_F90_double_destroy(SDP_loc)
+#endif
         end if
     end function solve_Phi_BEM
     

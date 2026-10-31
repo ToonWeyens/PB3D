@@ -7,8 +7,10 @@ module num_ops
     use messages
     use num_vars, only: dp, iu, max_str_ln, pi
     use num_utilities
-    use output_ops
-    
+#if ldebug
+    use output_ops                                                              ! only for debug plotting; keeps num_ops dependency-light otherwise
+#endif
+
     implicit none
     private
     public calc_zero_HH, calc_zero_Zhang
