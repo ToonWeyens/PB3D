@@ -16,9 +16,11 @@
 # kernels integrated along the field lines in the near field and the G
 # diagonal set by the linear-potential identity (31 October 2026), the
 # response is 0.98 to 0.99 of the axisymmetric one at this resolution and the
-# eigenvalue, -0.44910, lies 1.2 % below the HELENA style-2 value -0.44383;
-# the test anchors it at 1e-3, asks for 5 % and for free below fixed. (Before
-# that the response was 0.85 of the axisymmetric one and the eigenvalue
+# eigenvalue, -0.43914, lies 1.2 % below the HELENA style-2 value -0.43380
+# (both with the trapezoidal weight of the free edge, 31 October 2026, later;
+# before it -0.44910 and -0.44383, the same 1.2 % apart); the test anchors it
+# at 1e-3, asks for 3 % and for free below fixed. (Before the kernel changes
+# the response was 0.85 of the axisymmetric one and the eigenvalue
 # -0.51892, 17 % below.) This pins the orientation of the normal that
 # store_vac_VMEC hands to the kernels: with the outward normal the response
 # was 0.27 of the axisymmetric one and the eigenvalue -0.083 (issue #4,
@@ -35,9 +37,9 @@ WOUT_FILE=$4
 ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
 TWIN_RTOL=1e-4
-ANCHOR_FREE=-4.4910e-1
-HEL_FREE=-4.4383e-1
-FREE_RTOL=0.05
+ANCHOR_FREE=-4.3914e-1
+HEL_FREE=-4.3380e-1
+FREE_RTOL=0.03
 N_ALPHA=64
 
 WORKDIR=$(mktemp -d)

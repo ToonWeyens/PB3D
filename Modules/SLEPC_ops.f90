@@ -634,6 +634,7 @@ contains
             PetscInt :: k, m                                                    ! counters
             PetscInt :: ndc_ind                                                 ! index for finite differences
             PetscInt :: st_size                                                 ! stencil size
+            PetscReal :: w_q                                                    ! quadrature weight of this point in the normal integral
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -691,6 +692,16 @@ contains
                 CHCKERR('')
                 ndc = ndc/step_size                                             ! scale by step size
                 
+                ! quadrature weight of this point in the normal integral: the
+                ! trapezoidal rule gives the free edge half the interior weight.
+                ! With a full weight there the discrete surface term differs
+                ! from the continuous one at O(h), and the free-boundary
+                ! eigenvalue converges only at first order in n_r_sol (2.3 % at
+                ! 200 points on the circular case; 31 October 2026).
+                w_q = 1._dp
+                if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) .and. &
+                    &kd.eq.n_r-1) w_q = 0.5_dp
+                
                 ! fill the blocks
                 
                 ! -------------!
@@ -704,7 +715,7 @@ contains
                             &[k,m],.true.)                                      ! symmetric matrices need con()
                     end do
                 end do
-                loc_block = loc_block*step_size                                 ! include step size of normal integral
+                loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral
 
 #if ldebug
                 if (test_diff) then
@@ -727,7 +738,7 @@ contains
                         loc_block(k,m) = sum(V_1(:,kd_loc,c_tot(k,m,2)))        ! asymetric matrices don't need con()
                     end do
                 end do
-                loc_block = loc_block*step_size                                 ! include step size of normal integral
+                loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral
                 
                 ! add block to kd +
                 ! (0,1-ndc_ind:1-st_size+jd)  +  Hermitian conjugate
@@ -747,7 +758,7 @@ contains
                             &con(sum(V_2(:,kd_loc,c_tot(k,m,1))),[k,m],.true.)  ! symmetric matrices need con()
                     end do
                 end do
-                loc_block = loc_block*step_size                                 ! include step size of normal integral
+                loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral
                 
 #if ldebug
                 if (test_diff) then

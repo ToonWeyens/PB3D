@@ -217,9 +217,12 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
 - `cbm18a_free_bnd`: the same deck **free-boundary** with the vacuum
   response, exercising the whole vacuum chain `store_vac_HEL` → `calc_GH` →
   `calc_vac_res` (exterior BEM solve) → `set_BC`. Style 2 (variational,
-  Hermitian imposition) \(-4.5019\times10^{-2}\) is the validated value;
-  style 4 (explicit natural-boundary-condition row) \(-4.4712\times10^{-2}\)
-  is anchored only so that a change shows, it is not a cross-check of style 2.
+  Hermitian imposition) \(-4.5039\times10^{-2}\) is the validated value;
+  style 4 (explicit natural-boundary-condition row) \(-4.5124\times10^{-2}\)
+  is anchored only so that a change shows, it is not a cross-check of style 2
+  (both re-recorded on 31 October 2026, when the free end point got its
+  trapezoidal weight h/2 in the normal integral; before, style 2 was
+  \(-4.5019\times10^{-2}\) and style 4 \(-4.4712\times10^{-2}\)).
   The test also asserts free ≤ fixed and that the stored response matrix is
   Hermitian and positive semi-definite (`check_vac_res.py`).
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
@@ -229,8 +232,13 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
 - `circ_eps005_free_bnd`: the external kink of the circular, flat-current,
   zero-pressure HELENA fixture `circ_eps005_q104` (ε = 0.05, q_a = 1.038),
   n = 10, m = 11: fixed boundary stable, free boundary
-  \(-4.3034\times10^{-1}\) against MISHKA's 0.42679 within 2 %
-  (`tests/reference/mishka_circular.txt`).
+  \(-4.2168\times10^{-1}\) against MISHKA's 0.42679 within 2 % (measured
+  1.2 %; at n = 15 and 20 the gap is 0.55 and 0.26 %, falling as 1/n²;
+  `tests/reference/mishka_circular.txt`), and the same deck at 400 radial
+  points within 5e-4 of the 200-point value: the second-order convergence of
+  the free edge since its trapezoidal weight (31 October 2026; the first-order
+  convergence before it gave 1.2e-2, and the anchor was
+  \(-4.3034\times10^{-1}\), 2.3 % from the converged value).
 - `circ_eps033_vmec_twin`: the circular ε = 0.33 HELENA fixture and its VMEC
   twin `wout_circ_eps033_q104.nc` (made from the HELENA file by
   `tests/reference/make_vmec_twin.sh`: PB3D `--export_HEL`, then VMEC++) give
@@ -238,10 +246,11 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   once B_0 is the toroidal average of |B| on the axis; 1.6 % with the old
   B_0); the VMEC value \(+7.8431\times10^{-2}\) is anchored at 1e-3 as the
   layer's only VMEC number. The twin is then run free-boundary through the
-  3-D vacuum (`alpha_style 2`, 64 field lines): \(-5.1892\times10^{-1}\),
-  anchored at 1e-3, below the fixed value and within 25 % of the HELENA
-  style-2 result \(-4.4383\times10^{-1}\) (the first-order BEM error at this
-  resolution), which pins the orientation of the normal that
+  3-D vacuum (`alpha_style 2`, 64 field lines): \(-4.3914\times10^{-1}\),
+  anchored at 1e-3, below the fixed value and within 3 % of the HELENA
+  style-2 result \(-4.3380\times10^{-1}\) (measured 1.2 %, the end-correction
+  error of the field-line BEM at 64 lines; both values with the trapezoidal
+  weight of the free edge of 31 October 2026), which pins the orientation of the normal that
   `store_vac_VMEC` hands to the kernels (issue #4, steps 6e and 6f).
 
 **The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
