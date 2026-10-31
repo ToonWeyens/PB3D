@@ -41,6 +41,17 @@ module test_vac_3d
     real(dp), parameter :: R_0 = 3.0_dp                                         ! major radius
     real(dp), parameter :: a_min = 1.0_dp                                       ! minor radius
     real(dp), parameter :: q_saf = 1.35_dp                                      ! safety factor at the boundary
+    ! 8-point Gauss-Legendre rule on [-1,1], for brute-force references
+    real(dp), parameter :: gl_x(8) = [&
+        &-0.9602898564975363_dp, -0.7966664774136267_dp, &
+        &-0.5255324099163290_dp, -0.1834346424956498_dp, &
+        & 0.1834346424956498_dp,  0.5255324099163290_dp, &
+        & 0.7966664774136267_dp,  0.9602898564975363_dp]
+    real(dp), parameter :: gl_w(8) = [&
+        &0.1012285362903763_dp, 0.2223810344533745_dp, &
+        &0.3137066458778873_dp, 0.3626837833783620_dp, &
+        &0.3626837833783620_dp, 0.3137066458778873_dp, &
+        &0.2223810344533745_dp, 0.1012285362903763_dp]
 
 contains
     !> Collect the tests.
@@ -49,6 +60,7 @@ contains
 
         testsuite = [ &
             &new_unittest("GH_int_1_singular", test_int_1_singular), &
+            &new_unittest("GH_int_1_near", test_int_1_near), &
             &new_unittest("greens_identity_3d", test_greens_identity_3d), &
             &new_unittest("response_1_vs_2", test_response_1_vs_2), &
             &new_unittest("point_source_3d", test_point_source_3d), &
@@ -162,37 +174,31 @@ contains
 
         real(dp), parameter :: h_fac(4) = [4.0_dp,0.9_dp,2.5_dp,7.7_dp]         ! g_aa, g_at, g_tt, H factor
         real(dp), parameter :: steps(2) = [0.02_dp,0.03_dp]                     ! dpar, dalpha
-        real(dp), parameter :: gl_x(8) = [&
-            &-0.9602898564975363_dp, -0.7966664774136267_dp, &
-            &-0.5255324099163290_dp, -0.1834346424956498_dp, &
-            & 0.1834346424956498_dp,  0.5255324099163290_dp, &
-            & 0.7966664774136267_dp,  0.9602898564975363_dp]
-        real(dp), parameter :: gl_w(8) = [&
-            &0.1012285362903763_dp, 0.2223810344533745_dp, &
-            &0.3137066458778873_dp, 0.3626837833783620_dp, &
-            &0.3626837833783620_dp, 0.3137066458778873_dp, &
-            &0.2223810344533745_dp, 0.1012285362903763_dp]
 
         integer :: id, jd                                                       ! counters
         real(dp) :: G(2), H(2)                                                  ! kernel results
-        real(dp) :: x_s(2,3), x_in(3), norm_s(2,3)                              ! geometry (only distances matter)
+        real(dp) :: x_s(4,3), x_in(3), norm_s(4,3)                              ! geometry (only distances matter)
+        real(dp) :: d(3), dn(3)                                                 ! interval vector and normal increment
         real(dp) :: s_no, sq_a, sq_t                                            ! nonorthogonality and metric roots
         real(dp) :: I_ref                                                       ! brute-force integral
         real(dp) :: p_lo, p_hi, u_q, w_q                                        ! quadrature panels and nodes
         real(dp) :: V_hc                                                        ! alpha half-cell in metric units
         real(dp) :: G_ref                                                       ! reference value
-        real(dp) :: r_far                                                       ! distance to far end
+        real(dp) :: r_far                                                       ! length of the interval
 
-        ! a singular interval: influence point = left source point; the right
-        ! point sits at par distance steps(1) in the field-line direction
-        ! (only its separation from x_in matters for the regular part)
+        ! a singular interval on a straight stencil: influence point = stencil
+        ! point 2 = left point of the interval; the right point sits at par
+        ! distance steps(1) in the field-line direction, the normal varies
+        ! linearly (the cubic interpolant reproduces both exactly)
         x_in = [1.0_dp,2.0_dp,3.0_dp]
-        x_s(1,:) = x_in
-        x_s(2,:) = x_in + sqrt(h_fac(3))*steps(1)*[1._dp,0._dp,0._dp]
-        norm_s(1,:) = [0.4_dp,0.5_dp,0.6_dp]
-        norm_s(2,:) = [0.4_dp,0.5_dp,0.7_dp]
+        d = sqrt(h_fac(3))*steps(1)*[1._dp,0._dp,0._dp]
+        dn = [0._dp,0._dp,0.1_dp]
+        do id = 1,4
+            x_s(id,:) = x_in + (id-2)*d
+            norm_s(id,:) = [0.4_dp,0.5_dp,0.6_dp] + (id-2)*dn
+        end do
 
-        call calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac,steps,1.e-30_dp)
+        call calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac,steps,1.e-30_dp,2)
 
         ! brute force: I = int_0^{U} du int_{-V}^{V} dv / sqrt(u^2+2suv+v^2),
         ! outer u integral with geometrically refined panels toward u = 0,
@@ -231,16 +237,93 @@ contains
             &message='singular H not h_fac(4) G')
         if (allocated(error)) return
 
-        ! the far endpoint keeps the regular kernel
-        r_far = sqrt(sum((x_s(2,:)-x_in)**2))
-        call check(error, G(2), -1._dp/r_far, thr=1.e-14_dp, rel=.true., &
-            &message='far-end G not regular kernel')
+        ! the regular endpoint is near (one interval length) and receives the
+        ! kernel integrated over its half of the interval: on the straight
+        ! line with r = t |d|, 2 int_{1/2}^1 (-1/r) dt = -2 ln 2 / |d| and
+        ! 2 int_{1/2}^1 (n_0 + t dn).(t d) / r^3 dt
+        !    = 2 (n_0.d + ln 2 dn.d) / |d|^3
+        r_far = sqrt(sum(d**2))
+        call check(error, G(2), -2._dp*log(2._dp)/r_far, thr=1.e-9_dp, &
+            &rel=.true., message='near-end G: '//trim(r2str(G(2)))//' vs '//&
+            &trim(r2str(-2._dp*log(2._dp)/r_far)))
         if (allocated(error)) return
-        call check(error, H(2), sum(norm_s(2,:)*(x_s(2,:)-x_in))/r_far**3, &
-            &thr=1.e-14_dp, rel=.true., &
-            &message='far-end H not regular dipole kernel')
+        call check(error, H(2), 2._dp*(sum(norm_s(2,:)*d)+&
+            &log(2._dp)*sum(dn*d))/r_far**3, thr=1.e-9_dp, rel=.true., &
+            &message='near-end H: '//trim(r2str(H(2))))
         if (allocated(error)) return
     end subroutine test_int_1_singular
+
+    !> The near-field branch of the 3-D interval kernel against brute-force
+    !! quadrature over the exact curve: four stencil points on a circle with
+    !! the radius of curvature of the W7-X bean tip (0.27 R_0) at the spacing
+    !! of the 121-point field lines (0.06 R_0), the influence point a quarter
+    !! of an interval length off the arc, where the kernel varies by a factor
+    !! three across a half-interval. The reference integrates the kernels over
+    !! the exact arc with panel-refined Gauss quadrature; the routine sees only
+    !! the four points (cubic interpolant, 8 Gauss points per half-interval).
+    subroutine test_int_1_near(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        real(dp), parameter :: R_c = 0.27_dp                                    ! radius of the arc
+        real(dp), parameter :: ds = 0.06_dp                                     ! arc length between stencil points
+        real(dp), parameter :: w = 0.015_dp                                     ! distance of the influence point from the arc
+        real(dp), parameter :: tol = 3.e-3_dp                                   ! relative tolerance (measured 6e-4 for G, 1.2e-3 for H: the cubic interpolant of the arc is 1.3e-5 off in position, against the distance 0.015)
+        integer, parameter :: n_pan = 32                                        ! panels per half-interval
+
+        integer :: id, jd, kd, ip                                               ! counters
+        real(dp) :: G(2), H(2)                                                  ! kernel results
+        real(dp) :: x_s(4,3), x_in(3), norm_s(4,3)                              ! geometry
+        real(dp) :: G_ref(2), H_ref(2)                                          ! brute-force values
+        real(dp) :: t_lo, t_hi, t_q, w_q                                        ! panel limits, node and weight
+        real(dp) :: x_q(3), n_q(3), r_q                                         ! position, normal and distance at a node
+
+        ! stencil on the arc, interval between points 2 and 3; the normal is
+        ! the (outward) radial direction, scaled to 1.5
+        do id = 1,4
+            call arc((id-2)*ds,x_s(id,:),norm_s(id,:))
+        end do
+        ! influence point: foot at 0.3 of the interval, w off the arc inward
+        call arc(0.3_dp*ds,x_in,n_q)
+        x_in = x_in - w*n_q/1.5_dp
+
+        call calc_GH_int_1(G,H,x_s,x_in,norm_s,[1._dp,0._dp,1._dp,0._dp],&
+            &[ds,ds],1.e-30_dp,2)
+
+        ! brute force over the exact arc: 2 int_half K ds/ds, Gauss on panels
+        do kd = 1,2
+            G_ref(kd) = 0._dp
+            H_ref(kd) = 0._dp
+            do ip = 1,n_pan
+                t_lo = 0.5_dp*(kd-1) + 0.5_dp*(ip-1)/n_pan
+                t_hi = 0.5_dp*(kd-1) + 0.5_dp*ip/n_pan
+                do jd = 1,8
+                    t_q = 0.5_dp*(t_lo+t_hi) + 0.5_dp*(t_hi-t_lo)*gl_x(jd)
+                    w_q = 0.5_dp*(t_hi-t_lo)*gl_w(jd)
+                    call arc(t_q*ds,x_q,n_q)
+                    r_q = sqrt(sum((x_q-x_in)**2))
+                    G_ref(kd) = G_ref(kd) - 2._dp*w_q/r_q
+                    H_ref(kd) = H_ref(kd) + 2._dp*w_q*sum(n_q*(x_q-x_in))/r_q**3
+                end do
+            end do
+            call check(error, G(kd), G_ref(kd), thr=tol*abs(G_ref(kd)), &
+                &message='near G('//trim(i2str(kd))//'): '//trim(r2str(G(kd)))&
+                &//' vs brute force '//trim(r2str(G_ref(kd))))
+            if (allocated(error)) return
+            call check(error, H(kd), H_ref(kd), thr=tol*abs(H_ref(kd)), &
+                &message='near H('//trim(i2str(kd))//'): '//trim(r2str(H(kd)))&
+                &//' vs brute force '//trim(r2str(H_ref(kd))))
+            if (allocated(error)) return
+        end do
+    contains
+        ! point and scaled outward normal on the arc at arc length s
+        subroutine arc(s,x,n)
+            real(dp), intent(in) :: s
+            real(dp), intent(out) :: x(3), n(3)
+            n = [cos(s/R_c),sin(s/R_c),0._dp]
+            x = [2._dp,0.5_dp,-1._dp] + R_c*n
+            n = 1.5_dp*n
+        end subroutine arc
+    end subroutine test_int_1_near
 
     !> Green's identities for the assembled 3-D matrices on the torus.
     !!
@@ -724,13 +807,16 @@ contains
         integer, parameter :: n_mod = 5                                         ! poloidal modes m = 1..n_mod
         real(dp), parameter :: tol_diag = 0.15_dp                               ! relative tolerance on the diagonal
         real(dp), parameter :: tol_offdiag = 0.10_dp                            ! off-diagonal tolerance, rel. to largest diagonal
-        ! the ratios at 81 x 80 as recorded on 30 October 2026 (gfortran 14 and
-        ! 16, ScaLAPACK and STRUMPACK agree to 1e-6); asserted to 0.5 % so that
-        ! a change of the surface weights shows: the field-line spacing
-        ! 2 pi / (n_alpha - 1) instead of 2 pi / n_alpha moves them by 1.25 %,
-        ! inside tol_diag but not inside this (issue #4, step 7 mutation check)
+        ! the ratios at 81 x 80 as recorded on 31 October 2026 with the
+        ! near-field quadrature along the field lines and the G diagonal from
+        ! the linear-potential identity (before them: 0.965, 0.946, 0.926,
+        ! 0.906, 0.886; gfortran 14 and 16, ScaLAPACK and STRUMPACK agree to
+        ! 1e-6); asserted to 0.5 % so that a change of the surface weights
+        ! shows: the field-line spacing 2 pi / (n_alpha - 1) instead of
+        ! 2 pi / n_alpha moved the old ones by 1.25 %, inside tol_diag but not
+        ! inside this (issue #4, step 7 mutation check)
         real(dp), parameter :: ratio_rec(5) = &
-            &[0.965_dp,0.946_dp,0.926_dp,0.906_dp,0.886_dp]
+            &[0.994_dp,0.992_dp,0.988_dp,0.985_dp,0.982_dp]
         real(dp), parameter :: tol_ratio = 0.005_dp                             ! tolerance on the recorded ratios
 
         type(vac_type) :: vac1, vac2                                            ! style-1 and style-2 vacuum variables

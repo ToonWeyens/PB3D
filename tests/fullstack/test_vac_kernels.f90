@@ -546,34 +546,37 @@ contains
 
         real(dp), parameter :: eps = 1.e-7_dp                                   ! step for central difference
 
-        integer :: kd                                                           ! counter
+        integer :: id, kd                                                       ! counters
         real(dp) :: G(2), H(2)                                                  ! kernel results
-        real(dp) :: x_s(2,3), norm_s(2,3)                                       ! source geometry
+        real(dp) :: x_s(4,3), norm_s(4,3)                                       ! source geometry (four-point stencil)
         real(dp) :: x_in(3)                                                     ! influence point
         real(dp) :: x_pert(3)                                                   ! perturbed point
         real(dp) :: fp, fm, r, H_ref                                            ! function values, distance, reference
 
-        x_s(1,:) = [2.9_dp,0.1_dp,0.2_dp]
-        x_s(2,:) = [2.85_dp,0.15_dp,0.25_dp]
-        norm_s(1,:) = [0.9_dp,0.1_dp,0.3_dp]
-        norm_s(2,:) = [0.8_dp,0.2_dp,0.4_dp]
+        ! straight stencil, the interval between points 2 and 3; the influence
+        ! point is far (26 interval lengths), so the endpoint values are used
+        do id = 1,4
+            x_s(id,:) = [2.9_dp,0.1_dp,0.2_dp] + &
+                &(id-2)*[-0.05_dp,0.05_dp,0.05_dp]
+            norm_s(id,:) = [0.9_dp,0.1_dp,0.3_dp] + (id-2)*[-0.1_dp,0.1_dp,0.1_dp]
+        end do
         x_in = [1.5_dp,-1.0_dp,0.5_dp]
 
         G = 0._dp
         H = 0._dp
         call calc_GH_int_1(G,H,x_s,x_in,norm_s,[1._dp,0.1_dp,1._dp,0.5_dp],&
-            &[0.1_dp,0.1_dp],1.e-30_dp)
+            &[0.1_dp,0.1_dp],1.e-30_dp,2)
 
         do kd = 1,2
-            r = sqrt(sum((x_s(kd,:)-x_in)**2))
+            r = sqrt(sum((x_s(kd+1,:)-x_in)**2))
             call check(error, G(kd), -1._dp/r, thr=1.e-14_dp, rel=.true., &
                 &message='G('//trim(i2str(kd))//') mismatch')
             if (allocated(error)) return
 
             ! H = norm . grad_s (-1/r), via central difference
-            x_pert = x_s(kd,:) + eps*norm_s(kd,:)
+            x_pert = x_s(kd+1,:) + eps*norm_s(kd+1,:)
             fp = -1._dp/sqrt(sum((x_pert-x_in)**2))
-            x_pert = x_s(kd,:) - eps*norm_s(kd,:)
+            x_pert = x_s(kd+1,:) - eps*norm_s(kd+1,:)
             fm = -1._dp/sqrt(sum((x_pert-x_in)**2))
             H_ref = (fp-fm)/(2._dp*eps)
             call check(error, H(kd), H_ref, thr=1.e-6_dp, rel=.true., &

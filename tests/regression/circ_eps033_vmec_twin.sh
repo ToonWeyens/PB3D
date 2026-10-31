@@ -12,14 +12,17 @@
 # VMEC number, so that a change in the VMEC path shows.
 #
 # The twin is then run free-boundary through the 3-D vacuum (style 1:
-# alpha_style 2, 64 field lines, the deck's 100 parallel points). The response
-# of this first-order boundary-element method is 0.80 of the axisymmetric one
-# at this resolution (converging to 1), so the eigenvalue, -0.51892 on
-# 30 October 2026, lies 17 % below the HELENA style-2 value -0.44383; the test
-# anchors it at 1e-3, asks for 25 % and for free below fixed. This pins the
-# orientation of the normal that store_vac_VMEC hands to the kernels: with the
-# outward normal the response was 0.27 of the axisymmetric one and the
-# eigenvalue -0.083 (issue #4, step 6e).
+# alpha_style 2, 64 field lines, the deck's 100 parallel points). With the
+# kernels integrated along the field lines in the near field and the G
+# diagonal set by the linear-potential identity (31 October 2026), the
+# response is 0.98 to 0.99 of the axisymmetric one at this resolution and the
+# eigenvalue, -0.44910, lies 1.2 % below the HELENA style-2 value -0.44383;
+# the test anchors it at 1e-3, asks for 5 % and for free below fixed. (Before
+# that the response was 0.85 of the axisymmetric one and the eigenvalue
+# -0.51892, 17 % below.) This pins the orientation of the normal that
+# store_vac_VMEC hands to the kernels: with the outward normal the response
+# was 0.27 of the axisymmetric one and the eigenvalue -0.083 (issue #4,
+# step 6e).
 #
 # Usage: circ_eps033_vmec_twin.sh <PB3D-executable> <input-deck> <HELENA-file> <wout-file>
 set -u
@@ -32,9 +35,9 @@ WOUT_FILE=$4
 ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
 TWIN_RTOL=1e-4
-ANCHOR_FREE=-5.1892e-1
+ANCHOR_FREE=-4.4910e-1
 HEL_FREE=-4.4383e-1
-FREE_RTOL=0.25
+FREE_RTOL=0.05
 N_ALPHA=64
 
 WORKDIR=$(mktemp -d)

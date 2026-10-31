@@ -130,21 +130,30 @@ combined over all ranks.
   q\theta\):
   - the singular interval kernel (`vac_utilities::calc_GH_int_1`) against
     brute-force quadrature of \(-1/d\) over the metric half-cell (the exact
-    primitive is documented in the kernel);
+    primitive is documented in the kernel), and the half-interval integrals
+    at the regular end of the same interval against closed forms;
+  - `GH_int_1_near`: the near-field branch of the kernel (Gauss–Legendre
+    along the cubic interpolant through four points of the line) on an arc
+    with the radius of curvature of the W7-X bean tip and the spacing of
+    the 121-point field lines, the influence point a quarter interval off
+    the arc, against brute force over the exact arc (6e-4 for G, 1.2e-3 for
+    H, the error of the cubic interpolant);
   - Green's identities for the assembled matrices: with the row-sum
-    construction of the H diagonal and the inward normal \(J\nabla\psi\),
-    interior harmonics satisfy \((H+4\pi I)\phi = G\,\text{d}\phi\) and
-    exterior ones \(H\phi = G\,\text{d}\phi\) (opposite roles to style 2!),
-    converging with resolution;
+    construction of the H diagonal, the G diagonal from the linear
+    potentials and the inward normal \(J\nabla\psi\), interior harmonics
+    satisfy \((H+4\pi I)\phi = G\,\text{d}\phi\) and exterior ones
+    \(H\phi = G\,\text{d}\phi\) (opposite roles to style 2!); the residuals
+    fall from 1.0e-3 and 5.0e-3 at 41×40 to 1.2e-4 and 1.8e-3 at 81×80;
   - a manufactured exterior potential (point source on the magnetic axis)
     through the whole style-1 chain, on the circular and on a rippled
-    torus: the solve returns the boundary trace to 2 % at 81×80 and the
-    error falls with resolution;
+    torus: the solve returns the boundary trace to discretisation accuracy
+    at 81×80 and the error falls with resolution;
   - the vacuum response of the axisymmetric boundary computed with the
     full 3-D machinery against the (independently validated) axisymmetric
-    result: diagonals agree to 0.2 % (m = 1) through 9 % (m = 5, 12 points
-    per poloidal wavelength) at 61×60, and the five ratios at 81×80 are
-    held to 0.5 % of their recorded values;
+    result: the five diagonal ratios at 81×80 are 0.994 (m = 1) to 0.982
+    (m = 5) and are held to 0.5 % of their recorded values (0.965 to 0.886
+    before the near-field quadrature and the G diagonal of 31 October
+    2026);
   - `exact_exterior_2d` (catalogue item T4 of issue #4): the exact toroidal
     harmonics \(\sqrt{\cosh\eta - \cos\theta}\,F^n_{k-1/2}(\cosh\eta)
     \cos k\theta\) of the circular torus, \(F = P\) exterior and \(F = Q\)

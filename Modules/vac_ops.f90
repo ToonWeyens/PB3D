@@ -516,6 +516,11 @@ contains
     !! the integral between the  last point on a field line  and the first point
     !! on the next field lines needs to be left out.
     !!
+    !! \Note For style 1 the kernel  is integrated along the field line within
+    !! four interval  lengths of the  influence point (vac_utilities.calc_gh_int_1),
+    !! because  neighbouring field  lines can  lie much  closer together  than
+    !! the points along them.
+    !!
     !! \todo For  3-D vacuums,  step sizes  are constant.  Subsequent Richardson
     !! levels should therefore make use of the fact that the contribution to the
     !! points inherited from  the previous levels can be just  scaled by 1/2 and
@@ -810,12 +815,11 @@ contains
     integer function calc_GH_1(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in,ext_in) &
         &result(ierr)
         
-        use vac_utilities, only: calc_GH_int_1
+        use vac_utilities, only: calc_GH_int_1, dis_matvec
         use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
         use rich_vars, only: n_par_X
         use num_vars, only: tol_zero
         use vac_vars, only: in_context
-        use vac_utilities, only: vec_dis2loc
         
         character(*), parameter :: rout_name = 'calc_GH_1'
         
@@ -834,14 +838,14 @@ contains
         integer :: rd, cd                                                       ! global counters for row and column
         integer :: rdl, cdl                                                     ! local counters for row and column, used for G and H
         integer :: lims_c_loc(2)                                                ! local column limits
-        integer :: desc_res(BLACSCTXTSIZE)                                      ! descriptor for the result
+        integer :: st                                                           ! first point of the four-point stencil along the field line
         real(dp) :: dpar_X                                                      ! step size in par_X 
         real(dp) :: dalpha                                                      ! step size in alpha
         real(dp) :: tol_loc                                                     ! local tolerance on rho for singular points
         real(dp) :: G_loc(2)                                                    ! local G
         real(dp) :: H_loc(2)                                                    ! local H
-        real(dp), allocatable :: res(:,:)                                       ! sums of rows of H and vector of ones
-        real(dp), allocatable :: loc_res(:)                                     ! local res
+        real(dp), allocatable :: loc_res(:)                                     ! global vector: diagonal values or data
+        real(dp), allocatable :: lin_res(:)                                     ! global vector: matrix-vector products
         character(len=max_str_ln) :: err_msg                                    ! error message
 
         ! initialize ierr
@@ -861,6 +865,11 @@ contains
             ! spacing that is not implemented
             ierr = 1
             err_msg = '3-D vacuum needs at least 2 field lines (n_alpha > 1)'
+            CHCKERR(err_msg)
+        end if
+        if (vac%n_ang(1).lt.4) then
+            ierr = 1
+            err_msg = '3-D vacuum needs at least 4 points per field line'
             CHCKERR(err_msg)
         end if
         
@@ -884,16 +893,25 @@ contains
                     ! iterate over all pairs of columns of this subcolumn
                     ! (upper limit is one lower as lims_c_loc
                     col: do cd = lims_c_loc(1),lims_c_loc(2)-1
+                        ! skip the interval that bridges two field lines: its
+                        ! geometry connects unrelated points
+                        if (mod(cd,vac%n_ang(1)).eq.0) cycle col
+                        
                         ! set local column index
                         cdl = sum(vac%lims_c(2,1:i_cd-1)-&
                             &vac%lims_c(1,1:i_cd-1)+1) + &
                             &cd-vac%lims_c(1,i_cd)+1
                         
+                        ! four-point stencil along the field line, one-sided
+                        ! at its ends
+                        st = (cd-1)/vac%n_ang(1)*vac%n_ang(1)                   ! last point of the previous field line
+                        st = max(st+1,min(cd-1,st+vac%n_ang(1)-3))
+                        
                         ! calculate contributions to H and G
                         call calc_GH_int_1(G_loc,H_loc,&
-                            &vac%x_vec(cd:cd+1,:),x_vec_in(rd,:),&
-                            &vac%norm(cd:cd+1,:),vac%h_fac(rd,:),&
-                            &[dpar_X,dalpha],tol_loc**2)
+                            &vac%x_vec(st:st+3,:),x_vec_in(rd,:),&
+                            &vac%norm(st:st+3,:),vac%h_fac(rd,:),&
+                            &[dpar_X,dalpha],tol_loc**2,cd-st+1)
 
                         ! loop over left and right side of interval
                         ! (the contributions are weighted with the half-cell
@@ -905,9 +923,6 @@ contains
                         do kd = 0,1
                             if (cd+kd.ge.vac%lims_c(1,i_cd) .and. &             ! lower local bound
                                 &cd+kd.le.vac%lims_c(2,i_cd)) then              ! upper local bound
-                                ! cycle if first or last global point
-                                if (.not.on_field_line(cd,kd,vac%n_ang(1))) &
-                                    &cycle
                                 G_in(rdl,cdl+kd) = G_in(rdl,cdl+kd) + &
                                     &G_loc(1+kd)*dpar_X*dalpha/2._dp
                                 H_in(rdl,cdl+kd) = H_in(rdl,cdl+kd) + &
@@ -919,114 +934,75 @@ contains
             end do row
         end do subrows
         
-        ! if in context  and not external, indirctly  calculate contribution due
-        ! to fundament solution through constant potential
+        ! if in context and not external, set the diagonals: H through the
+        ! constant potential, G through the linear potentials
         if (in_context(vac%ctxt_HG) .and. .not.ext_in) then
-            if (vac%lims_c(1,1).eq.1) then                                      ! this process owns (part of) first column
-                allocate(res(vac%n_loc(1),2))
-            else
-                allocate(res(0,2))
-            end if
-            call descinit(desc_res,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed for res')
+            allocate(loc_res(vac%n_bnd),lin_res(vac%n_bnd))
             
-            ! set diagonal of H to zero
-            ! iterate over all subrows: position of singular point
-            subrows2: do i_rd = 1,size(lims_r_in,2)
-                ! iterate over all rows of this subrow
-                row2: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    ! set local row index
-                    rdl = sum(lims_r_in(2,1:i_rd-1)-&
-                        &lims_r_in(1,1:i_rd-1)+1) + &
-                        &rd-lims_r_in(1,i_rd)+1
-                    
-                    ! iterate over all subcolumns: subintegrals
-                    subcols2: do i_cd = 1,size(vac%lims_c,2)
-                        cd = rd
-                        if (vac%lims_c(1,i_cd).le.cd .and. &
-                            &cd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            ! set local column index
-                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                &vac%lims_c(1,1:i_cd-1)+1) + &
-                                &cd-vac%lims_c(1,i_cd)+1
-                            
-                            ! set diagonal of H to zero
-                            H_in(rdl,cdl) = 0._dp
-                        end if
-                    end do subcols2
-                end do row2
-            end do subrows2
-            
-            ! set res(1) to ones
-            res(:,1) = 1._dp
-            
-            ! calculate sum of rows of H
-            call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,vac%H,1,1,&
-                &vac%desc_H,res(:,1),1,1,desc_res,1,0._dp,res(:,2),&
-                &1,1,desc_res,1)
-            
-            ! add 4pi
-            res(:,2) = res(:,2) + 4*pi
-            
-            ! distribute to all processes
-            allocate(loc_res(vac%n_bnd))
-            ierr = vec_dis2loc(vac%ctxt_HG,res(:,2),vac%lims_r,loc_res,&
-                &proc=-1)
+            ! H: the row-sum identity H 1 = -4 pi 1 (interior harmonic 1)
+            loc_res = 0._dp
+            call set_diag(H_in,loc_res,.false.)                                 ! diagonal of H to zero
+            loc_res = 1._dp
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,loc_res,lin_res)             ! sum of rows of H
             CHCKERR('')
+            loc_res = -lin_res-4*pi
+            call set_diag(H_in,loc_res,.false.)
             
-            ! Put in diagonal of H
-            ! iterate over all subrows: position of singular point
-            subrows3: do i_rd = 1,size(lims_r_in,2)
-                ! iterate over all rows of this subrow
-                row3: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    ! set local row index
-                    rdl = sum(lims_r_in(2,1:i_rd-1)-&
-                        &lims_r_in(1,1:i_rd-1)+1) + &
-                        &rd-lims_r_in(1,i_rd)+1
-                    
-                    ! iterate over all subcolumns: subintegrals
-                    subcols3: do i_cd = 1,size(vac%lims_c,2)
-                        cd = rd
-                        if (vac%lims_c(1,i_cd).le.cd .and. &
-                            &cd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            ! set local column index
-                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                &vac%lims_c(1,1:i_cd-1)+1) + &
-                                &cd-vac%lims_c(1,i_cd)+1
-                            
-                            ! set diagonal of H to inverse of sum
-                            H_in(rdl,cdl) = - loc_res(rd)
-                        end if
-                    end do subcols3
-                end do row3
-            end do subrows3
+            ! G: the identity H x - G norm_x = -4 pi x for the linear interior
+            ! harmonics x, y, z, projected on the normal: the analytical
+            ! half-cell integral of calc_GH_int_1 is exact for the singular
+            ! cell, but the one-point rule across the neighbouring field lines
+            ! leaves a first-order error that depends on the lattice of
+            ! points; the identity absorbs it into the diagonal, as the row
+            ! sum does for H (issue #4, 31 October 2026)
+            lin_res = 0._dp
+            do kd = 1,3
+                ierr = dis_matvec(vac,vac%H,vac%desc_H,vac%x_vec(:,kd),loc_res)
+                CHCKERR('')
+                lin_res = lin_res + vac%norm(:,kd)*(loc_res+4*pi*vac%x_vec(:,kd))
+                ierr = dis_matvec(vac,vac%G,vac%desc_G,vac%norm(:,kd),loc_res)
+                CHCKERR('')
+                lin_res = lin_res - vac%norm(:,kd)*loc_res
+            end do
+            lin_res = lin_res/sum(vac%norm**2,2)
+            call set_diag(G_in,lin_res,.true.)
             
             ! clean up
-            deallocate(res)
-            deallocate(loc_res)
+            deallocate(loc_res,lin_res)
         end if
     contains
-        ! Checks whether an  interval lies on a field line:  the interval with
-        ! left  point cd  bridges two  different field  lines when  cd is  the
-        ! last point of  a line, and must then be  excluded entirely (for both
-        ! endpoints kd): its geometry connects unrelated points.
-        !
-        ! (An earlier version instead dropped the left-endpoint contribution
-        ! of the FIRST interval of each field  line and only the right one of
-        ! the bridge, which zeroed the quadrature weight of every field line's
-        ! first point and doubled that of its last point.)
-        logical function on_field_line(cd,kd,n_ang) result(res)
+        ! Sets the diagonal of the local matrix A_in to vec, or adds vec to it.
+        subroutine set_diag(A_in,vec,add)
             ! input / output
-            integer, intent(in) :: cd                                           ! left point of interval
-            integer, intent(in) :: kd                                           ! left (0) or right (1) point of interval
-            integer, intent(in) :: n_ang                                        ! number of points on field line
-
-            integer :: kd_loc                                                   ! local copy of kd, to avoid unused warning
-
-            kd_loc = kd
-            res = mod(cd,n_ang).ne.0                                            ! exclude bridge intervals for both endpoints
-        end function on_field_line
+            real(dp), intent(in), pointer :: A_in(:,:)                          ! local matrix
+            real(dp), intent(in) :: vec(:)                                      ! global vector of diagonal values
+            logical, intent(in) :: add                                          ! add instead of set
+            
+            ! local variables
+            integer :: i_rd, i_cd                                               ! index of subrow and column
+            integer :: rd                                                       ! global row
+            integer :: rdl, cdl                                                 ! local row and column
+            
+            do i_rd = 1,size(lims_r_in,2)
+                do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
+                    rdl = sum(lims_r_in(2,1:i_rd-1)-lims_r_in(1,1:i_rd-1)+1) &
+                        &+ rd-lims_r_in(1,i_rd)+1
+                    do i_cd = 1,size(vac%lims_c,2)
+                        if (vac%lims_c(1,i_cd).le.rd .and. &
+                            &rd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
+                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
+                                &vac%lims_c(1,1:i_cd-1)+1) + &
+                                &rd-vac%lims_c(1,i_cd)+1
+                            if (add) then
+                                A_in(rdl,cdl) = A_in(rdl,cdl) + vec(rd)
+                            else
+                                A_in(rdl,cdl) = vec(rd)
+                            end if
+                        end if
+                    end do
+                end do
+            end do
+        end subroutine set_diag
     end function calc_GH_1
     
     !> \public Calculates matrices \c G and \c H in axisymmetric configurations.

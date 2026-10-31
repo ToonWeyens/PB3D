@@ -159,7 +159,10 @@ matrices differ between process counts, `compare_petsc_mats.py` compares
 PETSc binary matrix dumps, `compare_res.py` and `compare_res_series.py`
 look at the stored 3-D vacuum response (diagonal ratios against a
 reference, eigenvalues of the Hermitian part, convergence of a series of
-runs). They were written for the investigations of 30 October 2026 and
+runs, given as output files or run directories), and `checkvac_table.py`
+turns the `CHECKVAC` lines of the run logs (`run.log` in the run
+directory, written with `check_vac = .true.`) into one table row per run.
+They were written for the investigations of 30 and 31 October 2026 and
 are kept as the record of how those tables were made.
 
 A run of the fixed-boundary deck takes 4-5 s on one Rome core, the
