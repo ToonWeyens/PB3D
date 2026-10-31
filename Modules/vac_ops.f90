@@ -2507,6 +2507,7 @@ contains
         &desc_RPhi) result(ierr)
 
         use vac_vars, only: in_context
+        use num_vars, only: check_vac, rank, n_procs
 #if ldebug
         use grid_vars, only: min_par_X, max_par_X
         use rich_vars, only: n_par_X
@@ -2528,8 +2529,14 @@ contains
         integer :: rd                                                           ! global counter for row
         integer :: rdl2, cdl2                                                   ! local counters for the diagonal
         integer :: i_rd2, i_cd2                                                 ! index of subrow and subcol for the diagonal
-        integer :: info_loc                                                     ! info variable for pdgesv
-        integer, allocatable :: ipiv(:)                                         ! pivot variable for pdgesv
+        integer :: info_loc                                                     ! info variable for ScaLAPACK
+        integer, allocatable :: ipiv(:)                                         ! pivot variable for the LU
+        integer :: iwork_q(1)                                                   ! integer workspace query
+        integer, allocatable :: iwork(:)                                        ! integer workspace of the condition estimate
+        real(dp) :: anorm, rcond                                                ! 1-norm of the operator and its reciprocal condition number
+        real(dp) :: work_q(1)                                                   ! workspace query
+        real(dp), allocatable :: work(:)                                        ! workspace of the condition estimate
+        real(dp), external :: pdlange                                           ! ScaLAPACK matrix norm
         logical :: solved_ok                                                    ! whether a verified solution was obtained
         real(dp) :: diag_shift                                                  ! diagonal shift selecting the exterior side
         real(dp), allocatable, target :: GR(:,:)                                ! GR
@@ -2691,17 +2698,45 @@ contains
 #endif
 
             if (.not.solved_ok) then
-                ! solve (H + shift I) Phi = G R with ScaLAPACK LU: pdgesv
-                ! overwrites the right-hand side with the solution and
-                ! destroys the matrix (which is why H_ext is a copy)
+                ! solve (H + shift I) Phi = G R with ScaLAPACK LU (pdgetrf and
+                ! pdgetrs, what pdgesv does): the right-hand side is
+                ! overwritten with the solution and the matrix destroyed
+                ! (which is why H_ext is a copy). With check_vac the
+                ! reciprocal condition number in the 1-norm is estimated
+                ! between the two (pdgecon) and printed as a CHECKVAC line.
                 Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                        ! same distribution
                 allocate(ipiv(vac%n_loc(1)+vac%bs))
                 ipiv = 0
-                call pdgesv(vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,Phi,&
-                    &1,1,desc_RPhi,info_loc)
+                if (check_vac) then
+                    allocate(work(vac%n_loc(2)+vac%bs))
+                    anorm = pdlange('1',vac%n_bnd,vac%n_bnd,H_ext,1,1,&
+                        &vac%desc_H,work)
+                    deallocate(work)
+                end if
+                call pdgetrf(vac%n_bnd,vac%n_bnd,H_ext,1,1,vac%desc_H,ipiv,&
+                    &info_loc)
                 if (info_loc.ne.0) then
                     ierr = 1
-                    err_msg = 'pdgesv failed with info '//trim(i2str(info_loc))
+                    err_msg = 'pdgetrf failed with info '//trim(i2str(info_loc))
+                    CHCKERR(err_msg)
+                end if
+                if (check_vac) then
+                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                        &rcond,work_q,-1,iwork_q,-1,info_loc)
+                    allocate(work(int(work_q(1))),iwork(iwork_q(1)))
+                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                        &rcond,work,size(work),iwork,size(iwork),info_loc)
+                    deallocate(work,iwork)
+                    call writo('CHECKVAC condition n_bnd='//&
+                        &trim(i2str(vac%n_bnd))//' norm1='//trim(r2strt(anorm))//&
+                        &' cond1='//trim(r2strt(1._dp/max(rcond,tiny(1._dp)))),&
+                        &persistent=rank.eq.n_procs-1)
+                end if
+                call pdgetrs('N',vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,&
+                    &Phi,1,1,desc_RPhi,info_loc)
+                if (info_loc.ne.0) then
+                    ierr = 1
+                    err_msg = 'pdgetrs failed with info '//trim(i2str(info_loc))
                     CHCKERR(err_msg)
                 end if
                 deallocate(ipiv)
