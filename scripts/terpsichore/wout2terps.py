@@ -1,11 +1,13 @@
 """Write TERPSICHORE's equilibrium file fort.18 from a VMEC netCDF wout file.
 
-Usage: python wout2terps.py wout.nc fort.18 [--flip]
+Usage: python wout2terps.py wout.nc fort.18 [--flip] [--nfp K]
 Follows srcs/vmec2terps.f of TERPSICHORE 1.2 (EPFL, 2025): header, then per surface and
 mode "m n*NFP rmnc zmns gmnc" + "sigma tau 0 0", then per surface "iotas mass mu0*pres -phips vp"
 with the js = 1 profile values zero. gmnc is taken at the (m, n) of the R, Z spectrum from the
 Nyquist set. Stellarator-symmetric files only. --flip changes the sign of phi (and so of iota
-and phips) for files written with a negative toroidal flux.
+and phips) for files written with a negative toroidal flux. --nfp K declares K field periods for a file
+written with nfp = 1 whose boundary has that periodicity (PB3D's rippled twins): only the modes with
+n a multiple of K are kept, so TERPSICHORE solves one mode family instead of every n.
 """
 import sys, numpy as np, netCDF4 as nc
 mu0 = 4e-7*np.pi
@@ -14,6 +16,10 @@ f = nc.Dataset(src); g = lambda k: np.array(f.variables[k][:])
 ns, nfp, mpol, ntor, mnmax = (int(g(k)) for k in ('ns','nfp','mpol','ntor','mnmax'))
 xm, xn = g('xm').astype(int), g('xn').astype(int)
 rmnc, zmns, gmnc = g('rmnc'), g('zmns'), g('gmnc')          # (ns, mnmax), gmnc (ns, mnmax_nyq)
+if '--nfp' in sys.argv:
+    nfp = int(sys.argv[sys.argv.index('--nfp') + 1]); keep = (xn % nfp == 0)
+    xm, xn, rmnc, zmns = xm[keep], xn[keep], rmnc[:, keep], zmns[:, keep]
+    mnmax, ntor = int(keep.sum()), int(abs(xn).max()) // nfp
 xmn, xnn = g('xm_nyq').astype(int), g('xn_nyq').astype(int)
 idx = [int(np.where((xmn == m) & (xnn == n))[0][0]) for m, n in zip(xm, xn)]
 gm = gmnc[:, idx]

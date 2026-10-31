@@ -29,3 +29,23 @@ The lines "EIGENVALUE FROM WP / WK", "NUMBER OF NEGATIVE EIGENVALUES" (below the
 "GROWTH RATE" (sqrt(|λ|/WALF), WALF printed as "AFVEN FREQUENCY SQUARED x MU_0 x MASS DENSITY")
 carry the result; fort.22 holds the eigenvector. Each run converges to the eigenvalue nearest
 the shift, so a shift scan with the count of eigenvalues below each shift brackets the spectrum.
+
+## Rippled twins and W7-X (31 October 2026, late)
+
+- `--nfp K` on `wout2terps.py` declares K field periods for a file written with nfp = 1 whose
+  boundary has that periodicity (PB3D's rippled twins, a(1 + δ cos 5ζ) with NTOR = 6): only the
+  modes with n a multiple of K are kept, and TERPSICHORE then solves one mode family (rows
+  N = n/K in the stability table) instead of every n. Rippled twin, δ = 0.04, n = 10: fixed
+  +0.078853 with the n = 10 row alone; free (wall at 2a) −0.412459 with the row alone and
+  −0.419032 with the family n = 0, 5, 10, 15, 20, against PB3D's −0.421625 at 64 field lines and −0.425321 at 128
+  (λ = ω² (B_0/R_0)², factor 1.006652 for this file).
+- The Boozer table must hold at least as many modes as the VMEC input: `fvjac` is allocated
+  with the Boozer count and filled with the VMEC count (`tprgl0_block_ap.f:666`), and the
+  release build stops with a bare backtrace. W7-X with 288 modes needs n/5 = −12..12, m ≤ 14.
+- A stable shift in a family run returns a continuum point, not a mode: the stable spectrum of
+  a family is dense (the rippled twin's fixed-boundary family gave 0.07766, 0.07797 and 0.08601
+  for the shifts 0.070, 0.078 and 0.086). Compare discrete (unstable) eigenvalues, or a single
+  row when the continuum is empty near the shift.
+- `srcs_fix/tpr_ap.x` is the corrected build (the two kinetic-energy lines swapped);
+  `runs/run_terps_cases.sh case ...` runs a list of case directories (each with fort.18 and
+  <case>.data) and prints the result lines.
