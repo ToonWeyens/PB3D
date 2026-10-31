@@ -223,7 +223,9 @@ contains
             end do
         end do
     end function fourier2real_1
-    !> \private version with angles
+    !> \private Angle version: the trigonometric basis is built here for the
+    !! angles given (calc_trigon_factors()) and the table version does the
+    !! rest, so both versions share one code path.
     integer function fourier2real_2(varf_c,varf_s,theta,zeta,varr,sym,deriv,&
         &mn) result(ierr)
         
@@ -240,104 +242,12 @@ contains
         integer, intent(in), optional :: mn(:,:)                                !< mode numbers (m, n) of the Fourier coefficients (default: \c mn_V)
         
         ! local variables
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        integer :: dims(3)                                                      ! dimensions of varr
-        integer :: id, kd                                                       ! counters
-        integer :: n_mod                                                        ! number of modes
-        integer, allocatable :: mn_loc(:,:)                                     ! local mn
-        integer :: deriv_loc(2)                                                 ! local derivative
-        logical :: sym_loc(2)                                                   ! local sym
-        real(dp) :: deriv_fac                                                   ! factur due to derivatives
-        real(dp), allocatable :: ang(:,:,:)                                     ! angle of trigonometric functions
+        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      ! trigonometric basis at these angles
         
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local deriv and sym
-        deriv_loc = [0,0]
-        sym_loc = [.true.,.true.]
-        if (present(deriv)) deriv_loc = deriv
-        if (present(sym)) sym_loc = sym
-        
-        ! set local mode list
-        n_mod = size(varf_c,1)
-        allocate(mn_loc(n_mod,2))
-        if (present(mn)) then
-            if (size(mn,1).ne.n_mod .or. size(mn,2).ne.2) then
-                ierr = 1
-                err_msg = 'Mode list does not match the Fourier coefficients'
-                CHCKERR(err_msg)
-            end if
-            mn_loc = mn
-        else
-            if (n_mod.ne.mnmax_V) then
-                ierr = 1
-                err_msg = 'Fourier coefficients are not on the main VMEC mode &
-                    &set; pass their mode list through mn'
-                CHCKERR(err_msg)
-            end if
-            mn_loc = mn_V
-        end if
-        
-        ! test
-        if (.not.sym_loc(1) .and. .not.sym_loc(2)) then
-            ierr = 1
-            err_msg = 'Need at least the cosine or the sine factor'
-            CHCKERR(err_msg)
-        end if
-        
-        ! set dimensions
-        dims = shape(varr)
-        
-        ! initialize angle
-        allocate(ang(dims(1),dims(2),dims(3)))
-        
-        ! initialize output
-        varr = 0.0_dp
-        
-        ! sum over modes
-        do id = 1,n_mod
-            ! set angle
-            ang = mn_loc(id,1)*theta - mn_loc(id,2)*zeta
-            
-            ! setup derivative factor for varf_c
-            deriv_fac = mn_loc(id,1)**deriv_loc(1)*(-mn_loc(id,2))**deriv_loc(2)*&
-                &(-1)**((sum(deriv_loc)+1)/2)
-            
-            ! add terms ~ varf_c
-            if (sym_loc(1)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * cos(ang(:,:,kd))
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_c(id,kd) * deriv_fac * sin(ang(:,:,kd))
-                    end do
-                end if
-            end if
-            
-            ! setup derivative factor for varf_s
-            deriv_fac = mn_loc(id,1)**deriv_loc(1)*(-mn_loc(id,2))**deriv_loc(2)*&
-                &(-1)**(sum(deriv_loc)/2)
-            
-            ! add terms ~ varf_s
-            if (sym_loc(2)) then
-                if (mod(sum(deriv_loc),2).eq.0) then                            ! even number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * sin(ang(:,:,kd))
-                    end do
-                else                                                            ! odd number of derivatives
-                    do kd = 1,dims(3)
-                        varr(:,:,kd) = varr(:,:,kd) + &
-                            &varf_s(id,kd) * deriv_fac * cos(ang(:,:,kd))
-                    end do
-                end if
-            end if
-        end do
+        ierr = calc_trigon_factors(theta,zeta,trigon_factors)
+        CHCKERR('')
+        ierr = fourier2real_1(varf_c,varf_s,trigon_factors,varr,sym,deriv,mn)
+        CHCKERR('')
     end function fourier2real_2
     
     !> Calculate the trigonometric cosine and sine basis.
