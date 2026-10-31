@@ -516,7 +516,7 @@ contains
     !! the integral between the  last point on a field line  and the first point
     !! on the next field lines needs to be left out.
     !!
-    !! \Note For style 1 the kernel  is integrated along the field line within
+    !! \note For style 1 the kernel  is integrated along the field line within
     !! four interval  lengths of the  influence point (vac_utilities.calc_gh_int_1),
     !! because  neighbouring field  lines can  lie much  closer together  than
     !! the points along them.
