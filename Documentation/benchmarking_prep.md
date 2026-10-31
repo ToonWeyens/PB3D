@@ -209,6 +209,8 @@ Agreement between global codes in 3-D, to set expectations before the single-n q
 
 ### 3a. TERPSICHORE (open source since 2025)
 
+**Status, night of 31 October 2026 (this week):** built on Snellius without changes, benchmark reproduced; `scripts/terpsichore/` holds the netCDF-to-fort.18 converter and the card generator; the shipped 1.2 release has a parity error in its MODELK 2 kinetic energy (`tprgl5_block_ap.f` 776 and 779, sine and cosine tables swapped for the η–η and ξ–η terms; the poloidal displacement then carries no mass), which made the circular twin come out at λ = +0.151 fixed and −1.725 with the wall at 2a; with the two lines swapped TERPSICHORE gives +0.07851 and −0.43847 against PB3D's +0.07843 and −0.43914 (0.10 % and 0.15 %), MISHKA 0.43378 (1.1 %). The cbm18a twin shows core resonant modes at q = 1.1 that PB3D's window excludes; with the corrected kinetic energy it finds no eigenvalue below −0.045 (PB3D −0.0446, MISHKA −0.0421) and a spurious −0.011 inside the zero-pressure extension, so the pedestal comparison needs a cbm18a without the extension, as for MISHKA. Steps 1 to 3 below remain as written.
+
 TERPSICHORE solves global linear ideal MHD with hybrid finite elements radially and Fourier in both angles, maps the VMEC solution to Boozer coordinates and runs one mode family per call [read]. It is the only global 3-D ideal code that can be downloaded and run without an agreement [inference, survey B]. It treats the vacuum as a pseudo-plasma inside a wall [read], so only fixed-boundary results compare with PB3D. Fu (IAEA 2000) ran it at n = 19, 22 and 25 [read], so n = 20 is within its range.
 
 Install plan:
