@@ -2004,6 +2004,8 @@ contains
         real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
         character(len=max_str_ln) :: pot_name                                   ! name of test potential
         character(len=max_str_ln) :: res_str                                    ! residuals as string
+        integer :: file_i                                                       ! file unit of the per-point output
+        real(dp) :: c_exp                                                       ! expected offset of the identity
 
         ! initialize ierr
         ierr = 0
@@ -2060,6 +2062,10 @@ contains
             call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
                 &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
                 &trim(res_str),persistent=rank_o)
+            c_exp = 0._dp
+            if (kd.le.5) c_exp = -4._dp*pi                                      ! interior harmonics
+            call write_points('check_vac_identity_'//trim(pot_name)//'.dat',&
+                &abs(lhs-c_exp*phi)/maxval(abs(4._dp*pi*phi)))
         end do
 
         ! exterior solves
@@ -2087,10 +2093,31 @@ contains
                 &trim(i2str(n_bnd))//' min_dist='//trim(r2strt(d_min))//&
                 &' err_max='//trim(r2strt(err_max))//' err_2='//&
                 &trim(r2strt(err_2)),persistent=rank_o)
+            call write_points('check_vac_solve_'//trim(pot_name)//'.dat',&
+                &abs(phi_num-phi)/maxval(abs(phi)))
         end do
 
         call lvl_ud(-1)
     contains
+        ! Writes a per-point quantity with the point's parallel and field-line
+        ! indices and position, for the localization of the errors.
+        !> \private
+        subroutine write_points(file_name,val)
+            character(*), intent(in) :: file_name                               ! file name
+            real(dp), intent(in) :: val(:)                                      ! value per boundary point
+            
+            integer :: id                                                       ! counter
+            
+            if (.not.rank_o) return
+            open(newunit=file_i,file=file_name,status='replace')
+            write(file_i,'(A)') '# id i_par i_line x y z value'
+            do id = 1,n_bnd
+                write(file_i,'(3I7,4ES15.7)') id, mod(id-1,vac%n_ang(1))+1, &
+                    &(id-1)/vac%n_ang(1)+1, vac%x_vec(id,:), val(id)
+            end do
+            close(file_i)
+        end subroutine write_points
+        
         ! Sets phi and dphi = norm . grad phi for test potential kd.
         !> \private
         subroutine set_pot(kd)
