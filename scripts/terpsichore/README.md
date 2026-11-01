@@ -49,3 +49,17 @@ the shift, so a shift scan with the count of eigenvalues below each shift bracke
 - `srcs_fix/tpr_ap.x` is the corrected build (the two kinetic-energy lines swapped);
   `runs/run_terps_cases.sh case ...` runs a list of case directories (each with fort.18 and
   <case>.data) and prints the result lines.
+
+## Pedestal equilibria (1 November 2026)
+
+- `LCURRF = 9` (parallel current from the geometry) is now the card default. The release default, charge
+  conservation (`LCURRF = 1`), loses the edge current of a pedestal: on the cbm18a plasma cut at the foot
+  it gave one eighth of the n = 10 growth rate (−0.00502 against −0.03991); the circular kink does not care.
+- `LPRESS = 2` (pressure gradient from the VMEC file) is the default too; it changed nothing on the cut
+  case, whose force-balance reconstruction matched the input to four digits.
+- `MPINIT` (optional argument after `m_lo m_hi`) shifts the stability table's columns to m = M + MPINIT,
+  so that m up to 65 fits in 56 columns (n = 20 on the cut case: m = 15 to 60).
+- `NMAXDF` is sized as 2 max|N| + 2: the convolution table holds sums of two toroidal numbers and the
+  release default 38 fails at n = 20 (`lfx` index 40).
+- The VMEC input may hold at most 997 surfaces (`EQINVM` dimensions); a 1279-surface twin stops at once.
+- Results on the cut cbm18a and the recipe: `tests/reference/cbm18a_cut/README.md`.

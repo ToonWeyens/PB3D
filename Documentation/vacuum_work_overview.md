@@ -48,6 +48,7 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | Tests, regression | cbm18a fixed (one, two and four processes), free with styles 2 and 4 and the response check, HELENA shear, circular ε = 0.05 kink against MISHKA, circular ε = 0.33 HELENA against its VMEC twin fixed and free through the 3-D vacuum; anchors reproducible to 1e−12 on macOS, Ubuntu and Snellius |
 | CI | eight GitHub Actions jobs: lint, unit Debug and Release, full stack, full stack Debug, sanitiser, docs, coverage; compiler-warning and Doxygen ratchets |
 | Fixtures | cbm18a (xz), circular ε = 0.05 and 0.33 HELENA cases with their inputs, the VMEC twin with its recipe (`make_vmec_twin.sh`, `vmec_twin.py`), MISHKA and cylinder references |
+| Equilibria made here | the circular ε = 0.33 and 0.05 HELENA cases, their VMEC twins at 159 to 1279 surfaces, the rippled twins, the cbm18a plasma cut at the pedestal foot with HELENA (`tests/reference/cbm18a_cut/`, scaled from the extended input without fitting) and its VMEC twin |
 | Scripts | `scripts/snellius/` (build, `run_deck.sbatch`, response and check comparisons), `scripts/terpsichore/` (netCDF to `fort.18` with `--flip` and `--nfp`, card generator, recipe), `Documentation/figures/step0/make_figures.py` |
 | Documentation | the plan and log, `benchmarking_prep.md` with three literature surveys, `testing.md`, `quality-and-ci.md`, `snellius-setup.md`, `spack-setup.md`, the openwiki pages |
 | External codes set up | MISHKA-1 rebuilt on arm64 with ILP64 BLAS; HELENA `hel12a`; TERPSICHORE 1.2 built on Snellius, with a corrected copy for its kinetic-energy parity error; VMEC++ for the twins; a Snellius stack with PETSc, SLEPc, MUMPS, PSPLINE and LIBSTELL under `~/pb3d` |
@@ -65,7 +66,9 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | Circular ε = 0.05 kink, n = 10, 15, 20 | | MISHKA-1 | 1.2, 0.55, 0.26 %, falling as 1/n² (the high-n ordering) |
 | Rippled twin δ = 0.04, five periods, external kink, 3-D vacuum | −0.42100 at 128 × 200; −0.41822 at 128 × 400 | TERPSICHORE n = 0..20 family −0.41626 in PB3D's units | 1.1 % at 128 × 200, 0.47 % at 128 × 400; the unrippled twin is at 2e−5 at that resolution, so half a percent sits in the treatment of the ripple itself (PB3D's field-line average of the sideband coupling, or TERPSICHORE's truncation) |
 | Rippled twin, sideband coupling | carried by PB3D's field-line representation | TERPSICHORE single row n = 10 against the family: 1.6 % | consistent |
-| cbm18a pedestal case on the extended equilibrium, n = 10, 15, 20 | 6, 15, 18 % more unstable | MISHKA-1 | not understood |
+| cbm18a cut at the pedestal foot, n = 10, 15, 20, fixed boundary | −0.04012, −0.08128, −0.11120 | TERPSICHORE −0.03991, −0.07951, −0.10701 | 0.5, 2, 4 % |
+| same, free boundary | −0.05002, −0.08577, −0.11209 | TERPSICHORE (wall at 2a) −0.04979, −0.08441, −0.10753 | 0.5, 1.6, 4 % |
+| same, both boundaries | | MISHKA-1 0.03637, 0.07009, 0.09290 fixed; 0.04492, 0.07407, 0.09453 free | MISHKA-1 is 9 to 16 % less unstable than PB3D and TERPSICHORE; cause not identified |
 | W7-X standard case, n = 10 | stable, dense spectrum | TERPSICHORE, no eigenvalue below −1e−4 | no discrete mode to compare at this pressure |
 | TERPSICHORE's own benchmark | | reproduced to the last digit | its release has a parity error in the physical kinetic-energy model; corrected in a source copy, report drafted |
 
@@ -93,7 +96,7 @@ Do not pass, or are not validated:
 ## 6. Where uncertainty remains
 
 - MISHKA-1 sits 1.1 % less unstable than PB3D and TERPSICHORE on the converged circular kink. The inertia model is the likely cause and has not been checked.
-- The cbm18a gap of 6 to 18 % against MISHKA-1 is not understood. A clean comparison needs an equilibrium that ends at the pedestal foot (the extension to ψ_N = 1 adds rational surfaces), or ELITE.
+- MISHKA-1 is 9 to 16 % less unstable than PB3D and TERPSICHORE on the cbm18a pedestal mode (the plasma cut at the foot, `tests/reference/cbm18a_cut/`), fixed boundary included, and 1.1 % on the circular kink. Two codes agree against one; the cause in MISHKA-1 (inertia model, its equation set) is not identified, and ELITE would be the natural third opinion on the pedestal mode.
 - The 3-D vacuum is expensive at the accuracy shown: 128 lines × 400 parallel points is 51 000 boundary points, 220 GB and 39 minutes on eight cores for 0.1 %; at 64 lines × 100 points expect about 1 %. A higher-order projection of the modes along the lines would cut this.
 - W7-X has no benchmark yet: the standard case is stable at n = 10 in both codes, and the W7-X vacuum response converges only when lines and points are refined together (61 points per line are too few). A higher-pressure W7-X is the way to a 3-D stellarator comparison.
 - The fast mode window (`X_style` 2) is not a nested trial space (6e−4 on cbm18a); double `n_mod_X` once when it matters.
