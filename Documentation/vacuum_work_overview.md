@@ -2,14 +2,16 @@
 
 Branch `dev/vacuum-fixes`, draft PR #5 to `master`, tracking issue #4. Seventy-three commits in two stretches: the modernisation of July 2026 and the vacuum work of 27 October to 1 November 2026. The detailed log is `Documentation/plan_vacuum_bugfix.md`; this page is the outcome only.
 
+Two different "styles" appear below. `vac%style` is the vacuum method, set by the equilibrium code: `vac%style` 1 is the 3-D boundary-element method on field lines (VMEC), `vac%style` 2 the axisymmetric one with toroidal harmonics (HELENA). `BC_style` is the input for the boundary conditions; its second value is the condition at the plasma edge: 1 fixed boundary, 2 the free boundary through the variational (Hermitian) surface energy, 4 the free boundary through an explicit natural-boundary-condition row.
+
 ## 1. Where we started, where we are
 
 | | Before (PB3D 2.47, 2018 to 2020 code) | Now (2.49, this branch) |
 |---|---|---|
 | Build | PETSc 3.9 API, no longer buildable on a current machine | PETSc/SLEPc 3.25 on macOS arm64, Snellius and GitHub Actions |
 | Tests | none that ran | unit, full-stack and regression layers under CTest; eight CI jobs, all green |
-| Axisymmetric vacuum (HELENA, style 2) | solved the interior problem; result never checked | exterior problem, Hermitian response; free-boundary eigenvalues within 0.3 % of TERPSICHORE on the circular kink when the HELENA mapping is fine enough, and within 0.5 % on the cbm18a pedestal mode at n = 10 |
-| 3-D vacuum (VMEC, field-line style 1) | code present, never gave a right answer | converges; reproduces TERPSICHORE's free-boundary eigenvalue to 2e−5 on the circular twin and runs on a rippled torus and on W7-X |
+| Axisymmetric vacuum (HELENA, `vac%style` 2) | solved the interior problem; result never checked | exterior problem, Hermitian response; free-boundary eigenvalues within 0.3 % of TERPSICHORE on the circular kink when the HELENA mapping is fine enough, and within 0.5 % on the cbm18a pedestal mode at n = 10 |
+| 3-D vacuum (VMEC, field lines, `vac%style` 1) | code present, never gave a right answer | converges; reproduces TERPSICHORE's free-boundary eigenvalue to 2e−5 on the circular twin and runs on a rippled torus and on W7-X |
 | Fixed boundary | the one result that was trusted, but 6.5 % too stable through the HELENA shear bug and 2e−5 process-count dependent | HELENA and VMEC paths agree to 2e−6, process counts to 1.5e−8, TERPSICHORE to 0.1 % on the circular case and 0.5 % on the cbm18a pedestal mode at n = 10 |
 
 ## 2. Changes to the PB3D and POST code
@@ -19,15 +21,15 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | Where | Fixed | New |
 |---|---|---|
 | `SLEPC_ops`, `SLEPC_utilities` | port from the PETSc 3.9 API to 3.25 (July) | |
-| `vac_ops` `solve_Phi_BEM` | the axisymmetric style solved the interior system; it now solves the exterior one, (H + 4πI)Φ = G R (July) | |
-| `vac_ops` `calc_GH_int_1` | singular interval integral, quadrature weights, sign and a `**(−3)` far-field factor in the 3-D kernels (July) | near-field integration along the field line, Gauss–Legendre on the cubic interpolant through four points (31 October) |
+| `vac_ops` `solve_Phi_BEM` | the axisymmetric vacuum (`vac%style` 2) solved the interior system; it now solves the exterior one, (H + 4πI)Φ = G R (July) | |
+| `vac_utilities` `calc_GH_int_1`, `vac_ops` `calc_GH_1` | singular interval integral, quadrature weights, sign and a `**(−3)` far-field factor in the 3-D kernels (July) | near-field integration along the field line, Gauss–Legendre on the cubic interpolant through four points (31 October) |
 | `vac_ops` `calc_GH_1` | α spacing 2π/n_alpha instead of 2π/(n_alpha − 1); G and H no longer counted twice across Richardson levels | G diagonal from the identity for the linear interior harmonics, as the row sum sets the H diagonal |
 | `vac_ops` `store_vac_VMEC` | handed the kernels the outward normal where they take the inward one; the 3-D response was 3 to 4 times too small | |
 | `vac_ops` | | `check_vac_exact` and the input `check_vac`: Green identities and exact exterior solves on the real surface, per-point files, condition estimate |
 | `SLEPC_ops` energy assembly | the vacuum entered with the wrong sign and without the factor 2π, so it destabilised; now −2π X_e^H res X_e with the Hermitian part of the response | |
 | `SLEPC_ops` `fill_mat` | the free end point carried the full radial weight h instead of h/2; free-boundary eigenvalues converged at first order in `n_r_sol` | |
-| `SLEPC_utilities` boundary conditions | style 4 overwrote the vacuum block; style 3 removed; default back to `BC_style = 1 2` | style 2, the variational (Hermitian) free-boundary condition (July) |
-| `HELENA_ops` | the shear used the even spline condition on the odd Θ^α since June 2018; cbm18a was 6.5 % too stable | |
+| `SLEPC_utilities` boundary conditions | `BC_style` 4 overwrote the vacuum block; `BC_style` 3 removed; default back to `BC_style = 1 2` | `BC_style` 2, the variational (Hermitian) free-boundary condition (July) |
+| `eq_ops` `calc_derived_q`, HELENA branch | the shear used the even spline condition on the odd Θ^α since June 2018; cbm18a was 6.5 % too stable | |
 | `X_ops`, `X_utilities` `setup_modes` | the slot of a mode was wrong for nq < 0; now from the mode number, with a consistency check | |
 | `VMEC_ops` `read_VMEC` | Jacobian, |B| and covariant B taken from the Nyquist arrays as if they followed the main mode list (37 % error on VMEC++ files with ntor > 0); matched by (m, n) | |
 | `VMEC_ops` normalisation | B_0 was |B| on the axis at θ = ζ = 0, which varies with the ripple; now the toroidal average | |
@@ -44,8 +46,8 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | Kind | What |
 |---|---|
 | Tests, unit | `dtorh` against 30-digit references up to degree 80, string and numerical utilities, mode-index and Richardson arithmetic |
-| Tests, full-stack | vacuum kernels, Green identities, 3-D vacuum on an analytic torus against the axisymmetric style (`response_1_vs_2`, recorded ratios), `GH_int_1_near`, `exact_exterior_2d` (exact toroidal harmonics through style 2), `point_source_3d`, splines, volume integral, HELENA golden file |
-| Tests, regression | cbm18a fixed (one, two and four processes), free with styles 2 and 4 and the response check, HELENA shear, circular ε = 0.05 kink against MISHKA, circular ε = 0.33 HELENA against its VMEC twin fixed and free through the 3-D vacuum; anchors reproducible to 1e−12 on macOS, Ubuntu and Snellius |
+| Tests, full-stack | vacuum kernels, Green identities, 3-D vacuum (`vac%style` 1) on an analytic torus against the axisymmetric one (`vac%style` 2) (`response_1_vs_2`, recorded ratios), `GH_int_1_near`, `exact_exterior_2d` (exact toroidal harmonics through `vac%style` 2), `point_source_3d`, splines, volume integral, HELENA golden file |
+| Tests, regression | cbm18a fixed (one, two and four processes), free with `BC_style` 2 and 4 and the response check, HELENA shear, circular ε = 0.05 kink against MISHKA, circular ε = 0.33 HELENA against its VMEC twin fixed and free through the 3-D vacuum; anchors reproducible to 1e−12 on macOS, Ubuntu and Snellius |
 | CI | eight GitHub Actions jobs: lint, unit Debug and Release, full stack, full stack Debug, sanitiser, docs, coverage; compiler-warning and Doxygen ratchets |
 | Fixtures | cbm18a (xz), circular ε = 0.05 and 0.33 HELENA cases with their inputs, the VMEC twin with its recipe (`make_vmec_twin.sh`, `vmec_twin.py`), MISHKA and cylinder references |
 | Equilibria made here | the circular ε = 0.33 and 0.05 HELENA cases, their VMEC twins at 159 to 1279 surfaces, the rippled twins, the cbm18a plasma cut at the pedestal foot with HELENA (`tests/reference/cbm18a_cut/`, scaled from the extended input without fitting) and its VMEC twin |
@@ -84,8 +86,8 @@ Pass:
 
 Do not pass, or are not validated:
 
-- Boundary-condition style 4 is 7 % off style 2 on the circular kink and first order in the radial grid; kept as a change detector only.
-- The axisymmetric style 2 is first order in HELENA's poloidal points (1 % at the fixtures' 257 and 401 points), and its sequence stops being monotone at 2049 points; the free-boundary anchors therefore pin reproducibility, not converged values.
+- `BC_style` 4 is 7 % off `BC_style` 2 on the circular kink and first order in the radial grid; kept as a change detector only.
+- The axisymmetric vacuum, `vac%style` 2, is first order in HELENA's poloidal points (1 % at the fixtures' 257 and 401 points), and its sequence stops being monotone at 2049 points; the free-boundary anchors therefore pin reproducibility, not converged values.
 - cbm18a converges only at first order in the radial grid (its 22 rational surfaces); the 200-point anchors are 0.5 % from the limit, and the cut case moves 1 % between 200 and 400 points at n = 20.
 - The mutation test for the 2π/n_alpha spacing is inside the tolerances of the 3-D tests; the full-stack tests check orders, not values, there.
 - Sixteen MPI processes hang in the parallel HDF5 write on the W7-X decks; four work.
@@ -100,10 +102,10 @@ Do not pass, or are not validated:
 - The 3-D vacuum is expensive at the accuracy shown: 128 lines × 400 parallel points is 51 000 boundary points, 220 GB and 39 minutes on eight cores for 0.1 %; at 64 lines × 100 points expect about 1 %. A higher-order projection of the modes along the lines would cut this.
 - W7-X has no benchmark yet: the standard case is stable at n = 10 in both codes, and the W7-X vacuum response converges only when lines and points are refined together (61 points per line are too few). A higher-pressure W7-X is the way to a 3-D stellarator comparison.
 - The fast mode window (`X_style` 2) is not a nested trial space (6e−4 on cbm18a); double `n_mod_X` once when it matters.
-- The TERPSICHORE correction rests on the parity argument and two cases, and its default parallel current from charge conservation loses a pedestal's edge current (one eighth of the growth rate); both belong in the report to EPFL, which is Toon's to send, as are the GCC bug report and the merge of PR #5.
+- The TERPSICHORE correction rests on the parity argument and two cases, and its default parallel current from charge conservation loses a pedestal's edge current (one eighth of the n = 10 eigenvalue of the cut cbm18a, about a third of the growth rate); both belong in the report to EPFL, which is Toon's to send, as are the GCC bug report and the merge of PR #5.
 
 ## 7. Work bucket
 
-- POST plotting into the vacuum: check `plot_vac_pot` on the 3-D style, draw the perturbation and the potential across the interface, add the vacuum energy density |∇φ|²/2μ₀ to the energy reconstruction.
+- POST plotting into the vacuum: check `plot_vac_pot` on the 3-D vacuum (`vac%style` 1), draw the perturbation and the potential across the interface, add the vacuum energy density |∇φ|²/2μ₀ to the energy reconstruction.
 - A Claude skill in the repository that runs PB3D for other users: equilibrium in, deck choices made with the convergence rules above, run locally or through Slurm, eigenvalue and POST plots out.
 - From the benchmarking plan: GPEC's 3-D VACUUM (C6) or CASTOR3D (C7) on the rippled case as a fourth vacuum method; DESC's singular integrals on the kernels (C9); COBRAVMEC at large n (L11); ELITE on the cut cbm18a as the third opinion against MISHKA-1; a higher-pressure W7-X; TERPSICHORE's radial convergence at n = 20 on the cut case (its input stops at 997 surfaces).

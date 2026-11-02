@@ -54,7 +54,7 @@ the shift, so a shift scan with the count of eigenvalues below each shift bracke
 
 - `LCURRF = 9` (parallel current from the geometry) is now the card default. The release default, charge
   conservation (`LCURRF = 1`), loses the edge current of a pedestal: on the cbm18a plasma cut at the foot
-  it gave one eighth of the n = 10 growth rate (−0.00502 against −0.03991); the circular kink does not care.
+  it gave one eighth of the n = 10 eigenvalue (−0.00502 against −0.03991), a third of the growth rate; the circular kink does not care.
 - `LPRESS = 2` (pressure gradient from the VMEC file) is the default too; it changed nothing on the cut
   case, whose force-balance reconstruction matched the input to four digits.
 - `MPINIT` (optional argument after `m_lo m_hi`) shifts the stability table's columns to m = M + MPINIT,

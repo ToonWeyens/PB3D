@@ -10,7 +10,7 @@ AWALL = float(a[12]); MODELK = int(a[13]); NSTA = int(a[14]); AL0 = float(a[15])
 m_lo = int(a[16]) if len(a) > 16 else 1; m_hi = int(a[17]) if len(a) > 17 else MMS
 MPINIT = int(a[18]) if len(a) > 18 else 0   # the stability table's column M stands for m = M + MPINIT
 LPRESS = int(a[19]) if len(a) > 19 else 2   # 2: pressure gradient from the VMEC file; 0: reconstructed from the force balance
-LCURRF = int(a[20]) if len(a) > 20 else 9   # 9: parallel current from the geometry; 1: from charge conservation, which loses the edge current of a pedestal (factor 8 in the growth rate of the cut cbm18a at n = 10)
+LCURRF = int(a[20]) if len(a) > 20 else 9   # 9: parallel current from the geometry; 1: from charge conservation, which loses the edge current of a pedestal (factor 8 in the eigenvalue of the cut cbm18a at n = 10)
 L = []
 L.append(' ' * 15 + '%-8s' % title); L.append('C'); L.append('C        MM  NMIN  NMAX   MMS NSMIN NSMAX NPROCS INSOL')
 L.append('     ' + ''.join('%6d' % v for v in (MM, NMIN, NMAX, MMS, NSMIN, NSMAX, 1, 0)))

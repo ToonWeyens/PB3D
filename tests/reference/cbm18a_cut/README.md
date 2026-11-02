@@ -29,4 +29,5 @@ Results, n = 10, 15, 20, ω²/ω_A² (PB3D units; TERPSICHORE's λ equals ω² f
 PB3D and TERPSICHORE agree to 0.5 % at n = 10 and 3 to 4 % at n = 20 (PB3D is first order in its radial
 grid on cbm18a, 1 % between 200 and 400 points at n = 20); MISHKA-1 is 9 to 16 % less unstable than both.
 TERPSICHORE needs `LCURRF = 9` (parallel current from the geometry): its default reconstruction from
-charge conservation loses the pedestal's edge current and gives one eighth of the growth rate at n = 10.
+charge conservation loses the pedestal's edge current and gives one eighth of the eigenvalue at n = 10
+(about a third of the growth rate).
