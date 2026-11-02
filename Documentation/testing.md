@@ -262,6 +262,24 @@ applies the one-line guard `Libraries/pspline-r8genxpkg-nx3.patch`; the
 regression runners launch PB3D once and treat any crash as a failure
 (issue #4, step 1).
 
+## Python helpers
+
+The HDF5 checks of the regression layer (`tests/regression/check_*.py`), the
+reference derivations in `tests/reference/`, the figure scripts and the
+Snellius and TERPSICHORE scripts need numpy, h5py, scipy, sympy, matplotlib
+and netCDF4. `pyproject.toml` and `uv.lock` describe that environment for
+[uv](https://docs.astral.sh/uv/); `.venv/` itself is not committed:
+
+```bash
+uv sync                                   # .venv with everything except vmecpp
+uv sync --group vmec                      # also vmecpp, for tests/reference/vmec_twin.py
+uv run python tests/reference/cyl_kink.py
+```
+
+CMake finds a Python by itself. To make the regression layer use this one,
+configure with `-DPython3_EXECUTABLE=$PWD/.venv/bin/python`. CI does not use
+uv: its jobs install the pinned `h5py` with pip (`.github/workflows/tests.yml`).
+
 ## Relation to the older test mechanisms
 
 - `Test/` (capital T) holds historical standalone scratch programs with their

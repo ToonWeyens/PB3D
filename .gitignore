@@ -13,3 +13,6 @@ build-*/
 # built minimal LIBSTELL (Libraries/build_libstell_min.sh output)
 Libraries/libstell-min/
 doc/
+
+# Python environment made by uv sync (pyproject.toml, uv.lock)
+.venv/
