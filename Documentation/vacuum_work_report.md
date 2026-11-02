@@ -1057,6 +1057,8 @@ The lowest TERPSICHORE eigenvalue sits at the ι = 10/11 surface, s = 0.63, insi
 
 **The benchmark.** The QAS3 n = 1 case reproduced to the last digit (section 3.2).
 
+**Its vacuum.** The open release 1.2 treats the vacuum as a pressureless, currentless pseudo-plasma on extra surfaces out to a conformal wall; every free-boundary number in this report used a wall at 1.5a or 2a, which for these modes acts as no wall. The input `IGREEN` allocates a Green's-function vacuum matrix `wvac`, but nothing in the release fills it. The Green's-function TERPSICHORE results of Merkel, Nührenberg and Cooper, "Free-boundary ideal MHD modes in W7-AS", CRPP Lausanne report LRP 555/96, pp. 51–58 (1996) are therefore not reproducible with the open code. The agreement with PB3D is between two different vacuum methods: boundary elements without a wall, and a pseudo-plasma with a distant wall.
+
 **The kinetic-energy parity error (31 October, night).** On the circular twin the release gave λ = +0.15099 fixed and −1.7248 with the wall at 2a; −1.7253 with the wall at 1.5a. A source reading found the cause in the MODELK 2 kinetic energy, `srcs/tprgl5_block_ap.f` lines 776 and 779. The ηη term, even in parity, is summed against the sine table, and the ξη term, odd, against the cosine table. For an up-down symmetric equilibrium both vanish, and the poloidal displacement carries no mass. A copy of the source with the two tables swapped, `srcs_fix`, rebuilt in 22 s:
 
 | Circular twin, n = 10 | release | corrected | PB3D | Distance |
@@ -1318,7 +1320,7 @@ Step 9 saved 22 % of the W7-X run's memory, not the 3.6 GB the plan had estimate
 ### 11.3 The cost of the 3-D vacuum
 
 - **Evidence.** 128 lines × 400 parallel points is 51 000 boundary points, 220 GB and 39 minutes on eight cores, for 0.1 % on the circular kink. At 64 × 100 the error is about 1 %. Each dense n_bnd × n_bnd matrix is 7.7 GB at 31 000 points. STRUMPACK's compression fails on the 3-D kernels, so the solve is a dense LU.
-- **Next experiment.** A higher-order projection of the modes along the lines (section 11.9). `Documentation/benchmarking_prep.md`, item 7, lists end corrections or a closed field-line lattice, with the Wu-Martinsson diagonal as a check. Toon picks the method.
+- **Next experiment.** A higher-order projection of the modes along the lines (section 11.9), or a vacuum in a Fourier basis as in CAS3D (section 12.1), which would shrink the system itself. `Documentation/benchmarking_prep.md`, item 7, lists end corrections or a closed field-line lattice, with the Wu-Martinsson diagonal as a check. Toon picks the method.
 
 ### 11.4 W7-X needs an unstable case
 
@@ -1374,10 +1376,11 @@ What complicates the claim:
 
 ## 12. Work bucket and roadmap
 
-### 12.1 Toon's items (31 October, late; not started)
+### 12.1 Toon's items (31 October, late, and 2 November; not started)
 
 - **POST plotting into the vacuum.** Check `plot_vac_pot`, which computes the potential at external points through `calc_GH`, on the 3-D field-line vacuum, `vac%style` 1. Draw the perturbation and the potential across the plasma-vacuum interface into the vacuum. Add the vacuum energy density |∇φ|²/2μ₀ to the energy reconstruction `plot_E_rec`, so that δW_vac is drawn next to the plasma terms and its volume integral can be checked against the surface term of the free-boundary condition.
 - **A Claude skill in the repository that runs PB3D for other users.** Equilibrium in; deck choices made with the convergence rules of sections 6.6, 9.2 and 11.5; run locally or through Slurm; eigenvalue and POST plots out, with a report of what converged.
+- **A vacuum in a Fourier basis (2 November).** Merkel, Nührenberg and Cooper, "Free-boundary ideal MHD modes in W7-AS", CRPP Lausanne report LRP 555/96, pp. 51–58 (1996) describe the free-boundary CAS3D. Its vacuum solves Green's identity on the plasma surface, 2πΦ + ∮Φ ∂G/∂n′ = ∮G ∂Φ/∂n′, for the coefficients Φ_mn of a truncated double Fourier series cos 2π(mθ + nφ) in magnetic coordinates, using stellarator symmetry. The singular kernels are regularised by subtracting analytic functions with the same singularity, whose Fourier transforms are known (Merkel 1986, the NESTOR method). The physics and the coupling to the plasma are those of PB3D: ½∮Φ ∂ₙΦ with ∂ₙΦ = |∇s|⁻¹ B·∇(ξ·∇s), an infinite vacuum, the surface term dropped by pressure balance, and a real, symmetric, non-negative matrix added to the edge block, so the eigenproblem keeps its size. The difference is the unknowns: a few hundred to a few thousand Fourier coefficients, against Φ at each of up to 51 000 field-line points in `vac%style` 1, which is what costs 220 GB (section 11.3). The plan: assemble G and H on a regular (θ, ζ) grid of one field period with stellarator symmetry, project on the Fourier modes of Φ, and keep `calc_vac_res` and the edge block as they are; the Green's function does not depend on the coordinates, so the grid need not follow the field lines, and the normal data of each mode are evaluated at the grid points. The order alone will not improve: NESTOR is second order on the constant-potential test (Malhotra et al. 2020), as `check_vac` is now. The gain is in the size of the system, and the projection of the modes, which limits the response now (section 6.3), becomes a Fourier transform on a regular grid. Sources for the implementation: the C++ NESTOR in VMEC++, with Schilling 2026 for its singularity treatment; GPEC's Julia `Vacuum` (C6), which builds the same matrices in a Fourier basis with a high-order near-field quadrature, is the element-by-element check.
 
 ### 12.2 Catalogue items still open
 
@@ -1409,7 +1412,7 @@ Other catalogue items not run: T3 eigenfunction shapes, T7 rippled-cylinder δ²
 - Send the TERPSICHORE parity report to EPFL, the GCC bug report on gfortran 14, and the PSPLINE overrun report upstream.
 - Send the ELITE and IPP requests once the local checks are done, by rule 8.
 - Approve the downloads of the cbm18 papers and the Pamela 2020 data set.
-- Choose the method for the higher-order projection or end treatment of the 3-D vacuum.
+- Choose the method for the 3-D vacuum's cost: a higher-order projection, an end treatment, or a vacuum in a Fourier basis (section 12.1).
 
 ## Appendix A. File map of the branch
 
