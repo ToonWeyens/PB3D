@@ -280,6 +280,15 @@ CMake finds a Python by itself. To make the regression layer use this one,
 configure with `-DPython3_EXECUTABLE=$PWD/.venv/bin/python`. CI does not use
 uv: its jobs install the pinned `h5py` with pip (`.github/workflows/tests.yml`).
 
+The default group `dev` also installs `fortls`, the Fortran language server of
+VS Code's Modern Fortran extension (point its setting `fortran.fortls.path` at
+the absolute path of `.venv/bin/fortls`), and `fortitude` at the version of
+the CI lint job, so the blocking gate can be run before a push:
+
+```bash
+uv run fortitude check --select=OB Modules/ tests/unit tests/fullstack PB3D.f90 POST.f90
+```
+
 ## Relation to the older test mechanisms
 
 - `Test/` (capital T) holds historical standalone scratch programs with their
