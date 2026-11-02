@@ -19,7 +19,11 @@
 # eigenvalue, -0.43914, lies 1.2 % below the HELENA style-2 value -0.43380
 # (both with the trapezoidal weight of the free edge, 31 October 2026, later;
 # before it -0.44910 and -0.44383, the same 1.2 % apart); the test anchors it
-# at 1e-3, asks for 3 % and for free below fixed. (Before the kernel changes
+# at 1e-3, asks for 3 % and for free below fixed. Since 2 November 2026 the
+# corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) carries the
+# plasma-side angle, which moves the HELENA style-2 value at the fixture's 257
+# poloidal points to -0.43679, 0.54 % from the twin's; the twin's value does
+# not change (the 3-D path sets its diagonal by the row sum). (Before the kernel changes
 # the response was 0.85 of the axisymmetric one and the eigenvalue
 # -0.51892, 17 % below.) This pins the orientation of the normal that
 # store_vac_VMEC hands to the kernels: with the outward normal the response
@@ -38,7 +42,7 @@ ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
 TWIN_RTOL=1e-4
 ANCHOR_FREE=-4.3914e-1
-HEL_FREE=-4.3380e-1
+HEL_FREE=-4.3679e-1
 FREE_RTOL=0.03
 N_ALPHA=64
 

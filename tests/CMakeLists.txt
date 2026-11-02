@@ -293,6 +293,12 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set(PB3D_TEST_PYTHON "")
         message(STATUS "python3 with h5py not found - the HDF5 regression checks are skipped")
     endif()
+    # The runners print "PASS: ..." or "FAIL: ..." as their verdict. With
+    # PASS_REGULAR_EXPRESSION ctest ignores the exit code, and the "PASS" that
+    # check_vac_res.py prints for the response matrix also matched, so an
+    # anchor failure after it went unnoticed (the circular free deck was 6.7e-3
+    # off its anchor and passed, 2 November 2026). FAIL_REGULAR_EXPRESSION
+    # makes any "FAIL" in the output fail the test.
     if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
         add_test(NAME regression_cbm18a_fixed_bnd
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_fixed_bnd.sh
@@ -302,6 +308,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set_tests_properties(regression_cbm18a_fixed_bnd PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
         add_test(NAME regression_cbm18a_free_bnd
@@ -313,6 +320,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set_tests_properties(regression_cbm18a_free_bnd PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
         # the shear check reads PB3D_out.h5 with h5py
@@ -326,6 +334,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             set_tests_properties(regression_cbm18a_shear_HEL PROPERTIES
                 LABELS "regression"
                 PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
                 ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
                 TIMEOUT 600)
         endif()
@@ -343,6 +352,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 set_tests_properties(regression_cbm18a_fixed_bnd_np${np} PROPERTIES
                     LABELS "regression;mpi"
                     PASS_REGULAR_EXPRESSION "PASS"
+                    FAIL_REGULAR_EXPRESSION "FAIL"
                     ENVIRONMENT "${_mpi_test_env}"
                     PROCESSORS ${np}
                     TIMEOUT 900)
@@ -362,6 +372,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set_tests_properties(regression_circ_eps005_free_bnd PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
     endif()
@@ -377,6 +388,7 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         set_tests_properties(regression_circ_eps033_vmec_twin PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
     endif()

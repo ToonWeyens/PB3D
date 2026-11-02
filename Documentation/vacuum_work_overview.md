@@ -10,7 +10,7 @@ Two different "styles" appear below. `vac%style` is the vacuum method, set by th
 |---|---|---|
 | Build | PETSc 3.9 API, no longer buildable on a current machine | PETSc/SLEPc 3.25 on macOS arm64, Snellius and GitHub Actions |
 | Tests | none that ran | unit, full-stack and regression layers under CTest; eight CI jobs, all green |
-| Axisymmetric vacuum (HELENA, `vac%style` 2) | solved the interior problem; result never checked | exterior problem, Hermitian response; free-boundary eigenvalues within 0.3 % of TERPSICHORE on the circular kink when the HELENA mapping is fine enough, and within 0.5 % on the cbm18a pedestal mode at n = 10 |
+| Axisymmetric vacuum (HELENA, `vac%style` 2) | solved the interior problem; result never checked | exterior problem, Hermitian response, corner term on the right side of the boundary (2 November); free-boundary eigenvalues within 0.4 % of TERPSICHORE on the circular kink at the fixtures' 257 poloidal points and 0.2 % at 1025, and within 0.5 % on the cbm18a pedestal mode at n = 10 |
 | 3-D vacuum (VMEC, field lines, `vac%style` 1) | code present, never gave a right answer | converges; reproduces TERPSICHORE's free-boundary eigenvalue to 2e−5 on the circular twin and runs on a rippled torus and on W7-X |
 | Fixed boundary | the one result that was trusted, but 6.5 % too stable through the HELENA shear bug and 2e−5 process-count dependent | HELENA and VMEC paths agree to 2e−6, process counts to 1.5e−8, TERPSICHORE to 0.1 % on the circular case and 0.5 % on the cbm18a pedestal mode at n = 10 |
 
@@ -22,6 +22,8 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 |---|---|---|
 | `SLEPC_ops`, `SLEPC_utilities` | port from the PETSc 3.9 API to 3.25 (July) | |
 | `vac_ops` `solve_Phi_BEM` | the axisymmetric vacuum (`vac%style` 2) solved the interior system; it now solves the exterior one, (H + 4πI)Φ = G R (July) | |
+| `vac_ops` `calc_GH_2` | the corner term of the H diagonal used the boundary's angle on the vacuum side, β, where the interior operator that `calc_GH_2` assembles needs the plasma side's, 2π − β; the diagonal was off by about 8π/N for N boundary points, and the response `vac%res`(m, m) 0.7 % too large for every m at the fixtures' 257 points (2 November) | |
+| test layer, `tests/CMakeLists.txt` | the regression tests passed on any "PASS" in their output, so the one `check_vac_res.py` prints hid a failed anchor; they now also fail on "FAIL" (2 November) | |
 | `vac_utilities` `calc_GH_int_1`, `vac_ops` `calc_GH_1` | singular interval integral, quadrature weights, sign and a `**(−3)` far-field factor in the 3-D kernels (July) | near-field integration along the field line, Gauss–Legendre on the cubic interpolant through four points (31 October) |
 | `vac_ops` `calc_GH_1` | α spacing 2π/n_alpha instead of 2π/(n_alpha − 1); G and H no longer counted twice across Richardson levels | G diagonal from the identity for the linear interior harmonics, as the row sum sets the H diagonal |
 | `vac_ops` `store_vac_VMEC` | handed the kernels the outward normal where they take the inward one; the 3-D response was 3 to 4 times too small | |
@@ -63,9 +65,9 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 |---|---|---|---|
 | Circular ε = 0.33, fixed boundary (HELENA and VMEC twin agree to 2e−6) | +0.07843 | TERPSICHORE +0.07851 | 0.1 % |
 | Circular ε = 0.33, external kink, 3-D vacuum at 128 lines × 400 points | −0.43849 | TERPSICHORE −0.43848 (converged over 159 to 639 surfaces) | 2e−5 |
-| same, axisymmetric vacuum, HELENA mapping with 257 → 513 → 1025 points | −0.43380 → −0.43582 → −0.43695, limit near −0.438 | TERPSICHORE −0.43848 | about 0.1 to 0.3 % after extrapolation |
+| same, axisymmetric vacuum, HELENA mapping with 257 → 513 → 1025 points | −0.43679 → −0.43731 → −0.43769 since the corner-term fix of 2 November (−0.43380 → −0.43582 → −0.43695 before) | TERPSICHORE −0.43848 | 0.39 % at 257 points, 0.18 % at 1025 (1.07 % and 0.35 % before) |
 | same | about −0.438 (PB3D and TERPSICHORE) | MISHKA-1 0.43377, converged in its grids | 1.1 %, probably the parallel inertia that MISHKA-1 keeps and the other two drop; not verified |
-| Circular ε = 0.05 kink, n = 10, 15, 20 | | MISHKA-1 | 1.2, 0.55, 0.26 %, falling as 1/n² (the high-n ordering) |
+| Circular ε = 0.05 kink, n = 10, 15, 20 | | MISHKA-1 | 0.53, 0.24, 0.13 % since 2 November (1.2, 0.55, 0.26 % before), falling as 1/n² (the high-n ordering) |
 | Rippled twin δ = 0.04, five periods, external kink, 3-D vacuum | −0.42100 at 128 × 200; −0.41822 at 128 × 400 | TERPSICHORE n = 0..20 family −0.41626 in PB3D's units | 1.1 % at 128 × 200, 0.47 % at 128 × 400; the unrippled twin is at 2e−5 at that resolution, so half a percent sits in the treatment of the ripple itself (PB3D's field-line average of the sideband coupling, or TERPSICHORE's truncation) |
 | Rippled twin, sideband coupling | carried by PB3D's field-line representation | TERPSICHORE single row n = 10 against the family: 1.6 % | consistent |
 | cbm18a cut at the pedestal foot, n = 10, 15, 20, fixed boundary | −0.04012, −0.08128, −0.11120 | TERPSICHORE −0.03991, −0.07951, −0.10701 | 0.5, 2, 4 % |
@@ -87,7 +89,7 @@ Pass:
 Do not pass, or are not validated:
 
 - `BC_style` 4 is 7 % off `BC_style` 2 on the circular kink and first order in the radial grid; kept as a change detector only.
-- The axisymmetric vacuum, `vac%style` 2, is first order in HELENA's poloidal points (1 % at the fixtures' 257 and 401 points), and its sequence stops being monotone at 2049 points; the free-boundary anchors therefore pin reproducibility, not converged values.
+- The axisymmetric vacuum, `vac%style` 2, was first order in HELENA's poloidal points (1 % at the fixtures' 257 and 401 points). Most of that was the corner term fixed on 2 November; the circular kink is now 0.39 % from TERPSICHORE at 257 points and 0.18 % at 1025, but still converges slower than second order, the interior identity (not used) got worse by as much as the exterior one improved, and the sequence still stops being monotone at 2049 points. The free-boundary anchors therefore pin reproducibility, not converged values.
 - cbm18a converges only at first order in the radial grid (its 22 rational surfaces); the 200-point anchors are 0.5 % from the limit, and the cut case moves 1 % between 200 and 400 points at n = 20.
 - The mutation test for the 2π/n_alpha spacing is inside the tolerances of the 3-D tests; the full-stack tests check orders, not values, there.
 - Sixteen MPI processes hang in the parallel HDF5 write on the W7-X decks; four work.

@@ -172,7 +172,9 @@ contains
     !! it  is assumed  that  the  entire integral  is  given  by the  analytical
     !! approximation.
     !!
-    !! \note This routine does not calculate the contribution \f$2\beta\f$.
+    !! \note This routine does not calculate the corner term: calc_GH_2 adds
+    !! \f$-2(2\pi-\beta)\f$ to the diagonal of H, with \f$\beta\f$ the angle
+    !! on the vacuum side.
     subroutine calc_GH_int_2(G,H,t_s,t_in,x_s,x_in,norm_s,norm_in,Aij,ql,tol,&
         &b_coeff,n_tor)
         ! input / output

@@ -584,6 +584,51 @@ The old test's 1.002 at m = 1 was the duplicated line's extra weight cancelling 
 
 PB3D and POST still exit silently with status 0 when a path exceeds 120 characters. This bit twice in steps 2 and 3. It is not fixed; the scripts use short paths and symbolic links.
 
+### 4.18 The corner term of the axisymmetric vacuum (2 November)
+
+- **Symptom.** `vac%style` 2 converged at first order in HELENA's poloidal points (section 7.3). On the circular ε = 0.33 kink at n = 10, free ω² was −0.43380, −0.43582 and −0.43695 at 257, 513 and 1025 points against TERPSICHORE's −0.43848, while the fixed-boundary value moved by 1e−5.
+- **Cause.** `calc_GH_2` adds the corner term −2β to the diagonal of H, with β the boundary's angle on the vacuum side: cos(β − π) is the scalar product of the two unit chords at the point, and β > π on a convex boundary (eqs. 145–146 of the 2019 manuscript on the vacuum energy, T. Weyens, "Expressions for perturbed vacuum potential energy for 3D linear MHD stability", 21 March 2019). The manuscript derives its boundary equation, eq. (22), from Green's identity (21) over the vacuum volume, but the bracket of (22) is the negative of the one (21) gives with the vacuum's outward element −J∇ψ dα dθ. As printed, (22) holds for potentials harmonic inside the plasma. The H assembled from it is the interior operator, as July's jump-relation measurements found (section 4.2), and July's +4π in `solve_Phi_BEM` moved it to the vacuum side. The shift leaves the corner term as it was: the interior operator needs the plasma-side angle 2π − β, so every diagonal element was off by 4(β − π). On the HELENA mappings θ runs counterclockwise in (R, Z), the normal −J∇ψ points inward, and β − π, the angle through which the boundary turns at a point, is 0.008 to 0.019 at 257 points (mean 2π/512). The error is therefore about 8π/N for N boundary points around: first order.
+- **Fix.** `- 2*(2*pi-beta(rd))` instead of `- 2*beta(rd)` in `calc_GH_2` (`vac_ops.f90`), one line; the comments of `solve_Phi_BEM` and `calc_GH_int_2` say which angle is used.
+- **Effect on the circular ε = 0.33 kink,** n = 10, free boundary (`BC_style` 1 2), 200 radial points:
+
+| HELENA mapping points | 257 | 513 | 1025 | 2049 |
+|---|---|---|---|---|
+| free ω², β (before) | −0.433799 | −0.435824 | −0.436949 | −0.436699 |
+| free ω², 2π − β (after) | −0.436786 | −0.437313 | −0.437692 | −0.437070 |
+| change | −2.99e−3 | −1.49e−3 | −7.4e−4 | −3.7e−4 |
+| fixed ω², unchanged | +7.84304e−2 | | +7.84296e−2 | +7.84271e−2 |
+
+  The change halves with each doubling of the points. The diagonal elements `vac%res`(m, m) of the response matrix, for the ten poloidal harmonics m = 6 to 15 at the edge, fall by the same fraction for every m: after over before is 0.993 at 257 points and 0.998 at 1025, against the estimate 4/N of 0.78 % and 0.20 % (N = 512 and 2048). Against TERPSICHORE's −0.43848, the 257-point value is now 0.39 % off (1.07 % before) and the 1025-point value 0.18 % (0.35 %).
+- **Effect on the full-stack tests:**
+
+| Test | Before | After |
+|---|---|---|
+| `response_1_vs_2`, `vac%style` 1 over `vac%style` 2, m = 1 to 5, 300 boundary points for `vac%style` 2 | 0.994, 0.992, 0.988, 0.985, 0.982 | 1.006, 1.005, 1.002, 0.999, 0.996 |
+| `vac_response_cylinder`, R_0/a = 20, 200 points, `vac%res`(m, m) against the cylinder limit, m = 1 to 5 | −1.0, +1.3, +1.6, +1.8, +1.9 % | −3.0, −0.7, −0.4, −0.2, −0.1 % |
+| `exact_exterior_2d`, 301 points: exterior solve error | 0.89 to 2.44 % | 0.19 to 1.07 % |
+| same, residual of the P-family (exterior) identity | 4.5e−3 to 1.2e−2 | 1.0e−3 to 5.4e−3 |
+| same, residual of the Q-family (interior) identity | 1.0e−3 to 5.3e−3 | 4.2e−3 to 1.2e−2 |
+| `vac_greens`, 101 points, interior potentials 1 and 2; exterior potential 3 | 3.5e−2, 1.8e−2; 1.3e−2 | 4.6e−2, 2.8e−2; 7.3e−3 |
+
+  In `response_1_vs_2` the `vac%style` 2 response falls by 1.2 to 1.4 % (4/N = 1.3 %), in `vac_response_cylinder` by 2.0 % for every m (4/N = 2.0 %). The cylinder limit leaves out corrections of order a/R_0 = 5 %, which the test allows (25 %), so its m = 1 value is not an accuracy measure.
+- **What the identities show.** The exterior identity, the exterior solve and every quantity PB3D uses improve. The interior identity, which PB3D does not use, worsens by the same amount: at n = 10, k = 15 the interior residual goes from 5.3e−3 to 1.2e−2 and the exterior one from 1.2e−2 to 5.3e−3, a change of 4(β − π)/(4π) = 6.7e−3 in the normalisation by max |4πφ|, with β − π = 2π/300. The first-order error that remains has opposite signs in the two identities, so it is not in the diagonal. Its source is not identified; all three columns of `exact_exterior_2d` still halve from 301 to 601 points.
+- **Effect on the MISHKA-1 comparisons,** 257-point fixtures, 200 radial points, no wall; gap = (|ω²| − γ²)/γ², negative where PB3D is less unstable:
+
+| Case | n | MISHKA-1 γ² | PB3D before | PB3D after | Gap before | Gap after |
+|---|---|---|---|---|---|---|
+| ε = 0.05 | 10 | 0.42679 | −0.421677 | −0.424515 | −1.20 % | −0.53 % |
+| | 15 | 0.44844 | −0.445993 | −0.447368 | −0.55 % | −0.24 % |
+| | 20 | 0.33792 | −0.337036 | −0.337474 | −0.26 % | −0.13 % |
+| ε = 0.33 | 10 | 0.43378 | −0.433799 | −0.436786 | +0.004 % | +0.69 % |
+| | 15 | 0.44283 | −0.445624 | −0.447062 | +0.63 % | +0.96 % |
+| | 20 | 0.32262 | −0.325481 | −0.325993 | +0.89 % | +1.05 % |
+
+  On ε = 0.05 the gap now falls as 1/n² (factor 2.2 from n = 10 to 15, 1.8 from 15 to 20; (3/2)² = 2.25 and (4/3)² = 1.78). On ε = 0.33 PB3D moves away from MISHKA-1, towards the converged value it shares with TERPSICHORE, from which MISHKA-1 is 1.1 % apart (section 11.1).
+- **Effect on cbm18a.** The free regression deck (401-point mapping, 800 boundary points) moves by 1.5e−4 with `BC_style` 2 and 1.3e−4 with `BC_style` 4: this pedestal mode depends little on the vacuum.
+- **Anchors re-recorded.** ε = 0.05 free −4.2168e−1 → −4.2452e−1; cbm18a free `BC_style` 2 −4.5039e−2 → −4.5046e−2, `BC_style` 4 −4.5124e−2 → −4.5130e−2; the HELENA reference of the twin test −4.3380e−1 → −4.3679e−1, against which the twin's 3-D value −0.43914 is now 0.54 % off (1.2 % before); the `response_1_vs_2` ratios as in the table.
+- **Test.** The ε = 0.05 anchor (moves 0.67 %) and the `response_1_vs_2` ratios (move 1.2 to 1.4 %, tolerance 0.5 %) catch the old corner term. The ε = 0.05 deck first passed ctest 6.7e−3 off its anchor: ctest decided on the regular expression "PASS", and `check_vac_res.py` prints "PASS" for the response matrix before the script's anchor verdict. The regression tests now also carry `FAIL_REGULAR_EXPRESSION "FAIL"`.
+- **Still open.** The `vac%style` 2 sequence is still not second order (steps of 5.3e−4 and 3.8e−4 from 257 to 513 to 1025 points), and the 2049-point value still breaks it, in both builds (section 11.2).
+
 ## 5. New capabilities
 
 ### 5.1 `BC_style` 2 (July)
@@ -799,7 +844,7 @@ On the analytic torus at 81 × 80 the `vac%style` 1 over `vac%style` 2 ratios be
 |---|---|
 | TERPSICHORE, 159, 319, 639 surfaces | −0.438422, −0.438468, −0.438480 |
 | TERPSICHORE on the rippled twin, 16 and 32 vacuum intervals | −0.419032, −0.419045 |
-| PB3D `vac%style` 2 on 257, 513, 1025, 2049 poloidal points | −0.43380, −0.43582, −0.43695, −0.43670 |
+| PB3D `vac%style` 2 on 257, 513, 1025, 2049 poloidal points | −0.43380, −0.43582, −0.43695, −0.43670; with the plasma-side corner angle (2 November, section 4.18) −0.43679, −0.43731, −0.43769, −0.43707 |
 | MISHKA-1 on 257, 513, 1025 points; 401 radial points | 0.433764, 0.433765, 0.433765; 0.433775 |
 
 Readings of the plan:
@@ -820,7 +865,7 @@ Readings of the plan:
 | `greens_identity_3d`, exterior residual | 5.0e−3 | 1.8e−3 |
 | `point_source_3d`, circular torus, 27 October | 4.15e−2 | 2.09e−2 |
 | `point_source_3d`, rippled torus, 27 October | 3.70e−2 | 1.86e−2 |
-| `response_1_vs_2`, ratios m = 1 to 5 | | 0.994 to 0.982 |
+| `response_1_vs_2`, ratios m = 1 to 5 | | 0.994 to 0.982; 1.006 to 0.996 since 2 November (section 4.18) |
 
 **On the real surfaces, before the two changes (weekend of 31 October).** Error of the exterior solve, max |Φ − φ|/max |φ|; interior identity residuals for x and z in the last column:
 
@@ -897,7 +942,7 @@ The 1 November study resolved the growth. The rippled twin follows the unrippled
 
 ### 7.1 `vac%style` 2
 
-HELENA equilibria run with `alpha_style` 1: one field line followed over the turns. `store_vac_HEL` stores the boundary points of the poloidal mapping, with the seam point duplicated, and the inward normal −J∇ψ. `calc_GH_2` builds G and H for one toroidal mode number from the toroidal harmonics P and Q of half-integer degree, evaluated by `dtorh`, with |n| for negative n. Near the singular point `calc_GH_int_2` uses the analytic asymptote Q_{n−1/2}(1 + x) = −½ ln(x/32) − b_n. The exterior problem is (H + 4πI)Φ = G R, and the normal data are −J∇ψ·∇φ.
+HELENA equilibria run with `alpha_style` 1: one field line followed over the turns. `store_vac_HEL` stores the boundary points of the poloidal mapping, with the seam point duplicated, and the inward normal −J∇ψ. `calc_GH_2` builds G and H for one toroidal mode number from the toroidal harmonics P and Q of half-integer degree, evaluated by `dtorh`, with |n| for negative n. Near the singular point `calc_GH_int_2` uses the analytic asymptote Q_{n−1/2}(1 + x) = −½ ln(x/32) − b_n. The corner term of the diagonal of H is −2(2π − β), with β the boundary's angle on the vacuum side; it was −2β until 2 November (section 4.18). The exterior problem is (H + 4πI)Φ = G R, and the normal data are −J∇ψ·∇φ.
 
 ### 7.2 Exact and analytic checks
 
@@ -908,6 +953,7 @@ HELENA equilibria run with `alpha_style` 1: one field line followed over the tur
 | response diagonal of the ε = 0.05 fixture against 4π²(nq_a − m)²/(μ0 R_0 \|m\|) | 1.007 to 1.016 for m = 6 to 15 | 27 October |
 | `exact_exterior_2d`: n = 2, k = 1 to 5; n = 10, k = 6 to 15 | identities 1e−3 to 1.2e−2; solve 0.9 to 2.4 % at 301 points, halving at 601 | 31 October |
 | `unit_dtorh` at n = 20 to 80, z = 1.0001 to 100 | 1.4e−11 relative | 31 October |
+| the same, with the plasma-side corner angle (section 4.18) | `vac_greens` at 101 points: interior 4.6e−2 and 2.8e−2, exterior 7.3e−3, still halving from 51; `vac_response_cylinder` −3.0, −0.7, −0.4, −0.2, −0.1 %; `exact_exterior_2d` at 301 points: solve 0.19 to 1.07 %, exterior identity 1.0e−3 to 5.4e−3, interior 4.2e−3 to 1.2e−2, all halving at 601 | 2 November |
 
 `exact_exterior_2d` uses √(cosh η − cos θ) F^n_{k−1/2}(cosh η) cos kθ on the circular torus with R_0 = 3 and a = 1, with F = P outside and F = Q inside. It is the finite-aspect-ratio anchor of `vac%style` 2 that MISHKA-1 could not give. Fitting a constant to the identity, κ = −1.006 and −0.993, showed that `vac%style` 2 takes the normal data with the opposite sign of `vac%style` 1. Both are consistent, and each is pinned by its own exact solution. The precision loss of upward recursion in n that Chance, Turnbull and Snyder report does not affect `dtorh1`.
 
@@ -916,13 +962,18 @@ HELENA equilibria run with `alpha_style` 1: one field line followed over the tur
 | Poloidal points of the mapping | 257 | 513 | 1025 | 2049 |
 |---|---|---|---|---|
 | free ω², `vac%style` 2, circular ε = 0.33 | −0.43380 | −0.43582 | −0.43695 | −0.43670 |
-| fixed ω² | +7.84304e−2 | +7.84296e−2 | +7.84296e−2 | not run |
+| the same with the plasma-side corner angle (2 November) | −0.43679 | −0.43731 | −0.43769 | −0.43707 |
+| fixed ω² | +7.84304e−2 | +7.84296e−2 | +7.84296e−2 | +7.84271e−2 (2 November) |
 
 The response on the 1025-point mapping over the 257-point one is 0.994, 0.992 and 0.990 at m = 6, 11 and 15. The fixed value moves by 1e−5, so the first-order error sits in the vacuum. The 2049-point value breaks the monotone sequence; either HELENA's mapping at NPMAP = 2049 or the evaluation of the toroidal harmonics there is suspect. The limit lies near −0.438. Against TERPSICHORE's −0.43848 that is "about 0.1 to 0.3 % after extrapolation" (overview).
+
+Most of this first-order error was the corner term of `calc_GH_2`, on the wrong side of the boundary (section 4.18). With the plasma-side angle the diagonal elements `vac%res`(m, m) on the 1025-point mapping over the 257-point one are 0.999, 0.997 and 0.996 at m = 6, 11 and 15, the steps from 257 to 513 to 1025 points are 5.3e−4 and 3.8e−4, and the 257-point value is 0.39 % from TERPSICHORE. The rest still converges slower than second order. The 2049-point value still breaks the sequence; the fixed value moves by 3e−5 relative there, and the response diagonal by at most 0.1 % in the direction that would lower ω², so the jump is neither in the plasma part nor in the response diagonal.
 
 ### 7.4 What the regression anchors therefore mean
 
 The circular free anchors, −0.42168 for ε = 0.05 and −0.43380 for the `vac%style` 2 run of ε = 0.33, sit on 257-point mappings. The cbm18a free anchors sit on a 401-point mapping and carry the same first-order error of about 1 %. All free-boundary anchors pin reproducibility, not converged values. The cbm18a anchors are also 0.5 % from their radial limit (section 9.2).
+
+Since 2 November the anchors are −0.42452 for ε = 0.05 and −0.43679 for the HELENA reference of ε = 0.33, 0.39 % from TERPSICHORE. The cbm18a free anchors moved by 1.5e−4 only, because this pedestal mode depends little on the vacuum (section 4.18).
 
 ### 7.5 The circular kink: four values
 
@@ -931,7 +982,7 @@ The circular free anchors, −0.42168 for ε = 0.05 and −0.43380 for the `vac%
 | MISHKA-1 | γ² = 0.43377 | mapping, radial grid, wall |
 | TERPSICHORE | λ = −0.43848 | surfaces 159 to 639; vacuum intervals |
 | PB3D, 3-D path, 128 × 400 | −0.43849 | lines; points to 0.4 % in the response |
-| PB3D, `vac%style` 2 | −0.43695 at 1025 points; limit near −0.438 | first order in poloidal points |
+| PB3D, `vac%style` 2 | −0.43695 at 1025 points; limit near −0.438; −0.43769 with the plasma-side corner angle (2 November) | slower than second order in poloidal points |
 
 PB3D's two paths and TERPSICHORE agree at −0.4385. MISHKA-1 is 1.1 % less unstable. PB3D and TERPSICHORE with MODELK 2 weight the kinetic energy with the perpendicular displacement only. MISHKA-1 keeps the parallel displacement through incompressibility. The plan names that model difference as the likely cause; it is not verified (section 11.1).
 
@@ -943,6 +994,7 @@ PB3D's two paths and TERPSICHORE agree at −0.4385. MISHKA-1 is 1.1 % less unst
 | 27 to 30 October | −0.443831 | 0.433779 | 2.3 % | the toroidal correction that the high-n ordering drops |
 | 31 October, evening | −0.433799 | 0.433779 | 0.005 % | agreement |
 | 1 November | −0.43695 at 1025 points, limit near −0.438 | 0.43377 | 1.1 % | coincidence |
+| 2 November | −0.436786, with the plasma-side corner angle | 0.433779 | 0.69 % | most of the first-order error of `vac%style` 2 was the corner term (section 4.18) |
 
 The 2.3 % was the free-edge weight (section 4.11), not physics. Once the weight was fixed, the first-order error of `vac%style` 2 at 257 points happened to land on MISHKA-1's number. MISHKA-1 itself sits 1.1 % from the two other codes. The changelog entry of 31 October still gives the 0.005 %, with a note that points to 1 November and calls it a coincidence.
 
@@ -963,13 +1015,13 @@ MISHKA-1, γ² against the wall radius in units of a:
 
 The cylinder formula against MISHKA-1 on the flat case without a wall: 0.43660 against 0.43663, 0.45590 against 0.45577, 0.34254 against 0.34229. On the fixture MISHKA-1 over the formula is 0.977, 0.984, 0.987 at every wall: the current peaking alone. Gates R3 and R4 passed on 27 October.
 
-| n | PB3D, 27 October | PB3D, after the edge weight | MISHKA-1 | Gap after |
-|---|---|---|---|---|
-| 10 | −0.43034 | −0.421677 | 0.42679 | −1.2 % |
-| 15 | −0.45161 | −0.445993 | 0.44844 | −0.55 % |
-| 20 | −0.33888 | −0.337036 | 0.33792 | −0.26 % |
+| n | PB3D, 27 October | PB3D, after the edge weight | MISHKA-1 | Gap after | PB3D, plasma-side corner angle (2 November) | Gap |
+|---|---|---|---|---|---|---|
+| 10 | −0.43034 | −0.421677 | 0.42679 | −1.2 % | −0.424515 | −0.53 % |
+| 15 | −0.45161 | −0.445993 | 0.44844 | −0.55 % | −0.447368 | −0.24 % |
+| 20 | −0.33888 | −0.337036 | 0.33792 | −0.26 % | −0.337474 | −0.13 % |
 
-The gap falls as 1/n². That is the finite-n correction that PB3D's high-n ordering drops, now visible under the discretisation error. The fixed boundary is stable, +7.7650e−2 at n = 10. `regression_circ_eps005_free_bnd` anchors −0.42168 and requires MISHKA-1's value within 2 %.
+The gap falls as 1/n². That is the finite-n correction that PB3D's high-n ordering drops, now visible under the discretisation error. With the corner term of section 4.18 the gaps are about half as large and fall as 1/n² more closely (factors 2.2 and 1.8 against 2.25 and 1.78). The fixed boundary is stable, +7.7650e−2 at n = 10. `regression_circ_eps005_free_bnd` anchors −0.42452 (−0.42168 until 2 November) and requires MISHKA-1's value within 2 %.
 
 ### 8.2 Circular ε = 0.33, fixed and free
 
@@ -983,12 +1035,12 @@ The fixed values at n = 16 and 20 are +7.5200e−2 and +1.2068e−2 on the HELEN
 
 **Free boundary.** MISHKA-1 prints γ², PB3D ω²:
 
-| n | MISHKA-1 2017, `RWALL` 3 | MISHKA-1 now, no wall | PB3D 2017 | PB3D 30 October | PB3D after the edge weight | Gap after |
-|---|---|---|---|---|---|---|
-| 10 | 0.434 | 0.433779 | −0.298 | −0.443831 | −0.433799 | 0.005 % |
-| 15 | | 0.442830 | | −0.452884 | −0.445624 | 0.63 % |
-| 16 | 0.429 | 0.429043 | −0.430 | −0.438604 | | |
-| 20 | 0.323 | 0.322624 | −0.330 | −0.329400 | −0.325481 | 0.89 % |
+| n | MISHKA-1 2017, `RWALL` 3 | MISHKA-1 now, no wall | PB3D 2017 | PB3D 30 October | PB3D after the edge weight | Gap after | PB3D, plasma-side corner angle (2 November) | Gap |
+|---|---|---|---|---|---|---|---|---|
+| 10 | 0.434 | 0.433779 | −0.298 | −0.443831 | −0.433799 | 0.005 % | −0.436786 | 0.69 % |
+| 15 | | 0.442830 | | −0.452884 | −0.445624 | 0.63 % | −0.447062 | 0.96 % |
+| 16 | 0.429 | 0.429043 | −0.430 | −0.438604 | | | | |
+| 20 | 0.323 | 0.322624 | −0.330 | −0.329400 | −0.325481 | 0.89 % | −0.325993 | 1.05 % |
 
 The 2017 PB3D values were wrong because of the sign and factor of section 4.4. Their near-agreement at n = 16 and 20 was luck; the n = 10 value was 31 % low. MISHKA-1 over the cylinder formula on this case is 0.990, 0.9755 and 0.965 at n = 10, 15 and 20, at every wall radius: the toroidal correction, not the vacuum. The gap to MISHKA-1 grows with n here, while it falls on ε = 0.05. Running both codes at 400 radial points at n = 15 and 20 would show whether that growth is resolution (`Documentation/benchmarking_prep.md`, item 3); it was not run. The converged values at n = 10 are in section 7.5.
 
@@ -1119,10 +1171,10 @@ The full-stack suites assert on globally gathered quantities, so the same assert
 | Test | Deck | Anchor | Tolerance | Other assertions | Recorded |
 |---|---|---|---|---|---|
 | `cbm18a_fixed_bnd` | cbm18a, ψ_N 0.45 to 0.75, n = 10, 20 modes, 200 radial and 100 parallel points | −4.3573e−2 | 1e−3 | | 27 October |
-| `cbm18a_free_bnd` | same deck, free | `BC_style` 2: −4.5039e−2; `BC_style` 4: −4.5124e−2 | 1e−3 each | free ≤ fixed; response Hermitian and positive semi-definite | 31 October |
+| `cbm18a_free_bnd` | same deck, free | `BC_style` 2: −4.5046e−2; `BC_style` 4: −4.5130e−2 | 1e−3 each | free ≤ fixed; response Hermitian and positive semi-definite | 2 November |
 | `cbm18a_shear_HEL` | fixed deck | S against the direct formula | 1e−4 of max\|S\| | outboard-midplane S non-zero | 27 October |
-| `circ_eps005_free_bnd` | ε = 0.05, ψ_N 0.2 to 1.0, n = 10, 10 modes, 200 radial points | −4.2168e−1 | 1e−3 | fixed stable; MISHKA-1 within 2 %; 400-point value within 5e−4; response check | 31 October |
-| `circ_eps033_vmec_twin` | ε = 0.33 and its twin, n = 10; twin free at 64 lines | VMEC fixed +7.8431e−2; twin free −4.3914e−1 | 1e−3 | twins within 1e−4; twin free within 3 % of HELENA's −4.3380e−1 and below fixed | 31 October |
+| `circ_eps005_free_bnd` | ε = 0.05, ψ_N 0.2 to 1.0, n = 10, 10 modes, 200 radial points | −4.2452e−1 | 1e−3 | fixed stable; MISHKA-1 within 2 %; 400-point value within 5e−4; response check | 2 November |
+| `circ_eps033_vmec_twin` | ε = 0.33 and its twin, n = 10; twin free at 64 lines | VMEC fixed +7.8431e−2; twin free −4.3914e−1 | 1e−3 | twins within 1e−4; twin free within 3 % of HELENA's −4.3679e−1 (−4.3380e−1 until 2 November) and below fixed | 31 October; HELENA reference 2 November |
 | `cbm18a_fixed_bnd_np2`, `_np4` | fixed deck | one-process value | 1e−6 | | 30 October |
 
 The anchors reproduce to 1e−12 across three machines on one process. They are reproducibility checks. The cbm18a anchors are 0.5 % from their radial limit, because the cbm18a case converges only at first order in the radial grid. The radial limit of the fixed deck is about −4.3800e−2 by Richardson extrapolation from 200 to 3200 points:
@@ -1199,7 +1251,8 @@ The overview's "27 of 27 on macOS" is the later statement and stands; the plan's
 ### 9.8 What fails or is not covered
 
 - `BC_style` 4 is 7 % off `BC_style` 2 on the circular kink and first order in the radial grid; kept as a change detector.
-- `vac%style` 2 is first order in HELENA's poloidal points; its sequence breaks at 2049 points. The free-boundary anchors pin reproducibility.
+- `vac%style` 2 is first order in HELENA's poloidal points; its sequence breaks at 2049 points. The free-boundary anchors pin reproducibility. Since 2 November most of the first-order error is gone (the corner term, section 4.18); the rest converges slower than second order, and the 2049-point break remains.
+- Until 2 November a regression runner could fail its anchor and still pass ctest: ctest matched "PASS" anywhere in the output, and `check_vac_res.py` prints one before the anchor verdict. The ε = 0.05 deck passed 6.7e−3 off its anchor that way. The regression tests now also fail on "FAIL".
 - cbm18a converges at first order in the radial grid; its anchors are 0.5 % from the limit, and the cut case moves 1 % between 200 and 400 points at n = 20.
 - The overview lists the α-spacing mutation as inside the tolerances of the 3-D tests. The recorded ratios of 30 October were sized to catch it, but the mutation was not rerun.
 - Sixteen processes hang on the W7-X decks.
@@ -1314,7 +1367,7 @@ Step 9 saved 22 % of the W7-X run's memory, not the 3.6 GB the plan had estimate
 
 ### 11.2 The `vac%style` 2 sequence beyond 1025 points
 
-- **Evidence.** Free ω² of −0.43380, −0.43582, −0.43695 and −0.43670 at 257, 513, 1025 and 2049 poloidal points; the fixed value does not move (section 7.3). The 2049-point value breaks the monotone sequence. The plan names two suspects: HELENA's mapping accuracy at NPMAP = 2049, and the evaluation of the toroidal harmonics there.
+- **Evidence.** Free ω² of −0.43380, −0.43582, −0.43695 and −0.43670 at 257, 513, 1025 and 2049 poloidal points; the fixed value does not move (section 7.3). The 2049-point value breaks the monotone sequence. The plan names two suspects: HELENA's mapping accuracy at NPMAP = 2049, and the evaluation of the toroidal harmonics there. With the plasma-side corner angle (2 November, section 4.18) the sequence is −0.43679, −0.43731, −0.43769 and −0.43707: the corner term removed most of the first-order error, the steps 5.3e−4 and 3.8e−4 are still slower than second order, and the 2049-point value still rises, by 6.2e−4. The fixed value moves by 3e−5 relative from 1025 to 2049 points and the response diagonal by at most 0.1 %, in the direction that would lower ω²; the jump comes from neither.
 - **Next experiment.** The sources name none. `exact_exterior_2d` runs `vac%style` 2 on an analytic torus without HELENA; running it at 1025 and 2049 boundary points would separate the two suspects [not in the sources]. Survey C points to product quadratures of the logarithmic singularity, as in Chance 1997 and Kress, as the higher-order route for the axisymmetric path.
 
 ### 11.3 The cost of the 3-D vacuum

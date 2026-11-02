@@ -590,7 +590,11 @@ contains
     !! limit a/R_0 -> 0) and MISHKA (1 %) cannot. Measured on 31 October 2026
     !! (issue #4): identity residuals 1e-3 to 1.2e-2 and solution errors 0.9 to
     !! 2.4 % at 301 points for n = 2, k = 1 to 5 and n = 10, k = 6 to 15,
-    !! halving at 601 points.
+    !! halving at 601 points. With the plasma-side corner angle in calc_GH_2
+    !! (2 November 2026), at 301 points: solution errors 0.19 to 1.07 %, P
+    !! (exterior) identity residuals 1.0e-3 to 5.4e-3 (4.5e-3 to 1.2e-2
+    !! before), Q (interior) ones 4.2e-3 to 1.2e-2 (1.0e-3 to 5.3e-3 before);
+    !! all still halving at 601 points.
     subroutine test_exact_exterior_2d(error)
         use num_vars, only: eq_style, rank
         use vac_vars, only: in_context, set_loc_lims
@@ -604,7 +608,7 @@ contains
         integer, parameter :: n_tors(2) = [2,10]                                ! toroidal mode numbers
         integer, parameter :: k_min(2) = [1,6]                                  ! lowest poloidal mode number per n
         integer, parameter :: k_max(2) = [5,15]                                 ! highest poloidal mode number per n
-        real(dp), parameter :: tol_fine = 3.e-2_dp                              ! residuals and solution error at the fine resolution (measured: up to 1.5e-2)
+        real(dp), parameter :: tol_fine = 3.e-2_dp                              ! residuals and solution error at the fine resolution (measured: up to 1.5e-2, 7.7e-3 since 2 November 2026)
         real(dp), parameter :: conv = 0.8_dp                                    ! largest allowed error ratio fine / coarse (measured 0.50 to 0.72: first order)
 
         type(vac_type) :: vac                                                   ! style-2 vacuum variables
@@ -814,9 +818,13 @@ contains
         ! 1e-6); asserted to 0.5 % so that a change of the surface weights
         ! shows: the field-line spacing 2 pi / (n_alpha - 1) instead of
         ! 2 pi / n_alpha moved the old ones by 1.25 %, inside tol_diag but not
-        ! inside this (issue #4, step 7 mutation check)
+        ! inside this (issue #4, step 7 mutation check); recorded again on 2
+        ! November 2026, when the corner term of calc_GH_2 got the plasma-side
+        ! angle: the style-2 response at these 300 boundary points dropped by
+        ! 1.2 to 1.4 % (the estimate 4/N for N points around is 1.3 %), so
+        ! the ratios rose from 0.994, 0.992, 0.988, 0.985, 0.982
         real(dp), parameter :: ratio_rec(5) = &
-            &[0.994_dp,0.992_dp,0.988_dp,0.985_dp,0.982_dp]
+            &[1.006_dp,1.005_dp,1.002_dp,0.999_dp,0.996_dp]
         real(dp), parameter :: tol_ratio = 0.005_dp                             ! tolerance on the recorded ratios
 
         type(vac_type) :: vac1, vac2                                            ! style-1 and style-2 vacuum variables

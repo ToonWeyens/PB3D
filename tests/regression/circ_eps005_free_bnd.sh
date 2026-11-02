@@ -13,12 +13,15 @@
 # the fixture has a 1 % current peaking). PB3D's own value is the anchor at
 # 1e-3: -4.3034e-1 from 2026-10-27 (step 3, vacuum factor -2 pi) until the
 # free edge got its trapezoidal quadrature weight on 31 October 2026, then
-# -4.2168e-1, which is 1.2 % below MISHKA; at n = 15 and 20 the gap is 0.55
-# and 0.26 %, falling as 1/n^2 like the finite-n terms the high-n ordering
-# drops. The MISHKA value must hold to 2 %. The deck is also run with 400
-# radial points: the eigenvalue must move by less than 5e-4 relative, which
-# holds for the second-order convergence the edge weight gives (1.5e-4) and
-# fails for the first-order one it replaced (1.2e-2).
+# -4.2168e-1, which is 1.2 % below MISHKA, and since 2 November 2026, when the
+# corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) got the
+# plasma-side angle, -4.2452e-1, 0.53 % below MISHKA; at n = 15 and 20 the gap
+# is 0.24 and 0.13 % (0.55 and 0.26 % before), falling as 1/n^2 like the
+# finite-n terms the high-n ordering drops. The MISHKA value must hold to 2 %.
+# The deck is also run with 400 radial points: the eigenvalue must move by
+# less than 5e-4 relative, which holds for the second-order convergence the
+# edge weight gives (1.5e-4) and fails for the first-order one it replaced
+# (1.2e-2).
 set -u
 
 PB3D_EXE=$1
@@ -27,7 +30,7 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.2168e-1
+ANCHOR=-4.2452e-1
 RTOL=1e-3
 MISHKA=-0.42679
 MISHKA_RTOL=0.02

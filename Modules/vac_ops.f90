@@ -1349,7 +1349,22 @@ contains
                         end if
 #endif
                         
-                        H_in(rdl,cdl) = H_in(rdl,cdl) - 2*beta(rd)
+                        ! corner term of the left-hand side of the Green
+                        ! identity: beta is the angle on the vacuum side (> pi
+                        ! on a convex boundary, as eq. 146 of the 2019
+                        ! manuscript defines it), but the assembled H is the
+                        ! interior operator (solve_Phi_BEM adds 4 pi to reach
+                        ! the vacuum side), whose corner term is the
+                        ! plasma-side angle 2 pi - beta. With beta itself the
+                        ! diagonal was off by 4 (beta - pi), about 8 pi over
+                        ! the number of boundary points: the response was
+                        ! 0.7 % too large at 257 HELENA points, the same for
+                        ! every mode. The exterior identity and solve improve
+                        ! by this amount and the interior identity (not used)
+                        ! worsens by it; the first-order error that remains
+                        ! has opposite signs in the two identities, so it is
+                        ! not in the diagonal (issue #4, 2 November 2026)
+                        H_in(rdl,cdl) = H_in(rdl,cdl) - 2*(2*pi-beta(rd))
                     end if
                     
                     ! clean up
@@ -2589,9 +2604,10 @@ contains
             ! The shift selects  the vacuum (exterior) side of  the boundary,
             ! as  established by  the jump-relation  measurements in  the
             ! full-stack tests:
-            !  - style 2 (axisymmetric): the assembled H with its -2 beta
-            !    diagonal satisfies the interior identity H phi = G dphi, so
-            !    the exterior needs H + 4 pi I;
+            !  - style 2 (axisymmetric): the assembled H with its
+            !    -2 (2 pi - beta) diagonal (the plasma-side angle, calc_GH_2)
+            !    satisfies the interior identity H phi = G dphi, so the
+            !    exterior needs H + 4 pi I;
             !  - style 1 (field-line 3-D): the H diagonal is constructed in
             !    calc_GH_1 from the row-sum identity H 1 = -4 pi 1, which,
             !    with the inward-pointing normal J nabla psi, already shifts
