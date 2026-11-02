@@ -1320,7 +1320,7 @@ Step 9 saved 22 % of the W7-X run's memory, not the 3.6 GB the plan had estimate
 ### 11.3 The cost of the 3-D vacuum
 
 - **Evidence.** 128 lines × 400 parallel points is 51 000 boundary points, 220 GB and 39 minutes on eight cores, for 0.1 % on the circular kink. At 64 × 100 the error is about 1 %. Each dense n_bnd × n_bnd matrix is 7.7 GB at 31 000 points. STRUMPACK's compression fails on the 3-D kernels, so the solve is a dense LU.
-- **Next experiment.** A higher-order projection of the modes along the lines (section 11.9), or a vacuum in a Fourier basis as in CAS3D (section 12.1), which would shrink the system itself. `Documentation/benchmarking_prep.md`, item 7, lists end corrections or a closed field-line lattice, with the Wu-Martinsson diagonal as a check. Toon picks the method.
+- **Next experiment.** None decided. Section 11.9 discusses a higher-order projection of the modes; section 12.5 lists other options to explore: a doubly periodic vacuum grid with a locally corrected quadrature, a Fourier basis as in CAS3D, and a solver that scales like the number of points. `Documentation/benchmarking_prep.md`, item 7, lists end corrections or a closed field-line lattice, with the Wu-Martinsson diagonal as a check. Toon decides whether any is tried.
 
 ### 11.4 W7-X needs an unstable case
 
@@ -1348,7 +1348,7 @@ Step 9 saved 22 % of the W7-X run's memory, not the 3.6 GB the plan had estimate
 - **Evidence.** On the cut cbm18a PB3D and TERPSICHORE differ by 4 % at n = 20. PB3D moves 1 % between 200 and 400 radial points there. TERPSICHORE's VMEC input stops at 997 surfaces; the twin used 639. On the circular kink TERPSICHORE moved from −0.438422 to −0.438480 between 159 and 639 surfaces.
 - **Next experiment.** TERPSICHORE on cut twins with increasing surface counts up to 997, and PB3D at 800 radial points or a Richardson pair at n = 20 [the surface counts are not in the sources].
 
-### 11.9 Why a higher-order projection along the lines would cut the point count
+### 11.9 Would a higher-order projection along the lines cut the point count?
 
 Toon asked for this explanation on 1 November. The plan's claim: a higher-order projection of the modes along the field lines would cut the point count of the 3-D vacuum by about four for the same accuracy. The evidence behind it, all from the 1 November study:
 
@@ -1371,16 +1371,16 @@ What complicates the claim:
 - The 157 closing lines remove the line ends and the seam, and at 100 points they give the same response as 128 and 256 open lines. The error that the points control is therefore not at the line ends (plan, 1 November). End corrections of the Gregory or Alpert kind, which survey C lists, would then not reduce it [not in the sources].
 - The sources do not state the order of the remaining error. The deficits 1 − ratio of the table above are 0.019, 0.012 and 0.004, which fall by 1.6 and then 3 per doubling [computed from the table].
 - No run with a higher-order projection exists. The factor of four is an estimate, not a measurement.
+- (2 November) Point 1 overstates the solve for oscillating data. The cos 10ζ ring, which has the modes' toroidal structure, is solved to 2.0e−2 at 100 points and 3.8e−3 at 200, at 128 lines (section 6.4). At 100 points that is the size of the response deficit, 1.9 % at 256 × 100; at 200 points it is a third of it, 0.38 % against 1.2 %. The solve and the projection therefore both contribute, and a higher-order projection alone may not give the factor of four. The quadrature options of section 12.5 act on the solve.
 
 **Next experiment.** The plan names the exact potentials of `check_vac` on the real surface as the way to measure the order (31 October). Projecting the exact boundary trace of the cos 10ζ ring onto the modes with the present rule and with a higher-order one, at 100, 200 and 400 points, would measure both orders without a stability run [not in the sources].
 
 ## 12. Work bucket and roadmap
 
-### 12.1 Toon's items (31 October, late, and 2 November; not started)
+### 12.1 Toon's items (31 October, late; not started)
 
 - **POST plotting into the vacuum.** Check `plot_vac_pot`, which computes the potential at external points through `calc_GH`, on the 3-D field-line vacuum, `vac%style` 1. Draw the perturbation and the potential across the plasma-vacuum interface into the vacuum. Add the vacuum energy density |∇φ|²/2μ₀ to the energy reconstruction `plot_E_rec`, so that δW_vac is drawn next to the plasma terms and its volume integral can be checked against the surface term of the free-boundary condition.
 - **A Claude skill in the repository that runs PB3D for other users.** Equilibrium in; deck choices made with the convergence rules of sections 6.6, 9.2 and 11.5; run locally or through Slurm; eigenvalue and POST plots out, with a report of what converged.
-- **A vacuum in a Fourier basis (2 November).** Merkel, Nührenberg and Cooper, "Free-boundary ideal MHD modes in W7-AS", CRPP Lausanne report LRP 555/96, pp. 51–58 (1996) describe the free-boundary CAS3D. Its vacuum solves Green's identity on the plasma surface, 2πΦ + ∮Φ ∂G/∂n′ = ∮G ∂Φ/∂n′, for the coefficients Φ_mn of a truncated double Fourier series cos 2π(mθ + nφ) in magnetic coordinates, using stellarator symmetry. The singular kernels are regularised by subtracting analytic functions with the same singularity, whose Fourier transforms are known (Merkel 1986, the NESTOR method). The physics and the coupling to the plasma are those of PB3D: ½∮Φ ∂ₙΦ with ∂ₙΦ = |∇s|⁻¹ B·∇(ξ·∇s), an infinite vacuum, the surface term dropped by pressure balance, and a real, symmetric, non-negative matrix added to the edge block, so the eigenproblem keeps its size. The difference is the unknowns: a few hundred to a few thousand Fourier coefficients, against Φ at each of up to 51 000 field-line points in `vac%style` 1, which is what costs 220 GB (section 11.3). The plan: assemble G and H on a regular (θ, ζ) grid of one field period with stellarator symmetry, project on the Fourier modes of Φ, and keep `calc_vac_res` and the edge block as they are; the Green's function does not depend on the coordinates, so the grid need not follow the field lines, and the normal data of each mode are evaluated at the grid points. The order alone will not improve: NESTOR is second order on the constant-potential test (Malhotra et al. 2020), as `check_vac` is now. The gain is in the size of the system, and the projection of the modes, which limits the response now (section 6.3), becomes a Fourier transform on a regular grid. Sources for the implementation: the C++ NESTOR in VMEC++, with Schilling 2026 for its singularity treatment; GPEC's Julia `Vacuum` (C6), which builds the same matrices in a Fourier basis with a high-order near-field quadrature, is the element-by-element check.
 
 ### 12.2 Catalogue items still open
 
@@ -1412,7 +1412,32 @@ Other catalogue items not run: T3 eigenfunction shapes, T7 rippled-cylinder δ²
 - Send the TERPSICHORE parity report to EPFL, the GCC bug report on gfortran 14, and the PSPLINE overrun report upstream.
 - Send the ELITE and IPP requests once the local checks are done, by rule 8.
 - Approve the downloads of the cbm18 papers and the Pamela 2020 data set.
-- Choose the method for the 3-D vacuum's cost: a higher-order projection, an end treatment, or a vacuum in a Fourier basis (section 12.1).
+- Decide whether any of the exploration options for the 3-D vacuum's cost (sections 11.9 and 12.5) is worth trying. None is planned or required.
+
+### 12.5 Exploration: making the 3-D vacuum cheaper (2 November; options, nothing decided)
+
+These are directions to explore, not planned work, and none is needed for the branch. Toon decides whether any is tried. An option would replace the present method only if it beats it on the exact potentials of `check_vac`, on the circular twin and on W7-X, and then on the twin's eigenvalue against TERPSICHORE.
+
+**Where the error sits.** The surface integrals of `vac%style` 1 have three parts:
+
+1. the singular cell, integrated analytically (section 6.1);
+2. the near field, the intervals within four interval lengths of the influence point, where 1/r is large but finite: since 31 October Gauss–Legendre along the line, but not across lines (section 5.2);
+3. the far field, a trapezoidal sum.
+
+On a smooth closed surface the trapezoidal rule on a doubly periodic grid converges faster than any power of the spacing for smooth integrands, so the order of such a method is set by how the singular and near-singular parts are corrected [general property of the rule; not measured here]. PB3D's (α, θ) field-line grid is not doubly periodic: one poloidal turn at fixed α ends on another line, shifted by 2πq. That is why the method needs the seam and the bridge between lines. Section 11.9 shows that the solve for oscillating data and the projection of the modes both contribute to the present error.
+
+**Options.**
+
+- **A. A doubly periodic vacuum grid.** Assemble G and H on a regular grid in the straight-field-line angles (θ, ζ), separate from the plasma's field-line grid, and still hand `res` over in mode space. The Green's function does not depend on the coordinates, so the grid need not follow the field lines; the normal data of each mode are evaluated at its points. Stellarator symmetry and the field periods could then be used, which the field-line grid cannot. Gate: the `check_vac` exact potentials at least as accurate as now for the same number of points.
+- **B. A locally corrected trapezoidal rule on grid A.** Keep the trapezoidal sum everywhere and change only the weights of a small stencil around each singular point, so that the rule is exact for the singularity's known expansion. Examples: the zeta-corrected trapezoidal rules of Wu and Martinsson, the corrections of Alpert and of Duan and Rokhlin, and the polar patches of Malhotra used in BIEST and in GPEC's Julia `Vacuum`. The literature gives 4th to 10th order at the cost of the trapezoidal sum; none was tried here. Gate: the exact potentials converge at high order on the twin and on W7-X.
+- **C. A Fourier basis, as in CAS3D.** Merkel, Nührenberg and Cooper, "Free-boundary ideal MHD modes in W7-AS", CRPP Lausanne report LRP 555/96, pp. 51–58 (1996) describe the free-boundary CAS3D. Its vacuum solves Green's identity on the plasma surface, 2πΦ + ∮Φ ∂G/∂n′ = ∮G ∂Φ/∂n′, for the coefficients Φ_mn of a truncated double Fourier series cos 2π(mθ + nφ) in magnetic coordinates, using stellarator symmetry. The singular kernels are regularised by subtracting analytic functions with the same singularity, whose Fourier transforms are known (Merkel 1986, the NESTOR method). The physics and the coupling to the plasma are those of PB3D: ½∮Φ ∂ₙΦ with ∂ₙΦ = |∇s|⁻¹ B·∇(ξ·∇s), an infinite vacuum, the surface term dropped by pressure balance, and a real, symmetric, non-negative matrix added to the edge block. The unknowns are a few hundred to a few thousand Fourier coefficients, against Φ at each of up to 51 000 field-line points now. NESTOR is second order on the constant-potential test (Malhotra et al. 2020), as `check_vac` is now, so the gain would be in the size of the system rather than the order. Sources: the C++ NESTOR in VMEC++, with Schilling 2026 for its singularity treatment; GPEC's Julia `Vacuum` (C6) as the element-by-element check. C is an alternative to A with B.
+- **D. A solver that scales like the number of points.** The dense LU needs N² memory and N³ work for N boundary points. The operator is a second-kind integral equation, and `check_vac` measured its 1-norm condition number at 3.5 to 3.8 on every grid, W7-X included, so GMRES should converge in a number of iterations that does not grow with N [estimate]. Each iteration needs one matrix-vector product, which a fast multipole method (PVFMM, for example) or a hierarchical matrix does in O(N) to O(N log N) work and memory, without storing G and H. There are 2 `n_mod_X`, about 40, right-hand sides, so a block or recycled solver would help. The direct alternative: order the points by a quadtree on the surface and compress with HODLR or H² matrices (STRUMPACK's HODLR through ButterflyPACK, or H2Lib), roughly O(N log² N). STRUMPACK's compression failed in July (relative residual 175 at 3660 points, section 5.6); the field-line ordering, which scatters neighbouring points, and the hard-coded sampling parameters may be the reasons [not checked]. Gate: the same `res` with memory that grows like N.
+
+**Richardson.** A separate vacuum grid need not give up the Richardson levels. Either the vacuum grid doubles with each level (a doubly periodic grid nests as well as the field-line grid, so the interlaced reuse still works, and a compressed or fast-multipole operator is rebuilt), or the vacuum is made accurate enough that its error stays far below the plasma's at every level and is computed once. Which fits the Richardson scheme better is Toon's call.
+
+**Order, if any is tried.** A, then B, then D, each gated by `check_vac` before any stability run; or C in place of A and B.
+
+**Guesses, not measurements.** B alone might cut the point count tenfold. B with D might bring 51 000 points and 220 GB down to 5 000 to 10 000 points and a few GB.
 
 ## Appendix A. File map of the branch
 
