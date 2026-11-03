@@ -184,13 +184,17 @@ class WaveSums:
             self.A_off -= test.T@(vK[:, :mw]+1j*vK[:, mw:])
             self.B_off -= test.T@(vG[:, :nq]+1j*vG[:, nq:])
 
-    def solve(self):
+    def system(self):
+        """The M' x M' matrix and the right-hand sides, self terms included."""
         g, E = self.g, self.E
         c, gs = self_terms(g, self.S, self.Kx, self.Gn)
         test = g.w[:, None]*np.conj(E)
         Amat = self.A_off+(test*(4*np.pi+self.S)[:, None]).T@E
         rhs = self.B_off-test.T@(gs[:, None]*self.qd)
-        return E@np.linalg.solve(Amat, rhs)
+        return Amat, rhs
+
+    def solve(self):
+        return self.E@np.linalg.solve(*self.system())
 
 
 def wave_sums_from_scratch(g, m_list, qd):

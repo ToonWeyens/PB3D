@@ -42,6 +42,10 @@ The self terms come from the interior identities, as in `calc_GH_1`: H's from th
     .venv/bin/python scripts/vacuum_wave/prototype.py lines     # field lines
     .venv/bin/python scripts/vacuum_wave/prototype.py memory 801
 
+A short report in the layout of the 2019 vacuum manuscript, with figures, is `Documentation/vacuum_wave_report/report.pdf`. Its numbers come from `figdata.json`, written by `figures.py data` (about 6 minutes); `figures.py plot` draws the figures, and `latexmk -pdf report.tex` in that directory builds the PDF. The report adds two results to the ones below:
+- with single waves as data, as PB3D's plasma modes are, the potential stays on the data wave (neighbours 0.1 to 6 %, three waves away 0.1 % or less);
+- the wave-form matrix is nearly tridiagonal: its first neighbours are 0.17 of the diagonal, close to a/(2 R0) = 1/6.
+
 ## Results (3 November 2026, Mac, one process)
 
 All four criteria are met. The exact harmonics are harmonic to the accuracy of the finite-difference check: relative Laplacian 2e−6 or less. Errors below are listed for m = 6, 11, 15; "Φ" is the relative weighted L2 error of the potential, "energy" the relative error of −∫ q̄ Φ dS.
