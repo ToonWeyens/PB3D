@@ -34,19 +34,25 @@
 % PRINCIPAL VALUE INTEGRAL
 \newcommand{\pvint}{\fint}
 
+% LET TWO WIDE FIGURES SHARE THE TOP OF A PAGE; NO STRETCHED COLUMNS
+\renewcommand{\dbltopfraction}{0.9}
+\renewcommand{\topfraction}{0.9}
+\raggedbottom
+
 \title[Exploration note, PB3D issue \#4 --- Keeping integrals instead of points in the field-line vacuum]{Keeping integrals instead of points: a wave-amplitude form of the field-line vacuum of PB3D}
 
-\author{Claude Opus 5.5}
- \affiliation{Anthropic. Written for Toon Weyens as an exploration note for PB3D issue \#4; nothing in it is decided or required.}
+\author{Claude Opus 5.5 and Claude Fable 5.1}
+ \affiliation{Anthropic. Written for Toon Weyens as an exploration note for PB3D issue \#4 on 3 November 2026 and checked and revised on 4 November; nothing in it is decided or required.}
 
-\date{3 November 2026}
+\date{4 November 2026}
 
 \begin{abstract}
 In PB3D, a Richardson level doubles the number of points along each field line.
 The plasma integrals keep only their value from the previous level, but the field-line vacuum solves for the potential at every boundary point, with two dense $N\times N$ matrices that grow fourfold with every level.
 This note shows that the same boundary equation, written for the amplitudes of a few dozen waves $e^{\imath(n\varphi - m\theta)}$ instead of the values at the $N$ points, keeps only sums over pairs of points.
 A Richardson level then reuses one quarter of the previous level's sums and adds the pairs that contain a new point, and no $N\times N$ matrix is ever stored.
-A Python prototype on a circular torus, with exact toroidal harmonics as the test, meets the four criteria that were fixed before the runs: the carried-over sums equal the sums computed from scratch to $9\times10^{-16}$; with 34 waves for a window of 10 modes the error of the vacuum energy equals that of the point-value solve on the same rows; and 51\,264 boundary points need 1.9~GB in total, against 21~GB for one $N\times N$ matrix.
+A Python prototype on a circular torus, with exact toroidal harmonics as the test, meets the four criteria that were fixed before the runs: the carried-over sums equal the sums computed from scratch to $9\times10^{-16}$; with 34 waves for a window of 10 modes the vacuum energy equals that of the point-value solve on the same rows to $4\times10^{-6}$; and 51\,264 boundary points run in 1.9~GB in total, of which the method itself needs about 1.2~GB, against 21~GB for one $N\times N$ matrix.
+With single waves as data, as the plasma modes of PB3D are, the potential stays on the wave of the data, and three or four sidebands on each side of the mode window would do.
 The near-field rule of PB3D, stellarator geometry and the Fortran implementation are not tested.
 \end{abstract}
 
@@ -62,7 +68,7 @@ Section VI of Ref.~\onlinecite{Weyens2019vacuum} remarks that the vacuum cannot 
 The reason is that the vacuum potential at one boundary point depends on the potential at all the others.
 With the potential at the $N$ boundary points as unknowns, the boundary element method needs two dense $N\times N$ matrices, $\mtx{G}$ and $\mtx{H}$, and a dense solve.
 Doubling the parallel points doubles $N$ and quadruples the matrices.
-With 128 field lines and 400 points per line, $N = 51\,200$; one such matrix of double-precision numbers takes 21~GB, and the PB3D run needed 220~GB.
+With 128 field lines and 400 points per line, $N = 51\,200$; one such matrix of double-precision numbers takes 21~GB, and the PB3D run at that size was given 220~GB.
 
 The remark in Ref.~\onlinecite{Weyens2019vacuum} holds as long as the unknowns are point values.
 This note changes the unknowns to the amplitudes of a set of waves on the boundary and shows that the vacuum can then also keep only sums from one level to the next.
@@ -120,13 +126,14 @@ In a straight cylinder, data with one poloidal mode number $m$ give a potential 
 On a torus a potential also contains other poloidal mode numbers, and how many depends on the angle in which the waves are written.
 
 Fig.~\ref{fig:spectrum} shows this for the exact exterior harmonics used in section~\ref{sec:prototype}, on a torus of aspect ratio 3, with waves in the geometric poloidal angle $\theta$.
-Each harmonic is a single wave $e^{-\imath m u}$ in the angle $u$ of toroidal coordinates, but $u$ differs from $\theta$ by up to 0.345~rad, at $\theta = \pm1.74$.
-For $m = 11$ this shifts the phase by up to 3.8~rad.
-The upper panel shows the result: the potential of the $m = 11$ harmonic oscillates more slowly than $\cos 11\theta$ on the outboard side and faster on the inboard side, where it is also larger.
+Each harmonic is a single wave $e^{-\imath m u}$ in the angle $u$ of toroidal coordinates.
+On the torus surface the two angles are related by $\tan\theta = \sinh\eta_0 \sin u/(\cosh\eta_0\cos u - 1)$ with $\cosh\eta_0 = R_0/a = 3$, so $\d{u}/\d{\theta}$ runs from $\tanh(\eta_0/2) = 0.71$ on the outboard side to $\coth(\eta_0/2) = 1.41$ on the inboard side, and $u - \theta$ reaches 0.345~rad at $\theta = \pm1.74$.
+The upper panel shows the result for $m = 11$: the potential oscillates more slowly than $\cos 11\theta$ on the outboard side and faster on the inboard side, where its amplitude $\sqrt{\cosh\eta_0 - \cos u}$ is also larger, by $\sqrt{2}$.
+In $\theta$ the local poloidal wavenumber of a harmonic, $m\,\d{u}/\d{\theta}$, runs from $0.71m$ to $1.41m$, so the harmonic needs waves over at least that range, plus a margin for the variation of its amplitude.
 The lower panel gives the amplitudes of the waves $e^{\imath(n\varphi-m\theta)}$ in the three harmonics.
 They are spread over a band that widens with $m$: amplitudes above 0.1 of the largest for $m = 3$ to 10 in the harmonic $m = 6$, 7 to 18 in $m = 11$ and 9 to 24 in $m = 15$, and above $10^{-3}$ for $m = 2$ to 14, 4 to 22 and 7 to 29.
 Outside the band the amplitudes fall steeply.
-The 34 waves of the prototype cover the bands of all three harmonics to about $10^{-3}$.
+The 34 waves of the prototype, $m = -6$ to 27, cover the bands of $m = 6$ and 11 to below $10^{-5}$ and that of $m = 15$ to $8\times10^{-3}$, its amplitude at $m = 27$.
 
 \begin{figure}[t]
 \includegraphics[width=\columnwidth]{fig_spectrum.pdf}
@@ -178,7 +185,9 @@ The self terms of section~\ref{sec:points} need only three sums per point, $S_i$
 
 Fig.~\ref{fig:matrices}(b) shows $|A_{lk}|$ for 34 waves.
 Its size does not depend on $N$, and it is nearly tridiagonal: the median ratio to the diagonal is $0.17$ for the first neighbours, $3\times10^{-4}$ for the second and $4\times10^{-5}$ for the third.
-The first value is close to $a/(2R_0) = 1/6$, the coupling between neighbouring waves that the surface element alone gives, since $\d{S}$ contains the factor $R_0 + a\cos\theta = R_0 + \tfrac{a}{2}(e^{\imath\theta} + e^{-\imath\theta})$.
+Most of $\mtx{A}$ is the term $2\pi\Phi$ of Eq.~\eqref{eq:bie}, which gives $2\pi M_{lk}$ with $M_{lk} = \sum_i w_i\,\bar{e}_l(\vec{x}_i)\,e_k(\vec{x}_i)$ the mass matrix of the waves.
+On the torus $\d{S}$ contains the factor $R_0 + a\cos\theta = R_0 + \tfrac{a}{2}(e^{\imath\theta} + e^{-\imath\theta})$, so $\mtx{M}$ couples each wave to its two neighbours only, with the ratio $a/(2R_0) = 1/6$; the discrete $\mtx{M}$ reproduces this to $10^{-15}$.
+The double-layer part $\mtx{A} - 2\pi\mtx{M}$ is 0.5\,\% of the diagonal of $\mtx{A}$ and 0.6\,\% at the first neighbours, and it is all of the second and third neighbours.
 So the operator couples each wave mainly to its two neighbours, and the wide bands of Fig.~\ref{fig:spectrum} come from the data of the test harmonics, which are as spread as the potentials.
 Section~\ref{sec:prototype} shows what happens with single waves as data, as the plasma modes of PB3D are.
 
@@ -258,9 +267,9 @@ The four criteria of Table~\ref{tab:criteria} were fixed before the runs.
 Criterion & Result \\
 \hline
 1. carried-over sums equal the sums from scratch to $10^{-12}$ & $4.7$ to $8.9\times10^{-16}$ at 101 to 801 points per line \\
-2. wave form at most 1.5 times the point-value error on the same grid & energy errors equal to 3 digits; $\Phi$ errors 0.89 to 0.97 times those of the point values (64 $\times$ 201) \\
+2. wave form at most 1.5 times the point-value error on the same grid & energy errors equal to 3 digits; $\Phi$ errors 0.89 to 0.98 times those of the point values (64 $\times$ 201) \\
 3. a small multiple of the mode window in waves & 34 waves for 10 modes \\
-4. peak memory far below one $N\times N$ matrix & 1.9~GB for 51\,264 points; one $N\times N$ matrix: 21~GB \\
+4. peak memory far below one $N\times N$ matrix & 1.9~GB for 51\,264 points, whole process; one $N\times N$ matrix: 21~GB \\
 \end{tabular}
 \end{ruledtabular}
 \end{table}
@@ -270,11 +279,18 @@ Fig.~\ref{fig:accuracy}(a) gives the error of the vacuum energy against the numb
 Without sidebands the errors are 6 to 55\,\%.
 The harmonics $m = 6$ and 11 settle at $k = 6$ (22 waves), $m = 15$, which reaches furthest outside the window, at $k = 12$ (34 waves).
 Beyond that the error no longer depends on the waves but on the quadrature of the kernels, and it equals that of the point-value form.
+On the way the energy error can dip below its settled value ($m = 6$ at $k = 2$, $m = 11$ at $k = 1$, $m = 15$ at $k = 6$); these dips are cancellations in the energy, not better solutions, since the error of $\Phi$ there is 0.07, 0.12 and 0.18.
 
 \begin{figure*}[t]
 \includegraphics[width=\textwidth]{fig_accuracy.pdf}
 \caption{Relative error of the vacuum energy $-\oint\bar{q}\,\Phi\,\d{S}$ for the exact harmonics $m = 6$, 11 and 15. (a) Against the number of sidebands $k$ on each side of the window $m = 6,\ldots,15$, on 64 lines $\times$ 201 points; the dotted line marks $k = 12$, used in (b) and (c). (b) Against the points per field line, on 64 lines. (c) Against the number of field lines, with 201 points per line. Lines with dots: wave form; open squares: point-value form on the same rows, where it fits in memory.}
 \label{fig:accuracy}
+\end{figure*}
+
+\begin{figure*}[t]
+\includegraphics[width=\textwidth]{fig_cost.pdf}
+\caption{Cost of the wave form on 64 lines, 51 to 801 points per line, one process on a laptop. (a) Peak memory of the whole process, against one $N\times N$ matrix of doubles and the 220~GB of PB3D's run with 128 lines $\times$ 400 points. (b) Time of the pair sums from scratch and carried over from the previous level.}
+\label{fig:cost}
 \end{figure*}
 
 \subsection{Single waves as data}
@@ -289,6 +305,12 @@ Figs.~\ref{fig:accuracy}(b) and (c) compare the two forms on the same grids.
 The energy errors coincide to the digits shown wherever both were run: on 64 lines $\times$ 201 points they are $3.1\times10^{-3}$, $1.4\times10^{-2}$ and $3.3\times10^{-2}$ for $m = 6$, 11 and 15 in both forms.
 The errors of $\Phi$ itself are slightly smaller with waves: $3.2\times10^{-3}$, $1.4\times10^{-2}$ and $3.4\times10^{-2}$, against $3.6\times10^{-3}$, $1.5\times10^{-2}$ and $3.5\times10^{-2}$.
 
+The two forms were also compared with each other directly.
+On 64 lines $\times$ 201 points with $k = 12$, their energies differ by $4.2\times10^{-7}$, $2.1\times10^{-6}$ and $4.0\times10^{-6}$ for $m = 6$, 11 and 15, about a thousand times less than either differs from the exact energy, while their potentials differ at the points by $1.6\times10^{-3}$, $4.4\times10^{-3}$ and $7.7\times10^{-3}$, less than either form's own error in $\Phi$.
+The residual of the wave form is orthogonal to the waves, and the data $q$ lie almost within their span, so the residual hardly reaches the energy.
+With $k = 6$ the energies for $m = 15$ differ by 4.7\,\%, so the direct difference also shows when the waves are too few.
+On 64 $\times$ 101 with $k = 12$ the energy differences are $9\times10^{-7}$ to $3\times10^{-5}$.
+
 With this plain rule, the error is set by the number of field lines, not by the points along them.
 From 201 to 801 points per line the errors change by less than 8\,\% (Fig.~\ref{fig:accuracy}(b)), while each doubling of the lines from 16 to 128 reduces them by a factor 4 to 12 (Fig.~\ref{fig:accuracy}(c)).
 On 16 lines the errors for $m = 11$ and 15 exceed 100\,\%, in both forms.
@@ -300,17 +322,12 @@ The largest relative difference of $\mtx{A}^\text{pair}$, $\vec{b}^\text{pair}$ 
 
 Fig.~\ref{fig:cost}(a) gives the peak memory of the whole Python process for the wave form, measured separately for each grid on 64 lines.
 It grows about in proportion to $N$, by a factor 1.8 to 1.9 per doubling, from 0.16~GB at $N = 3\,264$ to 1.9~GB at $N = 51\,264$.
-Most of it should be the block of 256 rows of kernel values, $256\times N$ numbers of each kind (an estimate; the parts were not measured separately); smaller blocks need less.
-One $N\times N$ matrix of doubles at the largest grid takes 21~GB, and PB3D's run of the same size took 220~GB.
+At the largest grid the parts were measured separately: the evaluation of the exact harmonics for the test data alone peaks at 0.69~GB, because Laplace's integral is taken on 512 points for all $N$ boundary points at once; the pair sums then add 1.2~GB with blocks of 256 rows of kernel values and their temporaries, and 0.38~GB with blocks of 64 rows, for 11\,\% more time.
+The three numbers add up as if the data's memory stayed allocated, so the method itself needs the block plus about 0.1~GB of per-point arrays, and the 1.9~GB of Table~\ref{tab:criteria} includes 0.69~GB that belongs to the test data.
+One $N\times N$ matrix of doubles at the largest grid takes 21~GB, and PB3D's run of the same size was given 220~GB.
 
-Fig.~\ref{fig:cost}(b) gives the time of the pair sums on one core.
+Fig.~\ref{fig:cost}(b) gives the time of the pair sums; the process used 98 to 101\,\% of one core.
 It grows with $N^2$, as the number of pairs does; carrying a level over takes 0.69 to 0.74 of the time from scratch, close to the three quarters of the pairs that remain to be computed.
-
-\begin{figure}[t]
-\includegraphics[width=\columnwidth]{fig_cost.pdf}
-\caption{Cost of the wave form on 64 lines, 51 to 801 points per line, one process on a laptop. (a) Peak memory of the whole process, against one $N\times N$ matrix of doubles and the 220~GB of PB3D's run with 128 lines $\times$ 400 points. (b) Time of the pair sums from scratch and carried over from the previous level.}
-\label{fig:cost}
-\end{figure}
 
 \section{What is not tested}\label{sec:open}
 \begin{itemize}
@@ -325,7 +342,8 @@ It grows with $N^2$, as the number of pairs does; carrying a level over takes 0.
 With the potential at the boundary points as unknowns, the field-line vacuum of PB3D needs all points at every Richardson level, as Ref.~\onlinecite{Weyens2019vacuum} states, and its memory grows fourfold per level.
 With the amplitudes of a few dozen waves as unknowns, the same rows of $\mtx{H}$ and $\mtx{G}$ give a small system whose entries are sums over pairs of points.
 These sums carry over from one level to the next as one quarter of the old sums plus the pairs with a new point, as the plasma integrals do with one half, and no $N\times N$ matrix is stored.
-On a circular torus with exact toroidal harmonics, the wave form is as accurate as the point-value form on the same rows, needs 34 waves for a window of 10 modes, and runs 51\,264 boundary points in 1.9~GB.
+On a circular torus with exact toroidal harmonics, the wave form is as accurate as the point-value form on the same rows and runs 51\,264 boundary points in 1.9~GB.
+It needs 34 waves for a window of 10 modes when the data are the exact harmonics, which are spread over many waves in the geometric angle; with single waves as data, as the plasma modes of PB3D are, the potential stays on the wave of the data and three or four sidebands on each side would do.
 This is an exploration; whether the wave form enters PB3D is not decided.
 The next checks would be the number of waves on a W7-X boundary, and the wave form together with the near-field rule.
 

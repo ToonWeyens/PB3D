@@ -42,9 +42,10 @@ The self terms come from the interior identities, as in `calc_GH_1`: H's from th
     .venv/bin/python scripts/vacuum_wave/prototype.py lines     # field lines
     .venv/bin/python scripts/vacuum_wave/prototype.py memory 801
 
-A short report in the layout of the 2019 vacuum manuscript, with figures, is `Documentation/vacuum_wave_report/report.pdf`. Its numbers come from `figdata.json`, written by `figures.py data` (about 6 minutes); `figures.py plot` draws the figures, and `latexmk -pdf report.tex` in that directory builds the PDF. The report adds two results to the ones below:
-- with single waves as data, as PB3D's plasma modes are, the potential stays on the data wave (neighbours 0.1 to 6 %, three waves away 0.1 % or less);
-- the wave-form matrix is nearly tridiagonal: its first neighbours are 0.17 of the diagonal, close to a/(2 R0) = 1/6.
+A short report in the layout of the 2019 vacuum manuscript, with figures, is `Documentation/vacuum_wave_report/report.pdf` (written 3 November, checked and revised 4 November 2026). Its numbers come from `figdata.json`, written by `figures.py data` (about 9 minutes); `figures.py plot` draws the figures, and `latexmk -pdf report.tex` in that directory builds the PDF. The report adds to the results below:
+- with single waves as data, as PB3D's plasma modes are, the potential stays on the data wave (neighbours 0.1 to 6 %, three waves away 0.12 % or less);
+- the wave-form matrix is nearly tridiagonal: its first neighbours are 0.17 of the diagonal; 2π times the mass matrix of the waves gives exactly a/(2 R0) = 1/6, the double-layer part the rest (0.5 % of the diagonal);
+- why the exact harmonics need so many waves: du/dθ runs from tanh(η₀/2) = 0.71 (outboard) to coth(η₀/2) = 1.41 (inboard) with cosh η₀ = R0/a, so a harmonic with mode number m in u spans wavenumbers 0.71 m to 1.41 m in θ.
 
 ## Results (3 November 2026, Mac, one process)
 
@@ -81,7 +82,9 @@ The wave form is as accurate as the point-value solve, and slightly better for �
 | 64 | 12 864 | 3.1e−3, 1.4e−2, 3.3e−2 | 3.1e−3, 1.4e−2, 3.3e−2 |
 | 128 | 25 728 | 3.5e−4, 2.9e−3, 8.3e−3 | (not run) |
 
-**Memory (criterion 4).** 64 lines × 801 points, N = 51 264: 50 s, peak memory of the whole process 1.9 GB, against 21 GB for one N × N matrix of doubles. PB3D's 128 × 400 run, of the same size, needed 220 GB. Most of the 1.9 GB is the block of 256 rows that the kernel is evaluated on; smaller blocks need less. Errors at this size: Φ 3.0e−3, 1.4e−2, 3.3e−2; energy 2.9e−3, 1.4e−2, 3.2e−2.
+**Memory (criterion 4).** 64 lines × 801 points, N = 51 264: 50 s, peak memory of the whole process 1.9 GB, against 21 GB for one N × N matrix of doubles. PB3D's 128 × 400 run, of the same size, ran with 220 GB. Measured separately (4 November): the exact harmonics of the test data alone peak at 0.69 GB (Laplace's integral on 512 points for all N points at once); the pair sums add 1.2 GB with blocks of 256 kernel rows and 0.38 GB with blocks of 64 rows (11 % slower). So the method's own part is the block plus about 0.1 GB of per-point arrays. Errors at this size: Φ 3.0e−3, 1.4e−2, 3.3e−2; energy 2.9e−3, 1.4e−2, 3.2e−2.
+
+**Direct difference between the two forms (4 November).** On 64 × 201 with 12 sidebands the energies of the wave form and the point-value form differ by 4.2e−7, 2.1e−6 and 4.0e−6 for m = 6, 11, 15, about a thousand times less than either differs from the exact energy; the potentials at the points differ by 1.6e−3, 4.4e−3 and 7.7e−3. With 6 sidebands the m = 15 energies differ by 4.7 %.
 
 ## Not tested
 

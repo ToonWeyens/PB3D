@@ -1,13 +1,17 @@
 """Data and figures of Documentation/vacuum_wave_report (issue #4, exploration only).
 
-    .venv/bin/python scripts/vacuum_wave/figures.py data    # about 6 minutes on a Mac
+    .venv/bin/python scripts/vacuum_wave/figures.py data    # about 9 minutes on a Mac
     .venv/bin/python scripts/vacuum_wave/figures.py plot    # PDFs next to report.tex
 
 `data` writes figdata.json next to the report; `plot` reads it. Every number
-of the report comes from that file.
+of the report comes from that file. The parts of `data` can be rerun alone and
+rewrite only their own entry: `single` (single-wave data, bands of A and of the
+mass matrix), `compare` (wave form against point values directly), `memsplit`
+(where the memory goes at 64 x 801).
 """
 import json
 import pathlib
+import resource
 import subprocess
 import sys
 import time
@@ -134,21 +138,83 @@ def matrix_bands(A):
             for k in (1, 2, 3)]
 
 
+def mass_bands():
+    """The part of A that the surface element alone gives: M = E^H I E on 64 x 201,
+    and what remains of A once 2 pi M is taken out (the double-layer part)."""
+    g = pt.Grid(64, 201)
+    ws = pt.wave_sums_from_scratch(g, pt.window(K_MAIN), g.data()[1])
+    Amat = ws.system()[0]
+    M = (g.w[:, None]*np.conj(ws.E)).T@ws.E
+    rest = Amat-2*np.pi*M
+    return {'mass': matrix_bands(np.abs(M)), 'A': matrix_bands(np.abs(Amat)),
+            'rest_over_A_diag': [float(np.median(np.abs(np.diag(rest))/np.abs(np.diag(Amat))))]
+            + matrix_bands_against(np.abs(rest), np.abs(np.diag(Amat)))}
+
+
+def matrix_bands_against(B, dia):
+    """Median ratio of the k-th off-diagonal of B to a given diagonal."""
+    return [float(np.median(np.concatenate([np.diag(B, k)/dia[:-k], np.diag(B, -k)/dia[k:]])))
+            for k in (1, 2, 3)]
+
+
 def add_single():
     """Add the single-wave results and the bands of |A| to an existing figdata.json."""
     d = json.loads(DATA.read_text())
     d['single_wave'] = single_wave()
     d['A_bands'] = matrix_bands(np.array(d['matrices']['A']))
+    d['mass_bands'] = mass_bands()
     DATA.write_text(json.dumps(d))
-    print(d['A_bands'], d['single_wave'])
+    print(d['A_bands'], d['mass_bands'], d['single_wave'])
 
 
-def memory_run(n_par):
+def compare():
+    """Direct difference between the wave form and the point-value form on the same rows."""
+    d = json.loads(DATA.read_text())
+    e_ex = np.array([pt.exact_energy(m) for m in pt.M_TEST])
+    out = []
+    for n_lines, n_par in ((64, 101), (64, 201)):
+        g = pt.Grid(n_lines, n_par)
+        ph_ex, qd = g.data()
+        ph_p = pt.solve_points(g, qd)
+        w = g.w[:, None]
+        en_p = -(w*np.conj(qd)*ph_p).sum(0)
+        for k in (6, 12, 20):
+            ph_w = pt.wave_sums_from_scratch(g, pt.window(k), qd).solve()
+            en_w = -(w*np.conj(qd)*ph_w).sum(0)
+            out.append({'lines': n_lines, 'n_par': n_par, 'k': k,
+                        'energy_diff': (abs(en_w-en_p)/abs(en_p)).tolist(),
+                        'phi_diff': np.sqrt((w*abs(ph_w-ph_p)**2).sum(0)/(w*abs(ph_p)**2).sum(0)).tolist(),
+                        'energy_err_points': (abs(en_p-e_ex)/abs(e_ex)).tolist()})
+            print(out[-1], flush=True)
+    d['compare'] = out
+    DATA.write_text(json.dumps(d))
+
+
+def memsplit():
+    """Where the memory goes at the largest grid: the data alone, then the pair sums with two block sizes."""
+    d = json.loads(DATA.read_text())
+    d['memsplit'] = []
+    for stage, chunk in (('data', 256), ('all', 256), ('all', 64)):
+        res = subprocess.run([sys.executable, __file__, 'mem', '801', stage, str(chunk)],
+                             capture_output=True, text=True, check=True)
+        d['memsplit'].append(json.loads(res.stdout.strip().splitlines()[-1]))
+        print(d['memsplit'][-1], flush=True)
+    DATA.write_text(json.dumps(d))
+
+
+def memory_run(n_par, stage='all', chunk=256):
     """One process per grid, so that the peak memory belongs to that grid alone."""
     g = pt.Grid(64, n_par)
     t0 = time.time()
-    pt.wave_sums_from_scratch(g, pt.window(K_MAIN), g.data()[1]).solve()
-    print(json.dumps({'n_par': n_par, 'N': g.n, 'seconds': time.time()-t0, 'peak_MiB': pt.peak_mb()}))
+    qd = g.data()[1]
+    if stage == 'all':
+        ws = pt.WaveSums(g, pt.window(K_MAIN), qd)
+        ws.add_pairs(np.arange(g.n), np.arange(g.n), chunk=chunk)
+        ws.solve()
+    wall = time.time()-t0
+    ru = resource.getrusage(resource.RUSAGE_SELF)
+    print(json.dumps({'n_par': n_par, 'N': g.n, 'stage': stage, 'chunk': chunk, 'seconds': wall,
+                      'cpu_fraction': (ru.ru_utime+ru.ru_stime)/wall, 'peak_MiB': pt.peak_mb()}))
 
 
 def data():
@@ -169,6 +235,8 @@ def data():
     OUT.mkdir(parents=True, exist_ok=True)
     DATA.write_text(json.dumps(out))
     add_single()
+    compare()
+    memsplit()
 
 
 # --- figures -------------------------------------------------------------------
@@ -317,16 +385,17 @@ def fig_accuracy(plt, d):
 
 
 def fig_cost(plt, d):
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(3.4, 4.6))
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(7.0, 2.6))
     mem = d['memory']
     N = np.array([r['N'] for r in mem], float)
     Ns = np.geomspace(2e3, 1.2e5, 50)
-    a1.loglog(Ns, 8*Ns**2/1e9, color='k', lw=0.8, label=r'one $N\times N$ matrix (8 bytes per entry)')
-    a1.loglog([51200], [220], ls='none', marker='*', ms=7, color='k', label=r'PB3D run, 128 lines $\times$ 400 points')
+    a1.loglog(Ns, 8*Ns**2/1e9, color='k', lw=0.8, label=r'one $N\times N$ matrix of doubles')
+    a1.loglog([51200], [220], ls='none', marker='*', ms=7, color='k', label=r'PB3D, 128 lines $\times$ 400 points')
     a1.loglog(N, [r['peak_MiB']*2**20/1e9 for r in mem], marker='o', ms=3, color='#0072B2',
-              label='wave form, whole process (measured)')
-    a1.set_ylabel('memory (GB)')
-    a1.legend(loc='lower center', bbox_to_anchor=(0.5, 1.0))
+              label='wave form, whole process')
+    a1.set_ylabel('peak memory of the process (GB)')
+    a1.set_ylim(0.02, 800)
+    a1.legend(loc='upper left')
     a1.set_xlabel(r'boundary points $N$')
     par = d['parallel']
     a2.loglog([r['N'] for r in par], [r['t_scratch'] for r in par], marker='o', ms=3, color='#0072B2',
@@ -336,8 +405,8 @@ def fig_cost(plt, d):
     a2.loglog(Ns, par[-1]['t_scratch']*(Ns/par[-1]['N'])**2, color='0.6', ls=':', lw=0.8, label=r'$\propto N^2$')
     a2.set_xlabel(r'boundary points $N$')
     a2.set_ylabel('time of the pair sums (s, one core)')
-    a2.legend(loc='lower center', bbox_to_anchor=(0.5, 1.0))
-    fig.tight_layout(h_pad=0.4)
+    a2.legend(loc='upper left')
+    fig.tight_layout(w_pad=2.0)
     fig.savefig(OUT/'fig_cost.pdf')
 
 
@@ -353,4 +422,5 @@ def plot():
 
 
 if __name__ == '__main__':
-    {'data': data, 'plot': plot, 'single': add_single}.get(sys.argv[1], lambda: memory_run(int(sys.argv[2])))()
+    {'data': data, 'plot': plot, 'single': add_single, 'compare': compare, 'memsplit': memsplit}.get(
+        sys.argv[1], lambda: memory_run(int(sys.argv[2]), *sys.argv[3:4], *map(int, sys.argv[4:5])))()
