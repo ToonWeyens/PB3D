@@ -137,6 +137,11 @@ contains
         use num_utilities, only: c
         use grid_vars, only: n_r_eq
         use X_vars, only: prim_X
+        use num_vars, only: jump_to_sol
+        use grid_vars, only: n_alpha
+        use rich_vars, only: n_par_X
+        use eq_utilities, only: calc_inv_met
+        use vac_utilities, only: interlaced_vac_copy
         
         character(*), parameter :: rout_name = 'store_vac'
         
@@ -151,6 +156,11 @@ contains
         integer :: r_id                                                         ! normal index
         real(dp) :: jq                                                          ! iota or q
         character(len=max_str_ln) :: err_msg                                    ! error message
+        integer :: par_id(3)                                                ! total parallel index
+        real(dp), allocatable :: norm_com_C(:,:,:)                          ! Cylindrical components of norm
+        real(dp), allocatable :: T_CV_loc(:,:,:,:,:,:,:)                    ! local T_CV
+        type(vac_type) :: vac_old                                           ! old vacuum variables
+        logical :: interlaced_vac_copy_needed                               ! interlaced copy vacuum needed
         
         ! initialize ierr
         ierr = 0
@@ -181,20 +191,9 @@ contains
         ! VMEC version
         !> \private
         integer function store_vac_VMEC() result(ierr)
-            use num_vars, only: jump_to_sol
-            use grid_vars, only: n_alpha
-            use rich_vars, only: n_par_X
-            use eq_utilities, only: calc_inv_met
-            use vac_utilities, only: interlaced_vac_copy
             
             character(*), parameter :: rout_name = 'store_vac_VMEC'
             
-            ! local variables
-            integer :: par_id(3)                                                ! total parallel index
-            real(dp), allocatable :: norm_com_C(:,:,:)                          ! Cylindrical components of norm
-            real(dp), allocatable :: T_CV_loc(:,:,:,:,:,:,:)                    ! local T_CV
-            type(vac_type) :: vac_old                                           ! old vacuum variables
-            logical :: interlaced_vac_copy_needed                               ! interlaced copy vacuum needed
             
             ! initialize ierr
             ierr = 0
@@ -204,137 +203,18 @@ contains
             
             call lvl_ud(1)
             
-            ! if start of Richardson level  that is not the first, copy previous
-            ! results
-            if (eq_job_nr.eq.1) then
-                if (rich_lvl.eq.rich_restart_lvl) then                          ! restarting
-                    if (jump_to_sol) then                                       ! jumping straight to solution
-                        ! nothing needs to be done here
-                        return
-                    else                                                        ! not jumping to solution
-                        if (rich_restart_lvl.eq.1) then                         ! not actually restarting, just starting
-                            ! nothing extra needed
-                            interlaced_vac_copy_needed = .false.
-                        else                                                    ! restarting
-                            ! reconstruct old vacuum
-                            ierr = reconstruct_PB3D_vac(vac_old,'vac',&
-                                &rich_lvl=rich_lvl-1)
-                            CHCKERR('')
-                            
-                            ! interlaced copy necessary
-                            interlaced_vac_copy_needed = .true.
-                        end if
-                    end if
-                else                                                            ! not restarting
-                    ! copy old vacuum temporarily
-                    ierr = copy_vac(vac,vac_old)
-                    CHCKERR('')
-                    
-                    ! deallocate
-                    call vac%dealloc()
-                    
-                    ! interlaced copy necessary
-                    interlaced_vac_copy_needed = .true.
-                end if
-                
-                ! allocate
-                ierr = vac%init(1,n_par_X*n_alpha,prim_X,[n_par_X,n_alpha],jq)
-                CHCKERR('')
-                
-                ! interlaced copy if needed
-                if (interlaced_vac_copy_needed) then
-                    ierr = interlaced_vac_copy(vac_old,vac)
-                    CHCKERR('')
-                end if
-            end if
+            ! the vacuum of the previous Richardson level, kept or interlaced
+            ierr = restore_previous_level()
+            CHCKERR('')
             
-            ! add results from current equilibrium job to the variables
-            if (rank.eq.n_procs-1) then
-                ! grid point to save is last local
-                r_id = grid%loc_n_r
-                
-                ! calculate Cartesian components of - J nabla psi
-                !   = - J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
-                !   = - J_F T_F^V(1,2) (T_C^V)^T (e^C)
-                ! The  minus sign  is  the convention  of  the kernels:  calc_GH
-                ! takes  the inward  normal, as  store_vac_HEL provides  it for
-                ! the  axisymmetric style  and as  the analytic  torus of  the
-                ! full-stack test  does (its normal  is e_theta x  e_alpha, which
-                ! points inward  for a  left-handed (alpha, psi,  theta) frame).
-                ! With +J nabla psi the off-diagonal H has the wrong sign, the
-                ! row-sum identity then sets a  wrong diagonal, and the response
-                ! of  the circular  VMEC twin  came out  3 to  4 times  too small
-                ! against the  HELENA one;  with -J nabla  psi the  two agree
-                ! within  the first-order  discretization error,  as  in  the
-                ! full-stack test response_1_vs_2 (issue #4, step 6e).
-                allocate(norm_com_C(grid%n(1),grid%n(2),3))
-                norm_com_C = 0._dp
-                allocate(T_CV_loc(size(eq_2%T_VC,1),size(eq_2%T_VC,2),1:1,&
-                    &size(eq_2%T_VC,4),0:0,0:0,0:0))
-                ierr = calc_inv_met(T_CV_loc,eq_2%T_VC(:,:,r_id:r_id,:,:,:,:),&
-                    &[0,0,0])
-                CHCKERR('')
-                do id = 1,3
-                    norm_com_C(:,:,id) = - eq_2%jac_FD(:,:,r_id,0,0,0) * &
-                        &eq_2%T_EF(:,:,r_id,c([1,2],.false.),0,0,0)*&
-                        &T_CV_loc(:,:,1,c([id,1],.false.),0,0,0)                ! Cylindrical contravariant components
-                end do
-                deallocate(T_CV_loc)
-                
-                ! iterate over all field lines
-                do jd = 1,n_alpha
-                    ! set total parallel id
-                    if (rich_lvl.eq.1) then
-                        par_id = [eq_jobs_lims(:,eq_job_nr),1]
-                    else
-                        par_id = [2*eq_jobs_lims(:,eq_job_nr),2]
-                    end if
-                    par_id(1:2) = par_id(1:2) + (jd-1)*n_par_X
-                    
-                    ! save X, Y and Z
-                    vac%x_vec(par_id(1):par_id(2):par_id(3),1) = &
-                        &eq_2%R_E(:,jd,r_id,0,0,0) * cos(grid%zeta_E(:,jd,r_id))
-                    vac%x_vec(par_id(1):par_id(2):par_id(3),2) = &
-                        &eq_2%R_E(:,jd,r_id,0,0,0) * sin(grid%zeta_E(:,jd,r_id))
-                    vac%x_vec(par_id(1):par_id(2):par_id(3),3) = &
-                        &eq_2%Z_E(:,jd,r_id,0,0,0)
-                    
-                    ! save norm
-                    vac%norm(par_id(1):par_id(2):par_id(3),1) = &
-                        &norm_com_C(:,jd,1)*cos(grid%zeta_E(:,jd,r_id)) - &
-                        &norm_com_C(:,jd,2)*sin(grid%zeta_E(:,jd,r_id)) / &
-                        &eq_2%R_E(:,jd,r_id,0,0,0)                              ! ~ e^X
-                    vac%norm(par_id(1):par_id(2):par_id(3),2) = &
-                        &norm_com_C(:,jd,1)*sin(grid%zeta_E(:,jd,r_id)) + &
-                        &norm_com_C(:,jd,2)*cos(grid%zeta_E(:,jd,r_id)) / &
-                        &eq_2%R_E(:,jd,r_id,0,0,0)                              ! ~ e^X
-                    vac%norm(par_id(1):par_id(2):par_id(3),3) = &
-                        &norm_com_C(:,jd,3)                                     ! ~ e^Z
-                    
-                    ! save the parallel angle
-                    vac%ang(:,jd) = grid%theta_F(:,jd,r_id)
-                    
-                    ! save metric factors
-                    vac%h_fac(par_id(1):par_id(2):par_id(3),1) = &
-                        &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0)             ! g_11
-                    vac%h_fac(par_id(1):par_id(2):par_id(3),2) = &
-                        &eq_2%g_FD(:,jd,r_id,c([1,3],.true.),0,0,0)             ! g_13
-                    vac%h_fac(par_id(1):par_id(2):par_id(3),3) = &
-                        &eq_2%g_FD(:,jd,r_id,c([3,3],.true.),0,0,0)             ! g_33
-                end do
-            end if
+            ! the points, normals, angles and metric factors of this equilibrium
+            ! job, on the last process
+            ierr = store_geometry()
+            CHCKERR('')
             
-            ! broadcast to other processes
-            do id = 1,size(vac%x_vec,2)
-                ierr = broadcast_var(vac%x_vec(:,id),n_procs-1)
-                CHCKERR('')
-                ierr = broadcast_var(vac%norm(:,id),n_procs-1)
-                CHCKERR('')
-            end do
-            do id = 1,size(vac%h_fac,2)
-                ierr = broadcast_var(vac%h_fac(:,id),n_procs-1)
-                CHCKERR('')
-            end do
+            ! the same on the other processes
+            ierr = broadcast_geometry()
+            CHCKERR('')
             
             call lvl_ud(-1)
             
@@ -477,6 +357,156 @@ contains
             
             call writo('Done storing vacuum quantities')
         end function store_vac_HEL
+        ! Keeps or interlaces the vacuum of the previous Richardson level, or reconstructs it on a restart.
+        !> \private
+        integer function restore_previous_level() result(ierr)
+            ierr = 0
+            ! if start of Richardson level  that is not the first, copy previous
+            ! results
+            if (eq_job_nr.eq.1) then
+                if (rich_lvl.eq.rich_restart_lvl) then                          ! restarting
+                    if (jump_to_sol) then                                       ! jumping straight to solution
+                        ! nothing needs to be done here
+                        return
+                    else                                                        ! not jumping to solution
+                        if (rich_restart_lvl.eq.1) then                         ! not actually restarting, just starting
+                            ! nothing extra needed
+                            interlaced_vac_copy_needed = .false.
+                        else                                                    ! restarting
+                            ! reconstruct old vacuum
+                            ierr = reconstruct_PB3D_vac(vac_old,'vac',&
+                                &rich_lvl=rich_lvl-1)
+                            CHCKERR('')
+                        
+                            ! interlaced copy necessary
+                            interlaced_vac_copy_needed = .true.
+                        end if
+                    end if
+                else                                                            ! not restarting
+                    ! copy old vacuum temporarily
+                    ierr = copy_vac(vac,vac_old)
+                    CHCKERR('')
+                
+                    ! deallocate
+                    call vac%dealloc()
+                
+                    ! interlaced copy necessary
+                    interlaced_vac_copy_needed = .true.
+                end if
+            
+                ! allocate
+                ierr = vac%init(1,n_par_X*n_alpha,prim_X,[n_par_X,n_alpha],jq)
+                CHCKERR('')
+            
+                ! interlaced copy if needed
+                if (interlaced_vac_copy_needed) then
+                    ierr = interlaced_vac_copy(vac_old,vac)
+                    CHCKERR('')
+                end if
+            end if
+        
+        end function restore_previous_level
+        
+        ! Stores the Cartesian points, the normals -J nabla psi, the parallel angles and the metric factors of the current equilibrium job (last process).
+        !> \private
+        integer function store_geometry() result(ierr)
+            ierr = 0
+            ! add results from current equilibrium job to the variables
+            if (rank.eq.n_procs-1) then
+                ! grid point to save is last local
+                r_id = grid%loc_n_r
+            
+                ! calculate Cartesian components of - J nabla psi
+                !   = - J_F (Dpsi_pol/Dr_V) / 2pi (T_C^V)^T (e^C)
+                !   = - J_F T_F^V(1,2) (T_C^V)^T (e^C)
+                ! The  minus sign  is  the convention  of  the kernels:  calc_GH
+                ! takes  the inward  normal, as  store_vac_HEL provides  it for
+                ! the  axisymmetric style  and as  the analytic  torus of  the
+                ! full-stack test  does (its normal  is e_theta x  e_alpha, which
+                ! points inward  for a  left-handed (alpha, psi,  theta) frame).
+                ! With +J nabla psi the off-diagonal H has the wrong sign, the
+                ! row-sum identity then sets a  wrong diagonal, and the response
+                ! of  the circular  VMEC twin  came out  3 to  4 times  too small
+                ! against the  HELENA one;  with -J nabla  psi the  two agree
+                ! within  the first-order  discretization error,  as  in  the
+                ! full-stack test response_1_vs_2 (issue #4, step 6e).
+                allocate(norm_com_C(grid%n(1),grid%n(2),3))
+                norm_com_C = 0._dp
+                allocate(T_CV_loc(size(eq_2%T_VC,1),size(eq_2%T_VC,2),1:1,&
+                    &size(eq_2%T_VC,4),0:0,0:0,0:0))
+                ierr = calc_inv_met(T_CV_loc,eq_2%T_VC(:,:,r_id:r_id,:,:,:,:),&
+                    &[0,0,0])
+                CHCKERR('')
+                do id = 1,3
+                    norm_com_C(:,:,id) = - eq_2%jac_FD(:,:,r_id,0,0,0) * &
+                        &eq_2%T_EF(:,:,r_id,c([1,2],.false.),0,0,0)*&
+                        &T_CV_loc(:,:,1,c([id,1],.false.),0,0,0)                ! Cylindrical contravariant components
+                end do
+                deallocate(T_CV_loc)
+            
+                ! iterate over all field lines
+                do jd = 1,n_alpha
+                    ! set total parallel id
+                    if (rich_lvl.eq.1) then
+                        par_id = [eq_jobs_lims(:,eq_job_nr),1]
+                    else
+                        par_id = [2*eq_jobs_lims(:,eq_job_nr),2]
+                    end if
+                    par_id(1:2) = par_id(1:2) + (jd-1)*n_par_X
+                
+                    ! save X, Y and Z
+                    vac%x_vec(par_id(1):par_id(2):par_id(3),1) = &
+                        &eq_2%R_E(:,jd,r_id,0,0,0) * cos(grid%zeta_E(:,jd,r_id))
+                    vac%x_vec(par_id(1):par_id(2):par_id(3),2) = &
+                        &eq_2%R_E(:,jd,r_id,0,0,0) * sin(grid%zeta_E(:,jd,r_id))
+                    vac%x_vec(par_id(1):par_id(2):par_id(3),3) = &
+                        &eq_2%Z_E(:,jd,r_id,0,0,0)
+                
+                    ! save norm
+                    vac%norm(par_id(1):par_id(2):par_id(3),1) = &
+                        &norm_com_C(:,jd,1)*cos(grid%zeta_E(:,jd,r_id)) - &
+                        &norm_com_C(:,jd,2)*sin(grid%zeta_E(:,jd,r_id)) / &
+                        &eq_2%R_E(:,jd,r_id,0,0,0)                              ! ~ e^X
+                    vac%norm(par_id(1):par_id(2):par_id(3),2) = &
+                        &norm_com_C(:,jd,1)*sin(grid%zeta_E(:,jd,r_id)) + &
+                        &norm_com_C(:,jd,2)*cos(grid%zeta_E(:,jd,r_id)) / &
+                        &eq_2%R_E(:,jd,r_id,0,0,0)                              ! ~ e^X
+                    vac%norm(par_id(1):par_id(2):par_id(3),3) = &
+                        &norm_com_C(:,jd,3)                                     ! ~ e^Z
+                
+                    ! save the parallel angle
+                    vac%ang(:,jd) = grid%theta_F(:,jd,r_id)
+                
+                    ! save metric factors
+                    vac%h_fac(par_id(1):par_id(2):par_id(3),1) = &
+                        &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0)             ! g_11
+                    vac%h_fac(par_id(1):par_id(2):par_id(3),2) = &
+                        &eq_2%g_FD(:,jd,r_id,c([1,3],.true.),0,0,0)             ! g_13
+                    vac%h_fac(par_id(1):par_id(2):par_id(3),3) = &
+                        &eq_2%g_FD(:,jd,r_id,c([3,3],.true.),0,0,0)             ! g_33
+                end do
+            end if
+        
+        end function store_geometry
+        
+        ! Broadcasts the stored geometry to the other processes.
+        !> \private
+        integer function broadcast_geometry() result(ierr)
+            ierr = 0
+            ! broadcast to other processes
+            do id = 1,size(vac%x_vec,2)
+                ierr = broadcast_var(vac%x_vec(:,id),n_procs-1)
+                CHCKERR('')
+                ierr = broadcast_var(vac%norm(:,id),n_procs-1)
+                CHCKERR('')
+            end do
+            do id = 1,size(vac%h_fac,2)
+                ierr = broadcast_var(vac%h_fac(:,id),n_procs-1)
+                CHCKERR('')
+            end do
+        
+        end function broadcast_geometry
+        
     end function store_vac
     
     !> Calculate the matrices \c G and \c H.
@@ -1485,15 +1515,15 @@ contains
     !!
     !! \return ierr
     integer function calc_vac_res(mds,vac) result(ierr)
-        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
+        use grid_vars, only: min_par_X, min_alpha, n_alpha
         use MPI
-        use rich_vars, only: rich_lvl, n_par_X
+        use rich_vars, only: rich_lvl
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
             &use_pol_flux_F, rank, n_procs, check_vac
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X
         use vac_vars, only: set_loc_lims, in_context, loc_idx
-        use vac_utilities, only: mat_dis2loc
+        use vac_utilities, only: mat_dis2loc, vac_steps
         use eq_vars, only: vac_perm
         use num_utilities, only: LCM
         use MPI_utilities, only: broadcast_var
@@ -1595,132 +1625,20 @@ contains
             call lvl_ud(1)
             
             ! set step sizes if 3-D vacuum
-            if (vac%style.eq.1) then
-                dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
-                if (n_alpha.gt.1) then
-                    dalpha = (max_alpha-min_alpha)/n_alpha*pi                   ! field lines exclude the end point (rich_ops)
-                else
-                    dalpha = 0._dp
-                end if
-            end if
+            if (vac%style.eq.1) call vac_steps(dpar_X,dalpha)
             
-            ! set secondary mode numbers
-            ! (can be already allocated if the vacuum was reconstructed, e.g.
-            ! on the HELENA Richardson-restart path)
-            if (allocated(vac%sec_X)) deallocate(vac%sec_X)
-            allocate(vac%sec_X(n_mod_X))
-            if (use_pol_flux_F) then
-                vac%sec_X = mds%m(size(mds%m,1),:)
-            else
-                vac%sec_X = mds%n(size(mds%n,1),:)
-            end if
-            
-            ! set sizes
-            do jd = 1,2
-                n_loc(jd) = numroc(2*n_mod_X,vac%bs,vac%ind_p(jd),0,vac%n_p(jd))
-            end do
-            call set_loc_lims(n_loc(1),vac%bs,vac%ind_p(1),vac%n_p(1),&
-                &lims_r_loc)
-            call set_loc_lims(n_loc(2),vac%bs,vac%ind_p(2),vac%n_p(2),&
-                &lims_c_loc)
-            
-            ! initialize descriptors
-            call descinit(desc_PhiEP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed for EP')
-            call descinit(desc_GEP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed for GEP')
-            call descinit(desc_res2,2*n_mod_X,2*n_mod_X,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,n_loc(1)),ierr)
-            CHCKERR('descinit failed for res2')
-            
-            ! allocate auxililary matrices
-            allocate(EP(vac%n_loc(1),n_loc(2)))
-            allocate(GEP(vac%n_loc(1),n_loc(2)))
-            allocate(Phi(vac%n_loc(1),n_loc(2)))
-            allocate(res2(n_loc(1),n_loc(2)))
-            allocate(res2_loc(2*n_mod_X,2*n_mod_X))
-            
-            ! set EP
-            ! iterate over all subcolumns of matrix with 2n_mod_X columns
-            subcols: do i_cd = 1,size(lims_c_loc,2)
-                col: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
-                    ! set local column index
-                    cdl = loc_idx(lims_c_loc,i_cd,cd)
-                    
-                    ! set local secondary mode number
-                    sec_X_loc = vac%sec_X(mod(cd-1,n_mod_X)+1)
-                    
-                    ! iterate over all subrows of matrix with n_bnd rows
-                    subrows: do i_rd = 1,size(vac%lims_r,2)
-                        row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
-                            ! set local row index
-                            rdl = loc_idx(vac%lims_r,i_rd,rd)
-                            
-                            ! set parallel index and field line label
-                            par_id = mod(rd-1,vac%n_ang(1))+1
-                            alpha_id = (rd-1)/vac%n_ang(1) + 1
-                            
-                            ! set up local argument
-                            select case (vac%style)
-                                case (1)                                        ! field-line 3-D
-                                    par_loc = pi*min_par_X + &
-                                        &(par_id-1)*dpar_X
-                                    alpha_loc = pi*min_alpha + &
-                                        &(alpha_id-1)*dalpha
-                                    if (use_pol_flux_F) then
-                                        arg_loc = vac%prim_X*alpha_loc + &
-                                            &(vac%prim_X*vac%jq-sec_X_loc)*&
-                                            &par_loc
-                                    else
-                                        arg_loc = vac%prim_X*alpha_loc + &
-                                            &(sec_X_loc-vac%prim_X*vac%jq)*&
-                                            &par_loc
-                                    end if
-                                case (2)                                        ! axisymmetric
-                                    arg_loc = -sec_X_loc*&
-                                        &vac%ang(par_id,alpha_id)
-                            end select
-                            
-                            ! set up argument
-                            
-                            ! save EP: the normal data of the vacuum
-                            ! potential along the stored normal -J nabla psi,
-                            ! out of the vacuum, dphi = -J B.grad X = -dX/dpar
-                            ! = -i (nq-m) X for a mode (nq-m) (the imaginary
-                            ! unit is carried by the real and imaginary
-                            ! columns)
-                            if (cd.le.n_mod_X) then                             ! real part of rhs
-                                EP(rdl,cdl) = cos(arg_loc)                      ! rp(i exp)
-                            else
-                                EP(rdl,cdl) = sin(arg_loc)                      ! ip(i exp)
-                            end if
-                            if (use_pol_flux_F) then
-                                EP(rdl,cdl) = -(vac%prim_X*vac%jq-sec_X_loc)*&
-                                    &EP(rdl,cdl)
-                            else
-                                EP(rdl,cdl) = -(sec_X_loc-vac%prim_X*vac%jq)*&
-                                    &EP(rdl,cdl)
-                            end if
-                        end do row
-                    end do subrows
-                end do col
-            end do subcols
+            ! the normal data of the modes, EP, and the distributed layout
+            call set_up_data()
+            CHCKERR('')
 #if ldebug
             if (debug_calc_vac_res) then
                 call plot_HDF5('EP','EP',reshape(EP,[vac%n_bnd,n_loc(2),1]))
             end if
 #endif
 
-            ! solve for Phi
-            ierr = solve_Phi_BEM(vac,EP,Phi,[vac%n_bnd,2*n_mod_X],&
-                &[vac%n_loc(1),n_loc(2)],lims_c_loc,desc_PhiEP)
+            ! the boundary potential of every mode, Phi, and G EP
+            call solve_potential()
             CHCKERR('')
-            
-            ! calculate GEP
-            call pdgemm('N','N',vac%n_bnd,2*n_mod_X,vac%n_bnd,1._dp,vac%G,1,1,&
-                &vac%desc_G,EP,1,1,desc_PhiEP,0._dp,GEP,1,1,desc_GEP)
             
             call lvl_ud(-1)
             
@@ -1728,56 +1646,8 @@ contains
             call writo('Combine results into vacuum response',persistent=rank_o)
             call lvl_ud(1)
             
-            ! Convert EP into IEP where I contains the integration rule:
-            !         (θ_{i+1}-θ_{i-1})/2   for i = 2..n-1
-            !   I_i = (θ_2-θ_1}/2           for i = 1
-            !         (θ_{n}-θ_{n-1}}/2     for i = n
-            ! with n = vac%n_bnd.
-            ! For vacua of type 1, the step  size is constant. Also, there is an
-            ! additional step size in the alpha direction.
-            subrows3: do i_rd = 1,size(vac%lims_r,2)
-                row3: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
-                    ! set local row index
-                    rdl = loc_idx(vac%lims_r,i_rd,rd)
-                    
-                    subcols3: do i_cd = 1,size(lims_c_loc,2)
-                        ! set local column limits
-                        lims_cl = [loc_idx(lims_c_loc,i_cd,lims_c_loc(1,i_cd)), &
-                        &loc_idx(lims_c_loc,i_cd,lims_c_loc(2,i_cd))]
-                        
-                        select case (vac%style)
-                            case (1)                                            ! field-line 3-D
-                                ! the projection integrates over the field
-                                ! lines as well: dalpha divided by the alpha
-                                ! span gives the average over the lines, the
-                                ! per-toroidal-mode normalization of the
-                                ! axisymmetric style
-                                I_loc = dpar_X/n_alpha
-                                if (mod(rd-1,vac%n_ang(1))+1.eq.1 .or. &        ! first point on field line
-                                    &mod(rd-1,vac%n_ang(1))+1.eq.vac%n_ang(1)) &! last point on field line
-                                    &I_loc = I_loc*0.5_dp
-                            case (2)                                            ! axisymmetric
-                                I_loc = 0.5_dp*&
-                                    &(vac%ang(min(rd+1,vac%n_bnd),1)-&
-                                    &vac%ang(max(rd-1,1),1))
-                        end select
-                        
-                        EP(rdl,lims_cl(1):lims_cl(2)) = &
-                            &EP(rdl,lims_cl(1):lims_cl(2)) * I_loc
-                    end do subcols3
-                end do row3
-            end do subrows3
-            
-            ! calculate (EP)^T Phi
-            ! Note that this means that the second  half of the rows in EP^T are
-            ! still missing a  minus sign if they are to  represent EP^†. This
-            ! will be taken into account when res2_loc is converted to vac%res.
-            call pdgemm('T','N',2*n_mod_X,2*n_mod_X,vac%n_bnd,1._dp,EP,1,1,&
-                &desc_PhiEP,Phi,1,1,desc_PhiEP,0._dp,res2,1,1,desc_res2)
-            
-            ! get serial version on last process
-            ierr = mat_dis2loc(vac%ctxt_HG,res2,lims_r_loc,lims_c_loc,res2_loc,&
-                &proc=n_procs-1)
+            ! the projection of Phi on the data with the integration rule
+            call project_response()
             CHCKERR('')
             
 #if ldebug
@@ -1790,36 +1660,9 @@ contains
             end if
 #endif
             
-            ! convert to complex numbers and save in vac%res
+            ! the complex response, its factor and its Hermitian part
             if (rank.eq.n_procs-1) then
-                vac%res = res2_loc(1:n_mod_X,1:n_mod_X)-&
-                    &(-res2_loc(n_mod_X+1:2*n_mod_X,n_mod_X+1:2*n_mod_X))       ! minus sign for lower rows
-                vac%res = vac%res + iu * &
-                    &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
-                    &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
-                vac%res = vac%res/vac_perm
-                ! Bring  res to  the surface-energy  Hessian as  it enters  the
-                ! potential-energy  matrix  A,  so  that  the  free  boundary
-                ! condition adds  X_e^H res X_e  (set_BC_2, set_BC_4)  and POST
-                ! adds the same term to  E_pot. The matrix A corresponds to 2 dW
-                ! with the  toroidal integral included  (alpha_fac = 2  pi for a
-                ! single field line). With the normal data along the stored
-                ! normal -J nabla psi, out of the vacuum, the vacuum energy is
-                ! dW_vac = 1/(2 mu_0) int dphi^* phi dS >= 0, so res up to here
-                ! is the positive Neumann-to-Dirichlet map per unit toroidal
-                ! angle and 2 dW_vac = 2 pi X_e^H res X_e. In the
-                ! large-aspect-ratio cylinder  the vacuum  energy of  an edge
-                ! displacement equals the field-line bending energy of a plasma
-                ! layer of  thickness a/|m|  at the edge, 4 pi^2 (nq-m)^2 |X_e|^2
-                ! / (mu_0 R_0 |m|) in A (full-stack test vac_response_cylinder).
-                ! Checked against MISHKA on the circular external kink (issue
-                ! #4, step 3).
-                vac%res = 2._dp*pi*vac%res
-                
-                ! The exact  operator is Hermitian;  the discretization leaves
-                ! an asymmetry  of about 1E-5  that makes SLEPC reject  tightly
-                ! converged eigenvalues as complex. Keep the Hermitian part.
-                vac%res = 0.5_dp*(vac%res+conjg(transpose(vac%res)))
+                call finish_response()
 #if ldebug
                 allocate(X_plot(n_mod_X,n_mod_X))
                 allocate(Y_plot(n_mod_X,n_mod_X))
@@ -1937,6 +1780,218 @@ contains
         call lvl_ud(-1)
         
         call writo('Done calculating vacuum quantities')
+    contains
+        ! The normal data of the modes along the stored normal, -dX/dpar, as the real and imaginary columns of EP, with the distributed layout and descriptors of EP, G EP, Phi and the response.
+        !> \private
+        subroutine set_up_data()
+            ! set secondary mode numbers
+            ! (can be already allocated if the vacuum was reconstructed, e.g.
+            ! on the HELENA Richardson-restart path)
+            if (allocated(vac%sec_X)) deallocate(vac%sec_X)
+            allocate(vac%sec_X(n_mod_X))
+            if (use_pol_flux_F) then
+                vac%sec_X = mds%m(size(mds%m,1),:)
+            else
+                vac%sec_X = mds%n(size(mds%n,1),:)
+            end if
+            
+            ! set sizes
+            do jd = 1,2
+                n_loc(jd) = numroc(2*n_mod_X,vac%bs,vac%ind_p(jd),0,vac%n_p(jd))
+            end do
+            call set_loc_lims(n_loc(1),vac%bs,vac%ind_p(1),vac%n_p(1),&
+                &lims_r_loc)
+            call set_loc_lims(n_loc(2),vac%bs,vac%ind_p(2),vac%n_p(2),&
+                &lims_c_loc)
+            
+            ! initialize descriptors
+            call descinit(desc_PhiEP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+            CHCKERR('descinit failed for EP')
+            call descinit(desc_GEP,vac%n_bnd,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+            CHCKERR('descinit failed for GEP')
+            call descinit(desc_res2,2*n_mod_X,2*n_mod_X,vac%bs,vac%bs,0,0,&
+                &vac%ctxt_HG,max(1,n_loc(1)),ierr)
+            CHCKERR('descinit failed for res2')
+            
+            ! allocate auxililary matrices
+            allocate(EP(vac%n_loc(1),n_loc(2)))
+            allocate(GEP(vac%n_loc(1),n_loc(2)))
+            allocate(Phi(vac%n_loc(1),n_loc(2)))
+            allocate(res2(n_loc(1),n_loc(2)))
+            allocate(res2_loc(2*n_mod_X,2*n_mod_X))
+            
+            ! set EP
+            ! iterate over all subcolumns of matrix with 2n_mod_X columns
+            subcols: do i_cd = 1,size(lims_c_loc,2)
+                col: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
+                    ! set local column index
+                    cdl = loc_idx(lims_c_loc,i_cd,cd)
+                    
+                    ! set local secondary mode number
+                    sec_X_loc = vac%sec_X(mod(cd-1,n_mod_X)+1)
+                    
+                    ! iterate over all subrows of matrix with n_bnd rows
+                    subrows: do i_rd = 1,size(vac%lims_r,2)
+                        row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                            ! set local row index
+                            rdl = loc_idx(vac%lims_r,i_rd,rd)
+                            
+                            ! set parallel index and field line label
+                            par_id = mod(rd-1,vac%n_ang(1))+1
+                            alpha_id = (rd-1)/vac%n_ang(1) + 1
+                            
+                            ! set up local argument
+                            select case (vac%style)
+                                case (1)                                        ! field-line 3-D
+                                    par_loc = pi*min_par_X + &
+                                        &(par_id-1)*dpar_X
+                                    alpha_loc = pi*min_alpha + &
+                                        &(alpha_id-1)*dalpha
+                                    if (use_pol_flux_F) then
+                                        arg_loc = vac%prim_X*alpha_loc + &
+                                            &(vac%prim_X*vac%jq-sec_X_loc)*&
+                                            &par_loc
+                                    else
+                                        arg_loc = vac%prim_X*alpha_loc + &
+                                            &(sec_X_loc-vac%prim_X*vac%jq)*&
+                                            &par_loc
+                                    end if
+                                case (2)                                        ! axisymmetric
+                                    arg_loc = -sec_X_loc*&
+                                        &vac%ang(par_id,alpha_id)
+                            end select
+                            
+                            ! set up argument
+                            
+                            ! save EP: the normal data of the vacuum
+                            ! potential along the stored normal -J nabla psi,
+                            ! out of the vacuum, dphi = -J B.grad X = -dX/dpar
+                            ! = -i (nq-m) X for a mode (nq-m) (the imaginary
+                            ! unit is carried by the real and imaginary
+                            ! columns)
+                            if (cd.le.n_mod_X) then                             ! real part of rhs
+                                EP(rdl,cdl) = cos(arg_loc)                      ! rp(i exp)
+                            else
+                                EP(rdl,cdl) = sin(arg_loc)                      ! ip(i exp)
+                            end if
+                            if (use_pol_flux_F) then
+                                EP(rdl,cdl) = -(vac%prim_X*vac%jq-sec_X_loc)*&
+                                    &EP(rdl,cdl)
+                            else
+                                EP(rdl,cdl) = -(sec_X_loc-vac%prim_X*vac%jq)*&
+                                    &EP(rdl,cdl)
+                            end if
+                        end do row
+                    end do subrows
+                end do col
+            end do subcols
+        end subroutine set_up_data
+        
+        ! The boundary potential of every mode from the boundary element system, and the product G EP.
+        !> \private
+        subroutine solve_potential()
+            ! solve for Phi
+            ierr = solve_Phi_BEM(vac,EP,Phi,[vac%n_bnd,2*n_mod_X],&
+                &[vac%n_loc(1),n_loc(2)],lims_c_loc,desc_PhiEP)
+            CHCKERR('')
+            
+            ! calculate GEP
+            call pdgemm('N','N',vac%n_bnd,2*n_mod_X,vac%n_bnd,1._dp,vac%G,1,1,&
+                &vac%desc_G,EP,1,1,desc_PhiEP,0._dp,GEP,1,1,desc_GEP)
+        end subroutine solve_potential
+        
+        ! The projection of Phi on the data with the integration rule (the trapezoidal weights along the lines; the average over the lines for the field-line style), gathered on the last process.
+        !> \private
+        subroutine project_response()
+            ! Convert EP into IEP where I contains the integration rule:
+            !         (θ_{i+1}-θ_{i-1})/2   for i = 2..n-1
+            !   I_i = (θ_2-θ_1}/2           for i = 1
+            !         (θ_{n}-θ_{n-1}}/2     for i = n
+            ! with n = vac%n_bnd.
+            ! For vacua of type 1, the step  size is constant. Also, there is an
+            ! additional step size in the alpha direction.
+            subrows3: do i_rd = 1,size(vac%lims_r,2)
+                row3: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                    ! set local row index
+                    rdl = loc_idx(vac%lims_r,i_rd,rd)
+                    
+                    subcols3: do i_cd = 1,size(lims_c_loc,2)
+                        ! set local column limits
+                        lims_cl = [loc_idx(lims_c_loc,i_cd,lims_c_loc(1,i_cd)), &
+                        &loc_idx(lims_c_loc,i_cd,lims_c_loc(2,i_cd))]
+                        
+                        select case (vac%style)
+                            case (1)                                            ! field-line 3-D
+                                ! the projection integrates over the field
+                                ! lines as well: dalpha divided by the alpha
+                                ! span gives the average over the lines, the
+                                ! per-toroidal-mode normalization of the
+                                ! axisymmetric style
+                                I_loc = dpar_X/n_alpha
+                                if (mod(rd-1,vac%n_ang(1))+1.eq.1 .or. &        ! first point on field line
+                                    &mod(rd-1,vac%n_ang(1))+1.eq.vac%n_ang(1)) &! last point on field line
+                                    &I_loc = I_loc*0.5_dp
+                            case (2)                                            ! axisymmetric
+                                I_loc = 0.5_dp*&
+                                    &(vac%ang(min(rd+1,vac%n_bnd),1)-&
+                                    &vac%ang(max(rd-1,1),1))
+                        end select
+                        
+                        EP(rdl,lims_cl(1):lims_cl(2)) = &
+                            &EP(rdl,lims_cl(1):lims_cl(2)) * I_loc
+                    end do subcols3
+                end do row3
+            end do subrows3
+            
+            ! calculate (EP)^T Phi
+            ! Note that this means that the second  half of the rows in EP^T are
+            ! still missing a  minus sign if they are to  represent EP^†. This
+            ! will be taken into account when res2_loc is converted to vac%res.
+            call pdgemm('T','N',2*n_mod_X,2*n_mod_X,vac%n_bnd,1._dp,EP,1,1,&
+                &desc_PhiEP,Phi,1,1,desc_PhiEP,0._dp,res2,1,1,desc_res2)
+            
+            ! get serial version on last process
+            ierr = mat_dis2loc(vac%ctxt_HG,res2,lims_r_loc,lims_c_loc,res2_loc,&
+                &proc=n_procs-1)
+            CHCKERR('')
+        end subroutine project_response
+        
+        ! The response as a complex matrix, divided by the permeability, multiplied by 2 pi (the toroidal integral) and made Hermitian.
+        !> \private
+        subroutine finish_response()
+            ! convert to complex numbers and save in vac%res
+                vac%res = res2_loc(1:n_mod_X,1:n_mod_X)-&
+                    &(-res2_loc(n_mod_X+1:2*n_mod_X,n_mod_X+1:2*n_mod_X))       ! minus sign for lower rows
+                vac%res = vac%res + iu * &
+                    &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
+                    &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
+                vac%res = vac%res/vac_perm
+                ! Bring  res to  the surface-energy  Hessian as  it enters  the
+                ! potential-energy  matrix  A,  so  that  the  free  boundary
+                ! condition adds  X_e^H res X_e  (set_BC_2, set_BC_4)  and POST
+                ! adds the same term to  E_pot. The matrix A corresponds to 2 dW
+                ! with the  toroidal integral included  (alpha_fac = 2  pi for a
+                ! single field line). With the normal data along the stored
+                ! normal -J nabla psi, out of the vacuum, the vacuum energy is
+                ! dW_vac = 1/(2 mu_0) int dphi^* phi dS >= 0, so res up to here
+                ! is the positive Neumann-to-Dirichlet map per unit toroidal
+                ! angle and 2 dW_vac = 2 pi X_e^H res X_e. In the
+                ! large-aspect-ratio cylinder  the vacuum  energy of  an edge
+                ! displacement equals the field-line bending energy of a plasma
+                ! layer of  thickness a/|m|  at the edge, 4 pi^2 (nq-m)^2 |X_e|^2
+                ! / (mu_0 R_0 |m|) in A (full-stack test vac_response_cylinder).
+                ! Checked against MISHKA on the circular external kink (issue
+                ! #4, step 3).
+                vac%res = 2._dp*pi*vac%res
+                
+                ! The exact  operator is Hermitian;  the discretization leaves
+                ! an asymmetry  of about 1E-5  that makes SLEPC reject  tightly
+                ! converged eigenvalues as complex. Keep the Hermitian part.
+                vac%res = 0.5_dp*(vac%res+conjg(transpose(vac%res)))
+        end subroutine finish_response
+        
     end function calc_vac_res
     
     !> Checks the style-1 (3-D) vacuum operators on the equilibrium surface
@@ -1985,7 +2040,7 @@ contains
     
     !> Field-line style of check_vac_exact.
     integer function check_vac_exact_1(vac) result(ierr)
-        use num_vars, only: rank, n_procs
+        use num_vars, only: rank, n_procs, vac_diag_style
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc, n_col1_loc, vec_glob2dis, &
             &dis_matvec, calc_diag_direct, dis_diag, vac_steps
@@ -2105,11 +2160,15 @@ contains
             where (avail) d_diag = abs(diag_rs-diag_dir)/(4._dp*pi)
             d_fac = 0._dp
             where (avail) d_fac = abs(diag_rs-diag_fac)/(4._dp*pi)
+            ! (two lines: writo cuts long ones)
             call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&
                 &' n_points='//trim(i2str(count(avail)))//&
-                &' max|rowsum-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
-                &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail))))//&
-                &' max|rowsum-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&
+                &' vac_diag_style='//trim(i2str(vac_diag_style))//&
+                &' max|assembled-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
+                &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail)))),&
+                &persistent=rank_o)
+            call writo('CHECKVAC diagonal_parts n_bnd='//trim(i2str(n_bnd))//&
+                &' max|assembled-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&
                 &' max|I_sing|/4pi='//&
                 &trim(r2strt(maxval(abs(I_sing)/(4._dp*pi))))//&
                 &' max|omega_v/4pi-1/2|='//&
