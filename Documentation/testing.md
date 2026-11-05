@@ -98,9 +98,11 @@ combined over all ranks.
 - **`vac_greens` (full-stack)** — the assembled axisymmetric \(G\), \(H\)
   matrices on a synthetic circular boundary (built like `store_vac_HEL`'s,
   seam point duplicated) through the two jump relations
-  \(H\phi = G\,\text{d}\phi\) for interior-harmonic \(\phi\) and
-  \((H + 4\pi I)\phi = G\,\text{d}\phi\) for exterior-harmonic decaying
-  \(\phi\), their first-order convergence with resolution, and the
+  \(H\phi - G\,\text{d}\phi = -4\pi\phi\) for interior-harmonic \(\phi\) and
+  \(H\phi = G\,\text{d}\phi\) for exterior-harmonic decaying \(\phi\), with
+  \(\text{d}\phi\) the derivative along the stored normal \(-J\nabla\psi\) (one
+  convention for both vacuum styles), their first-order convergence with
+  resolution, and the
   `solve_Phi_BEM` round trip (Neumann data of a known exterior harmonic
   returns its boundary trace), both with STRUMPACK and with the ScaLAPACK
   fallback.

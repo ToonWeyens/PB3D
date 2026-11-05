@@ -536,6 +536,7 @@ contains
 #if ldebug
         use num_vars, only: rank, n_procs
         use vac_utilities, only: mat_dis2loc
+        use dtorh, only: dtorh1
 #endif
 
         character(*), parameter :: rout_name = 'calc_GH'
@@ -565,10 +566,16 @@ contains
         integer :: i_rd                                                         ! index of subrow
         integer :: desc_res(BLACSCTXTSIZE)                                      ! descriptor for the result
         real(dp), allocatable :: loc_ser(:,:)                                   ! dummy serial variable
-        real(dp), allocatable :: r_sph(:)                                       ! spherical r with r^2 = R^2+Z^2
         real(dp), allocatable :: phi(:,:)                                       ! test phi
         real(dp), allocatable :: dphi(:,:)                                      ! test dphi/dn
         real(dp), allocatable :: res(:,:,:)                                     ! H phi, G dphi
+        real(dp) :: x_src(2)                                                    ! ring source inside the plasma for the exterior test potential
+        real(dp) :: x_pert(2)                                                   ! point displaced along the normal
+        real(dp) :: fp, fm                                                      ! potential values for the central difference
+        real(dp), parameter :: eps_test = 1.E-7_dp                              ! step of the central difference
+        integer :: n_abs_test                                                   ! |n| of the test potentials
+        integer :: max_n_test                                                   ! maximum degree reached by dtorh1
+        real(dp), allocatable :: pl_test(:), ql_test(:)                         ! toroidal functions of the test potential
         character(len=max_str_ln) :: plot_title(3)                              ! plot title
         character(len=max_str_ln) :: plot_name                                  ! plot name
 #endif
@@ -667,16 +674,30 @@ contains
             end if
             deallocate(loc_ser)
             
-            ! the rest is only for axisymmetric vacua.
+            ! the rest is only for axisymmetric vacua: two test potentials
+            ! that vary as e^{i n zeta}, with their normal data dphi along the
+            ! stored normal -J nabla psi (out of the vacuum):
+            !  1. R^n, harmonic inside the boundary:
+            !       H phi - G dphi = -4 pi phi
+            !     (the shell at infinity contributes -4 pi phi(r_i), as for
+            !     the constant potential; eq. 149 of the 2019 manuscript lacks
+            !     this term, erratum E16);
+            !  2. Q_{|n|-1/2}(gamma(x,x_src))/sqrt(R R_src) with x_src inside
+            !     the plasma, the n-mode Green's function, harmonic outside
+            !     the boundary and decaying:
+            !       H phi - G dphi = 0.
+            ! (The spherical potential of eq. 152 of the manuscript is not
+            ! harmonic across Z = 0, erratum E17, and was dropped.)
             if (vac%style.eq.2) then
-                ! test whether G and H hold for test potentials phi
+                n_abs_test = abs(vac%prim_X)
+                allocate(pl_test(0:max(n_abs_test,1)))
+                allocate(ql_test(0:max(n_abs_test,1)))
+                x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd    ! centroid of the boundary points
                 if (vac%lims_c(1,1).eq.1) then                                  ! this process owns (part of) first column
                     ! set up variables
                     allocate(res(vac%n_loc(1),3,2))
-                    allocate(r_sph(vac%n_loc(1)))
                     allocate(phi(vac%n_loc(1),2))
                     allocate(dphi(vac%n_loc(1),2))
-                    
                     ! set up rhs for H (phi) and G (dphi)
                     subrows: do i_rd = 1,size(vac%lims_r,2)
                         row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
@@ -684,44 +705,31 @@ contains
                             rdl = sum(vac%lims_r(2,1:i_rd-1)-&
                                 &vac%lims_r(1,1:i_rd-1)+1) + &
                                 &rd-vac%lims_r(1,i_rd)+1
-                            
-                            ! spherical radius
-                            r_sph(rdl) = sqrt(sum(vac%x_vec(rd,:)**2))
-                            
-                            ! test 1
-                            phi(rdl,1) = vac%x_vec(rd,1)**vac%prim_X
-                            dphi(rdl,1) = - vac%prim_X*vac%norm(rd,1)/&
+                            ! test 1: R^n, dphi = n norm_R R^(n-1)
+                            phi(rdl,1) = vac%x_vec(rd,1)**n_abs_test
+                            dphi(rdl,1) = n_abs_test*vac%norm(rd,1)/&
                                 &vac%x_vec(rd,1) * phi(rdl,1)
-                            
-                            ! test 2
-                            phi(rdl,2) = (vac%x_vec(rd,1)/&
-                                &(r_sph(rdl)+abs(vac%x_vec(rd,2))))**vac%prim_X
-                            dphi(rdl,2) = vac%prim_X*(vac%norm(rd,2)-&
-                                &vac%norm(rd,1)*vac%x_vec(rd,2)/&
-                                &vac%x_vec(rd,1)) / &
-                                &r_sph(rdl)*sign(1._dp,vac%x_vec(rd,2)) * &
-                                &phi(rdl,2)
+                            ! test 2: ring source, dphi by central difference
+                            ! along the normal
+                            ierr = ring_pot(vac%x_vec(rd,:),phi(rdl,2))
+                            CHCKERR('')
+                            x_pert = vac%x_vec(rd,:) + eps_test*vac%norm(rd,:)
+                            ierr = ring_pot(x_pert,fp)
+                            CHCKERR('')
+                            x_pert = vac%x_vec(rd,:) - eps_test*vac%norm(rd,:)
+                            ierr = ring_pot(x_pert,fm)
+                            CHCKERR('')
+                            dphi(rdl,2) = (fp-fm)/(2*eps_test)
                         end do row
                     end do subrows
                 else
                     allocate(res(0,3,2))
-                    allocate(r_sph(0))
                     allocate(phi(0,2))
                     allocate(dphi(0,2))
                 end if
                 
                 ! output
                 allocate(loc_ser(vac%n_bnd,3))
-                ierr = vec_dis2loc(vac%ctxt_HG,r_sph,vac%lims_r,loc_ser(:,1),&
-                    &proc=n_procs-1)
-                CHCKERR('')
-                if (rank.eq.n_procs-1) then
-                    plot_title(1) = 'spherical r'
-                    plot_name = 'r_sph'
-                    call print_ex_2D(plot_title(1),plot_name,loc_ser(:,1),&
-                        &x=vac%ang(:,1),draw=.false.)
-                    call draw_ex([plot_title],plot_name,1,1,.false.)
-                end if
                 do jd = 1,size(phi,2)
                     ierr = vec_dis2loc(vac%ctxt_HG,phi(:,jd),vac%lims_r,&
                         &loc_ser(:,jd),proc=n_procs-1)
@@ -763,8 +771,10 @@ contains
                         &vac%desc_G,dphi(:,jd),1,1,desc_res,1,0._dp,&
                         &res(:,2,jd),1,1,desc_res,1)
                     
-                    ! add them together
+                    ! add them together, with the free term of the
+                    ! interior potential
                     res(:,3,jd) = sum(res(:,1:2,jd),2)
+                    if (jd.eq.1) res(:,3,jd) = res(:,3,jd) + 4*pi*phi(:,jd)
                 end do
                 
                 ! output of tests
@@ -779,15 +789,13 @@ contains
                         select case (id)
                             case (1)
                                 plot_title(1) = 'H R^n'
-                                plot_title(2) = '-G n Z_θ R^n'
-                                plot_title(3) = '(H - G n Z_θ) R^n'
+                                plot_title(2) = '-G dphi (R^n)'
+                                plot_title(3) = '(H phi - G dphi + 4π phi) (R^n)'
                                 plot_name = 'test_vac_1'
                             case (2)
-                                plot_title(1) = 'H (R/(r+|Z|))^n'
-                                plot_title(2) = &
-                                    &'- G |Z|/Z n dr/dθ (R/(r+|Z|))^n'
-                                plot_title(3) = '(H - G |Z|/Z n dr/dθ) &
-                                    &(R/(r+|Z|))^n'
+                                plot_title(1) = 'H phi (ring source)'
+                                plot_title(2) = '-G dphi (ring source)'
+                                plot_title(3) = '(H phi - G dphi) (ring source)'
                                 plot_name = 'test_vac_2'
                         end select
                         call print_ex_2D(plot_title,trim(plot_name)//'_all',&
@@ -807,6 +815,26 @@ contains
 #endif
         
         call lvl_ud(-1)
+#if ldebug
+    contains
+        ! The n-mode Green's function potential of a ring source at x_src,
+        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src) with gamma = 1 + |x-x_src|^2/(2 R R_src)
+        ! (eq. 112 of the 2019 manuscript), used by the debug test potentials.
+        !> \private
+        integer function ring_pot(x,res) result(ierr)
+            ! input / output
+            real(dp), intent(in) :: x(2)                                        ! point (R, Z)
+            real(dp), intent(out) :: res                                        ! potential
+            
+            ! local variables
+            real(dp) :: gam                                                     ! argument of the toroidal function
+            
+            gam = 1._dp + sum((x-x_src)**2)/(2._dp*x(1)*x_src(1))
+            ierr = dtorh1(gam,0,max(n_abs_test,1),pl_test,ql_test,max_n_test)
+            if (ierr.eq.0 .and. max_n_test.lt.n_abs_test) ierr = 1
+            res = ql_test(n_abs_test)/sqrt(x(1)*x_src(1))
+        end function ring_pot
+#endif
     end function calc_GH
 
     !> \public Calculates matrices \c G and \c H in 3-D configuration.
@@ -1350,21 +1378,13 @@ contains
 #endif
                         
                         ! corner term of the left-hand side of the Green
-                        ! identity: beta is the angle on the vacuum side (> pi
-                        ! on a convex boundary, as eq. 146 of the 2019
-                        ! manuscript defines it), but the assembled H is the
-                        ! interior operator (solve_Phi_BEM adds 4 pi to reach
-                        ! the vacuum side), whose corner term is the
-                        ! plasma-side angle 2 pi - beta. With beta itself the
-                        ! diagonal was off by 4 (beta - pi), about 8 pi over
-                        ! the number of boundary points: the response was
-                        ! 0.7 % too large at 257 HELENA points, the same for
-                        ! every mode. The exterior identity and solve improve
-                        ! by this amount and the interior identity (not used)
-                        ! worsens by it; the first-order error that remains
-                        ! has opposite signs in the two identities, so it is
-                        ! not in the diagonal (issue #4, 2 November 2026)
-                        H_in(rdl,cdl) = H_in(rdl,cdl) - 2*(2*pi-beta(rd))
+                        ! identity, -2 beta with beta the vacuum's internal
+                        ! angle (> pi where the plasma is convex, eq. 146 of
+                        ! the 2019 manuscript): with the kernels taken along
+                        ! the stored normal -J nabla psi (calc_GH_int_2), the
+                        ! assembled H is the vacuum-side operator, as for the
+                        ! field-line style, and solve_Phi_BEM needs no shift
+                        H_in(rdl,cdl) = H_in(rdl,cdl) - 2*beta(rd)
                     end if
                     
                     ! clean up
@@ -1668,17 +1688,22 @@ contains
                             
                             ! set up argument
                             
-                            ! save EP
+                            ! save EP: the normal data of the vacuum
+                            ! potential along the stored normal -J nabla psi,
+                            ! out of the vacuum, dphi = -J B.grad X = -dX/dpar
+                            ! = -i (nq-m) X for a mode (nq-m) (the imaginary
+                            ! unit is carried by the real and imaginary
+                            ! columns)
                             if (cd.le.n_mod_X) then                             ! real part of rhs
                                 EP(rdl,cdl) = cos(arg_loc)                      ! rp(i exp)
                             else
                                 EP(rdl,cdl) = sin(arg_loc)                      ! ip(i exp)
                             end if
                             if (use_pol_flux_F) then
-                                EP(rdl,cdl) = (vac%prim_X*vac%jq-sec_X_loc)*&
+                                EP(rdl,cdl) = -(vac%prim_X*vac%jq-sec_X_loc)*&
                                     &EP(rdl,cdl)
                             else
-                                EP(rdl,cdl) = (sec_X_loc-vac%prim_X*vac%jq)*&
+                                EP(rdl,cdl) = -(sec_X_loc-vac%prim_X*vac%jq)*&
                                     &EP(rdl,cdl)
                             end if
                         end do row
@@ -1728,7 +1753,12 @@ contains
                         
                         select case (vac%style)
                             case (1)                                            ! field-line 3-D
-                                I_loc = dpar_X*dalpha
+                                ! the projection integrates over the field
+                                ! lines as well: dalpha divided by the alpha
+                                ! span gives the average over the lines, the
+                                ! per-toroidal-mode normalization of the
+                                ! axisymmetric style
+                                I_loc = dpar_X/n_alpha
                                 if (mod(rd-1,vac%n_ang(1))+1.eq.1 .or. &        ! first point on field line
                                     &mod(rd-1,vac%n_ang(1))+1.eq.vac%n_ang(1)) &! last point on field line
                                     &I_loc = I_loc*0.5_dp
@@ -1774,45 +1804,23 @@ contains
                     &(res2_loc(1:n_mod_X,n_mod_X+1:2*n_mod_X)-&
                     &res2_loc(n_mod_X+1:2*n_mod_X,1:n_mod_X))                   ! minus sign for lower rows
                 vac%res = vac%res/vac_perm
-                if (vac%style.eq.1) then
-                    ! bring the field-line 3-D result to the same convention
-                    ! as the axisymmetric one, against which the response (and
-                    ! its use in the SLEPC boundary condition) is anchored:
-                    !  - the style-1 boundary operators expect normal data
-                    !    along J nabla psi, which for the flux coordinates
-                    !    (alpha,psi,theta) points opposite to the -J nabla psi
-                    !    data convention of the axisymmetric style, so Phi
-                    !    (and with it the response, which is linear in Phi
-                    !    but keeps the physical data in the projection) picks
-                    !    up a minus sign;
-                    !  - the style-1 projection integrates over the field
-                    !    line label as well, so it carries an extra factor of
-                    !    the alpha span compared to the per-zeta-mode
-                    !    normalization of the axisymmetric style.
-                    ! (the sign is confirmed by the full-stack test
-                    ! point_source_3d, which solves for a known exterior
-                    ! potential with these normal data; the ratio to the
-                    ! axisymmetric response converges to 1 at first order in
-                    ! response_1_vs_2)
-                    vac%res = -vac%res/((max_alpha-min_alpha)*pi)
-                end if
-                
                 ! Bring  res to  the surface-energy  Hessian as  it enters  the
                 ! potential-energy  matrix  A,  so  that  the  free  boundary
                 ! condition adds  X_e^H res X_e  (set_BC_2, set_BC_4)  and POST
                 ! adds the same term to  E_pot. The matrix A corresponds to 2 dW
                 ! with the  toroidal integral included  (alpha_fac = 2  pi for a
-                ! single  field line).  In the  large-aspect-ratio cylinder  the
-                ! vacuum  energy of  an edge  displacement equals  the  field-line
-                ! bending energy  of a  plasma layer of  thickness a/|m|  at the
-                ! edge, which  in A amounts  to 4 pi^2 (nq-m)^2  |X_e|^2 /  (mu_0
-                ! R_0  |m|),  while res  up  to  here  is -2  pi  (nq-m)^2 /  (mu_0
-                ! R_0 |m|)  (full-stack test  vac_response_cylinder).  Hence 2
-                ! dW_vac =  -2 pi X_e^H res  X_e: the sign because  the exterior
-                ! Neumann-to-Dirichlet map  of the BEM is  negative definite, the
-                ! 2 pi  the toroidal  integral. Checked  against MISHKA  on the
-                ! circular external kink (issue #4, step 3).
-                vac%res = -2._dp*pi*vac%res
+                ! single field line). With the normal data along the stored
+                ! normal -J nabla psi, out of the vacuum, the vacuum energy is
+                ! dW_vac = 1/(2 mu_0) int dphi^* phi dS >= 0, so res up to here
+                ! is the positive Neumann-to-Dirichlet map per unit toroidal
+                ! angle and 2 dW_vac = 2 pi X_e^H res X_e. In the
+                ! large-aspect-ratio cylinder  the vacuum  energy of  an edge
+                ! displacement equals the field-line bending energy of a plasma
+                ! layer of  thickness a/|m|  at the edge, 4 pi^2 (nq-m)^2 |X_e|^2
+                ! / (mu_0 R_0 |m|) in A (full-stack test vac_response_cylinder).
+                ! Checked against MISHKA on the circular external kink (issue
+                ! #4, step 3).
+                vac%res = 2._dp*pi*vac%res
                 
                 ! The exact  operator is Hermitian;  the discretization leaves
                 ! an asymmetry  of about 1E-5  that makes SLEPC reject  tightly
@@ -2499,25 +2507,26 @@ contains
     !! right-hand side .
     !!
     !! This is done by solving the system of equations
-    !!  \f$\left(\overline{\text{H}} + 4\pi\overline{\text{I}}\right)
-    !!  \overline{\Phi} = \overline{\text{G}}\overline{\text{R}}\f$,
+    !!  \f$\overline{\text{H}}\overline{\Phi} =
+    !!  \overline{\text{G}}\overline{\text{R}}\f$,
     !! where \f$\overline{\text{R}}\f$ is the right-hand side, for example equal
     !! to \f$\overline{\text{E}}\overline{\text{P}}\f$  to solve in  function of
     !! the individual Fourier modes.
     !!
-    !! The  \f$4\pi\f$ diagonal  term selects  the vacuum  (exterior) side  of
-    !! the  boundary:  the assembled  \f$\overline{\text{H}}\f$  satisfies the
-    !! interior identity  \f$\overline{\text{H}}\overline{\phi} =
-    !! \overline{\text{G}}\overline{\text{D}\phi}\f$ for potentials  that  are
-    !! harmonic inside  the boundary, whereas potentials that  are harmonic in
-    !! the vacuum and decay at infinity satisfy
-    !! \f$\left(\overline{\text{H}} +
-    !! 4\pi\overline{\text{I}}\right)\overline{\phi} =
-    !! \overline{\text{G}}\overline{\text{D}\phi}\f$
-    !! (both relations  are verified  numerically in the  full-stack tests. It
-    !! also  makes the  system  nonsingular  when the  first  and last  points
-    !! of  a  closed  boundary  coincide,  as they  do  for  HELENA:  the  two
-    !! corresponding rows of \f$\overline{\text{H}}\f$ alone are identical.)
+    !! Both vacuum styles assemble  \f$\overline{\text{H}}\f$ in the vacuum-side
+    !! convention: the  kernels take  the normal derivative  along the  stored
+    !! normal  \f$-\mathcal{J}\nabla\psi\f$, out  of  the vacuum,  and the  diagonal
+    !! carries  \f$-2\beta\f$ with  \f$\beta\f$ the  vacuum's internal  angle (the
+    !! row-sum identity for the field-line style). Potentials that are harmonic
+    !! in the  vacuum and  decay at infinity  then satisfy
+    !! \f$\overline{\text{H}}\overline{\phi} =
+    !! \overline{\text{G}}\overline{\text{D}\phi}\f$, and potentials that are
+    !! harmonic inside the boundary satisfy
+    !! \f$\overline{\text{H}}\overline{\phi} - \overline{\text{G}}\overline{\text{D}\phi}
+    !! = -4\pi\overline{\phi}\f$ (both verified in the full-stack tests). The
+    !! corner  term  also  makes  the  system  nonsingular  when  the  first  and
+    !! last points of a closed boundary coincide, as they do for HELENA: the two
+    !! rows differ only in the column of that term.
     !!
     !! The linear  system is solved  with STRUMPack when PB3D  was configured
     !! with it, and with ScaLAPACK LU (\c pdgesv) otherwise.
@@ -2544,9 +2553,6 @@ contains
 
         ! local variables
         integer, target :: desc_GR(BLACSCTXTSIZE)                               ! descriptor for GR
-        integer :: rd                                                           ! global counter for row
-        integer :: rdl2, cdl2                                                   ! local counters for the diagonal
-        integer :: i_rd2, i_cd2                                                 ! index of subrow and subcol for the diagonal
         integer :: info_loc                                                     ! info variable for ScaLAPACK
         integer, allocatable :: ipiv(:)                                         ! pivot variable for the LU
         integer :: iwork_q(1)                                                   ! integer workspace query
@@ -2556,9 +2562,8 @@ contains
         real(dp), allocatable :: work(:)                                        ! workspace of the condition estimate
         real(dp), external :: pdlange                                           ! ScaLAPACK matrix norm
         logical :: solved_ok                                                    ! whether a verified solution was obtained
-        real(dp) :: diag_shift                                                  ! diagonal shift selecting the exterior side
         real(dp), allocatable, target :: GR(:,:)                                ! GR
-        real(dp), allocatable, target :: H_ext(:,:)                             ! H + shift I, the exterior operator
+        real(dp), allocatable, target :: H_ext(:,:)                             ! copy of H, overwritten by the factorization
         character(len=max_str_ln) :: err_msg                                    ! error message
 #ifdef PB3D_WITH_STRUMPACK
         real(dp) :: SDP_err                                                     ! error
@@ -2598,45 +2603,10 @@ contains
             call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,vac%G,1,1,&
                 &vac%desc_G,R,1,1,desc_RPhi,0._dp,GR,1,1,desc_GR)
 
-            ! set up the exterior operator H + shift I in a local copy,
-            ! iterating over the local blocks to find the diagonal elements
-            !
-            ! The shift selects  the vacuum (exterior) side of  the boundary,
-            ! as  established by  the jump-relation  measurements in  the
-            ! full-stack tests:
-            !  - style 2 (axisymmetric): the assembled H with its
-            !    -2 (2 pi - beta) diagonal (the plasma-side angle, calc_GH_2)
-            !    satisfies the interior identity H phi = G dphi, so the
-            !    exterior needs H + 4 pi I;
-            !  - style 1 (field-line 3-D): the H diagonal is constructed in
-            !    calc_GH_1 from the row-sum identity H 1 = -4 pi 1, which,
-            !    with the inward-pointing normal J nabla psi, already shifts
-            !    the operator to the exterior convention: exterior harmonics
-            !    satisfy H phi = G dphi directly and no shift is needed
-            !    (interior ones then satisfy (H + 4 pi I) phi = G dphi).
-            select case (vac%style)
-                case (1)                                                        ! field-line 3-D
-                    diag_shift = 0._dp
-                case default                                                    ! axisymmetric
-                    diag_shift = 4._dp*pi
-            end select
+            ! copy the operator: the factorization overwrites it, and the
+            ! original stays available for the residual check below
             allocate(H_ext(size(vac%H,1),size(vac%H,2)))
             H_ext = vac%H
-            subrows: do i_rd2 = 1,size(vac%lims_r,2)
-                subcols: do i_cd2 = 1,size(vac%lims_c,2)
-                    diag: do rd = max(vac%lims_r(1,i_rd2),&
-                        &vac%lims_c(1,i_cd2)), min(vac%lims_r(2,i_rd2),&
-                        &vac%lims_c(2,i_cd2))                                   ! global diagonal indices in this block
-                        rdl2 = sum(vac%lims_r(2,1:i_rd2-1)-&
-                            &vac%lims_r(1,1:i_rd2-1)+1) + &
-                            &rd-vac%lims_r(1,i_rd2)+1
-                        cdl2 = sum(vac%lims_c(2,1:i_cd2-1)-&
-                            &vac%lims_c(1,1:i_cd2-1)+1) + &
-                            &rd-vac%lims_c(1,i_cd2)+1
-                        H_ext(rdl2,cdl2) = H_ext(rdl2,cdl2) + diag_shift
-                    end do diag
-                end do subcols
-            end do subrows
 
             solved_ok = .false.
 

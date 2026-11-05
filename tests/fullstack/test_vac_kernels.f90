@@ -174,10 +174,12 @@ contains
         res = -2._dp*q(2)/sqrt(x_in(1)*x_s(1))
     end subroutine k_G
 
-    !> The H kernel  k_H(t) = 2/sqrt(R_in R_s) *
+    !> The H kernel  k_H(t) = -2/sqrt(R_in R_s) *
     !!  [ -norm_R/(2 R_s) Q_{n-1/2} - Aij (gam Q_{n-1/2} - Q_{n-3/2}) ],
-    !! i.e. the directional derivative of the G kernel along the source
-    !! normal (validated independently in test_H_regular_numderiv).
+    !! i.e. minus the directional derivative of the G kernel along the source
+    !! normal (validated independently in test_H_regular_numderiv): the
+    !! kernel of eq. (130) of the 2019 manuscript with the opposite sign, the
+    !! vacuum-side convention of calc_GH_int_2.
     subroutine k_H(t,x_in,n,res,ierr)
         real(dp), intent(in) :: t                                               ! source angle
         real(dp), intent(in) :: x_in(2)                                         ! influence point
@@ -194,7 +196,7 @@ contains
         gam = gam_arg(x_s,x_in)
         call q_pair(gam,n,q,ierr)
         Aij = aij_reg(x_s,norm_s,x_in,n)
-        res = 2._dp/sqrt(x_in(1)*x_s(1)) * &
+        res = -2._dp/sqrt(x_in(1)*x_s(1)) * &                                  ! vacuum-side sign
             &(-norm_s(1)/(2._dp*x_s(1))*q(2) - Aij*(gam*q(2)-q(1)))
     end subroutine k_H
 
@@ -320,7 +322,7 @@ contains
             x_pert = x_s(kd,:) - eps*norm_s(kd,:)
             call q_pair(gam_arg(x_pert,x_in),n,q,ierr)
             fm = q(2)/sqrt(x_in(1)*x_pert(1))
-            H_ref = (t_s_in(2)-t_s_in(1))*(fp-fm)/(2._dp*eps)
+            H_ref = -(t_s_in(2)-t_s_in(1))*(fp-fm)/(2._dp*eps)                 ! vacuum-side sign
             call check(error, H(kd), H_ref, thr=1.e-6_dp, rel=.true., &
                 &message='H('//trim(i2str(kd))//') vs numerical derivative: '&
                 &//trim(r2str(H(kd)))//' vs '//trim(r2str(H_ref)))
@@ -379,8 +381,8 @@ contains
         ! H model: k_H ~ c_H_log (-ln(a_r u) - b_n) + c_H_const with
         ! c_H_log = -norm_R(t_1)/R_1 / R_in and the finite part of the
         ! -Aij (gam Q_{n-1/2} - Q_{n-3/2}) term: (gam Q - Q') -> -2/(2n-1)
-        c_H_log = -norm_in(1)/(x_in(1)**2)
-        c_H_const = 2._dp/x_in(1)*aij0*2._dp/(2._dp*n-1._dp)
+        c_H_log = norm_in(1)/(x_in(1)**2)                                       ! vacuum-side sign (as k_H)
+        c_H_const = -2._dp/x_in(1)*aij0*2._dp/(2._dp*n-1._dp)
 
         do kd = 1,2
             I_G(kd) = c_G*(-I_ln(kd)-(log(a_r)+b_of(n))*I_hat)

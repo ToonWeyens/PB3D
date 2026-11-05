@@ -377,8 +377,8 @@ contains
     !!
     !! A point source on the magnetic axis, phi = 1/|x - x_src|, is harmonic
     !! outside the surface and decays, and its normal data norm . grad phi
-    !! are exact. solve_Phi_BEM (style 1: no diagonal shift, the row-sum
-    !! diagonal of calc_GH_1 already selects the exterior) must then return
+    !! are exact. solve_Phi_BEM (the row-sum diagonal of calc_GH_1 is the
+    !! vacuum-side corner term, so H phi = G dphi holds) must then return
     !! phi on the surface to discretization accuracy, and the error must fall
     !! with resolution. Run on the circular torus and on a rippled torus
     !! a(zeta) = a (1 + 0.1 cos 5 zeta), both with PB3D's field-line grid
@@ -582,8 +582,9 @@ contains
     !! kind: regular at the focal ring, so an interior one). Their boundary
     !! data are exact (the gradient by central differences in (R, Z) of the
     !! closed form, the toroidal functions from dtorh1 at order n), so the
-    !! assembled operators must satisfy H phi = G dphi for the Q family and
-    !! (H + 4 pi) phi = G dphi for the P family, and solve_Phi_BEM must return
+    !! assembled operators must satisfy H phi - G dphi = -4 pi phi for the Q
+    !! family and H phi = G dphi for the P family (one vacuum-side convention
+    !! for both styles since November 2026), and solve_Phi_BEM must return
     !! the P-family boundary traces, with errors that fall with the number of
     !! boundary points. This pins the axisymmetric vacuum at finite aspect
     !! ratio, poloidal mode coupling included, where the cylinder test (the
@@ -653,7 +654,7 @@ contains
                         allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),&
                             &phi_num(n_bnd))
 
-                        ! interior family: H phi = G dphi
+                        ! interior family: H phi - G dphi = -4 pi phi
                         do id = 1,n_bnd
                             call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
                                 &vac%norm(id,:),n_tor,kd,.false.,phi(id),dphi(id))
@@ -663,9 +664,10 @@ contains
                             &dphi,rhs)
                         call check(error, ierr, 0, 'matrix-vector product failed')
                         if (allocated(error)) exit tor
-                        errs(1,ires) = maxval(abs(lhs-rhs))/maxval(abs(4._dp*pi*phi))
+                        errs(1,ires) = maxval(abs(lhs-rhs+4._dp*pi*phi))/&
+                            &maxval(abs(4._dp*pi*phi))
 
-                        ! exterior family: (H + 4 pi) phi = G dphi, and the solve
+                        ! exterior family: H phi = G dphi, and the solve
                         do id = 1,n_bnd
                             call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
                                 &vac%norm(id,:),n_tor,kd,.true.,phi(id),dphi(id))
@@ -675,7 +677,7 @@ contains
                             &dphi,rhs)
                         call check(error, ierr, 0, 'matrix-vector product failed')
                         if (allocated(error)) exit tor
-                        errs(2,ires) = maxval(abs(lhs+4._dp*pi*phi-rhs))/&
+                        errs(2,ires) = maxval(abs(lhs-rhs))/&
                             &maxval(abs(4._dp*pi*phi))
                         n_col1 = n_col1_loc(vac)
                         call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),&
@@ -740,14 +742,12 @@ contains
             real(dp), parameter :: h = 1.e-5_dp                                 ! difference step
 
             phi = tor_val(R,Z,n,k,exterior)
-            ! the axisymmetric kernels take the normal data with the opposite
-            ! sign of the field-line ones: -norm . grad phi, with norm the
-            ! (inward) J nabla psi of the fixture; both identities below hold
-            ! to 1e-3 with this sign and fail at order one with the other
-            dphi = -(norm(1)*(tor_val(R+h,Z,n,k,exterior)-&
+            ! both styles take the normal data along the stored normal, the
+            ! (inward) -J nabla psi of the fixture: dphi = norm . grad phi
+            dphi = norm(1)*(tor_val(R+h,Z,n,k,exterior)-&
                 &tor_val(R-h,Z,n,k,exterior))/(2._dp*h) + &
                 &norm(2)*(tor_val(R,Z+h,n,k,exterior)-&
-                &tor_val(R,Z-h,n,k,exterior))/(2._dp*h))
+                &tor_val(R,Z-h,n,k,exterior))/(2._dp*h)
         end subroutine tor_harm
 
         !> The toroidal harmonic at (R, Z).

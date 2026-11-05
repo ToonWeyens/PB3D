@@ -172,8 +172,12 @@ contains
     !! it  is assumed  that  the  entire integral  is  given  by the  analytical
     !! approximation.
     !!
-    !! \note This routine does not calculate the corner term: calc_GH_2 adds
-    !! \f$-2(2\pi-\beta)\f$ to the diagonal of H, with \f$\beta\f$ the angle
+    !! \note The kernels are those of eqs. (130)-(131) of the 2019 manuscript
+    !! with  the sign  of H  reversed: the  normal derivative  is taken  along the
+    !! stored normal  \f$-\mathcal{J}\nabla\psi\f$, out  of the  vacuum, for  both
+    !! vacuum styles (erratum E1 of that manuscript). This routine does not
+    !! calculate the corner term: calc_GH_2 adds \f$-2\beta\f$ to the diagonal
+    !! of H, with \f$\beta\f$ the vacuum's internal angle
     !! on the vacuum side.
     subroutine calc_GH_int_2(G,H,t_s,t_in,x_s,x_in,norm_s,norm_in,Aij,ql,tol,&
         &b_coeff,n_tor)
@@ -287,6 +291,11 @@ contains
                     &Aij(kd))*ql(kd,2) + Aij(kd)*ql(kd,1) )
             end do
         end if
+        
+        ! the formulas above are the manuscript's (130)-(131), whose H kernel is
+        ! the derivative  along +J  nabla psi;  the vacuum-side  convention of
+        ! both vacuum styles takes it along the stored normal -J nabla psi
+        H = -H
     end subroutine calc_GH_int_2
     
     !> Gathers a distributed vector on a single process.

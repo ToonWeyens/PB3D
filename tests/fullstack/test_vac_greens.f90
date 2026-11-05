@@ -3,13 +3,14 @@
 !! (vac_ops.calc_GH, style 2) through Green's identities, and of the boundary
 !! potential solve (vac_ops.solve_Phi_BEM).
 !!
-!! For potentials phi e^{i n zeta}, with dphi := - norm . grad phi, the
-!! boundary element discretization satisfies the jump relations
-!!    H phi            = G dphi   for phi harmonic inside the boundary,
-!!    (H + 4 pi) phi   = G dphi   for phi harmonic outside and decaying,
-!! the first of which is the check that the ldebug branch of calc_GH plots
-!! for manual inspection. Here both are automated with assertions on a
-!! synthetic circular boundary
+!! For potentials phi e^{i n zeta}, with dphi := norm . grad phi the normal
+!! derivative along the stored normal norm = -J grad psi (out of the vacuum,
+!! the convention of both vacuum styles), the boundary element
+!! discretization satisfies the jump relations
+!!    H phi - G dphi = -4 pi phi   for phi harmonic inside the boundary,
+!!    H phi - G dphi = 0           for phi harmonic outside and decaying,
+!! which the ldebug branch of calc_GH also plots for manual inspection. Here
+!! both are automated with assertions on a synthetic circular boundary
 !!    R(t) = R_0 + a cos t,   Z(t) = a sin t,  t in [0,2 pi],
 !! built the same way store_vac_HEL builds its boundary (the last point
 !! duplicates the first).
@@ -84,14 +85,14 @@ contains
         end do
     end subroutine setup_circle_vac
 
-    !> Test potential and its dphi = -norm.grad phi on the boundary.
+    !> Test potential and its dphi = norm.grad phi on the boundary.
     !!
     !! Kinds: 1: R^n, 2: R^n Z, 3: n-mode Green's function with an interior
     !! source (exterior harmonic).
     subroutine eval_potential(vac,kind,phi,dphi,ierr)
         type(vac_type), intent(in) :: vac                                       ! vacuum variables
         integer, intent(in) :: kind                                             ! which potential
-        real(dp), intent(out) :: phi(:), dphi(:)                                ! potential and -norm.grad
+        real(dp), intent(out) :: phi(:), dphi(:)                                ! potential and norm.grad
         integer, intent(out) :: ierr                                            ! error status
 
         integer :: id                                                           ! counter
@@ -110,10 +111,10 @@ contains
             select case (kind)
                 case (1)                                                        ! R^n
                     phi(id) = R**n
-                    dphi(id) = -vac%norm(id,1)*n*R**(n-1)
+                    dphi(id) = vac%norm(id,1)*n*R**(n-1)
                 case (2)                                                        ! R^n Z
                     phi(id) = R**n*Z
-                    dphi(id) = -vac%norm(id,1)*n*R**(n-1)*Z - &
+                    dphi(id) = vac%norm(id,1)*n*R**(n-1)*Z + &
                         &vac%norm(id,2)*R**n
                 case (3)                                                        ! Green's function source
                     ierr = green_pot(vac%x_vec(id,:),x_src,n,phi(id))
@@ -125,7 +126,7 @@ contains
                     x_pert = vac%x_vec(id,:) - eps*vac%norm(id,:)
                     ierr = green_pot(x_pert,x_src,n,fm)
                     if (ierr.ne.0) return
-                    dphi(id) = -(fp-fm)/(2._dp*eps)
+                    dphi(id) = (fp-fm)/(2._dp*eps)
             end select
         end do
     end subroutine eval_potential
@@ -148,8 +149,8 @@ contains
     end function green_pot
 
     !> Assemble G and H for a circular boundary and return the Green's
-    !! identity residuals max|H phi - G dphi| / max|H phi| for the three test
-    !! potentials.
+    !! identity residuals max|H phi - G dphi - c phi| / max|4 pi phi| for the
+    !! three test potentials, with c = -4 pi (interior) or 0 (exterior).
     !!
     !! The products with the distributed matrices are evaluated globally on
     !! all processes (see fullstack_utils), so the assertions are identical
@@ -185,10 +186,11 @@ contains
                 ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
                 if (ierr.ne.0) return
                 select case (kind)
-                    case (1,2)                                                  ! interior: H phi = G dphi
-                        res(kind) = maxval(abs(lhs-rhs))/maxval(abs(lhs))
-                    case (3)                                                    ! exterior: (H + 4 pi) phi = G dphi
-                        res(kind) = maxval(abs(lhs+4._dp*pi*phi-rhs))/&
+                    case (1,2)                                                  ! interior: H phi - G dphi = -4 pi phi
+                        res(kind) = maxval(abs(lhs-rhs+4._dp*pi*phi))/&
+                            &maxval(abs(4._dp*pi*phi))
+                    case (3)                                                    ! exterior: H phi - G dphi = 0
+                        res(kind) = maxval(abs(lhs-rhs))/&
                             &maxval(abs(4._dp*pi*phi))
                 end select
                 if (rank.eq.0) write(error_unit,'(A,I6,A,I2,A,ES10.3)') &
@@ -254,13 +256,13 @@ contains
         end do
     end subroutine test_greens_convergence
 
-    !> Solving (H + 4 pi) Phi = G R with R = dphi of a known vacuum-side
-    !! harmonic potential has to return its boundary trace Phi = phi.
+    !> Solving H Phi = G R with R = dphi of a known vacuum-side harmonic
+    !! potential has to return its boundary trace Phi = phi.
     !!
     !! Note that this also covers the duplicated seam point of the closed
-    !! boundary: H alone is exactly singular there (two identical rows), but
-    !! the 4 pi diagonal term of the exterior operator lifts the degeneracy
-    !! and enforces the equality of the two coinciding solution values.
+    !! boundary: the integral parts of the two rows are identical, and only
+    !! the corner term -2 beta on the diagonal lifts the degeneracy and
+    !! enforces the equality of the two coinciding solution values.
     subroutine test_solve_roundtrip(error)
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc
@@ -335,8 +337,9 @@ contains
     !!
     !! In the cylinder limit, the decaying exterior solution for poloidal
     !! Fourier boundary data e^{i m theta} is proportional to r^-|m|, so the
-    !! full chain of calc_vac_res (Neumann data (n q - m) e^{-i m theta},
-    !! exterior solve, projection with the integration rule, the factor -2 pi
+    !! full chain of calc_vac_res (Neumann data -(n q - m) e^{-i m theta}
+    !! along the stored normal out of the vacuum, exterior solve, projection
+    !! with the integration rule, the factor 2 pi of the toroidal integral
     !! that turns the Neumann-to-Dirichlet map into the surface-energy
     !! Hessian) reduces to
     !!    res_{m m'} = 4 pi^2 (n q - m)^2 / (R_0 |m| mu_0) delta_{m m'},
@@ -409,8 +412,8 @@ contains
             do jd = 1,n_mod
                 if (id.eq.jd) then
                     ! 2 dW_vac = 4 pi^2 (nq-m)^2 |X_e|^2 / (mu_0 R_0 |m|) in the
-                    ! cylinder: the Neumann-to-Dirichlet map -2 pi (nq-m)^2 /
-                    ! (mu_0 R_0 |m|) times the factor -2 pi of calc_vac_res
+                    ! cylinder: the Neumann-to-Dirichlet map 2 pi (nq-m)^2 /
+                    ! (mu_0 R_0 |m|) times the factor 2 pi of calc_vac_res
                     res_ana = 4._dp*pi**2*(prim_X_test*jq-mds%m(1,id))**2/&
                         &(R_big*abs(mds%m(1,id))*vac_perm)
                     rel_diff = abs(real(res(id,id))-res_ana)/&
