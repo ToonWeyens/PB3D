@@ -10,7 +10,7 @@ module vac_utilities
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
-    use vac_vars, only: vac_type, BLACSCTXTSIZE
+    use vac_vars, only: vac_type, BLACSCTXTSIZE, loc_idx
 
     implicit none
     
@@ -195,9 +195,10 @@ contains
     !! approximation.
     !!
     !! \note The kernels are those of eqs. (130)-(131) of the 2019 manuscript
-    !! with  the sign  of H  reversed: the  normal derivative  is taken  along the
-    !! stored normal  \f$-\mathcal{J}\nabla\psi\f$, out  of the  vacuum, for  both
-    !! vacuum styles (erratum E1 of that manuscript). This routine does not
+    !! with  the sign  of H  reversed (the leading minus signs  of the  three H
+    !! formulas): the  normal derivative is  taken along the  stored normal
+    !! \f$-\mathcal{J}\nabla\psi\f$, out of the vacuum, for both vacuum styles
+    !! (erratum E1 of that manuscript). This routine does not
     !! calculate the corner term: calc_GH_2 adds \f$-2\beta\f$ to the diagonal
     !! of H, with \f$\beta\f$ the vacuum's internal angle
     !! on the vacuum side.
@@ -273,7 +274,7 @@ contains
                     &(delta_t(1)*(delta_t(1)-2*delta_t(2))*dlogd(1) + &
                     &delta_t(2)**2 * dlogd(2)) &
                     &)
-                H(kd) = 0.5*norm_s(kd,1)/x_s(kd,1) * G(kd) + &
+                H(kd) = -0.5*norm_s(kd,1)/x_s(kd,1) * G(kd) - &
                     &(delta_t(2)-delta_t(1)) * (n_tor-0.5_dp)**(-1) * &
                     &Aij(kd)/sqrt(x_in(1)*x_s(kd,1))
             end do
@@ -293,7 +294,7 @@ contains
                 G(kd_bound) = G(kd_bound) - 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
                     &sqrt(x_in(1)*x_s(kd_bound,1)) * (ql(kd_bound,2)+&
                     &log(a_coeff*abs(t_s(kd_bound)-t_in_loc))+b_coeff(2))
-                H(kd_bound) = H(kd_bound) + 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
+                H(kd_bound) = H(kd_bound) - 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
                     &sqrt(x_in(1)*x_s(kd_bound,1)) * &
                     &( (-0.5_dp*norm_s(kd_bound,1)/x_s(kd_bound,1) - &
                     &(1._dp+rho2(kd_bound)/(2*x_in(1)*x_s(kd_bound,1)))*&
@@ -307,17 +308,12 @@ contains
                 ! fill G's and H's
                 G(kd) = - (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &ql(kd,2)
-                H(kd) = (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
+                H(kd) = -(t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &( (-0.5_dp*norm_s(kd,1)/x_s(kd,1) - &
                     &(1._dp+rho2(kd)/(2*x_in(1)*x_s(kd,1)))*&
                     &Aij(kd))*ql(kd,2) + Aij(kd)*ql(kd,1) )
             end do
         end if
-        
-        ! the formulas above are the manuscript's (130)-(131), whose H kernel is
-        ! the derivative  along +J  nabla psi;  the vacuum-side  convention of
-        ! both vacuum styles takes it along the stored normal -J nabla psi
-        H = -H
     end subroutine calc_GH_int_2
     
     !> Gathers a distributed vector on a single process.
@@ -521,17 +517,12 @@ contains
             vac%x_vec((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
                 &vac_old%x_vec((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
             
-            ! copy variables specific to style
-            select case (vac%style)
-                case (1)                                                        ! field-line 3-D
-                    vac%h_fac((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = vac_old%&
-                        &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-                case (2)                                                        ! axisymmetric
-                    vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
-                        &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-                    vac%ang((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
-                        &vac_old%ang((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-            end select
+            vac%h_fac((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = vac_old%&
+                &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            vac%ang((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                &vac_old%ang((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
         end do
         
         ! set up transformation matrix A and dummy matrix B
@@ -547,17 +538,13 @@ contains
                 rd = 2*par_id-1 + (alpha_id-1)*n_ang(1)
                 
                 ! set local column index
-                cdl = sum(vac_old%lims_c(2,1:i_cd-1)-&
-                    &vac_old%lims_c(1,1:i_cd-1)+1) + &
-                    &cd-vac_old%lims_c(1,i_cd)+1
+                cdl = loc_idx(vac_old%lims_c,i_cd,cd)
                 
                 subrows: do i_rd = 1,size(vac%lims_r,2)
                     ! set local row index if in this subrow
                     if (rd.ge.vac%lims_r(1,i_rd) .and. &
                         &rd.le.vac%lims_r(2,i_rd)) then
-                        rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                            &vac%lims_r(1,1:i_rd-1)+1) + &
-                            &rd-vac%lims_r(1,i_rd)+1
+                        rdl = loc_idx(vac%lims_r,i_rd,rd)
                         
                         loc_A(rdl,cdl) = 1._dp
                     end if
@@ -652,8 +639,7 @@ contains
         if (n_col1_loc(vac).eq.0) return
         do i_rd = 1,size(vac%lims_r,2)
             do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
-                rdl = sum(vac%lims_r(2,1:i_rd-1)-vac%lims_r(1,1:i_rd-1)+1) + &
-                    &rd-vac%lims_r(1,i_rd)+1
+                rdl = loc_idx(vac%lims_r,i_rd,rd)
                 x_dis(rdl) = x_glob(rd)
             end do
         end do
@@ -983,7 +969,7 @@ contains
     
     !> \public Gathers the diagonal of a distributed matrix on all processes.
     integer function dis_diag(vac,A,diag_glob) result(ierr)
-        use vac_vars, only: in_context, loc_idx
+        use vac_vars, only: in_context
         
         ! input / output
         type(vac_type), intent(in) :: vac                                       !< vacuum variables

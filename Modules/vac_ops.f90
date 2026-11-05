@@ -311,6 +311,9 @@ contains
                     vac%norm(par_id(1):par_id(2):par_id(3),3) = &
                         &norm_com_C(:,jd,3)                                     ! ~ e^Z
                     
+                    ! save the parallel angle
+                    vac%ang(:,jd) = grid%theta_F(:,jd,r_id)
+                    
                     ! save metric factors
                     vac%h_fac(par_id(1):par_id(2):par_id(3),1) = &
                         &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0)             ! g_11
@@ -319,10 +322,6 @@ contains
                     vac%h_fac(par_id(1):par_id(2):par_id(3),3) = &
                         &eq_2%g_FD(:,jd,r_id,c([3,3],.true.),0,0,0)             ! g_33
                 end do
-                !call print_ex_2D(['norm'],'norm_'//trim(i2str(rich_lvl)),&
-                    !&vac%norm,persistent=.true.)
-                !call print_ex_2D(['x_vec'],'x_vec'//trim(i2str(rich_lvl)),&
-                    !&vac%x_vec,persistent=.true.)
             end if
             
             ! broadcast to other processes
@@ -402,10 +401,6 @@ contains
                             vac%x_vec(:,2) = Z_H(:,r_id)
                             vac%ang(:,1) = chi_H
                         end if
-                        !call print_ex_2D(['R','Z'],'',vac%x_vec,&
-                            !&x=vac%ang(:,1:1),persistent=.true.)
-                        !call print_ex_2D('cs','',vac%x_vec(:,2),&
-                            !&x=vac%x_vec(:,1),persistent=.true.)
                         
                         ! calculate Cylindrical components of - J nabla psi
                         !   = - R (Z_theta nabla R - R_theta nabla Z)
@@ -654,7 +649,7 @@ contains
             &calc_diag_direct
         use grid_vars, only: n_alpha
         use num_vars, only: tol_zero, vac_diag_style
-        use vac_vars, only: in_context
+        use vac_vars, only: in_context, loc_idx
         
         character(*), parameter :: rout_name = 'calc_GH_1'
         
@@ -716,8 +711,7 @@ contains
             ! iterate over all rows of this subrow
             row: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
                 ! set local row index
-                rdl = sum(lims_r_in(2,1:i_rd-1)-lims_r_in(1,1:i_rd-1)+1) + &
-                    &rd-lims_r_in(1,i_rd)+1
+                rdl = loc_idx(lims_r_in,i_rd,rd)
                 
                 ! iterate over all subcolumns: subintegrals
                 subcols: do i_cd = 1,size(vac%lims_c,2)
@@ -733,9 +727,7 @@ contains
                         if (mod(cd,vac%n_ang(1)).eq.0) cycle col
                         
                         ! set local column index
-                        cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                            &vac%lims_c(1,1:i_cd-1)+1) + &
-                            &cd-vac%lims_c(1,i_cd)+1
+                        cdl = loc_idx(vac%lims_c,i_cd,cd)
                         
                         ! four-point stencil along the field line, one-sided
                         ! at its ends
@@ -831,6 +823,7 @@ contains
     contains
         ! Sets the diagonal of the local matrix A_in to vec, or adds vec to it.
         subroutine set_diag(A_in,vec,add)
+        use vac_vars, only: loc_idx
             ! input / output
             real(dp), intent(in), pointer :: A_in(:,:)                          ! local matrix
             real(dp), intent(in) :: vec(:)                                      ! global vector of diagonal values
@@ -843,14 +836,11 @@ contains
             
             do i_rd = 1,size(lims_r_in,2)
                 do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    rdl = sum(lims_r_in(2,1:i_rd-1)-lims_r_in(1,1:i_rd-1)+1) &
-                        &+ rd-lims_r_in(1,i_rd)+1
+                    rdl = loc_idx(lims_r_in,i_rd,rd)
                     do i_cd = 1,size(vac%lims_c,2)
                         if (vac%lims_c(1,i_cd).le.rd .and. &
                             &rd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                &vac%lims_c(1,1:i_cd-1)+1) + &
-                                &rd-vac%lims_c(1,i_cd)+1
+                            cdl = loc_idx(vac%lims_c,i_cd,rd)
                             if (add) then
                                 A_in(rdl,cdl) = A_in(rdl,cdl) + vec(rd)
                             else
@@ -876,7 +866,7 @@ contains
         use MPI_utilities, only: get_ser_var
         use num_ops, only: calc_zero_HH, calc_zero_Zhang
         use num_vars, only: vac_diag_style
-        use vac_vars, only: in_context
+        use vac_vars, only: in_context, loc_idx
 #if ldebug
         use num_vars, only: rank
 #endif
@@ -981,8 +971,7 @@ contains
             ! iterate over all rows of this subrow
             row: do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
                 ! set local row index
-                rdl = sum(lims_r_in(2,1:i_rd-1)-lims_r_in(1,1:i_rd-1)+1) + &
-                    &rd-lims_r_in(1,i_rd)+1
+                rdl = loc_idx(lims_r_in,i_rd,rd)
                 
                 ! iterate over all subcolumns: subintegrals
                 subcols: do i_cd = 1,size(vac%lims_c,2)
@@ -1080,29 +1069,6 @@ contains
                     
 #if ldebug
                     if (debug_calc_GH) then
-                        !! output
-                        !plot_title = 'for row '//trim(i2str(rd))//&
-                            !&' and starting column '//trim(i2str(lims_c_loc(1)))
-                        !plot_name = '_'//trim(i2str(rd))//'_'//&
-                            !&trim(i2str(lims_c_loc(1)))
-                        !call print_ex_2D('rho^2 '//trim(plot_title),&
-                            !&'rho2'//trim(plot_name),rho2,&
-                            !&x=vac%ang(lims_c_loc(1):lims_c_loc(2),1),&
-                            !&draw=.false.)
-                        !call draw_ex(['rho^2 '//trim(plot_title)],&
-                            !&'rho2'//trim(plot_name),1,1,.false.)
-                        !call print_ex_2D('γ '//trim(plot_title),&
-                            !&'gamma'//trim(plot_name),arg,&
-                            !&x=vac%ang(lims_c_loc(1):lims_c_loc(2),1),&
-                            !&draw=.false.)
-                        !call draw_ex(['γ '//trim(plot_title)],&
-                            !&'gamma'//trim(plot_name),1,1,.false.)
-                        !call print_ex_2D('A_{ij} '//trim(plot_title),&
-                            !&'Aij'//trim(plot_name),arg,&
-                            !&x=vac%ang(lims_c_loc(1):lims_c_loc(2),1),&
-                            !&draw=.false.)
-                        !call draw_ex(['A_{ij} '//trim(plot_title)],&
-                            !&'Aij'//trim(plot_name),1,1,.false.)
                     end if
 #endif
                     
@@ -1110,9 +1076,7 @@ contains
                     ! (upper limit is one lower as previous)
                     col2: do cd = lims_c_loc(1),lims_c_loc(2)-1
                         ! set local column index
-                        cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                            &vac%lims_c(1,1:i_cd-1)+1) + &
-                            &cd-vac%lims_c(1,i_cd)+1
+                        cdl = loc_idx(vac%lims_c,i_cd,cd)
                         
                         ! check for singular columns if external influence
                         if (ext_in) then
@@ -1157,24 +1121,6 @@ contains
 #if ldebug
                     if (debug_calc_GH) then
                         !! local limits
-                        !lims_cl = sum(vac%lims_c(2,1:i_cd-1)-&
-                            !&vac%lims_c(1,1:i_cd-1)+1) + &
-                            !&vac%lims_c(:,i_cd)-vac%lims_c(1,i_cd)+1
-                        !! output
-                        !call print_ex_2D('G '//trim(plot_title),&
-                            !&'G'//trim(plot_name),&
-                            !&G_in(rdl,lims_cl(1):lims_cl(2)),x&
-                            !&=vac%ang(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
-                            !&draw=.false.)
-                        !call draw_ex(['G '//trim(plot_title)],&
-                            !&'G'//trim(plot_name),1,1,.false.)
-                        !call print_ex_2D('H '//trim(plot_title),&
-                            !&'H'//trim(plot_name),&
-                            !&H_in(rdl,lims_cl(1):lims_cl(2)),x&
-                            !&=vac%ang(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
-                            !&draw=.false.)
-                        !call draw_ex(['H '//trim(plot_title)],&
-                            !&'H'//trim(plot_name),1,1,.false.)
                     end if
 #endif
                     
@@ -1183,9 +1129,7 @@ contains
                     if (.not.ext_in .and. vac%lims_c(1,i_cd).le.rd .and. &
                         &rd.le.vac%lims_c(2,i_cd)) then                         ! this subcolumn includes the diagonal
                         ! set local column index
-                        cdl = sum(vac%lims_c(2,1:i_cd-1)-&
-                            &vac%lims_c(1,1:i_cd-1)+1) + &
-                            &rd-vac%lims_c(1,i_cd)+1
+                        cdl = loc_idx(vac%lims_c,i_cd,rd)
                         
                         if (rd.eq.1 .or. rd.eq.vac%n_bnd) then                  ! first or last global point
                             ! loop around to get previous direction vector
@@ -1227,16 +1171,6 @@ contains
             
 #if ldebug
             if (debug_calc_GH) then
-                !! output
-                !if (beta_lims(2).ge.beta_lims(1)) then
-                    !plot_title = 'beta/π  for starting row '//&
-                        !&trim(i2str(beta_lims(1)))
-                    !plot_name = 'beta_'//trim(i2str(beta_lims(1)))
-                    !call print_ex_2D(plot_title,plot_name,&
-                        !&beta(beta_lims(1):beta_lims(2))/pi,&
-                        !&x=vac%ang(beta_lims(1):beta_lims(2),1),draw=.false.)
-                    !call draw_ex([plot_title],plot_name,1,1,.false.)
-                !end if
             end if
 #endif
             
@@ -1558,7 +1492,7 @@ contains
             &use_pol_flux_F, rank, n_procs, check_vac
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X
-        use vac_vars, only: set_loc_lims, in_context
+        use vac_vars, only: set_loc_lims, in_context, loc_idx
         use vac_utilities, only: mat_dis2loc
         use eq_vars, only: vac_perm
         use num_utilities, only: LCM
@@ -1713,9 +1647,7 @@ contains
             subcols: do i_cd = 1,size(lims_c_loc,2)
                 col: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
                     ! set local column index
-                    cdl = sum(lims_c_loc(2,1:i_cd-1)-&
-                        &lims_c_loc(1,1:i_cd-1)+1) + &
-                        &cd-lims_c_loc(1,i_cd)+1
+                    cdl = loc_idx(lims_c_loc,i_cd,cd)
                     
                     ! set local secondary mode number
                     sec_X_loc = vac%sec_X(mod(cd-1,n_mod_X)+1)
@@ -1724,9 +1656,7 @@ contains
                     subrows: do i_rd = 1,size(vac%lims_r,2)
                         row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                             ! set local row index
-                            rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                                &vac%lims_r(1,1:i_rd-1)+1) + &
-                                &rd-vac%lims_r(1,i_rd)+1
+                            rdl = loc_idx(vac%lims_r,i_rd,rd)
                             
                             ! set parallel index and field line label
                             par_id = mod(rd-1,vac%n_ang(1))+1
@@ -1808,15 +1738,12 @@ contains
             subrows3: do i_rd = 1,size(vac%lims_r,2)
                 row3: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                     ! set local row index
-                    rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                        &vac%lims_r(1,1:i_rd-1)+1) + &
-                        &rd-vac%lims_r(1,i_rd)+1
+                    rdl = loc_idx(vac%lims_r,i_rd,rd)
                     
                     subcols3: do i_cd = 1,size(lims_c_loc,2)
                         ! set local column limits
-                        lims_cl = sum(lims_c_loc(2,1:i_cd-1)-&
-                            &lims_c_loc(1,1:i_cd-1)+1) + &
-                            &lims_c_loc(:,i_cd)-lims_c_loc(1,i_cd)+1
+                        lims_cl = [loc_idx(lims_c_loc,i_cd,lims_c_loc(1,i_cd)), &
+                        &loc_idx(lims_c_loc,i_cd,lims_c_loc(2,i_cd))]
                         
                         select case (vac%style)
                             case (1)                                            ! field-line 3-D
@@ -2456,7 +2383,7 @@ contains
         use sol_vars, only: sol_type
         use MPI_utilities, only: broadcast_var
         use ISO_C_BINDING
-        use vac_vars, only: in_context
+        use vac_vars, only: in_context, loc_idx
         use vac_utilities, only: mat_dis2loc
         use X_vars, only: prim_X, n_mod_X
         use vac_vars, only: set_loc_lims
@@ -2537,17 +2464,13 @@ contains
             subcols: do i_cd = 1,size(lims_c_loc,2)
                 col: do cd = lims_c_loc(1,i_cd),lims_c_loc(2,i_cd)
                     ! set local column index
-                    cdl = sum(lims_c_loc(2,1:i_cd-1)-&
-                        &lims_c_loc(1,1:i_cd-1)+1) + &
-                        &cd-lims_c_loc(1,i_cd)+1
+                    cdl = loc_idx(lims_c_loc,i_cd,cd)
                     
                     ! iterate over all subrows of matrix with n_bnd rows
                     subrows: do i_rd = 1,size(vac%lims_r,2)
                         row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                             ! set local row index
-                            rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                                &vac%lims_r(1,1:i_rd-1)+1) + &
-                                &rd-vac%lims_r(1,i_rd)+1
+                            rdl = loc_idx(vac%lims_r,i_rd,rd)
                             
                             ! sum over all modes to get parallel derivative of X
                             do jd = 1,n_mod_X
@@ -2603,15 +2526,12 @@ contains
             subrows2: do i_rd = 1,size(vac%lims_r,2)
                 row2: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
                     ! set local row index
-                    rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                        &vac%lims_r(1,1:i_rd-1)+1) + &
-                        &rd-vac%lims_r(1,i_rd)+1
+                    rdl = loc_idx(vac%lims_r,i_rd,rd)
                     
                     subcols2: do i_cd = 1,size(lims_c_loc,2)
                         ! local limits
-                        lims_cl = sum(lims_c_loc(2,1:i_cd-1)-&
-                            &lims_c_loc(1,1:i_cd-1)+1) + &
-                            &lims_c_loc(:,i_cd)-lims_c_loc(1,i_cd)+1
+                        lims_cl = [loc_idx(lims_c_loc,i_cd,lims_c_loc(1,i_cd)), &
+                        &loc_idx(lims_c_loc,i_cd,lims_c_loc(2,i_cd))]
                         
                         RHS(rdl,lims_cl(1):lims_cl(2),:) = &
                             &RHS(rdl,lims_cl(1):lims_cl(2),:) * 0.5_dp*&
@@ -2651,8 +2571,6 @@ contains
                         &(max_Zvac_plot-min_Zvac_plot)*&
                         &(jd-1._dp)/(n_vac_plot(2)-1._dp)
                 end do row3
-                !call print_ex_2D(['R','Z'],'x_vec_'//trim(i2str(rank)),x_vec,draw=.false.)
-                !call draw_ex(['R','Z'],'x_vec_'//trim(i2str(rank)),2,1,.false.)
                 
                 ! calc local G and H
                 ierr = calc_GH(vac,n_r_in=product(n_vac_plot),&
@@ -2660,42 +2578,12 @@ contains
                 CHCKERR('')
                 
 #if ldebug
-                !if (debug_vac_pot_plot) then
                     !subrows4: do i_rd = 1,size(lims_r_loc,2)
                         !row4: do rd = lims_r_loc(1,i_rd),lims_r_loc(2,i_rd)
                             !subcols4: do i_cd = 1,size(vac%lims_c,2)
                                 !! output
-                                !plot_title = 'for row '//trim(i2str(rd))//&
-                                    !&' and starting column '//&
-                                    !&trim(i2str(vac%lims_c(1,i_cd)))
-                                !plot_name = '_'//trim(i2str(kd))//'_'//&
-                                    !&trim(i2str(rd))//'_'//&
-                                    !&trim(i2str(vac%lims_c(1,i_cd)))
                                 
                                 !! local limits
-                                !lims_cl = sum(vac%lims_c(2,1:i_cd-1)-&
-                                    !&vac%lims_c(1,1:i_cd-1)+1) + &
-                                    !&vac%lims_c(:,i_cd)-vac%lims_c(1,i_cd)+1
-                                
-                                !! output
-                                !call print_ex_2D('G '//trim(plot_title),&
-                                    !&'G_loc'//trim(plot_name),&
-                                    !&G_loc(rdl,lims_cl(1):lims_cl(2)),x=vac%ang&
-                                    !&(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
-                                    !&draw=.false.)
-                                !call draw_ex(['G '//trim(plot_title)],&
-                                    !&'G_loc'//trim(plot_name),1,1,.false.)
-                                !call print_ex_2D('H '//trim(plot_title),&
-                                    !&'H_loc'//trim(plot_name),&
-                                    !&H_loc(rdl,lims_cl(1):lims_cl(2)),x=vac%ang&
-                                    !&(vac%lims_c(1,i_cd):vac%lims_c(2,i_cd),1),&
-                                    !&draw=.false.)
-                                !call draw_ex(['H '//trim(plot_title)],&
-                                    !&'H_loc'//trim(plot_name),1,1,.false.)
-                            !end do subcols4
-                        !end do row4
-                    !end do subrows4
-                !end if
 #endif
                 
                 ! multiply G with RHS(1) and save in Phi
@@ -2775,12 +2663,8 @@ contains
     integer function solve_Phi_BEM(vac,R,Phi,n_RPhi,n_loc_RPhi,lims_c_RPhi,&
         &desc_RPhi) result(ierr)
 
-        use vac_vars, only: in_context
+        use vac_vars, only: in_context, loc_idx
         use num_vars, only: check_vac, rank, n_procs
-#if ldebug
-        use grid_vars, only: min_par_X, max_par_X
-        use rich_vars, only: n_par_X
-#endif
 
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
 
@@ -2819,7 +2703,6 @@ contains
 #endif
 #if ldebug
         integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
-        integer :: id                                                           ! counter
         integer :: cd                                                           ! global counter for row and col
         integer :: cdl                                                          ! local counter for col
         integer :: i_rd, i_cd                                                   ! index of subrow and subcol
@@ -2985,30 +2868,17 @@ contains
             ! the whole boundary, also when the rows are distributed over
             ! multiple block-cyclic subrows)
             allocate(ang(vac%n_bnd))
-            select case (vac%style)
-                case (1)                                                        ! field-line 3-D
-                    do id = 1,vac%n_ang(1)
-                        ang(id:id+vac%n_ang(1)*(vac%n_ang(2)-1):&
-                            &vac%n_ang(1)) = &
-                            &pi * (min_par_X + (id-1)*&
-                            &(max_par_X-min_par_X)/(n_par_X-1))
-                    end do
-                case (2)                                                        ! axisymmetric
-                    ang = reshape(vac%ang,[vac%n_bnd])
-            end select
+            ang = reshape(vac%ang,[vac%n_bnd])
 
             subcols2: do i_cd = 1,size(lims_c_RPhi,2)
                 col: do cd = lims_c_RPhi(1,i_cd),lims_c_RPhi(2,i_cd)
                     ! set local column index
-                    cdl = sum(lims_c_RPhi(2,1:i_cd-1)-&
-                        &lims_c_RPhi(1,1:i_cd-1)+1) + &
-                        &cd-lims_c_RPhi(1,i_cd)+1
+                    cdl = loc_idx(lims_c_RPhi,i_cd,cd)
 
                     subrows2: do i_rd = 1,size(vac%lims_r,2)
                         ! set local row limits
-                        lims_rl = sum(vac%lims_r(2,1:i_rd-1)-&
-                            &vac%lims_r(1,1:i_rd-1)+1) + &
-                            &vac%lims_r(:,i_rd)-vac%lims_r(1,i_rd)+1
+                        lims_rl = [loc_idx(vac%lims_r,i_rd,vac%lims_r(1,i_rd)), &
+                        &loc_idx(vac%lims_r,i_rd,vac%lims_r(2,i_rd))]
 
                         ! output
                         plot_title = 'for column '//trim(i2str(cd))//&
