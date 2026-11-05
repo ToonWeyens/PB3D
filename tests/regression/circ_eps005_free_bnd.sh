@@ -30,7 +30,7 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.2452e-1
+ANCHOR=-4.2562e-1
 RTOL=1e-3
 MISHKA=-0.42679
 MISHKA_RTOL=0.02

@@ -304,7 +304,7 @@ contains
             plot_J = .false.                                                    ! do not plot the current
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             check_vac = .false.                                                 ! do not check the 3-D vacuum operators with exact potentials
-            vac_diag_style = 0                                                  ! diagonal of the vacuum operators: the default of the vacuum style
+            vac_diag_style = 1                                                  ! diagonals of the vacuum operators from the identities
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
@@ -899,10 +899,10 @@ contains
                     &n_alpha > 1'
                 CHCKERR(err_msg)
             end if
-            if (vac_diag_style.lt.0 .or. vac_diag_style.gt.2) then
+            if (vac_diag_style.lt.1 .or. vac_diag_style.gt.2) then
                 ierr = 1
-                err_msg = 'vac_diag_style has to be 0 (default of the vacuum &
-                    &style), 1 (indirect) or 2 (direct)'
+                err_msg = 'vac_diag_style has to be 1 (indirect, from the &
+                    &identities) or 2 (direct, corner term and cell integral)'
                 CHCKERR(err_msg)
             end if
 

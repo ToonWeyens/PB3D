@@ -95,6 +95,15 @@ combined over all ranks.
   (near-)singular analytical integrals, at two interval sizes. Also pins
   the asymptote \(Q_{n-1/2}(1+x) = -\tfrac{1}{2}\ln(x/32) - b_n\) against
   `dtorh`.
+- **`vac_3d` additions (5 November 2026)** — `solid_angle_node` (the exact
+  solid angle at a faceted node against the axisymmetric corner and Girard's
+  theorem), `H_sing_node` (the cell integral of the H kernel against a
+  64-point brute force, to 1e-5), `diag_direct_3d` (the row-sum diagonal
+  against the smooth direct one, converging), `point_source_direct_3d` and
+  `exact_exterior_2d_options` (the point-source solve of the field-line
+  style and the exact toroidal harmonics of the axisymmetric style with the
+  direct and the indirect diagonals, `vac_diag_style` 2 and 1, printed for
+  the benchmark; both must converge).
 - **`vac_greens` (full-stack)** — the assembled axisymmetric \(G\), \(H\)
   matrices on a synthetic circular boundary (built like `store_vac_HEL`'s,
   seam point duplicated) through the two jump relations

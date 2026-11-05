@@ -109,7 +109,7 @@ module num_vars
     logical :: plot_sol_Q                                                       !< whether to plot magnetic perturbation of solution in POST
     logical :: plot_vac_pot                                                     !< whether to plot vacuum potential in POST
     logical :: check_vac                                                        !< whether to check the 3-D vacuum operators with exact potentials on the equilibrium surface
-    integer :: vac_diag_style = 0                                               !< diagonal of the vacuum operators: 0 the default of the vacuum style, 1 indirect (from identities), 2 direct (corner term and cell integral)
+    integer :: vac_diag_style = 1                                               !< diagonal of the vacuum operators: 1 indirect (from identities, the default), 2 direct (corner term and cell integral)
     logical :: plot_E_rec                                                       !< whether to plot energy reconstruction in POST
     logical :: ltest                                                            !< whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   !< whether poloidal flux is used in E coords.

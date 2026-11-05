@@ -770,7 +770,7 @@ contains
         end do subrows
         
         ! if in context and not external, set the diagonals.
-        !  - indirect (vac_diag_style 1, the default of this style): H through
+        !  - indirect (vac_diag_style 1, the default): H through
         !    the row-sum identity for the constant potential and G through the
         !    identities for the linear interior harmonics, which absorb the
         !    first-order quadrature error of the off-diagonal entries into the
@@ -1246,9 +1246,10 @@ contains
         
         ! indirect diagonals (vac_diag_style 1): H_ii and G_ii from the
         ! identities for the test potentials of set_pot_2 (diag_indirect_2),
-        ! the counterpart of the identities that the field-line style uses by
-        ! default; the direct diagonals (the corner angle and the analytical
-        ! near-singular integrals) are the default of this style
+        ! the counterpart of the identities of the field-line style; the
+        ! direct diagonals (the corner angle and the analytical near-singular
+        ! integrals, vac_diag_style 2) are first order in the poloidal points,
+        ! the indirect ones third order (full-stack test exact_exterior_2d_options)
         if (in_context(vac%ctxt_HG) .and. .not.ext_in .and. &
             &vac_diag_style.eq.1) then
             allocate(dH(vac%n_bnd),dG(vac%n_bnd))

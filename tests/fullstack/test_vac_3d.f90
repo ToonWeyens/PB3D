@@ -68,7 +68,8 @@ contains
             &new_unittest("solid_angle_node", test_solid_angle_node), &
             &new_unittest("H_sing_node", test_H_sing_node), &
             &new_unittest("diag_direct_3d", test_diag_direct_3d), &
-            &new_unittest("point_source_direct_3d", test_point_source_direct) &
+            &new_unittest("point_source_direct_3d", test_point_source_direct), &
+            &new_unittest("exact_exterior_2d_options", test_exact_2d_options) &
             &]
     end subroutine collect_vac_3d
 
@@ -731,59 +732,6 @@ contains
         end do tor
 
         eq_style = eq_style_old
-    contains
-        !> Boundary value and normal data of the toroidal harmonic of order
-        !! n and degree k - 1/2 at (R, Z): the gradient by central differences
-        !! of the closed form (step 1e-5: truncation 1e-10, dtorh1 noise 1e-6).
-        subroutine tor_harm(R,Z,norm,n,k,exterior,phi,dphi)
-            real(dp), intent(in) :: R, Z                                        ! position
-            real(dp), intent(in) :: norm(2)                                     ! normal vector (R, Z components)
-            integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
-            logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
-            real(dp), intent(out) :: phi, dphi                                  ! value and normal derivative
-
-            real(dp), parameter :: h = 1.e-5_dp                                 ! difference step
-
-            phi = tor_val(R,Z,n,k,exterior)
-            ! both styles take the normal data along the stored normal, the
-            ! (inward) -J nabla psi of the fixture: dphi = norm . grad phi
-            dphi = norm(1)*(tor_val(R+h,Z,n,k,exterior)-&
-                &tor_val(R-h,Z,n,k,exterior))/(2._dp*h) + &
-                &norm(2)*(tor_val(R,Z+h,n,k,exterior)-&
-                &tor_val(R,Z-h,n,k,exterior))/(2._dp*h)
-        end subroutine tor_harm
-
-        !> The toroidal harmonic at (R, Z).
-        real(dp) function tor_val(R,Z,n,k,exterior) result(val)
-            use dtorh, only: dtorh1
-
-            real(dp), intent(in) :: R, Z                                        ! position
-            integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
-            logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
-
-            integer :: newn, ierr_loc                                           ! dtorh1 outputs
-            real(dp) :: c, d1, d2, eta, s, cth, sth, th                         ! toroidal coordinates
-            real(dp) :: pl(0:k), ql(0:k)                                        ! toroidal functions
-
-            c = sqrt(R_0**2-a_min**2)
-            d1 = sqrt((R+c)**2+Z**2)
-            d2 = sqrt((R-c)**2+Z**2)
-            eta = log(d1/d2)
-            s = sqrt((R**2+Z**2-c**2)**2 + 4._dp*c**2*Z**2)
-            cth = (R**2+Z**2-c**2)/s
-            sth = 2._dp*c*Z/s
-            th = atan2(sth,cth)
-            ierr_loc = dtorh1(cosh(eta),n,k,pl,ql,newn)
-            if (ierr_loc.ne.0 .or. newn.lt.k) then
-                val = huge(1._dp)
-                return
-            end if
-            if (exterior) then
-                val = sqrt(cosh(eta)-cth)*pl(k)*cos(k*th)
-            else
-                val = sqrt(cosh(eta)-cth)*ql(k)*cos(k*th)
-            end if
-        end function tor_val
     end subroutine test_exact_exterior_2d
 
     !> The vacuum response of the axisymmetric circular boundary, calculated
@@ -1198,6 +1146,185 @@ contains
         if (allocated(error)) return
     end subroutine test_point_source_direct
     
+
+    !> The exact toroidal harmonics of the circular torus through the
+    !! axisymmetric style with the direct (vac_diag_style 2) and the indirect
+    !! (1) diagonals: for every harmonic and both resolutions, the identity
+    !! residuals and the solution error are printed for the benchmark of the
+    !! two options, and both must converge.
+    subroutine test_exact_2d_options(error)
+        use num_vars, only: eq_style, rank, vac_diag_style
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc
+        use vac_ops, only: solve_Phi_BEM
+        use vac_utilities, only: n_col1_loc, vec_glob2dis, dis_matvec
+        type(error_type), allocatable, intent(out) :: error
+        integer, parameter :: n_bnds(2) = [301,601]                             ! boundary points, two resolutions
+        integer, parameter :: n_tor = 10                                        ! toroidal mode number
+        integer, parameter :: ks(3) = [6,10,15]                                 ! poloidal mode numbers
+        integer, parameter :: styles(2) = [2,1]                                 ! direct, indirect
+        type(vac_type) :: vac                                                   ! style-2 vacuum variables
+        integer :: ierr, id, kd, ires, istyle, ik                               ! error status, counters
+        integer :: n_bnd                                                        ! current resolution
+        integer :: n_col1                                                       ! local columns of the right-hand side
+        integer :: desc_RPhi(9)                                                 ! descriptor of right-hand side and solution
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits
+        integer :: eq_style_old, style_old                                      ! saved module state
+        real(dp) :: t, R                                                        ! angle and major radius
+        real(dp) :: errs(3,2,2)                                                 ! interior residual, exterior residual, solution error (resolution, option)
+        real(dp), allocatable :: phi(:), dphi(:), lhs(:), rhs(:), phi_num(:)    ! boundary data, products, solution
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        
+        eq_style_old = eq_style
+        style_old = vac_diag_style
+        eq_style = 2
+        harm: do ik = 1,3
+            kd = ks(ik)
+            do istyle = 1,2
+                vac_diag_style = styles(istyle)
+                do ires = 1,2
+                    n_bnd = n_bnds(ires)
+                    errs(:,ires,istyle) = 0._dp
+                    ierr = vac%init(2,n_bnd,n_tor,[n_bnd,1],q_saf)
+                    call check(error, ierr, 0, 'style-2 init failed')
+                    if (allocated(error)) exit harm
+                    do id = 1,n_bnd
+                        t = 2._dp*pi*(id-1)/(n_bnd-1)
+                        R = R_0 + a_min*cos(t)
+                        vac%ang(id,1) = t
+                        vac%x_vec(id,:) = [R, a_min*sin(t)]
+                        vac%norm(id,:) = [-R*a_min*cos(t), -R*a_min*sin(t)]
+                        vac%dnorm(id,:) = [a_min*sin(t)*(a_min*cos(t)+R), &
+                            &a_min*(a_min*sin(t)**2-R*cos(t))]
+                    end do
+                    ierr = calc_GH(vac)
+                    call check(error, ierr, 0, 'style-2 matrices failed')
+                    if (allocated(error)) exit harm
+                    if (in_context(vac%ctxt_HG)) then
+                        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),&
+                            &phi_num(n_bnd))
+                        do id = 1,n_bnd
+                            call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
+                                &vac%norm(id,:),n_tor,kd,.false.,phi(id),dphi(id))
+                        end do
+                        ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                        if (ierr.eq.0) ierr = dis_matvec(vac,vac%G,vac%desc_G,&
+                            &dphi,rhs)
+                        call check(error, ierr, 0, 'matrix-vector product failed')
+                        if (allocated(error)) exit harm
+                        errs(1,ires,istyle) = maxval(abs(lhs-rhs+4._dp*pi*phi))/&
+                            &maxval(abs(4._dp*pi*phi))
+                        do id = 1,n_bnd
+                            call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
+                                &vac%norm(id,:),n_tor,kd,.true.,phi(id),dphi(id))
+                        end do
+                        ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+                        if (ierr.eq.0) ierr = dis_matvec(vac,vac%G,vac%desc_G,&
+                            &dphi,rhs)
+                        call check(error, ierr, 0, 'matrix-vector product failed')
+                        if (allocated(error)) exit harm
+                        errs(2,ires,istyle) = maxval(abs(lhs-rhs))/&
+                            &maxval(abs(4._dp*pi*phi))
+                        n_col1 = n_col1_loc(vac)
+                        call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),&
+                            &lims_c_R)
+                        allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+                        allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+                        if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+                        Phi_mat = 0._dp
+                        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,&
+                            &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
+                        if (ierr.eq.0) ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,&
+                            &[n_bnd,1],[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+                        if (ierr.eq.0) ierr = vec_dis2loc(vac%ctxt_HG,&
+                            &reshape(Phi_mat(1:vac%n_loc(1),:),&
+                            &[vac%n_loc(1)*n_col1]),vac%lims_r,phi_num)
+                        call check(error, ierr, 0, 'exterior solve failed')
+                        if (allocated(error)) exit harm
+                        errs(3,ires,istyle) = maxval(abs(phi_num-phi))/&
+                            &maxval(abs(phi))
+                        deallocate(phi,dphi,lhs,rhs,phi_num,R_mat,Phi_mat,lims_c_R)
+                    end if
+                    call vac%dealloc()
+                end do
+                if (rank.eq.0) write(error_unit,'(A,I3,A,I2,A,3ES10.2,A,3ES10.2)') &
+                    &'   [2d options] k = ',kd,', vac_diag_style ',&
+                    &styles(istyle),': interior, exterior, solve at 301: ',&
+                    &errs(:,1,istyle),'; at 601: ',errs(:,2,istyle)
+            end do
+            if (in_context(vac%ctxt_HG)) then
+                do istyle = 1,2
+                    call check(error, errs(3,2,istyle).lt.3.e-2_dp, &
+                        &'solution error too large for option '//&
+                        &trim(i2str(styles(istyle)))//': '//&
+                        &trim(r2str(errs(3,2,istyle))))
+                    if (allocated(error)) exit harm
+                    call check(error, errs(3,2,istyle).lt.0.8_dp*errs(3,1,istyle), &
+                        &'no convergence for option '//&
+                        &trim(i2str(styles(istyle)))//': '//&
+                        &trim(r2str(errs(3,1,istyle)))//' -> '//&
+                        &trim(r2str(errs(3,2,istyle))))
+                    if (allocated(error)) exit harm
+                end do
+            end if
+        end do harm
+        eq_style = eq_style_old
+        vac_diag_style = style_old
+    end subroutine test_exact_2d_options
+    
+
+    !> Boundary value and normal data of the toroidal harmonic of order
+    !! n and degree k - 1/2 at (R, Z): the gradient by central differences
+    !! of the closed form (step 1e-5: truncation 1e-10, dtorh1 noise 1e-6).
+    subroutine tor_harm(R,Z,norm,n,k,exterior,phi,dphi)
+        real(dp), intent(in) :: R, Z                                        ! position
+        real(dp), intent(in) :: norm(2)                                     ! normal vector (R, Z components)
+        integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
+        logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
+        real(dp), intent(out) :: phi, dphi                                  ! value and normal derivative
+
+        real(dp), parameter :: h = 1.e-5_dp                                 ! difference step
+
+        phi = tor_val(R,Z,n,k,exterior)
+        ! both styles take the normal data along the stored normal, the
+        ! (inward) -J nabla psi of the fixture: dphi = norm . grad phi
+        dphi = norm(1)*(tor_val(R+h,Z,n,k,exterior)-&
+            &tor_val(R-h,Z,n,k,exterior))/(2._dp*h) + &
+            &norm(2)*(tor_val(R,Z+h,n,k,exterior)-&
+            &tor_val(R,Z-h,n,k,exterior))/(2._dp*h)
+    end subroutine tor_harm
+
+    !> The toroidal harmonic at (R, Z).
+    real(dp) function tor_val(R,Z,n,k,exterior) result(val)
+        use dtorh, only: dtorh1
+
+        real(dp), intent(in) :: R, Z                                        ! position
+        integer, intent(in) :: n, k                                         ! toroidal and poloidal mode numbers
+        logical, intent(in) :: exterior                                     ! first kind (exterior) or second (interior)
+
+        integer :: newn, ierr_loc                                           ! dtorh1 outputs
+        real(dp) :: c, d1, d2, eta, s, cth, sth, th                         ! toroidal coordinates
+        real(dp) :: pl(0:k), ql(0:k)                                        ! toroidal functions
+
+        c = sqrt(R_0**2-a_min**2)
+        d1 = sqrt((R+c)**2+Z**2)
+        d2 = sqrt((R-c)**2+Z**2)
+        eta = log(d1/d2)
+        s = sqrt((R**2+Z**2-c**2)**2 + 4._dp*c**2*Z**2)
+        cth = (R**2+Z**2-c**2)/s
+        sth = 2._dp*c*Z/s
+        th = atan2(sth,cth)
+        ierr_loc = dtorh1(cosh(eta),n,k,pl,ql,newn)
+        if (ierr_loc.ne.0 .or. newn.lt.k) then
+            val = huge(1._dp)
+            return
+        end if
+        if (exterior) then
+            val = sqrt(cosh(eta)-cth)*pl(k)*cos(k*th)
+        else
+            val = sqrt(cosh(eta)-cth)*ql(k)*cos(k*th)
+        end if
+    end function tor_val
 
     !> Gauss-Legendre rule with n points on [-1, 1], by Newton iteration on
     !! the Legendre polynomial (Numerical Recipes, gauleg).

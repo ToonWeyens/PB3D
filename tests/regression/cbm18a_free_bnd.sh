@@ -47,8 +47,8 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR_2=-4.5046e-2
-ANCHOR_4=-4.5130e-2
+ANCHOR_2=-4.5051e-2
+ANCHOR_4=-4.5136e-2
 RTOL=1e-3
 FIXED=-4.3573e-2
 
