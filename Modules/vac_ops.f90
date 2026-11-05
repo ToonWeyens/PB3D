@@ -525,7 +525,6 @@ contains
 #if ldebug
         use num_vars, only: rank, n_procs
         use vac_utilities, only: mat_dis2loc
-        use dtorh, only: dtorh1
 #endif
 
         character(*), parameter :: rout_name = 'calc_GH'
@@ -540,9 +539,6 @@ contains
         
         ! local variables
         integer :: n_r                                                          ! number of rows
-#if ldebug
-        integer :: id, jd                                                       ! counters
-#endif
         integer, pointer :: lims_r(:,:)                                         ! row limits
         real(dp), pointer :: G(:,:)                                             ! G
         real(dp), pointer :: H(:,:)                                             ! H
@@ -550,23 +546,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ext_in                                                       ! external influence point
 #if ldebug
-        integer :: rd                                                           ! global counter for row
-        integer :: rdl                                                          ! local counter for row
-        integer :: i_rd                                                         ! index of subrow
-        integer :: desc_res(BLACSCTXTSIZE)                                      ! descriptor for the result
-        real(dp), allocatable :: loc_ser(:,:)                                   ! dummy serial variable
-        real(dp), allocatable :: phi(:,:)                                       ! test phi
-        real(dp), allocatable :: dphi(:,:)                                      ! test dphi/dn
-        real(dp), allocatable :: res(:,:,:)                                     ! H phi, G dphi
-        real(dp) :: x_src(2)                                                    ! ring source inside the plasma for the exterior test potential
-        real(dp) :: x_pert(2)                                                   ! point displaced along the normal
-        real(dp) :: fp, fm                                                      ! potential values for the central difference
-        real(dp), parameter :: eps_test = 1.E-7_dp                              ! step of the central difference
-        integer :: n_abs_test                                                   ! |n| of the test potentials
-        integer :: max_n_test                                                   ! maximum degree reached by dtorh1
-        real(dp), allocatable :: pl_test(:), ql_test(:)                         ! toroidal functions of the test potential
-        character(len=max_str_ln) :: plot_title(3)                              ! plot title
-        character(len=max_str_ln) :: plot_name                                  ! plot name
+        real(dp), allocatable :: loc_ser(:,:)                                   ! serial copy of a matrix
 #endif
         
         ! initialize ierr
@@ -636,11 +616,6 @@ contains
         
 #if ldebug
         if (debug_calc_GH .and. in_context(vac%ctxt_HG)) then
-            ! initialize
-            call descinit(desc_res,vac%n_bnd,1,vac%bs,vac%bs,0,0,&
-                &vac%ctxt_HG,max(1,vac%n_loc(1)),ierr)
-            CHCKERR('descinit failed for res')
-            
             ! plot H and G in HDF5
             allocate(loc_ser(vac%n_bnd,vac%n_bnd))
             ierr = mat_dis2loc(vac%ctxt_HG,vac%H,vac%lims_r,vac%lims_c,loc_ser,&
@@ -663,167 +638,10 @@ contains
             end if
             deallocate(loc_ser)
             
-            ! the rest is only for axisymmetric vacua: two test potentials
-            ! that vary as e^{i n zeta}, with their normal data dphi along the
-            ! stored normal -J nabla psi (out of the vacuum):
-            !  1. R^n, harmonic inside the boundary:
-            !       H phi - G dphi = -4 pi phi
-            !     (the shell at infinity contributes -4 pi phi(r_i), as for
-            !     the constant potential; eq. 149 of the 2019 manuscript lacks
-            !     this term, erratum E16);
-            !  2. Q_{|n|-1/2}(gamma(x,x_src))/sqrt(R R_src) with x_src inside
-            !     the plasma, the n-mode Green's function, harmonic outside
-            !     the boundary and decaying:
-            !       H phi - G dphi = 0.
-            ! (The spherical potential of eq. 152 of the manuscript is not
-            ! harmonic across Z = 0, erratum E17, and was dropped.)
-            if (vac%style.eq.2) then
-                n_abs_test = abs(vac%prim_X)
-                allocate(pl_test(0:max(n_abs_test,1)))
-                allocate(ql_test(0:max(n_abs_test,1)))
-                x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd    ! centroid of the boundary points
-                if (vac%lims_c(1,1).eq.1) then                                  ! this process owns (part of) first column
-                    ! set up variables
-                    allocate(res(vac%n_loc(1),3,2))
-                    allocate(phi(vac%n_loc(1),2))
-                    allocate(dphi(vac%n_loc(1),2))
-                    ! set up rhs for H (phi) and G (dphi)
-                    subrows: do i_rd = 1,size(vac%lims_r,2)
-                        row: do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
-                            ! set local row index
-                            rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                                &vac%lims_r(1,1:i_rd-1)+1) + &
-                                &rd-vac%lims_r(1,i_rd)+1
-                            ! test 1: R^n, dphi = n norm_R R^(n-1)
-                            phi(rdl,1) = vac%x_vec(rd,1)**n_abs_test
-                            dphi(rdl,1) = n_abs_test*vac%norm(rd,1)/&
-                                &vac%x_vec(rd,1) * phi(rdl,1)
-                            ! test 2: ring source, dphi by central difference
-                            ! along the normal
-                            ierr = ring_pot(vac%x_vec(rd,:),phi(rdl,2))
-                            CHCKERR('')
-                            x_pert = vac%x_vec(rd,:) + eps_test*vac%norm(rd,:)
-                            ierr = ring_pot(x_pert,fp)
-                            CHCKERR('')
-                            x_pert = vac%x_vec(rd,:) - eps_test*vac%norm(rd,:)
-                            ierr = ring_pot(x_pert,fm)
-                            CHCKERR('')
-                            dphi(rdl,2) = (fp-fm)/(2*eps_test)
-                        end do row
-                    end do subrows
-                else
-                    allocate(res(0,3,2))
-                    allocate(phi(0,2))
-                    allocate(dphi(0,2))
-                end if
-                
-                ! output
-                allocate(loc_ser(vac%n_bnd,3))
-                do jd = 1,size(phi,2)
-                    ierr = vec_dis2loc(vac%ctxt_HG,phi(:,jd),vac%lims_r,&
-                        &loc_ser(:,jd),proc=n_procs-1)
-                    CHCKERR('')
-                end do
-                if (rank.eq.n_procs-1) then
-                    plot_title(1) = 'test potential ϕ'
-                    plot_name = 'phi'
-                    call print_ex_2D([plot_title(1)],plot_name,&
-                        &loc_ser(:,1:size(phi,2)),x=vac%ang(:,1:1),draw=.false.)
-                    call draw_ex([plot_title(1)],plot_name,size(phi,2),1,&
-                        &.false.)
-                end if
-                do jd = 1,size(dphi,2)
-                    ierr = vec_dis2loc(vac%ctxt_HG,dphi(:,jd),vac%lims_r,&
-                        &loc_ser(:,jd),proc=n_procs-1)
-                    CHCKERR('')
-                end do
-                if (rank.eq.n_procs-1) then
-                    plot_title(1) = 'normal derivative of test potential dϕ/dn'
-                    plot_name = 'dphi'
-                    call print_ex_2D([plot_title(1)],plot_name,&
-                        &loc_ser(:,1:size(dphi,2)),x=vac%ang(:,1:1),&
-                        &draw=.false.)
-                    call draw_ex([plot_title(1)],plot_name,size(dphi,2),1,&
-                        &.false.)
-                end if
-                deallocate(loc_ser)
-                
-                ! loop over test potentials
-                do jd = 1,size(phi,2)
-                    ! calculate H phi
-                    call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,vac%H,1,1,&
-                        &vac%desc_H,phi(:,jd),1,1,desc_res,1,0._dp,res(:,1,jd),&
-                        &1,1,desc_res,1)
-                    
-                    ! calculate - G dphi
-                    call pdgemv('N',vac%n_bnd,vac%n_bnd,-1._dp,vac%G,1,1,&
-                        &vac%desc_G,dphi(:,jd),1,1,desc_res,1,0._dp,&
-                        &res(:,2,jd),1,1,desc_res,1)
-                    
-                    ! add them together, with the free term of the
-                    ! interior potential
-                    res(:,3,jd) = sum(res(:,1:2,jd),2)
-                    if (jd.eq.1) res(:,3,jd) = res(:,3,jd) + 4*pi*phi(:,jd)
-                end do
-                
-                ! output of tests
-                allocate(loc_ser(vac%n_bnd,3))
-                do id = 1,size(phi,2)
-                    do jd = 1,3
-                        ierr = vec_dis2loc(vac%ctxt_HG,res(:,jd,id),vac%lims_r,&
-                            &loc_ser(:,jd),proc=n_procs-1)
-                        CHCKERR('')
-                    end do
-                    if (rank.eq.n_procs-1) then
-                        select case (id)
-                            case (1)
-                                plot_title(1) = 'H R^n'
-                                plot_title(2) = '-G dphi (R^n)'
-                                plot_title(3) = '(H phi - G dphi + 4π phi) (R^n)'
-                                plot_name = 'test_vac_1'
-                            case (2)
-                                plot_title(1) = 'H phi (ring source)'
-                                plot_title(2) = '-G dphi (ring source)'
-                                plot_title(3) = '(H phi - G dphi) (ring source)'
-                                plot_name = 'test_vac_2'
-                        end select
-                        call print_ex_2D(plot_title,trim(plot_name)//'_all',&
-                            &loc_ser(:,:),x=vac%ang(:,1:1),&
-                            &draw=.false.)
-                        call draw_ex(plot_title,trim(plot_name)//'_all',3,1,&
-                            &.false.)
-                        call print_ex_2D(plot_title(3),plot_name,&
-                            &loc_ser(:,3),x=vac%ang(:,1),&
-                            &draw=.false.)
-                        call draw_ex(plot_title(3:3),plot_name,1,1,.false.)
-                    end if
-                end do
-                deallocate(loc_ser)
-            end if
         end if
 #endif
         
         call lvl_ud(-1)
-#if ldebug
-    contains
-        ! The n-mode Green's function potential of a ring source at x_src,
-        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src) with gamma = 1 + |x-x_src|^2/(2 R R_src)
-        ! (eq. 112 of the 2019 manuscript), used by the debug test potentials.
-        !> \private
-        integer function ring_pot(x,res) result(ierr)
-            ! input / output
-            real(dp), intent(in) :: x(2)                                        ! point (R, Z)
-            real(dp), intent(out) :: res                                        ! potential
-            
-            ! local variables
-            real(dp) :: gam                                                     ! argument of the toroidal function
-            
-            gam = 1._dp + sum((x-x_src)**2)/(2._dp*x(1)*x_src(1))
-            ierr = dtorh1(gam,0,max(n_abs_test,1),pl_test,ql_test,max_n_test)
-            if (ierr.eq.0 .and. max_n_test.lt.n_abs_test) ierr = 1
-            res = ql_test(n_abs_test)/sqrt(x(1)*x_src(1))
-        end function ring_pot
-#endif
     end function calc_GH
 
     !> \public Calculates matrices \c G and \c H in 3-D configuration.
@@ -1054,11 +872,11 @@ contains
         &result(ierr)
         
         use dtorh, only: dtorh1
-        use vac_utilities, only: calc_GH_int_2, dis_matvec, dis_diag
+        use vac_utilities, only: calc_GH_int_2
         use MPI_utilities, only: get_ser_var
         use num_ops, only: calc_zero_HH, calc_zero_Zhang
         use num_vars, only: vac_diag_style
-        use vac_vars, only: in_context, loc_idx
+        use vac_vars, only: in_context
 #if ldebug
         use num_vars, only: rank
 #endif
@@ -1101,17 +919,7 @@ contains
         logical, allocatable :: sing_col(:)                                     ! singular column, used only with external influence
         logical :: was_calc_sym                                                 ! symmetrical was_calc
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: phi_t(:,:), dphi_t(:,:)                        ! test potentials and their normal data for the indirect diagonals
-        real(dp), allocatable :: yH(:), yG(:)                                   ! products with the full H and G
-        real(dp), allocatable :: dH(:), dG(:)                                   ! current diagonals
-        real(dp), allocatable :: a11(:), a12(:), a22(:), b1(:), b2(:)           ! normal equations per row
-        real(dp) :: x_src(2)                                                    ! ring source for the exterior test potential
-        real(dp) :: x_pert(2)                                                   ! point displaced along the normal
-        real(dp) :: fp, fm                                                      ! potential values for the central difference
-        real(dp) :: c_free                                                      ! free term of the identity
-        real(dp) :: det_loc                                                     ! determinant of the normal equations
-        real(dp) :: rr                                                          ! residual of an identity at a point
-        real(dp), parameter :: eps_src = 1.E-7_dp                               ! step of the central difference
+        real(dp), allocatable :: dH(:), dG(:)                                   ! indirect diagonals
 #if ldebug
         real(dp) :: rho2_lims(2)                                                ! limits on rho2
         real(dp) :: gamma_lims(2)                                               ! limits on gamma
@@ -1436,76 +1244,19 @@ contains
             deallocate(beta)
         end do subrows
         
-        ! indirect diagonals (vac_diag_style 1): H_ii and G_ii from the least-
-        ! squares solution of the identities H phi - G dphi = c phi for two
-        ! interior harmonics (R^n and R^n Z, c = -4 pi) and the n-mode Green's
-        ! function of a ring source inside the plasma (c = 0), the counterpart
-        ! of the identities that the field-line style uses by default; the
-        ! direct diagonals (the corner angle and the analytical near-singular
-        ! integrals) are the default of this style
+        ! indirect diagonals (vac_diag_style 1): H_ii and G_ii from the
+        ! identities for the test potentials of set_pot_2 (diag_indirect_2),
+        ! the counterpart of the identities that the field-line style uses by
+        ! default; the direct diagonals (the corner angle and the analytical
+        ! near-singular integrals) are the default of this style
         if (in_context(vac%ctxt_HG) .and. .not.ext_in .and. &
             &vac_diag_style.eq.1) then
-            allocate(phi_t(vac%n_bnd,3),dphi_t(vac%n_bnd,3))
-            allocate(yH(vac%n_bnd),yG(vac%n_bnd),dH(vac%n_bnd),dG(vac%n_bnd))
-            allocate(a11(vac%n_bnd),a12(vac%n_bnd),a22(vac%n_bnd),&
-                &b1(vac%n_bnd),b2(vac%n_bnd))
-            x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd
-            do kd = 1,vac%n_bnd
-                phi_t(kd,1) = vac%x_vec(kd,1)**n_abs
-                dphi_t(kd,1) = n_abs*vac%norm(kd,1)*vac%x_vec(kd,1)**(n_abs-1)
-                phi_t(kd,2) = phi_t(kd,1)*vac%x_vec(kd,2)
-                dphi_t(kd,2) = dphi_t(kd,1)*vac%x_vec(kd,2) + &
-                    &vac%norm(kd,2)*phi_t(kd,1)
-                ierr = ring_pot(vac%x_vec(kd,:),phi_t(kd,3))
-                CHCKERR('')
-                x_pert = vac%x_vec(kd,:) + eps_src*vac%norm(kd,:)
-                ierr = ring_pot(x_pert,fp)
-                CHCKERR('')
-                x_pert = vac%x_vec(kd,:) - eps_src*vac%norm(kd,:)
-                ierr = ring_pot(x_pert,fm)
-                CHCKERR('')
-                dphi_t(kd,3) = (fp-fm)/(2*eps_src)
-            end do
-            do kd = 1,3                                                         ! comparable weights
-                dphi_t(:,kd) = dphi_t(:,kd)/maxval(abs(phi_t(:,kd)))
-                phi_t(:,kd) = phi_t(:,kd)/maxval(abs(phi_t(:,kd)))
-            end do
-            ierr = dis_diag(vac,vac%H,dH)
+            allocate(dH(vac%n_bnd),dG(vac%n_bnd))
+            ierr = diag_indirect_2(vac,dH,dG)
             CHCKERR('')
-            ierr = dis_diag(vac,vac%G,dG)
-            CHCKERR('')
-            a11 = 0._dp
-            a12 = 0._dp
-            a22 = 0._dp
-            b1 = 0._dp
-            b2 = 0._dp
-            do kd = 1,3
-                c_free = -4._dp*pi
-                if (kd.eq.3) c_free = 0._dp
-                ierr = dis_matvec(vac,vac%H,vac%desc_H,phi_t(:,kd),yH)
-                CHCKERR('')
-                ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi_t(:,kd),yG)
-                CHCKERR('')
-                do rd = 1,vac%n_bnd
-                    ! h phi - g dphi = rr, with the off-diagonal parts of the
-                    ! products moved to the right-hand side
-                    rr = c_free*phi_t(rd,kd) - (yH(rd)-dH(rd)*phi_t(rd,kd)) + &
-                        &(yG(rd)-dG(rd)*dphi_t(rd,kd))
-                    a11(rd) = a11(rd) + phi_t(rd,kd)**2
-                    a12(rd) = a12(rd) - phi_t(rd,kd)*dphi_t(rd,kd)
-                    a22(rd) = a22(rd) + dphi_t(rd,kd)**2
-                    b1(rd) = b1(rd) + phi_t(rd,kd)*rr
-                    b2(rd) = b2(rd) - dphi_t(rd,kd)*rr
-                end do
-            end do
-            do rd = 1,vac%n_bnd
-                det_loc = a11(rd)*a22(rd) - a12(rd)**2
-                dH(rd) = (a22(rd)*b1(rd) - a12(rd)*b2(rd))/det_loc
-                dG(rd) = (a11(rd)*b2(rd) - a12(rd)*b1(rd))/det_loc
-            end do
             call set_diag_vac(vac,H_in,dH)
             call set_diag_vac(vac,G_in,dG)
-            deallocate(phi_t,dphi_t,yH,yG,dH,dG,a11,a12,a22,b1,b2)
+            deallocate(dH,dG)
         end if
         
 #if ldebug
@@ -1536,47 +1287,6 @@ contains
         end if
 #endif
     contains
-        ! The n-mode Green's function potential of a ring source at x_src,
-        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src), gamma = 1 + |x-x_src|^2/(2 R R_src)
-        ! (eq. 112 of the 2019 manuscript), for the indirect diagonals.
-        !> \private
-        integer function ring_pot(x,res) result(ierr)
-            ! input / output
-            real(dp), intent(in) :: x(2)                                        ! point (R, Z)
-            real(dp), intent(out) :: res                                        ! potential
-            
-            ! local variables
-            real(dp) :: gam                                                     ! argument of the toroidal function
-            
-            gam = 1._dp + sum((x-x_src)**2)/(2._dp*x(1)*x_src(1))
-            ierr = dtorh1(gam,0,max(n_abs,1),pl_loc,ql_loc,max_n)
-            if (ierr.eq.0 .and. max_n.lt.n_abs) ierr = 1
-            res = ql_loc(n_abs)/sqrt(x(1)*x_src(1))
-        end function ring_pot
-        
-        ! Sets the diagonal of the local matrix A_in to the global vector vec.
-        !> \private
-        subroutine set_diag_vac(vac,A_in,vec)
-            ! input / output
-            type(vac_type), intent(in) :: vac                                   ! vacuum variables
-            real(dp), intent(in), pointer :: A_in(:,:)                          ! local matrix
-            real(dp), intent(in) :: vec(:)                                      ! global vector of diagonal values
-            
-            ! local variables
-            integer :: i_rd, i_cd                                               ! index of subrow and column
-            integer :: rd                                                       ! global index on the diagonal
-            
-            do i_rd = 1,size(vac%lims_r,2)
-                do i_cd = 1,size(vac%lims_c,2)
-                    do rd = max(vac%lims_r(1,i_rd),vac%lims_c(1,i_cd)), &
-                        &min(vac%lims_r(2,i_rd),vac%lims_c(2,i_cd))
-                        A_in(loc_idx(vac%lims_r,i_rd,rd),&
-                            &loc_idx(vac%lims_c,i_cd,rd)) = vec(rd)
-                    end do
-                end do
-            end do
-        end subroutine set_diag_vac
-        
 
         ! function that returns f = -1/2 ln(x)-b - x/T.
         !
@@ -1593,6 +1303,223 @@ contains
         end function fun_tol
     end function calc_GH_2
     
+    !> Test potentials of the axisymmetric vacuum, varying as
+    !! \f$e^{\imath n\zeta}\f$, with their normal data along the stored normal
+    !! \f$-\mathcal{J}\nabla\psi\f$ and the free term \c c_free of the identity
+    !! \f$\overline{\text{H}}\phi - \overline{\text{G}}\,\text{d}\phi = c\,\phi\f$
+    !! that they satisfy:
+    !!  1. \f$R^n\f$, harmonic inside the boundary, \f$c = -4\pi\f$ (the shell
+    !!     at infinity contributes \f$-4\pi\phi(\mathbf{r}_i)\f$, as for the
+    !!     constant potential; eq. 149 of the 2019 manuscript lacks this term,
+    !!     erratum E16);
+    !!  2. \f$R^n Z\f$, harmonic inside the boundary, \f$c = -4\pi\f$;
+    !!  3. \f$Q_{|n|-1/2}(\gamma(\mathbf{x},\mathbf{x}_\text{src}))/\sqrt{R
+    !!     R_\text{src}}\f$, the n-mode Green's function of a ring source at
+    !!     \c x_src inside the plasma, harmonic outside the boundary and
+    !!     decaying, \f$c = 0\f$; its normal data by a central difference.
+    !! (The spherical potential of eq. 152 of the manuscript, which the debug
+    !! self-test of calc_GH used until November 2026, is not harmonic across
+    !! \f$Z = 0\f$, erratum E17.)
+    integer function set_pot_2(vac,kd,x_src,phi,dphi,c_free) result(ierr)
+        use dtorh, only: dtorh1
+        
+        character(*), parameter :: rout_name = 'set_pot_2'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        integer, intent(in) :: kd                                               !< which potential
+        real(dp), intent(in) :: x_src(2)                                        !< ring source (R, Z)
+        real(dp), intent(out) :: phi(:)                                         !< potential at the boundary points
+        real(dp), intent(out) :: dphi(:)                                        !< its normal data
+        real(dp), intent(out) :: c_free                                         !< free term of the identity
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: n_abs                                                        ! |n|
+        integer :: max_n                                                        ! maximum degree reached by dtorh1
+        real(dp) :: fp, fm                                                      ! potential values for the central difference
+        real(dp) :: x_pert(2)                                                   ! point displaced along the normal
+        real(dp), allocatable :: pl_loc(:), ql_loc(:)                           ! toroidal functions
+        real(dp), parameter :: eps_src = 1.E-7_dp                               ! step of the central difference
+        
+        ierr = 0
+        n_abs = abs(vac%prim_X)
+        c_free = -4._dp*pi
+        select case (kd)
+            case (1)                                                            ! R^n
+                phi = vac%x_vec(:,1)**n_abs
+                dphi = n_abs*vac%norm(:,1)*vac%x_vec(:,1)**(n_abs-1)
+            case (2)                                                            ! R^n Z
+                phi = vac%x_vec(:,1)**n_abs*vac%x_vec(:,2)
+                dphi = n_abs*vac%norm(:,1)*vac%x_vec(:,1)**(n_abs-1)*&
+                    &vac%x_vec(:,2) + vac%norm(:,2)*vac%x_vec(:,1)**n_abs
+            case (3)                                                            ! ring source
+                c_free = 0._dp
+                allocate(pl_loc(0:max(n_abs,1)),ql_loc(0:max(n_abs,1)))
+                do id = 1,vac%n_bnd
+                    ierr = ring_pot(vac%x_vec(id,:),phi(id))
+                    CHCKERR('')
+                    x_pert = vac%x_vec(id,:) + eps_src*vac%norm(id,:)
+                    ierr = ring_pot(x_pert,fp)
+                    CHCKERR('')
+                    x_pert = vac%x_vec(id,:) - eps_src*vac%norm(id,:)
+                    ierr = ring_pot(x_pert,fm)
+                    CHCKERR('')
+                    dphi(id) = (fp-fm)/(2*eps_src)
+                end do
+            case default
+                ierr = 1
+                CHCKERR('no such test potential')
+        end select
+    contains
+        ! The n-mode Green's function potential of the ring source,
+        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src), gamma = 1 + |x-x_src|^2/(2 R R_src)
+        ! (eq. 112 of the 2019 manuscript).
+        !> \private
+        integer function ring_pot(x,res) result(ierr)
+            ! input / output
+            real(dp), intent(in) :: x(2)                                        ! point (R, Z)
+            real(dp), intent(out) :: res                                        ! potential
+            
+            ! local variables
+            real(dp) :: gam                                                     ! argument of the toroidal function
+            
+            gam = 1._dp + sum((x-x_src)**2)/(2._dp*x(1)*x_src(1))
+            ierr = dtorh1(gam,0,max(n_abs,1),pl_loc,ql_loc,max_n)
+            if (ierr.eq.0 .and. max_n.lt.n_abs) ierr = 1
+            res = ql_loc(n_abs)/sqrt(x(1)*x_src(1))
+        end function ring_pot
+    end function set_pot_2
+    
+    !> Indirect diagonals of the axisymmetric vacuum operators.
+    !!
+    !! \f$H_{ii}\f$ and \f$G_{ii}\f$ from the least-squares solution, row by
+    !! row, of the identities \f$\overline{\text{H}}\phi -
+    !! \overline{\text{G}}\,\text{d}\phi = c\,\phi\f$ for the three test
+    !! potentials of set_pot_2, with the off-diagonal parts of the products
+    !! moved to the right-hand side (each potential scaled to unit maximum).
+    !! The counterpart of the identities that the field-line style uses by
+    !! default (calc_GH_1). The matrices keep their current diagonals during
+    !! the computation.
+    integer function diag_indirect_2(vac,dH,dG) result(ierr)
+        use vac_vars, only: in_context
+        use vac_utilities, only: dis_matvec, dis_diag
+        
+        character(*), parameter :: rout_name = 'diag_indirect_2'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(out) :: dH(:)                                          !< indirect diagonal of H (global)
+        real(dp), intent(out) :: dG(:)                                          !< indirect diagonal of G (global)
+        
+        ! local variables
+        integer :: kd, rd                                                       ! counters
+        real(dp) :: x_src(2)                                                    ! ring source
+        real(dp) :: c_free                                                      ! free term of the identity
+        real(dp) :: rr                                                          ! residual of an identity at a point
+        real(dp) :: det_loc                                                     ! determinant of the normal equations
+        real(dp), allocatable :: phi(:), dphi(:)                                ! test potential and its normal data
+        real(dp), allocatable :: yH(:), yG(:)                                   ! products with the full H and G
+        real(dp), allocatable :: dH0(:), dG0(:)                                 ! current diagonals
+        real(dp), allocatable :: a11(:), a12(:), a22(:), b1(:), b2(:)           ! normal equations per row
+        
+        ierr = 0
+        dH = 0._dp
+        dG = 0._dp
+        if (.not.in_context(vac%ctxt_HG)) return
+        allocate(phi(vac%n_bnd),dphi(vac%n_bnd),yH(vac%n_bnd),yG(vac%n_bnd))
+        allocate(dH0(vac%n_bnd),dG0(vac%n_bnd))
+        allocate(a11(vac%n_bnd),a12(vac%n_bnd),a22(vac%n_bnd),b1(vac%n_bnd),&
+            &b2(vac%n_bnd))
+        x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd             ! centroid of the boundary points
+        ierr = dis_diag(vac,vac%H,dH0)
+        CHCKERR('')
+        ierr = dis_diag(vac,vac%G,dG0)
+        CHCKERR('')
+        a11 = 0._dp
+        a12 = 0._dp
+        a22 = 0._dp
+        b1 = 0._dp
+        b2 = 0._dp
+        do kd = 1,3
+            ierr = set_pot_2(vac,kd,x_src,phi,dphi,c_free)
+            CHCKERR('')
+            dphi = dphi/maxval(abs(phi))
+            phi = phi/maxval(abs(phi))
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,yH)
+            CHCKERR('')
+            ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,yG)
+            CHCKERR('')
+            do rd = 1,vac%n_bnd
+                ! h phi - g dphi = rr for the unknown diagonals h and g
+                rr = c_free*phi(rd) - (yH(rd)-dH0(rd)*phi(rd)) + &
+                    &(yG(rd)-dG0(rd)*dphi(rd))
+                a11(rd) = a11(rd) + phi(rd)**2
+                a12(rd) = a12(rd) - phi(rd)*dphi(rd)
+                a22(rd) = a22(rd) + dphi(rd)**2
+                b1(rd) = b1(rd) + phi(rd)*rr
+                b2(rd) = b2(rd) - dphi(rd)*rr
+            end do
+        end do
+        do rd = 1,vac%n_bnd
+            det_loc = a11(rd)*a22(rd) - a12(rd)**2
+            dH(rd) = (a22(rd)*b1(rd) - a12(rd)*b2(rd))/det_loc
+            dG(rd) = (a11(rd)*b2(rd) - a12(rd)*b1(rd))/det_loc
+        end do
+    end function diag_indirect_2
+    
+    !> Sets the diagonal of a distributed matrix of the vacuum to a global
+    !! vector.
+    subroutine set_diag_vac(vac,A_in,vec)
+        use vac_vars, only: loc_idx
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in), pointer :: A_in(:,:)                              !< local matrix
+        real(dp), intent(in) :: vec(:)                                          !< global vector of diagonal values
+        
+        ! local variables
+        integer :: i_rd, i_cd                                                   ! index of subrow and column
+        integer :: rd                                                           ! global index on the diagonal
+        
+        do i_rd = 1,size(vac%lims_r,2)
+            do i_cd = 1,size(vac%lims_c,2)
+                do rd = max(vac%lims_r(1,i_rd),vac%lims_c(1,i_cd)), &
+                    &min(vac%lims_r(2,i_rd),vac%lims_c(2,i_cd))
+                    A_in(loc_idx(vac%lims_r,i_rd,rd),&
+                        &loc_idx(vac%lims_c,i_cd,rd)) = vec(rd)
+                end do
+            end do
+        end do
+    end subroutine set_diag_vac
+    
+    !> Writes a per-point quantity of the boundary with the point's parallel
+    !! and field-line indices and its position, for the localization of errors.
+    subroutine write_points_vac(vac,file_name,val)
+        use num_vars, only: rank, n_procs
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        character(*), intent(in) :: file_name                                   !< file name
+        real(dp), intent(in) :: val(:)                                          !< value per boundary point
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: file_i                                                       ! file unit
+        integer :: kd                                                           ! counter
+        
+        if (rank.ne.n_procs-1) return
+        open(newunit=file_i,file=file_name,status='replace')
+        write(file_i,'(A)') '# id i_par i_line x y z value'
+        do id = 1,vac%n_bnd
+            write(file_i,'(3I7,4ES15.7)') id, mod(id-1,vac%n_ang(1))+1, &
+                &(id-1)/vac%n_ang(1)+1, vac%x_vec(id,:), &
+                &[(0._dp, kd=size(vac%x_vec,2)+1,3)], val(id)
+        end do
+        close(file_i)
+    end subroutine write_points_vac
+    
+
     !> Calculates the vacuum response.
     !!
     !! First  \c G and \c  H are completed if  this is not the  first Richardson
@@ -1717,7 +1644,7 @@ contains
         CHCKERR('')
         
         ! check the operators with exact potentials if requested
-        if (check_vac .and. vac%style.eq.1) then
+        if (check_vac) then
             ierr = check_vac_exact(vac)
             CHCKERR('')
         end if
@@ -2108,15 +2035,35 @@ contains
     !!
     !! Every number is printed on a line starting with CHECKVAC so that it can
     !! be collected from the log. Switched on with the input \c check_vac.
-    !! Only for style 1, whose surface points are Cartesian.
+    !! For the field-line style (check_vac_exact_1): the Cartesian harmonics and
+    !! the axis sources below; for the axisymmetric style (check_vac_exact_2):
+    !! the potentials of set_pot_2, the ring-source solve, and the assembled
+    !! diagonals against the indirect ones of diag_indirect_2.
     integer function check_vac_exact(vac) result(ierr)
+        character(*), parameter :: rout_name = 'check_vac_exact'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        
+        select case (vac%style)
+            case (1)
+                ierr = check_vac_exact_1(vac)
+                CHCKERR('')
+            case (2)
+                ierr = check_vac_exact_2(vac)
+                CHCKERR('')
+        end select
+    end function check_vac_exact
+    
+    !> Field-line style of check_vac_exact.
+    integer function check_vac_exact_1(vac) result(ierr)
         use num_vars, only: rank, n_procs
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc, n_col1_loc, vec_glob2dis, &
             &dis_matvec, calc_diag_direct, dis_diag, vac_steps
         use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, mn_V, mnmax_V
 
-        character(*), parameter :: rout_name = 'check_vac_exact'
+        character(*), parameter :: rout_name = 'check_vac_exact_1'
 
         ! input / output
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
@@ -2142,7 +2089,6 @@ contains
         real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
         character(len=max_str_ln) :: pot_name                                   ! name of test potential
         character(len=max_str_ln) :: res_str                                    ! residuals as string
-        integer :: file_i                                                       ! file unit of the per-point output
         real(dp) :: c_exp                                                       ! expected offset of the identity
         real(dp) :: dpar, dalpha                                                ! steps of the field-line grid
         real(dp), allocatable :: diag_rs(:), diag_dir(:), diag_fac(:)           ! row-sum, smooth direct and faceted direct diagonal of H
@@ -2207,7 +2153,7 @@ contains
                 &trim(res_str),persistent=rank_o)
             c_exp = 0._dp
             if (kd.le.5) c_exp = -4._dp*pi                                      ! interior harmonics
-            call write_points('check_vac_identity_'//trim(pot_name)//'.dat',&
+            call write_points_vac(vac,'check_vac_identity_'//trim(pot_name)//'.dat',&
                 &abs(lhs-c_exp*phi)/maxval(abs(4._dp*pi*phi)))
         end do
 
@@ -2241,10 +2187,10 @@ contains
                 &' max|omega_v/4pi-1/2|='//&
                 &trim(r2strt(maxval(abs(omega_v/(4._dp*pi)-0.5_dp),&
                 &mask=avail))),persistent=rank_o)
-            call write_points('check_vac_diag_diff.dat',d_diag)
-            call write_points('check_vac_diag_diff_facet.dat',d_fac)
-            call write_points('check_vac_diag_Ising.dat',abs(I_sing)/(4._dp*pi))
-            call write_points('check_vac_diag_omega.dat',omega_v/(4._dp*pi))
+            call write_points_vac(vac,'check_vac_diag_diff.dat',d_diag)
+            call write_points_vac(vac,'check_vac_diag_diff_facet.dat',d_fac)
+            call write_points_vac(vac,'check_vac_diag_Ising.dat',abs(I_sing)/(4._dp*pi))
+            call write_points_vac(vac,'check_vac_diag_omega.dat',omega_v/(4._dp*pi))
             deallocate(diag_rs,diag_dir,diag_fac,I_sing,omega_v,d_diag,d_fac,&
                 &avail)
         end if
@@ -2275,30 +2221,12 @@ contains
                 &trim(i2str(n_bnd))//' min_dist='//trim(r2strt(d_min))//&
                 &' err_max='//trim(r2strt(err_max))//' err_2='//&
                 &trim(r2strt(err_2)),persistent=rank_o)
-            call write_points('check_vac_solve_'//trim(pot_name)//'.dat',&
+            call write_points_vac(vac,'check_vac_solve_'//trim(pot_name)//'.dat',&
                 &abs(phi_num-phi)/maxval(abs(phi)))
         end do
 
         call lvl_ud(-1)
     contains
-        ! Writes a per-point quantity with the point's parallel and field-line
-        ! indices and position, for the localization of the errors.
-        !> \private
-        subroutine write_points(file_name,val)
-            character(*), intent(in) :: file_name                               ! file name
-            real(dp), intent(in) :: val(:)                                      ! value per boundary point
-            
-            integer :: id                                                       ! counter
-            
-            if (.not.rank_o) return
-            open(newunit=file_i,file=file_name,status='replace')
-            write(file_i,'(A)') '# id i_par i_line x y z value'
-            do id = 1,n_bnd
-                write(file_i,'(3I7,4ES15.7)') id, mod(id-1,vac%n_ang(1))+1, &
-                    &(id-1)/vac%n_ang(1)+1, vac%x_vec(id,:), val(id)
-            end do
-            close(file_i)
-        end subroutine write_points
         
         ! Sets phi and dphi = norm . grad phi for test potential kd.
         !> \private
@@ -2361,7 +2289,137 @@ contains
                 end select
             end do
         end subroutine set_pot
-    end function check_vac_exact
+    end function check_vac_exact_1
+
+    
+    !> Axisymmetric style of check_vac_exact.
+    integer function check_vac_exact_2(vac) result(ierr)
+        use num_vars, only: rank, n_procs, vac_diag_style
+        use vac_vars, only: in_context, set_loc_lims
+        use vac_utilities, only: vec_dis2loc, n_col1_loc, vec_glob2dis, &
+            &dis_matvec, dis_diag
+        
+        character(*), parameter :: rout_name = 'check_vac_exact_2'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        
+        ! local variables
+        integer :: id, kd                                                       ! counters
+        integer :: n_bnd                                                        ! number of boundary points
+        integer :: n_col1                                                       ! local number of columns of a global column vector
+        integer :: desc_RPhi(BLACSCTXTSIZE)                                     ! descriptor for right-hand side and solution
+        integer, allocatable :: lims_c_R(:,:)                                   ! local column limits of right-hand side and solution
+        logical :: rank_o                                                       ! output rank
+        real(dp) :: x_src(2)                                                    ! ring source
+        real(dp) :: c_free                                                      ! free term of the identity
+        real(dp) :: res_off(-2:2)                                               ! identity residuals for offsets c = k 2 pi
+        real(dp) :: err_max, err_2                                              ! errors of the exterior solution
+        real(dp), allocatable :: phi(:), dphi(:)                                ! potential and norm . grad phi
+        real(dp), allocatable :: lhs(:), rhs(:)                                 ! H phi and G dphi
+        real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
+        real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
+        real(dp), allocatable :: dH0(:), dG0(:), dH(:), dG(:)                   ! assembled and indirect diagonals
+        character(len=max_str_ln) :: pot_name                                   ! name of test potential
+        character(len=max_str_ln) :: res_str                                    ! residuals as string
+        
+        ! initialize ierr
+        ierr = 0
+        
+        if (.not.in_context(vac%ctxt_HG)) return
+        rank_o = rank.eq.n_procs-1
+        n_bnd = vac%n_bnd
+        x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/n_bnd                 ! centroid of the boundary points
+        
+        call writo('Check of the axisymmetric vacuum operators with exact &
+            &potentials',persistent=rank_o)
+        call lvl_ud(1)
+        call writo('CHECKVAC source n_bnd='//trim(i2str(n_bnd))//' x_src='//&
+            &trim(r2strt(x_src(1)))//' '//trim(r2strt(x_src(2))),&
+            &persistent=rank_o)
+        allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),phi_num(n_bnd))
+        
+        ! Green identities
+        do kd = 1,3
+            ierr = set_pot_2(vac,kd,x_src,phi,dphi,c_free)
+            CHCKERR('')
+            select case (kd)
+                case (1)
+                    pot_name = 'Rn'
+                case (2)
+                    pot_name = 'RnZ'
+                case (3)
+                    pot_name = 'ring_source'
+            end select
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
+            CHCKERR('')
+            ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
+            CHCKERR('')
+            lhs = lhs - rhs
+            res_str = ''
+            do id = -2,2
+                res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
+                    &maxval(abs(4._dp*pi*phi))
+                res_str = trim(res_str)//' '//trim(r2strt(res_off(id)))
+            end do
+            call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
+                &trim(res_str),persistent=rank_o)
+            call write_points_vac(vac,'check_vac_identity_'//trim(pot_name)//&
+                &'.dat',abs(lhs-c_free*phi)/maxval(abs(4._dp*pi*phi)))
+        end do
+        
+        ! exterior solve for the ring source (phi and dphi are its data)
+        n_col1 = n_col1_loc(vac)
+        call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
+        allocate(R_mat(max(1,vac%n_loc(1)),n_col1))
+        allocate(Phi_mat(max(1,vac%n_loc(1)),n_col1))
+        call descinit(desc_RPhi,n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        CHCKERR('descinit failed')
+        if (n_col1.gt.0) call vec_glob2dis(vac,dphi,R_mat(:,1))
+        Phi_mat = 0._dp
+        ierr = solve_Phi_BEM(vac,R_mat,Phi_mat,[n_bnd,1],&
+            &[vac%n_loc(1),n_col1],lims_c_R,desc_RPhi)
+        CHCKERR('')
+        ierr = vec_dis2loc(vac%ctxt_HG,&
+            &reshape(Phi_mat(1:vac%n_loc(1),:),[vac%n_loc(1)*n_col1]),&
+            &vac%lims_r,phi_num)
+        CHCKERR('')
+        err_max = maxval(abs(phi_num-phi))/maxval(abs(phi))
+        err_2 = sqrt(sum((phi_num-phi)**2)/sum(phi**2))
+        call writo('CHECKVAC solve ring_source n_bnd='//trim(i2str(n_bnd))//&
+            &' err_max='//trim(r2strt(err_max))//' err_2='//&
+            &trim(r2strt(err_2)),persistent=rank_o)
+        call write_points_vac(vac,'check_vac_solve_ring_source.dat',&
+            &abs(phi_num-phi)/maxval(abs(phi)))
+        
+        ! the assembled diagonals against the indirect ones from the
+        ! identities (equal by construction when vac_diag_style is 1; the
+        ! difference measures the quadrature error of the off-diagonal rows
+        ! when the assembled diagonals are the direct ones)
+        allocate(dH0(n_bnd),dG0(n_bnd),dH(n_bnd),dG(n_bnd))
+        ierr = dis_diag(vac,vac%H,dH0)
+        CHCKERR('')
+        ierr = dis_diag(vac,vac%G,dG0)
+        CHCKERR('')
+        ierr = diag_indirect_2(vac,dH,dG)
+        CHCKERR('')
+        call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&
+            &' vac_diag_style='//trim(i2str(vac_diag_style))//&
+            &' max|H_assembled-H_indirect|/4pi='//&
+            &trim(r2strt(maxval(abs(dH0-dH))/(4._dp*pi)))//' mean='//&
+            &trim(r2strt(sum(abs(dH0-dH))/(4._dp*pi*n_bnd)))//&
+            &' max|G_assembled-G_indirect|/max|G|='//&
+            &trim(r2strt(maxval(abs(dG0-dG))/maxval(abs(dG0)))),&
+            &persistent=rank_o)
+        call write_points_vac(vac,'check_vac_diag_diff.dat',&
+            &abs(dH0-dH)/(4._dp*pi))
+        call write_points_vac(vac,'check_vac_diag_diff_G.dat',&
+            &abs(dG0-dG)/maxval(abs(dG0)))
+        
+        call lvl_ud(-1)
+    end function check_vac_exact_2
 
 !> Calculate vacuum potential at some positions that are not resonant.
     !!
