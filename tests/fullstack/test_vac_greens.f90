@@ -27,7 +27,7 @@
 module test_vac_greens
     use, intrinsic :: iso_fortran_env, only: error_unit
     use testdrive, only: new_unittest, unittest_type, error_type, check
-    use num_vars, only: dp, pi
+    use num_vars, only: dp, pi, rank
     use str_utilities, only: r2str, i2str
     use dtorh, only: dtorh1
     use vac_vars, only: vac_type
@@ -52,7 +52,8 @@ contains
             &new_unittest("greens_identity_convergence", &
             &   test_greens_convergence), &
             &new_unittest("solve_Phi_BEM_roundtrip", test_solve_roundtrip), &
-            &new_unittest("vac_response_cylinder", test_response_cylinder) &
+            &new_unittest("vac_response_cylinder", test_response_cylinder), &
+            &new_unittest("greens_identity_indirect", test_greens_indirect) &
             &]
     end subroutine collect_vac_greens
 
@@ -446,4 +447,40 @@ contains
         n_mod_X = n_mod_X_old
         if (allocated(error)) return
     end subroutine test_response_cylinder
+    
+    !> The Green identities with the indirect diagonals of the axisymmetric
+    !! style (vac_diag_style 1: H_ii and G_ii from the least-squares solution
+    !! of the identities for R^n, R^n Z and the ring-source potential), which
+    !! must hold as well as with the direct ones, the default of this style.
+    subroutine test_greens_indirect(error)
+        use num_vars, only: vac_diag_style
+        type(error_type), allocatable, intent(out) :: error
+        integer, parameter :: n_bnd = 101                                       ! boundary points
+        real(dp), parameter :: tol = 5.e-2_dp                                   ! relative tolerance
+        integer :: ierr, kind                                                   ! error status, counter
+        integer :: style_old                                                    ! saved module state
+        real(dp) :: res_dir(3), res_ind(3)                                      ! residuals, direct and indirect diagonals
+        
+        style_old = vac_diag_style
+        vac_diag_style = 2
+        call greens_residuals(n_bnd,res_dir,ierr)
+        if (ierr.eq.0) then
+            vac_diag_style = 1
+            call greens_residuals(n_bnd,res_ind,ierr)
+        end if
+        vac_diag_style = style_old
+        call check(error, ierr, 0, 'assembly failed')
+        if (allocated(error)) return
+        do kind = 1,3
+            if (rank.eq.0) write(error_unit,'(A,I2,A,2ES10.3)') &
+                &'   [greens indirect] potential ',kind,&
+                &': residual direct, indirect: ',res_dir(kind),res_ind(kind)
+            call check(error, res_ind(kind).lt.tol, &
+                &'Green identity residual with the indirect diagonals for &
+                &potential '//trim(i2str(kind))//' too large: '//&
+                &trim(r2str(res_ind(kind))))
+            if (allocated(error)) return
+        end do
+    end subroutine test_greens_indirect
+
 end module test_vac_greens

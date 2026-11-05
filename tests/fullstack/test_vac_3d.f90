@@ -85,7 +85,8 @@ contains
             &new_unittest("exact_exterior_2d", test_exact_exterior_2d), &
             &new_unittest("solid_angle_node", test_solid_angle_node), &
             &new_unittest("H_sing_node", test_H_sing_node), &
-            &new_unittest("diag_direct_3d", test_diag_direct_3d) &
+            &new_unittest("diag_direct_3d", test_diag_direct_3d), &
+            &new_unittest("point_source_direct_3d", test_point_source_direct) &
             &]
     end subroutine collect_vac_3d
 
@@ -1174,6 +1175,48 @@ contains
         end if
     end subroutine test_diag_direct_3d
     
+    !> The point-source solve of the field-line style with the direct
+    !! diagonals (vac_diag_style 2: -2 pi plus the cell integral for H, the
+    !! analytical cell integral for G) against the default indirect ones, at
+    !! two resolutions: both must converge, and their errors are printed for
+    !! the comparison of the two options.
+    subroutine test_point_source_direct(error)
+        use num_vars, only: vac_diag_style
+        type(error_type), allocatable, intent(out) :: error
+        integer, parameter :: n_pars(2) = [41,81]                               ! points per field line
+        integer, parameter :: n_alphas(2) = [40,80]                             ! field lines
+        real(dp), parameter :: tol = 5.e-2_dp                                   ! relative tolerance at the fine resolution
+        integer :: ierr, ires, istyle                                           ! error status, counters
+        integer :: style_old                                                    ! saved module state
+        real(dp) :: err(2,2)                                                    ! solution errors (resolution, option)
+        
+        style_old = vac_diag_style
+        do istyle = 1,2
+            vac_diag_style = istyle
+            do ires = 1,2
+                call point_source_error(n_pars(ires),n_alphas(ires),0._dp,&
+                    &err(ires,istyle),ierr)
+                if (ierr.ne.0) exit
+            end do
+            if (ierr.ne.0) exit
+        end do
+        vac_diag_style = style_old
+        call check(error, ierr, 0, 'point-source solve failed')
+        if (allocated(error)) return
+        if (rank_out()) write(error_unit,'(A,2ES10.2,A,2ES10.2)') &
+            &'   [point source direct] errors indirect ',err(:,1),&
+            &', direct ',err(:,2)
+        call check(error, err(2,2).lt.tol, &
+            &'point-source solution error with the direct diagonals too &
+            &large: '//trim(r2str(err(2,2))))
+        if (allocated(error)) return
+        call check(error, err(2,2).lt.0.85_dp*err(1,2), &
+            &'no convergence with the direct diagonals: '//&
+            &trim(r2str(err(1,2)))//' -> '//trim(r2str(err(2,2))))
+        if (allocated(error)) return
+    end subroutine test_point_source_direct
+    
+
     !> Gauss-Legendre rule with n points on [-1, 1], by Newton iteration on
     !! the Legendre polynomial (Numerical Recipes, gauleg).
     subroutine gauss_legendre(n,x,w)

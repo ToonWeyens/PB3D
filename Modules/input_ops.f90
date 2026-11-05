@@ -35,7 +35,7 @@ contains
             &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
             &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST, &
             &sol_n_procs, n_procs, POST_output_full, POST_output_sol, &
-            &EV_guess, solver_SLEPC_style, plot_vac_pot, check_vac, min_Rvac_plot, &
+            &EV_guess, solver_SLEPC_style, plot_vac_pot, check_vac, vac_diag_style, min_Rvac_plot, &
             &max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, n_vac_plot, &
             &alpha_style, X_grid_style, max_njq_change
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
@@ -71,7 +71,7 @@ contains
             &rich_restart_lvl, min_n_par_X, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot, alpha_style, max_nr_backtracks_HH, &
             &magn_int_style, ex_plot_style, n_alpha, solver_SLEPC_style, &
-            &X_grid_style, max_njq_change, check_vac
+            &X_grid_style, max_njq_change, check_vac, vac_diag_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_size, &
@@ -304,6 +304,7 @@ contains
             plot_J = .false.                                                    ! do not plot the current
             plot_flux_q = .false.                                               ! do not plot the flux quantities
             check_vac = .false.                                                 ! do not check the 3-D vacuum operators with exact potentials
+            vac_diag_style = 0                                                  ! diagonal of the vacuum operators: the default of the vacuum style
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
@@ -896,6 +897,12 @@ contains
                 err_msg = 'Free-boundary 3-D runs need alpha_style 2 &
                     &(multiple field lines): the vacuum BEM requires &
                     &n_alpha > 1'
+                CHCKERR(err_msg)
+            end if
+            if (vac_diag_style.lt.0 .or. vac_diag_style.gt.2) then
+                ierr = 1
+                err_msg = 'vac_diag_style has to be 0 (default of the vacuum &
+                    &style), 1 (indirect) or 2 (direct)'
                 CHCKERR(err_msg)
             end if
 
