@@ -41,6 +41,24 @@ module test_vac_3d
     real(dp), parameter :: R_0 = 3.0_dp                                         ! major radius
     real(dp), parameter :: a_min = 1.0_dp                                       ! minor radius
     real(dp), parameter :: q_saf = 1.35_dp                                      ! safety factor at the boundary
+    real(dp), parameter :: gl16_x(16) = [&
+        &-0.9894009349916499_dp, -0.9445750230732326_dp, &
+        &-0.8656312023878316_dp, -0.7554044083550031_dp, &
+        &-0.6178762444026438_dp, -0.4580167776572274_dp, &
+        &-0.2816035507792589_dp, -0.0950125098376374_dp, &
+        & 0.0950125098376374_dp,  0.2816035507792589_dp, &
+        & 0.4580167776572274_dp,  0.6178762444026438_dp, &
+        & 0.7554044083550031_dp,  0.8656312023878316_dp, &
+        & 0.9445750230732326_dp,  0.9894009349916499_dp]                        ! 16-point Gauss-Legendre abscissas
+    real(dp), parameter :: gl16_w(16) = [&
+        &0.0271524594117541_dp, 0.0622535239386476_dp, &
+        &0.0951585116824930_dp, 0.1246289712555339_dp, &
+        &0.1495959888165767_dp, 0.1691565193950026_dp, &
+        &0.1826034150449236_dp, 0.1894506104550686_dp, &
+        &0.1894506104550686_dp, 0.1826034150449236_dp, &
+        &0.1691565193950026_dp, 0.1495959888165767_dp, &
+        &0.1246289712555339_dp, 0.0951585116824930_dp, &
+        &0.0622535239386476_dp, 0.0271524594117541_dp]                          ! and weights
     ! 8-point Gauss-Legendre rule on [-1,1], for brute-force references
     real(dp), parameter :: gl_x(8) = [&
         &-0.9602898564975363_dp, -0.7966664774136267_dp, &
@@ -64,7 +82,10 @@ contains
             &new_unittest("greens_identity_3d", test_greens_identity_3d), &
             &new_unittest("response_1_vs_2", test_response_1_vs_2), &
             &new_unittest("point_source_3d", test_point_source_3d), &
-            &new_unittest("exact_exterior_2d", test_exact_exterior_2d) &
+            &new_unittest("exact_exterior_2d", test_exact_exterior_2d), &
+            &new_unittest("solid_angle_node", test_solid_angle_node), &
+            &new_unittest("H_sing_node", test_H_sing_node), &
+            &new_unittest("diag_direct_3d", test_diag_direct_3d) &
             &]
     end subroutine collect_vac_3d
 
@@ -155,7 +176,6 @@ contains
                 vac%h_fac(kd,1) = sum(e_a**2)                                   ! g_alpha,alpha
                 vac%h_fac(kd,2) = sum(e_a*e_t)                                  ! g_alpha,theta
                 vac%h_fac(kd,3) = sum(e_t**2)                                   ! g_theta,theta
-                vac%h_fac(kd,4) = 0._dp                                         ! only enters the (discarded) singular H diagonal
             end do
         end do
     end subroutine setup_torus_vac
@@ -172,7 +192,7 @@ contains
     subroutine test_int_1_singular(error)
         type(error_type), allocatable, intent(out) :: error
 
-        real(dp), parameter :: h_fac(4) = [4.0_dp,0.9_dp,2.5_dp,7.7_dp]         ! g_aa, g_at, g_tt, H factor
+        real(dp), parameter :: h_fac(3) = [4.0_dp,0.9_dp,2.5_dp]                ! g_aa, g_at, g_tt
         real(dp), parameter :: steps(2) = [0.02_dp,0.03_dp]                     ! dpar, dalpha
 
         integer :: id, jd                                                       ! counters
@@ -231,10 +251,10 @@ contains
             &trim(r2str(G_ref)))
         if (allocated(error)) return
 
-        ! the H value of the singular endpoint is h_fac(4) G by construction
-        ! (it never enters the final system, see calc_GH_1)
-        call check(error, H(1), h_fac(4)*G(1), thr=1.e-14_dp*abs(H(1)), &
-            &message='singular H not h_fac(4) G')
+        ! the singular endpoint carries no H contribution: calc_GH_1 sets the
+        ! diagonal of H afterwards
+        call check(error, H(1), 0._dp, thr=1.e-300_dp, &
+            &message='singular H not zero')
         if (allocated(error)) return
 
         ! the regular endpoint is near (one interval length) and receives the
@@ -926,4 +946,269 @@ contains
         n_mod_X = n_mod_X_old
         if (allocated(error)) return
     end subroutine test_response_1_vs_2
+    
+    !> The exact solid angle at a faceted node (vac_utilities.solid_angle_node,
+    !! eq. 45 of the 2019 manuscript) against three independent values: a flat
+    !! node (2 pi), the axisymmetric corner of its eq. (47) with the tilts
+    !! g_2 and g_4 of the two poloidal edges, whose plasma-side solid angle is
+    !! 2 pi - 2 (g_2 + g_4) (erratum E7), and a node of the circular torus
+    !! against Girard's theorem for the spherical quadrilateral bounded by the
+    !! four facet planes (2 pi minus the sum of the signed angles between
+    !! consecutive facet normals).
+    subroutine test_solid_angle_node(error)
+        use vac_utilities, only: solid_angle_node
+        type(error_type), allocatable, intent(out) :: error
+        
+        real(dp), parameter :: g2 = 0.05_dp, g4 = 0.03_dp                       ! tilts of the axisymmetric corner
+        real(dp), parameter :: th0 = 0.9_dp, al0 = 0.3_dp                       ! node on the torus
+        real(dp), parameter :: dth = 0.2_dp, dal = 0.15_dp                      ! mesh steps
+        integer :: id                                                           ! counter
+        real(dp) :: u(4,3), z(3)                                                ! edges and axis
+        real(dp) :: omega                                                       ! solid angle
+        real(dp) :: x0(3), e_t(3), e_a(3)                                       ! node geometry
+        real(dp) :: a(4,3), tau                                                 ! facet normals, turning angle sum
+        
+        ! flat node: the four edges in the tangent plane
+        u(1,:) = [-1._dp,0.2_dp,0._dp]
+        u(2,:) = [0.3_dp,-1._dp,0._dp]
+        u(3,:) = [1._dp,0.1_dp,0._dp]
+        u(4,:) = [-0.2_dp,1._dp,0._dp]
+        z = [0._dp,0._dp,1._dp]
+        call solid_angle_node(u,z,omega)
+        call check(error, omega, 2._dp*pi, thr=1.e-12_dp, &
+            &message='flat node: '//trim(r2str(omega)))
+        if (allocated(error)) return
+        
+        ! axisymmetric corner: u_1 = -u_3 toroidal, u_2 and u_4 poloidal,
+        ! tilted towards z by g2 and g4
+        u(1,:) = [0._dp,1._dp,0._dp]
+        u(2,:) = [-cos(g2),0._dp,sin(g2)]
+        u(3,:) = [0._dp,-1._dp,0._dp]
+        u(4,:) = [cos(g4),0._dp,sin(g4)]
+        call solid_angle_node(u,z,omega)
+        call check(error, omega, 2._dp*pi-2._dp*(g2+g4), thr=1.e-12_dp, &
+            &message='axisymmetric corner: '//trim(r2str(omega))//' vs '//&
+            &trim(r2str(2._dp*pi-2._dp*(g2+g4))))
+        if (allocated(error)) return
+        
+        ! torus node against Girard: edges in counterclockwise order about
+        ! the inward normal, facets between consecutive edges
+        call torus(th0,al0,x0,e_theta=e_t,e_alpha=e_a)
+        z = cross(e_t,e_a)                                                      ! inward for this fixture
+        z = z/norm2(z)
+        call torus(th0,al0-dal,u(1,:)); u(1,:) = u(1,:) - x0
+        call torus(th0-dth,al0,u(2,:)); u(2,:) = u(2,:) - x0
+        call torus(th0,al0+dal,u(3,:)); u(3,:) = u(3,:) - x0
+        call torus(th0+dth,al0,u(4,:)); u(4,:) = u(4,:) - x0
+        if (sum(cross(u(1,:),u(2,:))*z).lt.0._dp) then                          ! make the order counterclockwise about z
+            u([2,4],:) = u([4,2],:)
+        end if
+        call solid_angle_node(u,z,omega)
+        tau = 0._dp
+        do id = 1,4
+            a(id,:) = cross(u(id,:),u(mod(id,4)+1,:))
+            a(id,:) = a(id,:)/norm2(a(id,:))
+        end do
+        do id = 1,4
+            ! signed angle from a_{id-1} to a_id about the shared edge u_id
+            tau = tau + atan2(sum(cross(a(mod(id+2,4)+1,:),a(id,:))*u(id,:))/&
+                &norm2(u(id,:)),sum(a(mod(id+2,4)+1,:)*a(id,:)))
+        end do
+        call check(error, omega, 2._dp*pi-tau, thr=1.e-10_dp, &
+            &message='torus node: (45) '//trim(r2str(omega))//' vs Girard '//&
+            &trim(r2str(2._dp*pi-tau)))
+        if (allocated(error)) return
+    end subroutine test_solid_angle_node
+    
+    !> The cell integral of the H kernel at a node (vac_utilities.H_sing_node,
+    !! the corrected eq. 69 of the 2019 manuscript, erratum E22) against
+    !! brute-force quadrature of the true kernel over the cell of a torus node
+    !! at two cell sizes (64-point Gauss-Legendre in the polar coordinates of
+    !! the cell; 16 points leave 2.5 %): the ratio is 1 to 1e-5.
+    subroutine test_H_sing_node(error)
+        use vac_utilities, only: H_sing_node
+        type(error_type), allocatable, intent(out) :: error
+        
+        real(dp), parameter :: th0 = 0.9_dp, al0 = 0.3_dp                       ! node on the torus
+        real(dp), parameter :: steps(2,2) = reshape([0.04_dp,0.03_dp,&
+            &0.02_dp,0.015_dp],[2,2])                                           ! (dpar, dalpha) at two sizes
+        real(dp), parameter :: h = 1.e-4_dp                                     ! step of the second differences
+        integer :: id, jd, kd, ld                                               ! counters
+        real(dp) :: x0(3), e_t(3), e_a(3), n0(3)                                ! node geometry
+        real(dp) :: xp(3), xm(3), xpp(3), xpm(3), xmp(3), xmm(3)                ! displaced points
+        real(dp) :: g(3), dd(3,3)                                               ! metric factors and second derivatives
+        real(dp) :: I_form(2), I_bf(2)                                          ! formula and brute force
+        real(dp) :: dpar, dalpha                                                ! steps
+        real(dp) :: t_c(4), t_lims(6)                                           ! corner angles and the pieces of the angular range
+        real(dp) :: t, tt, w_t, r_max, r, w_r                                   ! quadrature variables
+        real(dp) :: x(3), et(3), ea(3), nr(3), d(3)                             ! source geometry
+        real(dp) :: ratio(2)                                                    ! brute force over formula
+        integer, parameter :: n_q = 64                                          ! quadrature points per direction of the brute force
+        real(dp) :: q_x(n_q), q_w(n_q)                                          ! Gauss-Legendre rule
+        
+        call gauss_legendre(n_q,q_x,q_w)
+        call torus(th0,al0,x0,e_theta=e_t,e_alpha=e_a)
+        n0 = cross(e_t,e_a)                                                     ! stored normal of the fixture (inward)
+        g = [sum(e_a**2),sum(e_a*e_t),sum(e_t**2)]
+        call torus(th0+h,al0,xp); call torus(th0-h,al0,xm)
+        dd(1,:) = (xp-2*x0+xm)/h**2
+        call torus(th0,al0+h,xp); call torus(th0,al0-h,xm)
+        dd(3,:) = (xp-2*x0+xm)/h**2
+        call torus(th0+h,al0+h,xpp); call torus(th0+h,al0-h,xpm)
+        call torus(th0-h,al0+h,xmp); call torus(th0-h,al0-h,xmm)
+        dd(2,:) = (xpp-xpm-xmp+xmm)/(4*h**2)
+        
+        do kd = 1,2
+            dpar = steps(1,kd)
+            dalpha = steps(2,kd)
+            call H_sing_node(n0,g,dd,dpar,dalpha,I_form(kd))
+            ! brute force in polar coordinates of the (theta, alpha) plane
+            ! over the cell |theta-th0| <= dpar/2, |alpha-al0| <= dalpha/2:
+            ! kernel times r is bounded; the angular range is split at the
+            ! corners of the cell
+            t_c = [atan2(dalpha,dpar), atan2(dalpha,-dpar), &
+                &atan2(-dalpha,-dpar)+2*pi, atan2(-dalpha,dpar)+2*pi]
+            t_lims = [0._dp, t_c, 2*pi]
+            I_bf(kd) = 0._dp
+            do id = 1,5
+                do jd = 1,n_q
+                    t = 0.5_dp*(t_lims(id)+t_lims(id+1)) + &
+                        &0.5_dp*(t_lims(id+1)-t_lims(id))*q_x(jd)
+                    w_t = 0.5_dp*(t_lims(id+1)-t_lims(id))*q_w(jd)
+                    r_max = min(0.5_dp*dpar/max(abs(cos(t)),1.e-300_dp), &
+                        &0.5_dp*dalpha/max(abs(sin(t)),1.e-300_dp))
+                    do ld = 1,n_q
+                        r = 0.5_dp*r_max*(1._dp+q_x(ld))
+                        w_r = 0.5_dp*r_max*q_w(ld)
+                        call torus(th0+r*cos(t),al0+r*sin(t),x,e_theta=et,&
+                            &e_alpha=ea)
+                        nr = cross(et,ea)
+                        d = x - x0
+                        tt = sum(nr*d)/norm2(d)**3
+                        I_bf(kd) = I_bf(kd) + w_t*w_r*r*tt
+                    end do
+                end do
+            end do
+            ratio(kd) = I_bf(kd)/I_form(kd)
+            if (rank_out()) write(error_unit,'(A,2F8.4,A,ES12.4,A,ES12.4,A,F8.5)') &
+                &'   [H_sing_node] steps ',dpar,dalpha,': formula ',I_form(kd),&
+                &' brute force ',I_bf(kd),' ratio ',ratio(kd)
+        end do
+        ! the cell is symmetric about the node, so the first correction to
+        ! the leading-order kernel integrates to zero: the agreement is second
+        ! order and already 1e-5 at these cell sizes
+        do kd = 1,2
+            call check(error, abs(ratio(kd)-1._dp).lt.1.e-3_dp, &
+                &'cell integral off by more than 0.1 %: ratio '//&
+                &trim(r2str(ratio(kd))))
+            if (allocated(error)) return
+        end do
+    end subroutine test_H_sing_node
+    
+    !> The direct diagonal of H (solid angle plus cell integral,
+    !! vac_utilities.calc_diag_direct) against the row-sum diagonal that
+    !! calc_GH_1 uses, on the circular torus at two resolutions: the
+    !! difference, which measures the quadrature error of the off-diagonal
+    !! row, falls at first order.
+    subroutine test_diag_direct_3d(error)
+        use vac_vars, only: in_context
+        use vac_utilities, only: calc_diag_direct, dis_diag, vac_steps
+        type(error_type), allocatable, intent(out) :: error
+        
+        integer, parameter :: n_pars(2) = [41,81]                               ! points per field line
+        integer, parameter :: n_alphas(2) = [40,80]                             ! field lines
+        integer :: ierr, ires                                                   ! error status, counter
+        type(vac_type) :: vac                                                   ! vacuum variables
+        real(dp) :: dpar, dalpha                                                ! steps
+        real(dp) :: d_max(2), d_mean(2), f_max(2), s_max(2), o_max(2)           ! max and mean smooth difference, max faceted difference, max cell integral, max angle deviation
+        real(dp), allocatable :: diag_rs(:), diag_dir(:), diag_fac(:), I_sing(:), omega_v(:)  ! diagonals and their parts
+        logical, allocatable :: avail(:)                                        ! direct value available
+        
+        do ires = 1,2
+            call setup_torus_vac(vac,n_pars(ires),n_alphas(ires),ierr)
+            call check(error, ierr, 0, 'setup failed')
+            if (allocated(error)) return
+            ierr = calc_GH(vac)
+            call check(error, ierr, 0, 'assembly failed')
+            if (allocated(error)) return
+            allocate(diag_rs(vac%n_bnd),diag_dir(vac%n_bnd),diag_fac(vac%n_bnd),&
+                &I_sing(vac%n_bnd),omega_v(vac%n_bnd),avail(vac%n_bnd))
+            ierr = dis_diag(vac,vac%H,diag_rs)
+            call check(error, ierr, 0, 'gathering the diagonal failed')
+            if (allocated(error)) return
+            call vac_steps(dpar,dalpha)
+            ierr = calc_diag_direct(vac,dpar,dalpha,diag_dir,diag_fac,I_sing,&
+                &omega_v,avail)
+            call check(error, ierr, 0, 'direct diagonal failed')
+            if (allocated(error)) return
+            d_max(ires) = 0._dp
+            d_mean(ires) = 0._dp
+            f_max(ires) = 0._dp
+            s_max(ires) = 0._dp
+            o_max(ires) = 0._dp
+            if (in_context(vac%ctxt_HG)) then
+                d_max(ires) = maxval(abs(diag_rs-diag_dir)/(4*pi),mask=avail)
+                d_mean(ires) = sum(abs(diag_rs-diag_dir)/(4*pi),mask=avail)/&
+                    &count(avail)
+                f_max(ires) = maxval(abs(diag_rs-diag_fac)/(4*pi),mask=avail)
+                s_max(ires) = maxval(abs(I_sing)/(4*pi),mask=avail)
+                o_max(ires) = maxval(abs(omega_v/(4*pi)-0.5_dp),mask=avail)
+            end if
+            if (rank_out()) write(error_unit,'(A,I6,A,5ES10.2)') &
+                &'   [diag direct] n = ',vac%n_bnd,': max, mean |rowsum - &
+                &smooth|/4pi, max |rowsum - faceted|/4pi, max |I_sing|/4pi, &
+                &max |omega_v/4pi - 1/2| = ',d_max(ires),d_mean(ires),&
+                &f_max(ires),s_max(ires),o_max(ires)
+            deallocate(diag_rs,diag_dir,diag_fac,I_sing,omega_v,avail)
+            call vac%dealloc()
+        end do
+        if (in_context(vac%ctxt_HG)) then
+            call check(error, d_max(2).lt.0.1_dp, &
+                &'row-sum and direct diagonals differ by more than 10 % of &
+                &4 pi: '//trim(r2str(d_max(2))))
+            if (allocated(error)) return
+            call check(error, d_max(2).lt.0.75_dp*d_max(1), &
+                &'no first-order convergence of the diagonal difference: '//&
+                &trim(r2str(d_max(1)))//' -> '//trim(r2str(d_max(2))))
+            if (allocated(error)) return
+        end if
+    end subroutine test_diag_direct_3d
+    
+    !> Gauss-Legendre rule with n points on [-1, 1], by Newton iteration on
+    !! the Legendre polynomial (Numerical Recipes, gauleg).
+    subroutine gauss_legendre(n,x,w)
+        integer, intent(in) :: n                                                ! number of points
+        real(dp), intent(out) :: x(n), w(n)                                     ! abscissas and weights
+        
+        integer :: id, jd                                                       ! counters
+        real(dp) :: z, z1, p1, p2, p3, pp                                       ! Newton iterate and polynomial values
+        
+        do id = 1,(n+1)/2
+            z = cos(pi*(id-0.25_dp)/(n+0.5_dp))
+            do
+                p1 = 1._dp
+                p2 = 0._dp
+                do jd = 1,n
+                    p3 = p2
+                    p2 = p1
+                    p1 = ((2*jd-1)*z*p2 - (jd-1)*p3)/jd
+                end do
+                pp = n*(z*p1-p2)/(z**2-1._dp)
+                z1 = z
+                z = z1 - p1/pp
+                if (abs(z-z1).lt.1.e-15_dp) exit
+            end do
+            x(id) = -z
+            x(n+1-id) = z
+            w(id) = 2._dp/((1._dp-z**2)*pp**2)
+            w(n+1-id) = w(id)
+        end do
+    end subroutine gauss_legendre
+    
+
+    !> Whether this process prints test diagnostics.
+    logical function rank_out()
+        use num_vars, only: rank
+        rank_out = rank.eq.0
+    end function rank_out
 end module test_vac_3d

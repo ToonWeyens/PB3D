@@ -14,7 +14,7 @@ module vac_vars
     implicit none
 
     private
-    public copy_vac, set_loc_lims, in_context, BLACSCTXTSIZE
+    public copy_vac, set_loc_lims, in_context, loc_idx, BLACSCTXTSIZE
 #if ldebug
     public n_alloc_vacs
 #endif
@@ -70,7 +70,7 @@ module vac_vars
         real(dp), allocatable :: ang(:,:)                                       !< angle along field line, for each field line
         real(dp), allocatable :: norm(:,:)                                      !< J nabla psi normal vector
         real(dp), allocatable :: dnorm(:,:)                                     !< poloidal derivative of norm (only for style 2)
-        real(dp), allocatable :: h_fac(:,:)                                     !< metric factors (1,1), (1,3) and (3,3) (only for style 1)
+        real(dp), allocatable :: h_fac(:,:)                                     !< metric factors g_aa, g_at, g_tt at the boundary points (style 1)
         real(dp), allocatable :: x_vec(:,:)                                     !< Cartesian vector of position
         real(dp), allocatable :: H(:,:)                                         !< H coefficient
         real(dp), allocatable :: G(:,:)                                         !< G coefficient
@@ -231,7 +231,7 @@ contains
         ! allocate variables specific to style
         select case (vac%style)
             case (1)                                                            ! field-line 3-D
-                allocate(vac%h_fac(vac%n_bnd,4))
+                allocate(vac%h_fac(vac%n_bnd,3))
             case (2)                                                            ! axisymmetric
                 allocate(vac%ang(n_ang(1),n_ang(2)))
                 allocate(vac%dnorm(vac%n_bnd,n_dims))
@@ -289,6 +289,19 @@ contains
         end if
     end subroutine set_loc_lims
     
+    !> \public Local index of a global row or column in the block-cyclic
+    !! layout: global index \c glob in the subrow (or subcolumn) \c i_sub with
+    !! limits \c lims lands after the sizes of the previous subrows.
+    pure integer function loc_idx(lims,i_sub,glob) result(res)
+        ! input / output
+        integer, intent(in) :: lims(:,:)                                        !< limits of the subrows or subcolumns
+        integer, intent(in) :: i_sub                                            !< index of the subrow or subcolumn
+        integer, intent(in) :: glob                                             !< global index
+        
+        res = sum(lims(2,1:i_sub-1)-lims(1,1:i_sub-1)+1) + glob-lims(1,i_sub)+1
+    end function loc_idx
+    
+
     !> \public Deallocates vacuum variables.
     subroutine dealloc_vac(vac)
 #if ldebug

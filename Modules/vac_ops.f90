@@ -311,24 +311,13 @@ contains
                     vac%norm(par_id(1):par_id(2):par_id(3),3) = &
                         &norm_com_C(:,jd,3)                                     ! ~ e^Z
                     
-                    ! save metric factors and H factor
+                    ! save metric factors
                     vac%h_fac(par_id(1):par_id(2):par_id(3),1) = &
                         &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0)             ! g_11
                     vac%h_fac(par_id(1):par_id(2):par_id(3),2) = &
                         &eq_2%g_FD(:,jd,r_id,c([1,3],.true.),0,0,0)             ! g_13
                     vac%h_fac(par_id(1):par_id(2):par_id(3),3) = &
                         &eq_2%g_FD(:,jd,r_id,c([3,3],.true.),0,0,0)             ! g_33
-                    vac%h_fac(par_id(1):par_id(2):par_id(3),4) = 0.5_dp* &
-                        &eq_2%jac_FD(:,jd,r_id,0,0,0)**2 * &
-                        &(eq_2%h_FD(:,jd,r_id,c([2,2],.true.),0,0,0) / &
-                        &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0))**1.5 * ( &
-                        &eq_2%jac_FD(:,jd,r_id,0,1,0)/&
-                        &eq_2%jac_FD(:,jd,r_id,0,0,0) + &
-                        &0.5_dp*eq_2%h_FD(:,jd,r_id,c([2,2],.true.),0,1,0)/&
-                        &eq_2%h_FD(:,jd,r_id,c([2,2],.true.),0,0,0) - &
-                        &0.5_dp*eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,1,0)/&
-                        &eq_2%g_FD(:,jd,r_id,c([1,1],.true.),0,0,0) &
-                        &)                                                      ! J/2 h^22/g_11 d/d2 (J sqrt(h^22/g_11)))
                 end do
                 !call print_ex_2D(['norm'],'norm_'//trim(i2str(rich_lvl)),&
                     !&vac%norm,persistent=.true.)
@@ -843,9 +832,8 @@ contains
     integer function calc_GH_1(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in,ext_in) &
         &result(ierr)
         
-        use vac_utilities, only: calc_GH_int_1, dis_matvec
-        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
-        use rich_vars, only: n_par_X
+        use vac_utilities, only: calc_GH_int_1, dis_matvec, vac_steps
+        use grid_vars, only: n_alpha
         use num_vars, only: tol_zero
         use vac_vars, only: in_context
         
@@ -882,10 +870,8 @@ contains
         call writo('Using field-line 3-D Boundary Element Method')
 
         ! initialize variables
-        dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
-        if (n_alpha.gt.1) then
-            dalpha = (max_alpha-min_alpha)/n_alpha*pi                           ! field lines exclude the end point (rich_ops)
-        else
+        call vac_steps(dpar_X,dalpha)
+        if (n_alpha.le.1) then
             ! a single field line makes the transverse cell size (and with it
             ! the singular self-integrals and the integration rule weights of
             ! calc_vac_res) degenerate; covering the surface with one long
@@ -1974,7 +1960,7 @@ contains
         use num_vars, only: rank, n_procs
         use vac_vars, only: in_context, set_loc_lims
         use vac_utilities, only: vec_dis2loc, n_col1_loc, vec_glob2dis, &
-            &dis_matvec
+            &dis_matvec, calc_diag_direct, dis_diag, vac_steps
         use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, mn_V, mnmax_V
 
         character(*), parameter :: rout_name = 'check_vac_exact'
@@ -2005,6 +1991,11 @@ contains
         character(len=max_str_ln) :: res_str                                    ! residuals as string
         integer :: file_i                                                       ! file unit of the per-point output
         real(dp) :: c_exp                                                       ! expected offset of the identity
+        real(dp) :: dpar, dalpha                                                ! steps of the field-line grid
+        real(dp), allocatable :: diag_rs(:), diag_dir(:), diag_fac(:)           ! row-sum, smooth direct and faceted direct diagonal of H
+        real(dp), allocatable :: I_sing(:), omega_v(:)                          ! cell integral and vacuum's solid angle
+        real(dp), allocatable :: d_diag(:), d_fac(:)                            ! differences per point
+        logical, allocatable :: avail(:)                                        ! direct value available
 
         ! initialize ierr
         ierr = 0
@@ -2066,6 +2057,45 @@ contains
             call write_points('check_vac_identity_'//trim(pot_name)//'.dat',&
                 &abs(lhs-c_exp*phi)/maxval(abs(4._dp*pi*phi)))
         end do
+
+        ! direct diagonals of H next to the row-sum one: the cell integral of
+        ! the kernel (the corrected eq. 69 of the 2019 manuscript) with the
+        ! corner term of the smooth surface, -2 pi, or with minus the vacuum's
+        ! exact solid angle at the faceted node (its eq. 45); the difference
+        ! from the row sum measures the quadrature error of the off-diagonal
+        ! row that the row sum absorbs into the diagonal
+        if (vac%style.eq.1) then
+            allocate(diag_rs(n_bnd),diag_dir(n_bnd),diag_fac(n_bnd),&
+                &I_sing(n_bnd),omega_v(n_bnd),d_diag(n_bnd),d_fac(n_bnd),&
+                &avail(n_bnd))
+            ierr = dis_diag(vac,vac%H,diag_rs)
+            CHCKERR('')
+            call vac_steps(dpar,dalpha)
+            ierr = calc_diag_direct(vac,dpar,dalpha,diag_dir,diag_fac,I_sing,&
+                &omega_v,avail)
+            CHCKERR('')
+            d_diag = 0._dp
+            where (avail) d_diag = abs(diag_rs-diag_dir)/(4._dp*pi)
+            d_fac = 0._dp
+            where (avail) d_fac = abs(diag_rs-diag_fac)/(4._dp*pi)
+            call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&
+                &' n_points='//trim(i2str(count(avail)))//&
+                &' max|rowsum-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
+                &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail))))//&
+                &' max|rowsum-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&
+                &' max|I_sing|/4pi='//&
+                &trim(r2strt(maxval(abs(I_sing)/(4._dp*pi))))//&
+                &' max|omega_v/4pi-1/2|='//&
+                &trim(r2strt(maxval(abs(omega_v/(4._dp*pi)-0.5_dp),&
+                &mask=avail))),persistent=rank_o)
+            call write_points('check_vac_diag_diff.dat',d_diag)
+            call write_points('check_vac_diag_diff_facet.dat',d_fac)
+            call write_points('check_vac_diag_Ising.dat',abs(I_sing)/(4._dp*pi))
+            call write_points('check_vac_diag_omega.dat',omega_v/(4._dp*pi))
+            deallocate(diag_rs,diag_dir,diag_fac,I_sing,omega_v,d_diag,d_fac,&
+                &avail)
+        end if
+        
 
         ! exterior solves
         n_col1 = n_col1_loc(vac)
