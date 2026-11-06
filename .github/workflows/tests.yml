@@ -1,0 +1,416 @@
+name: tests
+
+on:
+  push:
+    branches: [master, "dev/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Unit tests of the dependency-light core (gfortran + LAPACK only). Debug
+  # runs with the full runtime-checking flags from CMakeLists.txt
+  # (-fcheck=all, -ffpe-trap=invalid, -finit-real=snan).
+  # ---------------------------------------------------------------------------
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake ninja-build liblapack-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DPB3D_BUILD_EXECUTABLES=OFF
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # ---------------------------------------------------------------------------
+  # Sanitizers on the unit layer (no MPI involved, so the reports are
+  # clean). Leak detection is off: the reports it produces here are only
+  # the test driver's one-time allocations at program exit (deferred-
+  # length strings in main.f90), not defects; the value of this job is
+  # ASAN's buffer-overflow and UBSAN's undefined-behavior detection, with
+  # -fno-sanitize-recover=all making any finding fatal.
+  # ---------------------------------------------------------------------------
+  sanitize:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake ninja-build liblapack-dev
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DPB3D_BUILD_EXECUTABLES=OFF
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_Fortran_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # ---------------------------------------------------------------------------
+  # Full-stack build (distro PETSc/SLEPc 3.19 complex, cached PSPLINE +
+  # minimal LIBSTELL, no STRUMPACK: ScaLAPACK vacuum solver). Runs every
+  # test layer, including the physics regressions on the committed
+  # (xz-compressed) HELENA fixture, and enforces the compiler-warning
+  # baseline (.github/warnings-baseline.txt).
+  # ---------------------------------------------------------------------------
+  fullstack:
+    runs-on: ubuntu-24.04
+    env:
+      PETSC_DIR: /usr/lib/petscdir/petsc3.19/x86_64-linux-gnu-complex
+      SLEPC_DIR: /usr/lib/slepcdir/slepc3.19/x86_64-linux-gnu-complex
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependency stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gfortran g++ cmake ninja-build pkg-config xz-utils \
+            libopenmpi-dev openmpi-bin \
+            libpetsc-complex3.19-dev libslepc-complex3.19-dev \
+            libhdf5-openmpi-dev libnetcdff-dev \
+            liblapack-dev libblas-dev libscalapack-openmpi-dev
+          pip install h5py==3.16.0
+
+      - name: Cache PSPLINE
+        id: cache-pspline
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/pspline/install
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+
+      - name: Build PSPLINE
+        if: steps.cache-pspline.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
+          ~/Code/pspline/build_pspline.sh
+
+      - name: Cache minimal LIBSTELL
+        id: cache-libstell
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/libstell-min
+          key: libstell-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_libstell_min.sh') }}
+
+      - name: Build minimal LIBSTELL
+        if: steps.cache-libstell.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/PrincetonUniversity/STELLOPT.git ~/Code/stellopt
+          STELLOPT_SRC=$HOME/Code/stellopt NETCDF_FORTRAN_DIR=/usr \
+            Libraries/build_libstell_min.sh $HOME/Code/libstell-min
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH=$PETSC_DIR/lib/pkgconfig:$SLEPC_DIR/lib/pkgconfig
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_Fortran_FLAGS="-Wall -Wextra" \
+            -DPSPLINE_DIR=$HOME/Code/pspline/install \
+            -DLIBSTELL_DIR=$HOME/Code/libstell-min \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi
+
+      - name: Build
+        run: cmake --build build -j 2>&1 | tee build.log
+
+      # unique source locations (file:line:column) of warnings in Modules/,
+      # PB3D.f90 and POST.f90: gfortran prints the location header a few lines
+      # before (or on) the "Warning:" line, so the header seen last is the
+      # warning's location. A location warned about several times, or compiled
+      # into both pb3d_core and pb3d_modules, counts once; tests/ and
+      # Libraries/ do not count; the "missing terminating" diagnostics of
+      # apostrophes in comments are excluded as before.
+      - name: Check warning baseline
+        run: |
+          awk '/^[^ ].*\.(f90|F90|f):[0-9]+:[0-9]+:/ {loc=$1; sub(/:$/,"",loc)}
+               /Warning:/ && !/missing terminating/ {
+                 if (loc ~ /(Modules\/|PB3D\.f90|POST\.f90)/) print loc }' build.log \
+            | sort -u > warnings.txt
+          n=$(wc -l < warnings.txt)
+          baseline=$(cat .github/warnings-baseline.txt)
+          echo "### Compiler warnings: $n (baseline: $baseline)" >> $GITHUB_STEP_SUMMARY
+          if [ "$n" -gt "$baseline" ]; then
+            echo "FAIL: warning count $n exceeds baseline $baseline."
+            echo "Warning locations:"
+            cat warnings.txt
+            exit 1
+          fi
+          if [ "$n" -lt "$baseline" ]; then
+            echo "NOTE: warning count $n is below baseline $baseline - please lower .github/warnings-baseline.txt."
+          fi
+
+      - name: Test
+        if: always()
+        run: ctest --test-dir build --output-on-failure
+
+      # the regression tests print their eigenvalues, but ctest shows only the
+      # output of failing tests: keep the complete log of every test
+      - name: Upload ctest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-fullstack
+          path: build/Testing/Temporary/LastTest.log
+
+  # ---------------------------------------------------------------------------
+  # Full stack in Debug with the ldebug code paths compiled in and the full
+  # gfortran runtime checking active. The regression layer is excluded for
+  # runtime; everything else runs.
+  # ---------------------------------------------------------------------------
+  fullstack-debug:
+    runs-on: ubuntu-24.04
+    env:
+      PETSC_DIR: /usr/lib/petscdir/petsc3.19/x86_64-linux-gnu-complex
+      SLEPC_DIR: /usr/lib/slepcdir/slepc3.19/x86_64-linux-gnu-complex
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependency stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gfortran g++ cmake ninja-build pkg-config xz-utils \
+            libopenmpi-dev openmpi-bin \
+            libpetsc-complex3.19-dev libslepc-complex3.19-dev \
+            libhdf5-openmpi-dev libnetcdff-dev \
+            liblapack-dev libblas-dev libscalapack-openmpi-dev
+
+      - name: Cache PSPLINE
+        id: cache-pspline
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/pspline/install
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+
+      - name: Build PSPLINE
+        if: steps.cache-pspline.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
+          ~/Code/pspline/build_pspline.sh
+
+      - name: Cache minimal LIBSTELL
+        id: cache-libstell
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/libstell-min
+          key: libstell-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_libstell_min.sh') }}
+
+      - name: Build minimal LIBSTELL
+        if: steps.cache-libstell.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/PrincetonUniversity/STELLOPT.git ~/Code/stellopt
+          STELLOPT_SRC=$HOME/Code/stellopt NETCDF_FORTRAN_DIR=/usr \
+            Libraries/build_libstell_min.sh $HOME/Code/libstell-min
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH=$PETSC_DIR/lib/pkgconfig:$SLEPC_DIR/lib/pkgconfig
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DPB3D_ENABLE_DEBUG=ON \
+            -DPSPLINE_DIR=$HOME/Code/pspline/install \
+            -DLIBSTELL_DIR=$HOME/Code/libstell-min \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test (without regression layer)
+        run: ctest --test-dir build --output-on-failure -LE regression
+
+  # ---------------------------------------------------------------------------
+  # Line coverage of Modules/ from the unit + fullstack + regression layers,
+  # reported in the job summary and as an artifact.
+  # ---------------------------------------------------------------------------
+  coverage:
+    runs-on: ubuntu-24.04
+    env:
+      PETSC_DIR: /usr/lib/petscdir/petsc3.19/x86_64-linux-gnu-complex
+      SLEPC_DIR: /usr/lib/slepcdir/slepc3.19/x86_64-linux-gnu-complex
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependency stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gfortran g++ cmake ninja-build pkg-config xz-utils \
+            libopenmpi-dev openmpi-bin \
+            libpetsc-complex3.19-dev libslepc-complex3.19-dev \
+            libhdf5-openmpi-dev libnetcdff-dev \
+            liblapack-dev libblas-dev libscalapack-openmpi-dev
+          pip install gcovr==8.8 h5py==3.16.0
+
+      - name: Cache PSPLINE
+        id: cache-pspline
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/pspline/install
+          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+
+      - name: Build PSPLINE
+        if: steps.cache-pspline.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
+          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
+          ~/Code/pspline/build_pspline.sh
+
+      - name: Cache minimal LIBSTELL
+        id: cache-libstell
+        uses: actions/cache@v4
+        with:
+          path: ~/Code/libstell-min
+          key: libstell-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_libstell_min.sh') }}
+
+      - name: Build minimal LIBSTELL
+        if: steps.cache-libstell.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Code
+          git clone --depth 1 https://github.com/PrincetonUniversity/STELLOPT.git ~/Code/stellopt
+          STELLOPT_SRC=$HOME/Code/stellopt NETCDF_FORTRAN_DIR=/usr \
+            Libraries/build_libstell_min.sh $HOME/Code/libstell-min
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH=$PETSC_DIR/lib/pkgconfig:$SLEPC_DIR/lib/pkgconfig
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_Fortran_FLAGS="--coverage" \
+            -DPSPLINE_DIR=$HOME/Code/pspline/install \
+            -DLIBSTELL_DIR=$HOME/Code/libstell-min \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # the regression tests print their eigenvalues, but ctest shows only the
+      # output of failing tests: keep the complete log of every test
+      - name: Upload ctest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-log-coverage
+          path: build/Testing/Temporary/LastTest.log
+
+      - name: Coverage report
+        run: |
+          gcovr -r . build --filter 'Modules/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn \
+            --print-summary \
+            --html-details coverage.html \
+            --xml coverage.xml
+          echo "### Coverage (Modules/)" >> $GITHUB_STEP_SUMMARY
+          gcovr -r . build --filter 'Modules/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn 2>/dev/null \
+            | tail -n +3 | head -60 >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.html
+            coverage.xml
+
+  # ---------------------------------------------------------------------------
+  # Static analysis (fortitude) - NON-BLOCKING report while the legacy
+  # finding count is ratcheted down (see Documentation/quality-and-ci.md);
+  # and the Doxygen reference build.
+  # ---------------------------------------------------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install fortitude
+        run: pip install fortitude-lint==0.9.2
+
+      # the ratchet: rule categories that have been cleaned completely are
+      # gated here and may not regress (see Documentation/quality-and-ci.md
+      # section 4.4); everything else stays report-only below
+      - name: Fortitude gate (blocking, cleaned categories)
+        run: |
+          fortitude check --select=OB Modules/ tests/unit tests/fullstack \
+            PB3D.f90 POST.f90
+
+      - name: Fortitude report (non-blocking)
+        run: |
+          fortitude check --output-format concise Modules/ tests/unit \
+            tests/fullstack > fortitude.txt || true
+          echo "### Fortitude findings by rule" >> $GITHUB_STEP_SUMMARY
+          awk '{print $2}' fortitude.txt | sort | uniq -c | sort -rn \
+            | head -20 >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Upload lint report
+        uses: actions/upload-artifact@v4
+        with:
+          name: fortitude-report
+          path: fortitude.txt
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+
+      # ratchet on the Doxygen warning count, like the compiler-warning
+      # baseline: the count may never rise, and the baseline should be
+      # lowered when it falls (baseline established with doxygen 1.9.8)
+      - name: Build reference documentation
+        run: |
+          doxygen Doxyfile
+          n=$(wc -l < doc/doxygen-warnings.log)
+          baseline=$(cat .github/doxygen-warnings-baseline.txt)
+          echo "### Doxygen warnings: $n (baseline: $baseline)" >> $GITHUB_STEP_SUMMARY
+          if [ "$n" -gt "$baseline" ]; then
+            echo "FAIL: Doxygen warning count $n exceeds baseline $baseline."
+            echo "New warnings:"
+            tail -30 doc/doxygen-warnings.log
+            exit 1
+          elif [ "$n" -lt "$baseline" ]; then
+            echo "NOTE: count $n is below baseline $baseline - please lower"
+            echo "      .github/doxygen-warnings-baseline.txt to $n."
+          fi
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-html
+          path: doc/html

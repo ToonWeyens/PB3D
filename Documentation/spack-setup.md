@@ -35,12 +35,23 @@ spack compilers  # Should show gcc with Fortran support
 ## 3. Create a PB3D environment
 
 ```bash
+# reuse an existing MPI (e.g. Homebrew open-mpi) instead of building one:
+spack external find cmake openmpi gmake perl python
+
 cd /path/to/PB3D
 spack env create pb3d-env spack.yaml
 spack env activate pb3d-env
 ```
 
-The `spack.yaml` in the project root contains the dependency list. You can edit it before `concretize` if your cluster needs different MPI or math libs.
+The `spack.yaml` in the project root contains the dependency list (PETSc
+3.25 with complex scalars, SLEPc 3.25, parallel HDF5, NetCDF-Fortran,
+ScaLAPACK). You can edit it before `concretize` if your cluster needs
+different MPI or math libs.
+
+> Known issue (macOS, Homebrew OpenMPI 5): `mpirun` itself can crash in
+> prte/hwloc topology detection. Single-process runs work by invoking the
+> executables directly (MPI singleton mode). See also the flakiness note in
+> `testing.md`.
 
 Now concretize and install:
 
@@ -53,22 +64,31 @@ The first build can take some time because PETSc/SLEPc compile a large stack. Sp
 
 ## 4. Build PSPLINE (not in Spack)
 
-PSPLINE is a Princeton spline library required by PB3D. Download and build it:
+PSPLINE is a Princeton spline library required by PB3D. Its legacy NTCC
+make system does not work with modern toolchains; use the provided script
+(needs only gfortran, no netcdf):
 
 ```bash
-git clone https://github.com/ilonster/pspline.git
-cd pspline
-# Build with the Spack environment active
-export PSPLINE_DIR=$HOME/opt/pspline
-mkdir -p $PSPLINE_DIR
-# Follow PSPLINE's build instructions, typically:
-# make FORTRAN=gfortran
-# cp -r lib mod $PSPLINE_DIR/
+git clone https://github.com/ilonster/pspline.git ~/Code/pspline
+cp /path/to/PB3D/Libraries/build_pspline.sh ~/Code/pspline/
+~/Code/pspline/build_pspline.sh
+export PSPLINE_DIR=$HOME/Code/pspline/install
 ```
 
 ## 5. Build LIBSTELL (not in Spack)
 
-LIBSTELL is part of the STELLOPT suite. Download and build it:
+PB3D only uses `read_wout_mod` from LIBSTELL. The recommended route is the
+minimal build script, which compiles just that module and its transitive
+dependencies from a STELLOPT checkout (needs mpif90 + netcdf-fortran from
+the Spack env):
+
+```bash
+git clone --depth 1 https://github.com/PrincetonUniversity/STELLOPT.git ~/Code/stellopt
+/path/to/PB3D/Libraries/build_libstell_min.sh
+export LIBSTELL_DIR=/path/to/PB3D/Libraries/libstell-min
+```
+
+Alternatively, build the full LIBSTELL via STELLOPT's own build system:
 
 ```bash
 git clone https://github.com/PrincetonUniversity/STELLOPT.git
@@ -147,9 +167,15 @@ cd LIBSTELL && make release && cd ..
 # Module files are at $STELLOPT_PATH/install/include/*.mod
 ```
 
-## 6. Build STRUMPACK-Dense 1.1.1 (required for vacuum module)
+## 6. Build STRUMPACK-Dense 1.1.1 (optional, for the vacuum module)
 
-PB3D's vacuum module requires the old STRUMPACK-Dense 1.1.1 library (not the newer STRUMPACK 7.x):
+PB3D's vacuum module can use the old STRUMPACK-Dense 1.1.1 library (not the
+newer STRUMPACK 7.x) to solve its boundary-element system with a compressed
+(HSS) solver. **This is optional**: without it, the same system is solved
+with ScaLAPACK LU (`pdgesv`), which is perfectly adequate for the moderate
+system sizes of axisymmetric vacua. The original download location
+(`portal.nersc.gov`) has become unreliable, so skipping this dependency is
+the recommended default unless you work with very large 3-D vacua:
 
 ```bash
 cd ~/Code
@@ -157,35 +183,26 @@ curl -L -O http://portal.nersc.gov/project/sparse/strumpack/STRUMPACK-Dense-1.1.
 tar -xzf STRUMPACK-Dense-1.1.1.tar.gz
 cd STRUMPACK-Dense-1.1.1/examples
 
-# Create Makefile.inc for macOS with Spack
-cat > Makefile.inc << 'EOF'
-SPACK_VIEW = $(shell spack env location --view)
-CXXFLAGS  = -O3
-CFLAGS    = -O3
-FFLAGS    = -O3 -fallow-argument-mismatch
-CXX       = mpic++
-CC        = mpicc
-FC        = mpif90
-LIB       = -L$(SPACK_VIEW)/lib -lscalapack -lvecLibFort -framework Accelerate -lm
-LIBCXX    = -lstdc++ -lc++
-EOF
-
-# Build Fortran interface
-make f90_example
-
-# Create library structure
+# Build the two library objects directly (validated with GCC 16 / OpenMPI 5
+# on macOS arm64). Use GNU g++ via OMPI_CXX so that PB3D's -lstdc++ link
+# resolves the matching GNU C++ runtime.
+cd src
+OMPI_CXX=g++-16 mpic++ -O3 -std=gnu++11 -I. -c StrumpackDensePackage_C.cpp -o StrumpackDensePackage_C.o
+mpif90 -O3 -c StrumpackDensePackage.F90 -o StrumpackDensePackage.o
+ar -rcs libstrumpack.a StrumpackDensePackage_C.o StrumpackDensePackage.o
 cd ..
+
+# Create the layout PB3D's CMake expects
 mkdir -p lib inc
-cd src && ar -rcs libstrumpack.a StrumpackDensePackage_C.o StrumpackDensePackage.o && cd ..
 ln -sf ../src/libstrumpack.a lib/libstrumpack.a
-ln -sf ../examples/strumpackdensepackage.mod inc/strumpackdensepackage.mod
+ln -sf ../src/strumpackdensepackage.mod inc/strumpackdensepackage.mod
 
 export STRUMPACK_DIR=$PWD
 ```
 
 ## 7. Building PB3D with CMake
 
-With the Spack environment active and PSPLINE/LIBSTELL/STRUMPACK-Dense built:
+With the Spack environment active and PSPLINE/LIBSTELL built (plus optionally STRUMPACK-Dense; omit `-DSTRUMPACK_DIR` to use the ScaLAPACK solver for the vacuum):
 
 ```bash
 spack env activate pb3d-env
@@ -216,10 +233,22 @@ The executables `PB3D` and `POST` are created in the build directory.
 |--------|---------|-------------|
 | `PB3D_ENABLE_DEBUG` | OFF | Enable debug mode (ldebug preprocessor flag) |
 | `PB3D_ENABLE_INFINIBAND` | OFF | Enable InfiniBand support (lIB flag) |
+| `PB3D_BUILD_EXECUTABLES` | ON | Build PB3D/POST (needs the full stack); OFF builds only the core library + unit tests |
+| `BUILD_TESTING` | ON | Build the CTest test suite (see `testing.md`) |
 | `CMAKE_BUILD_TYPE` | Release | Build type (Debug, Release, RelWithDebInfo) |
 | `PSPLINE_DIR` | - | Path to PSPLINE installation |
 | `LIBSTELL_DIR` | - | Path to LIBSTELL installation |
 | `STRUMPACK_DIR` | ~/Code/STRUMPACK-Dense-1.1.1 | Path to STRUMPACK-Dense 1.1.1 installation |
+
+### Testing without the full stack
+
+The unit tests need no external libraries at all (see `testing.md`):
+
+```bash
+cmake -S . -B build-tests -DPB3D_BUILD_EXECUTABLES=OFF
+cmake --build build-tests -j
+ctest --test-dir build-tests --output-on-failure
+```
 
 ### Debug Build
 

@@ -1,0 +1,33 @@
+ $SHAPE    ELLIP =1.00, TRIA  =0.000, QUAD  =0.0000,
+           MFM =  513, MHARM = 256, ISHAPE = 1, ISOL = 0,
+           IMESH =  2, AMESH=0.0000, BMESH=0.0000,
+           XR1 =   0.9800, SIG1 =   0.1000, IAS =   0, IARC =   0
+           PAR1 =   0.0000, PAR2 =   0.0000, PAR3 =   0.0000, PAR4 =   0.0000
+ $END
+
+ $PROFILE  IGAM =1, AGA = -2.0000E-02, BGA =  0.0000E+00, CGA =  0.0000E+00,
+           DGA =  0.0000E+00, EGA =  0.0000E+00, FGA =  0.0000E+00,
+           GGA =  0.0000E+00, HGA =  0.0000E+00,
+           IPAI =1, API = 0.0000E+00, BPI =  0.0000E+00, CPI =  0.0000E+00,
+           DPI =  0.0000E+00, EPI =  0.0000E+00, FPI =  0.0000E+00,
+           GPI =  0.0000E+00, HPI =  0.0000E+00,
+           ICUR =0, ACUR = -1.0000E+00, BCUR =  0.0000E+00, CCUR =  0.0000E+00,
+           DCUR =  0.0000E+00, ECUR =  0.000E+00, FCUR = 0.000E+00,
+           GCUR =  0.0000E+00, HCUR =  0.0000E+00,
+           NPTS =  201,
+ $END
+
+ $PHYS     EPS  =  0.05, ALFA =  2., B =0.001, C =  1.000000, XIAB = 0.3035,
+ $END
+
+ $NUM      NR =  101, NP =  129, NRMAP =  201, NPMAP =  257, NCHI = 257, NITER =  99,
+           NRCUR =   101, NPCUR = 129, NMESH =    1,
+           ERRCUR =1.00E-05, AMIX =   0.0000,
+           ABB =   1.0000, BBB =   1.0000, NBB =    4, AMPL =  1.0000
+ $END
+
+ $PRI      NPR1  = 1 $END 
+
+ $PLOT     NPL1  = 1 $END 
+
+ $BALL     NQB =    0 $END

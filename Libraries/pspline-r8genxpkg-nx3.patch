@@ -1,0 +1,27 @@
+r8genxpkg.f: do not write xpkg(4,4) when nx = 3.
+
+xpkg is declared REAL*8 xpkg(nx,4). For evenly spaced x the routine writes
+xpkg(4,4) only "if(nx.gt.3)" (the ialg flag lives there); for unevenly
+spaced x it writes it unconditionally, which for nx = 3 is 8 bytes past the
+end of the array. glibc hides this in malloc padding; the macOS allocator
+traps at a later, unrelated allocation. PB3D hits it through
+EZspline_setup1_r8 on mode ranges of exactly three radial points
+(interp_V_spline), which produced the intermittent SIGTRAP crashes.
+Found and verified with Guard Malloc, 8 October 2026 (PB3D issue #4).
+
+--- a/pspline/r8genxpkg.f
++++ b/pspline/r8genxpkg.f
+@@ -173,11 +173,13 @@
+ c
+       if(xpkg(1,4).ne.0.0_r8) then
+          xpkg(1,4)=abs(ialg)
++         if(nx.gt.3) then
+          if(ialg.lt.0) then
+             xpkg(4,4)=1.0_r8  ! check init guess
+          else
+             xpkg(4,4)=0.0_r8
+          endif
++         endif
+ c
+          if(abs(ialg).eq.3) then
+ c

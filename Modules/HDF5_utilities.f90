@@ -103,8 +103,8 @@ contains
         integer(HSIZE_T) :: chunk_dims(1)                                       ! chunk dimensions
         real(dp) :: max_chunk_size                                              ! maximum 4 GB (from manual)
         real(dp) :: min_chunk_size                                              ! minimum 10 MB (from experience)
-        character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: istat                                                        ! status
 #endif
         

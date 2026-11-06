@@ -6,76 +6,193 @@
 module vac_utilities
 #include <PB3D_macros.h>
 #include <wrappers.h>
-    use StrumpackDensePackage
     use str_utilities
     use messages
     use output_ops
     use num_vars, only: dp, pi, max_str_ln, iu
-    use vac_vars, only: vac_type
+    use vac_vars, only: vac_type, BLACSCTXTSIZE, loc_idx
 
     implicit none
+    
+    ! 16-point Gauss-Legendre rule on [-1, 1], for the cell integral of H_sing_node
+    integer, parameter :: n_gl16 = 16                                           !< number of points
+    real(dp), parameter :: gl16_x(n_gl16) = [&
+        &-0.9894009349916499_dp, -0.9445750230732326_dp, &
+        &-0.8656312023878316_dp, -0.7554044083550031_dp, &
+        &-0.6178762444026438_dp, -0.4580167776572274_dp, &
+        &-0.2816035507792589_dp, -0.0950125098376374_dp, &
+        & 0.0950125098376374_dp,  0.2816035507792589_dp, &
+        & 0.4580167776572274_dp,  0.6178762444026438_dp, &
+        & 0.7554044083550031_dp,  0.8656312023878316_dp, &
+        & 0.9445750230732326_dp,  0.9894009349916499_dp]                        !< abscissas
+    real(dp), parameter :: gl16_w(n_gl16) = [&
+        &0.0271524594117541_dp, 0.0622535239386476_dp, &
+        &0.0951585116824930_dp, 0.1246289712555339_dp, &
+        &0.1495959888165767_dp, 0.1691565193950026_dp, &
+        &0.1826034150449236_dp, 0.1894506104550686_dp, &
+        &0.1894506104550686_dp, 0.1826034150449236_dp, &
+        &0.1691565193950026_dp, 0.1495959888165767_dp, &
+        &0.1246289712555339_dp, 0.0951585116824930_dp, &
+        &0.0622535239386476_dp, 0.0271524594117541_dp]                          !< weights
     private
     public calc_GH_int_1, calc_GH_int_2, vec_dis2loc, mat_dis2loc, &
-        &interlaced_vac_copy
+        &n_col1_loc, vec_glob2dis, dis_matvec, &
+        &interlaced_vac_copy, vac_steps, solid_angle_node, H_sing_node, &
+        &calc_diag_direct, dis_diag, cross3
     
 contains
     !> Calculate  G_ij  and   H_ij  on  an  interval  for   field  line  aligned
     !! configurations.
     !!
-    !! The indices for the  source variables are <tt>[left:right,dim]</tt> where
-    !! \c dim is the Cartesian dimension. The same holds for \c ql.
+    !! The source variables  are given on a stencil of  four consecutive points
+    !! of the field line, <tt>[1:4,dim]</tt>  with \c dim the Cartesian dimension;
+    !! the interval  is the one between  stencil points \c i_int  and \c i_int+1.
+    !! Each endpoint  receives the kernel  integrated over  its half  of the
+    !! interval,  normalized to  the  half-cell weight  \f$\Delta p  \Delta a /
+    !! 2\f$ that  calc_GH_1 applies, so that  a constant kernel  returns its
+    !! value.
     !!
-    !! For  subintegrals  close  to  the singularity,  the  procedure  uses  the
-    !! analytical approximation.
+    !! Far from the influence point, more  than \c n_near interval lengths away,
+    !! the  kernel  value  at  the  endpoint  is used,  which  amounts  to  the
+    !! trapezoidal  rule along  the field  line. Closer,  the kernel  is
+    !! integrated  over  the  half-interval  with 8-point  Gauss-Legendre  on
+    !! the cubic  interpolant of position  and normal through  the stencil.
+    !! This resolves  the variation of  the kernel along  a neighbouring field
+    !! line: where the field lines run almost toroidally, as at the bean tips
+    !! of W7-X,  they are packed  far closer  (0.007 \f$R_0\f$) than  the points
+    !! along them (0.06 \f$R_0\f$), the  kernel seen along the neighbouring line
+    !! is a peak much narrower than the point spacing, and sampling it at the
+    !! points  gives  errors  of order  one  whose  sign depends  on how  the
+    !! points of neighbouring lines  happen to line up (issue #4,  31 October
+    !! 2026: the fractional part of \f$q \Delta\theta / \Delta\alpha\f$ sorted
+    !! every W7-X grid into far too large and plausible responses).
     !!
-    !! \note This routine does not calculate the contribution \f$2\beta\f$.
-    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol)
+    !! For  subintegrals adjacent  to the  singularity (i.e.  with the  influence
+    !! point as  one of  their endpoints), the  contribution of  the singular
+    !! endpoint is  replaced by the analytical  integral of the kernel  over its
+    !! grid half-cell.  In field-aligned coordinates,  with \f$\delta p\f$ along
+    !! the field  line (metric \f$g_{\theta\theta}\f$  = <tt>h_fac(3)</tt>)  and
+    !! \f$\delta a\f$  the field  line label  (metric \f$g_{\alpha\alpha}\f$  =
+    !! <tt>h_fac(1)</tt>, coupling \f$g_{\alpha\theta}\f$ = <tt>h_fac(2)</tt>),
+    !! the squared distance near the singular point is the quadratic form
+    !! \f$ g_{\theta\theta} \delta p^2 + 2 g_{\alpha\theta} \delta p \delta a
+    !!  + g_{\alpha\alpha} \delta a^2 \f$,
+    !! and with  the metric-normalized  half-cell sizes  \f$U = \sqrt{g_{\theta
+    !! \theta}} \Delta p/2\f$, \f$V = \sqrt{g_{\alpha\alpha}} \Delta a/2\f$ and
+    !! nonorthogonality  \f$s  = g_{\alpha\theta}  /  \sqrt{g_{\alpha\alpha}
+    !! g_{\theta\theta}}\f$, the exact primitive is
+    !! \f[ \int_0^U \int_{-V}^{V} \frac{\text{d}u \text{d}v}
+    !!  {\sqrt{u^2+2suv+v^2}} =
+    !!  U \ln\left(\frac{V+sU+D_+}{-V+sU+D_-}\right) +
+    !!  V \ln\left(\frac{U+sV+D_+}{-U+sV+D_-}\right), \quad
+    !!  D_\pm = \sqrt{U^2 \pm 2sUV + V^2}. \f]
+    !! In the  same units  as the  regular kernel  values, the singular endpoint
+    !! contribution is then
+    !! \f$-2 F / (\Delta p \Delta a \sqrt{g_{\alpha\alpha} g_{\theta\theta}})
+    !! \f$.
+    !!
+    !! (The previous  expression had  the same  logarithm twice,  diverged for
+    !! orthogonal  coordinates  and  had  the  wrong  sign;  it  is  verified
+    !! against brute-force quadrature in the full-stack tests.)
+    !!
+    !! \note This routine does not calculate the contribution \f$2\beta\f$ nor
+    !! the  cell integral  of the  H kernel  at the  singular point:  calc_GH_1
+    !! sets the  diagonal of H  afterwards, from  the row-sum identity  or from
+    !! the direct value of calc_diag_direct.
+    !!
+    !! \note With \c use_near false the near-field rule is not used. For
+    !! points off the boundary (vac_ops.eval_pot_ext()) it pays only within
+    !! about an interval length of the boundary: farther out the trapezoidal
+    !! rule along the lines and across them is more accurate, because the
+    !! errors of the trapezoidal rule at the ends of the lines cancel between
+    !! the lines, whose ends interleave, while the edge of the near-field zone
+    !! leaves an error of second order in the step along the lines (on the
+    !! circular VMEC twin at 64 lines of 100 points: 1e-3 of the potential at
+    !! half a minor radius from the boundary, against 1e-7 with the
+    !! trapezoidal rule alone; issue #4, 6 November 2026).
+    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol,i_int,&
+        &use_near)
         ! input / output
         real(dp), intent(inout) :: G(2)                                         !< G
         real(dp), intent(inout) :: H(2)                                         !< H
-        real(dp), intent(in) :: x_s(2,3)                                        !< position vector at left and right limit of source interval
+        real(dp), intent(in) :: x_s(4,3)                                        !< position vector at the four stencil points
         real(dp), intent(in) :: x_in(3)                                         !< position vector at which to calculate influence
-        real(dp), intent(in) :: norm_s(2,3)                                     !< normal vector at left and right limit of source interval
-        real(dp), intent(in) :: h_fac_in(4)                                     !< metric factors at which to calculate influence
+        real(dp), intent(in) :: norm_s(4,3)                                     !< normal vector at the four stencil points
+        real(dp), intent(in) :: h_fac_in(3)                                     !< metric factors g_aa, g_at, g_tt at the influence point
         real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
         real(dp), intent(in) :: tol                                             !< tolerance on distance between points
-        
+        integer, intent(in) :: i_int                                            !< stencil index of the left point of the interval (1, 2 or 3)
+        logical, intent(in), optional :: use_near                               !< whether the near-field rule may be used (default true)
+
         ! local variables
-        integer :: kd                                                           ! counter
+        integer, parameter :: n_gl = 8                                          ! Gauss-Legendre points per half-interval
+        real(dp), parameter :: n_near = 4._dp                                   ! near-field range in interval lengths
+        ! (a fixed count, to re-evaluate later: Documentation/vacuum_work_overview.md,
+        ! section 7, near-field criterion)
+        real(dp), parameter :: gl_x(n_gl) = [&
+            &-0.9602898564975363_dp, -0.7966664774136267_dp, &
+            &-0.5255324099163290_dp, -0.1834346424956498_dp, &
+            & 0.1834346424956498_dp,  0.5255324099163290_dp, &
+            & 0.7966664774136267_dp,  0.9602898564975363_dp]                    ! Gauss-Legendre abscissas on [-1,1]
+        real(dp), parameter :: gl_w(n_gl) = [&
+            &0.1012285362903763_dp, 0.2223810344533745_dp, &
+            &0.3137066458778873_dp, 0.3626837833783620_dp, &
+            &0.3626837833783620_dp, 0.3137066458778873_dp, &
+            &0.2223810344533745_dp, 0.1012285362903763_dp]                      ! Gauss-Legendre weights on [-1,1]
+        integer :: kd, jd                                                       ! counters
         real(dp) :: r2(2)                                                       ! distance between source and influence points
-        real(dp) :: E_fac                                                       ! factor E
-        real(dp) :: sineps                                                      ! sin(eps)
-        real(dp) :: dum_fac(2)                                                  ! dummy factors
-        
+        real(dp) :: s_no                                                        ! nonorthogonality g_at/sqrt(g_aa g_tt)
+        real(dp) :: U_hc, V_hc                                                  ! metric-normalized half-cell sizes
+        real(dp) :: D_pm(2)                                                     ! D_+ and D_-
+        real(dp) :: F_int                                                       ! primitive of the half-cell integral
+        real(dp) :: s, l(4)                                                     ! stencil parameter and cubic Lagrange weights
+        real(dp) :: d_q(3), n_q(3), r_q                                         ! relative position, normal and distance at a quadrature point
+        logical :: near                                                         ! interval within n_near lengths of the influence point
+
         ! initialize
         G = 0._dp
         H = 0._dp
-        
+
         ! calculate distance between source points
         do kd = 1,2
-            r2(kd) = sum((x_s(kd,:)-x_in)**2)
+            r2(kd) = sum((x_s(i_int+kd-1,:)-x_in)**2)
         end do
-        
-        ! check for (near-)singular point
-        if (minval(r2).le.tol) then
-            E_fac = sqrt(h_fac_in(1)/h_fac_in(3))*step_size(2)/step_size(1)     ! |e_alpha|/|e_theta| d_par_X / d_par_X
-            sineps = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
-            dum_fac(1) = sqrt(1+2*E_fac*sineps+E_fac**2)
-            dum_fac(2) = sqrt(1-2*E_fac*sineps+E_fac**2)
-            G = -0.5_dp/sqrt(h_fac_in(1)) * step_size(1) * (&
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &- E_fac/sineps**2* &
-                &log(abs((dum_fac(2) + E_fac + sineps)/&
-                &(dum_fac(1) - E_fac + sineps))) &
-                &)
-            H = h_fac_in(4)*G
-        else
-            G = -1._dp/sqrt(r2)
-            do kd = 1,2
-                H(kd) = sum(norm_s(kd,:)*(x_s(kd,:)-x_in))*(-G(kd))**(-3)
-            end do
-        end if
+        near = minval(r2).lt.n_near**2*sum((x_s(i_int+1,:)-x_s(i_int,:))**2)
+        if (present(use_near)) near = near .and. use_near
+
+        do kd = 1,2
+            if (r2(kd).le.tol) then                                             ! singular endpoint: analytical half-cell integral
+                s_no = h_fac_in(2)/sqrt(h_fac_in(1)*h_fac_in(3))
+                U_hc = sqrt(h_fac_in(3))*step_size(1)/2._dp
+                V_hc = sqrt(h_fac_in(1))*step_size(2)/2._dp
+                D_pm(1) = sqrt(U_hc**2+2*s_no*U_hc*V_hc+V_hc**2)
+                D_pm(2) = sqrt(U_hc**2-2*s_no*U_hc*V_hc+V_hc**2)
+                F_int = U_hc*log(abs((V_hc+s_no*U_hc+D_pm(1))/&
+                    &(-V_hc+s_no*U_hc+D_pm(2)))) + &
+                    &V_hc*log(abs((U_hc+s_no*V_hc+D_pm(1))/&
+                    &(-U_hc+s_no*V_hc+D_pm(2))))
+                G(kd) = -2._dp*F_int/(step_size(1)*step_size(2)*&
+                    &sqrt(h_fac_in(1)*h_fac_in(3)))
+                H(kd) = 0._dp                                                   ! the diagonal of H is set by calc_GH_1
+            else if (near) then                                                 ! near endpoint: kernel integrated over its half-interval
+                do jd = 1,n_gl
+                    s = i_int-1 + 0.25_dp*(2*kd-1+gl_x(jd))                     ! stencil parameter, nodes at 0, 1, 2, 3
+                    l = [-(s-1)*(s-2)*(s-3)/6._dp, s*(s-2)*(s-3)/2._dp, &
+                        &-s*(s-1)*(s-3)/2._dp, s*(s-1)*(s-2)/6._dp]
+                    d_q = matmul(l,x_s) - x_in
+                    n_q = matmul(l,norm_s)
+                    r_q = sqrt(sum(d_q**2))
+                    G(kd) = G(kd) - 0.5_dp*gl_w(jd)/r_q
+                    H(kd) = H(kd) + 0.5_dp*gl_w(jd)*sum(n_q*d_q)/r_q**3
+                end do
+            else                                                                ! far endpoint: kernel value
+                G(kd) = -1._dp/sqrt(r2(kd))
+                ! dipole kernel norm.(x_s-x_in)/|x_s-x_in|^3, i.e. the
+                ! directional derivative of G along the source normal
+                H(kd) = sum(norm_s(i_int+kd-1,:)*(x_s(i_int+kd-1,:)-x_in))*&
+                    &(-G(kd))**3
+            end if
+        end do
     end subroutine calc_GH_int_1
     
     !> Calculate G_ij and H_ij on an interval for axisymmetric configurations.
@@ -93,7 +210,14 @@ contains
     !! it  is assumed  that  the  entire integral  is  given  by the  analytical
     !! approximation.
     !!
-    !! \note This routine does not calculate the contribution \f$2\beta\f$.
+    !! \note The kernels are those of eqs. (130)-(131) of the 2019 manuscript
+    !! with  the sign  of H  reversed (the leading minus signs  of the  three H
+    !! formulas): the  normal derivative is  taken along the  stored normal
+    !! \f$-\mathcal{J}\nabla\psi\f$, out of the vacuum, for both vacuum styles
+    !! (erratum E1 of that manuscript). This routine does not
+    !! calculate the corner term: calc_GH_2 adds \f$-2\beta\f$ to the diagonal
+    !! of H, with \f$\beta\f$ the vacuum's internal angle
+    !! on the vacuum side.
     subroutine calc_GH_int_2(G,H,t_s,t_in,x_s,x_in,norm_s,norm_in,Aij,ql,tol,&
         &b_coeff,n_tor)
         ! input / output
@@ -166,7 +290,7 @@ contains
                     &(delta_t(1)*(delta_t(1)-2*delta_t(2))*dlogd(1) + &
                     &delta_t(2)**2 * dlogd(2)) &
                     &)
-                H(kd) = 0.5*norm_s(kd,1)/x_s(kd,1) * G(kd) + &
+                H(kd) = -0.5*norm_s(kd,1)/x_s(kd,1) * G(kd) - &
                     &(delta_t(2)-delta_t(1)) * (n_tor-0.5_dp)**(-1) * &
                     &Aij(kd)/sqrt(x_in(1)*x_s(kd,1))
             end do
@@ -186,7 +310,7 @@ contains
                 G(kd_bound) = G(kd_bound) - 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
                     &sqrt(x_in(1)*x_s(kd_bound,1)) * (ql(kd_bound,2)+&
                     &log(a_coeff*abs(t_s(kd_bound)-t_in_loc))+b_coeff(2))
-                H(kd_bound) = H(kd_bound) + 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
+                H(kd_bound) = H(kd_bound) - 0.5_dp*(t_s(2)-t_s(1))*2._dp/&
                     &sqrt(x_in(1)*x_s(kd_bound,1)) * &
                     &( (-0.5_dp*norm_s(kd_bound,1)/x_s(kd_bound,1) - &
                     &(1._dp+rho2(kd_bound)/(2*x_in(1)*x_s(kd_bound,1)))*&
@@ -200,7 +324,7 @@ contains
                 ! fill G's and H's
                 G(kd) = - (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &ql(kd,2)
-                H(kd) = (t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
+                H(kd) = -(t_s(2)-t_s(1))/sqrt(x_in(1)*x_s(kd,1)) * &
                     &( (-0.5_dp*norm_s(kd,1)/x_s(kd,1) - &
                     &(1._dp+rho2(kd)/(2*x_in(1)*x_s(kd,1)))*&
                     &Aij(kd))*ql(kd,2) + Aij(kd)*ql(kd,1) )
@@ -222,9 +346,7 @@ contains
     integer function vec_dis2loc(ctxt,vec_dis,lims,vec_loc,proc) result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'vec_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for vector
         real(dp), intent(in) :: vec_dis(:)                                      !< distributed vector
@@ -276,9 +398,7 @@ contains
         &result(ierr)
         use num_vars, only: n_procs
         use vac_vars, only: in_context
-        
-        character(*), parameter :: rout_name = 'mat_dis2loc'
-        
+
         ! input / output
         integer, intent(in) :: ctxt                                             !< context for matrix
         real(dp), intent(in) :: mat_dis(:,:)                                    !< distributed matrix
@@ -413,18 +533,14 @@ contains
             vac%x_vec((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
                 &vac_old%x_vec((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
             
-            ! copy variables specific to style
-            select case (vac%style)
-                case (1)                                                        ! field-line 3-D
-                    vac%h_fac((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = vac_old%&
-                        &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-                case (2)                                                        ! axisymmetric
-                    vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
-                        &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-                    vac%ang((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
-                        &vac_old%ang((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-            end select
+            vac%h_fac((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = vac_old%&
+                &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
+            vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
+                &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
         end do
+        ! (vac%ang, points along a line times lines, is set for the whole new
+        ! level by store_vac_VMEC; the flattened indices above would write
+        ! past it from the second field line on)
         
         ! set up transformation matrix A and dummy matrix B
         allocate(loc_A(vac%n_loc(1),vac_old%n_loc(2)))
@@ -439,17 +555,13 @@ contains
                 rd = 2*par_id-1 + (alpha_id-1)*n_ang(1)
                 
                 ! set local column index
-                cdl = sum(vac_old%lims_c(2,1:i_cd-1)-&
-                    &vac_old%lims_c(1,1:i_cd-1)+1) + &
-                    &cd-vac_old%lims_c(1,i_cd)+1
+                cdl = loc_idx(vac_old%lims_c,i_cd,cd)
                 
                 subrows: do i_rd = 1,size(vac%lims_r,2)
                     ! set local row index if in this subrow
                     if (rd.ge.vac%lims_r(1,i_rd) .and. &
                         &rd.le.vac%lims_r(2,i_rd)) then
-                        rdl = sum(vac%lims_r(2,1:i_rd-1)-&
-                            &vac%lims_r(1,1:i_rd-1)+1) + &
-                            &rd-vac%lims_r(1,i_rd)+1
+                        rdl = loc_idx(vac%lims_r,i_rd,rd)
                         
                         loc_A(rdl,cdl) = 1._dp
                     end if
@@ -515,4 +627,389 @@ contains
         ! clean up
         deallocate(loc_A,loc_B)
     end function interlaced_vac_copy
+    !> \public Number of local columns this process owns of a global column vector:
+    !! the single column sits in the first block, owned by process column 0.
+    integer function n_col1_loc(vac) result(res)
+        use vac_vars, only: in_context
+        
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+
+        if (in_context(vac%ctxt_HG) .and. vac%ind_p(2).eq.0) then
+            res = 1
+        else
+            res = 0
+        end if
+    end function n_col1_loc
+
+    !> \public Scatter a global column vector into its local block-cyclic rows.
+    !!
+    !! \c x_dis is the flattened local array of size n_loc(1) * n_col1_loc();
+    !! processes that do not own the column receive nothing.
+    subroutine vec_glob2dis(vac,x_glob,x_dis)
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: x_glob(:)                                       !< global vector
+        real(dp), intent(out) :: x_dis(:)                                       !< local part (flattened)
+
+        integer :: i_rd, rd, rdl                                                ! subrow index, global and local row
+
+        x_dis = 0._dp
+        if (n_col1_loc(vac).eq.0) return
+        do i_rd = 1,size(vac%lims_r,2)
+            do rd = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                rdl = loc_idx(vac%lims_r,i_rd,rd)
+                x_dis(rdl) = x_glob(rd)
+            end do
+        end do
+    end subroutine vec_glob2dis
+
+    !> \public Distributed matrix-vector product y = A x.
+    !!
+    !! \c A is a local part of a distributed n_bnd x n_bnd matrix with
+    !! descriptor \c desc_A (e.g. vac%H with vac%desc_H), \c x_glob is
+    !! globally replicated, and \c y_glob is returned complete on all
+    !! processes in the context (zero outside it). Used by the exact-potential
+    !! checks of the vacuum operators (vac_ops.check_vac_exact() and the
+    !! full-stack tests).
+    integer function dis_matvec(vac,A,desc_A,x_glob,y_glob) result(ierr)
+        use vac_vars, only: in_context
+
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: A(:,:)                                          !< local part of distributed matrix
+        integer, intent(in) :: desc_A(BLACSCTXTSIZE)                            !< descriptor of A
+        real(dp), intent(in) :: x_glob(:)                                       !< global input vector
+        real(dp), intent(out) :: y_glob(:)                                      !< global result vector
+
+        integer :: n_col1                                                       ! local number of columns of the vector
+        integer :: n_flat                                                       ! true local size of the vector
+        integer :: desc_x(BLACSCTXTSIZE)                                        ! descriptor for x and y
+        real(dp), allocatable :: x_dis(:), y_dis(:)                             ! local vector parts
+
+        ierr = 0
+        y_glob = 0._dp
+        if (.not.in_context(vac%ctxt_HG)) return
+
+        n_col1 = n_col1_loc(vac)
+        n_flat = vac%n_loc(1)*n_col1
+        allocate(x_dis(max(1,n_flat)),y_dis(max(1,n_flat)))                     ! at least 1 element for ScaLAPACK dummies
+        call vec_glob2dis(vac,x_glob,x_dis)
+        y_dis = 0._dp
+
+        call descinit(desc_x,vac%n_bnd,1,vac%bs,vac%bs,0,0,vac%ctxt_HG,&
+            &max(1,vac%n_loc(1)),ierr)
+        if (ierr.ne.0) return
+
+        call pdgemv('N',vac%n_bnd,vac%n_bnd,1._dp,A,1,1,desc_A,&
+            &x_dis,1,1,desc_x,1,0._dp,y_dis,1,1,desc_x,1)
+
+        ierr = vec_dis2loc(vac%ctxt_HG,y_dis(1:n_flat),vac%lims_r,y_glob)       ! all processes receive
+    end function dis_matvec
+    
+    !> \public Step sizes of the field-line grid in the parallel coordinate
+    !! and in the field-line label, as used by the field-line vacuum: the
+    !! parallel points include both ends, the field lines exclude the end
+    !! point in alpha (rich_ops).
+    subroutine vac_steps(dpar,dalpha)
+        use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
+        use rich_vars, only: n_par_X
+        
+        ! input / output
+        real(dp), intent(out) :: dpar                                           !< step in the parallel coordinate
+        real(dp), intent(out) :: dalpha                                         !< step in the field-line label
+        
+        dpar = (max_par_X-min_par_X)/(n_par_X-1)*pi
+        dalpha = (max_alpha-min_alpha)/max(n_alpha,1)*pi
+    end subroutine vac_steps
+    
+    !> \public Cross product of two 3-vectors.
+    pure function cross3(u,v) result(w)
+        ! input / output
+        real(dp), intent(in) :: u(3), v(3)                                      !< vectors
+        real(dp) :: w(3)                                                        !< their cross product
+        
+        w = [u(2)*v(3)-u(3)*v(2), u(3)*v(1)-u(1)*v(3), u(1)*v(2)-u(2)*v(1)]
+    end function cross3
+    
+    !> \public Solid angle at a node of the mesh, on the side of \c n_hat.
+    !!
+    !! The surface of the  mesh at a node is the cone of  four flat facets, one
+    !! between  each pair  of edges  that are  consecutive in  azimuth about  \c
+    !! n_hat. The  solid angle of the  region on the \c  n_hat side of all  four
+    !! facets is  eq. (45) of the  2019 manuscript on the  vacuum energy (exact;
+    !! not its small-tilt form (46), which fails on skewed meshes, erratum E6):
+    !! with  the facet  normals  \f$\mathbf{a}_i\f$ tilted  by \f$\beta_i\f$  from
+    !! \c n_hat towards  the azimuth \f$\bar\varphi_i\f$, and  \f$\varphi_i\f$ the
+    !! azimuths of the edges,
+    !! \f[ \Omega = 2\pi + \sum_{i=1}^4 \left[\sin^{-1}\left(\sin\beta_i
+    !!  \sin(\varphi-\bar\varphi_i)\right)\right]_{\varphi_i}^{\varphi_{i+1}} . \f]
+    !! The edges may be given in any order. With \c n_hat the unit normal into
+    !! the plasma, the result  is the plasma's solid angle  \f$\Omega_p\f$ and
+    !! the vacuum's is \f$4\pi - \Omega_p\f$.
+    pure subroutine solid_angle_node(u,n_hat,omega)
+        ! input / output
+        real(dp), intent(in) :: u(4,3)                                          !< the four edge vectors from the node to its neighbours
+        real(dp), intent(in) :: n_hat(3)                                        !< unit normal of the side whose solid angle is returned
+        real(dp), intent(out) :: omega                                          !< solid angle on that side
+        
+        ! local variables
+        integer :: id, jd, kd                                                   ! counters
+        integer :: ord(4)                                                       ! edges sorted by azimuth
+        integer :: i1, i2                                                       ! edges of a facet
+        real(dp) :: z(3), x(3), y(3)                                            ! local frame
+        real(dp) :: uh(4,3)                                                     ! unit edges
+        real(dp) :: ph(4)                                                       ! azimuths of the edges
+        real(dp) :: a(3)                                                        ! facet normal
+        real(dp) :: c, beta, phb                                                ! cos of the tilt, tilt and azimuth of the facet normal
+        real(dp) :: p1, p2                                                      ! azimuths of the sector
+        
+        ! local frame: z along n_hat, x along the tangential part of the first edge
+        z = n_hat/norm2(n_hat)
+        x = u(1,:) - sum(u(1,:)*z)*z
+        x = x/norm2(x)
+        y = cross3(z,x)
+        
+        ! unit edges and their azimuths
+        do id = 1,4
+            uh(id,:) = u(id,:)/norm2(u(id,:))
+            ph(id) = atan2(sum(uh(id,:)*y),sum(uh(id,:)*x))
+        end do
+        
+        ! sort the edges by azimuth (insertion sort)
+        ord = [1,2,3,4]
+        do id = 2,4
+            kd = ord(id)
+            jd = id-1
+            do while (jd.ge.1)
+                if (ph(ord(jd)).le.ph(kd)) exit
+                ord(jd+1) = ord(jd)
+                jd = jd-1
+            end do
+            ord(jd+1) = kd
+        end do
+        
+        ! sum over the four sectors
+        omega = 2*pi
+        do id = 1,4
+            i1 = ord(id)
+            i2 = ord(mod(id,4)+1)
+            a = cross3(uh(i1,:),uh(i2,:))
+            a = a/norm2(a)
+            c = sum(a*z)
+            if (c.lt.0._dp) then                                                ! normal of the facet on the n_hat side
+                a = -a
+                c = -c
+            end if
+            beta = acos(min(c,1._dp))
+            phb = atan2(sum(a*y),sum(a*x))
+            p1 = ph(i1)
+            p2 = ph(i2)
+            if (p2.le.p1) p2 = p2 + 2*pi                                        ! the sector that closes the circle
+            omega = omega + asin(sin(beta)*sin(p2-phb)) - &
+                &asin(sin(beta)*sin(p1-phb))
+        end do
+    end subroutine solid_angle_node
+    
+    !> \public Integral of the H kernel over the cell of a node of the
+    !! field-line mesh.
+    !!
+    !! The kernel  \f$\mathbf{n}(\mathbf{r})\cdot(\mathbf{r}-\mathbf{r}_0)/
+    !! |\mathbf{r}-\mathbf{r}_0|^3\f$ (with \f$\mathbf{n}\f$ the stored normal
+    !! \f$-\mathcal{J}\nabla\psi\f$ at the source) is  bounded on the surface
+    !! near its  own node, because  the surface leaves its  tangent plane at
+    !! second  order: to  leading order  \f$\mathbf{n}(\mathbf{r})\cdot
+    !! (\mathbf{r}-\mathbf{r}_0) = -\tfrac12\, \mathbf{n}_0\cdot\partial_j
+    !! \mathbf{e}_k\, \Delta u^j \Delta u^k\f$ (\f$j,k\f$ the parallel and
+    !! field-line coordinates). Over the cell of the node, \f$|\theta-\theta_0|
+    !! \le \Delta\theta/2\f$, \f$|\alpha-\alpha_0| \le \Delta\alpha/2\f$,
+    !! in the local polar  coordinates of eqs. (49)-(72) of  the 2019 manuscript
+    !! (with \f$A = g_{\alpha\theta}/|\mathbf{n}|\f$, \f$B = g_{\alpha\alpha}/
+    !! |\mathbf{n}|\f$ and \f$\rho(\beta)\f$ the  radius of the cell), the
+    !! integral is
+    !! \f[ I = -\frac{\sqrt{g_{\alpha\alpha}}}{2|\mathbf{n}|^2}
+    !!  \int_{-\pi/2}^{\pi/2} q(\beta)\,\rho(\beta)\,\mathrm{d}\beta, \quad
+    !!  q = \mathbf{n}_0\cdot\partial_j\mathbf{e}_k\, t^j t^k, \quad
+    !!  t = \left(\cos\beta, \frac{\sin\beta - A\cos\beta}{B}\right), \f]
+    !! (with \f$A\f$ and \f$B\f$ taken positive: the mirror cell, the frame of the
+    !! opposite orientation, is an isometric image and gives the same integral),
+    !! which is  the corrected eq.  (69) of the manuscript  (erratum E22: the
+    !! printed one has a  wrong factor and only the umbilic part  of the second
+    !! fundamental form). The half-cell of the manuscript equals the full cell
+    !! of the node for this kernel.  Verified against direct integration on
+    !! sphere and torus nodes (first-order convergence), and by the full-stack
+    !! test \c H_sing_node.
+    pure subroutine H_sing_node(norm0,g,dd,dpar,dalpha,I_sing)
+        ! input / output
+        real(dp), intent(in) :: norm0(3)                                        !< stored normal at the node
+        real(dp), intent(in) :: g(3)                                            !< metric factors g_aa, g_at, g_tt at the node
+        real(dp), intent(in) :: dd(3,3)                                         !< second derivatives of the position: d_t e_t, d_t e_a, d_a e_a (rows)
+        real(dp), intent(in) :: dpar                                            !< parallel step
+        real(dp), intent(in) :: dalpha                                          !< step in the field-line label
+        real(dp), intent(out) :: I_sing                                         !< integral of the kernel over the cell
+        
+        ! local variables
+        integer :: ip, jd                                                       ! counters
+        real(dp) :: nn                                                          ! |norm0|
+        real(dp) :: A, B                                                        ! coefficients of the local frame
+        real(dp) :: q_tt, q_ta, q_aa                                            ! second fundamental form along the stored normal
+        real(dp) :: lims(4)                                                     ! limits of the three pieces of the cell boundary
+        real(dp) :: p_lo, p_hi                                                  ! limits of a piece
+        real(dp) :: beta, c, s                                                  ! polar angle, cos, sin-like coordinate
+        real(dp) :: q, rho                                                      ! quadratic form and radius
+        real(dp) :: tot                                                         ! integral
+        
+        nn = norm2(norm0)
+        A = g(2)/nn
+        B = g(1)/nn
+        q_tt = sum(norm0*dd(1,:))
+        q_ta = sum(norm0*dd(2,:))
+        q_aa = sum(norm0*dd(3,:))
+        lims = [-pi/2, atan(-B*dalpha/dpar+A), atan(B*dalpha/dpar+A), pi/2]
+        tot = 0._dp
+        do ip = 1,3
+            p_lo = lims(ip)
+            p_hi = lims(ip+1)
+            do jd = 1,n_gl16
+                beta = 0.5_dp*(p_lo+p_hi) + 0.5_dp*(p_hi-p_lo)*gl16_x(jd)
+                c = cos(beta)
+                s = (sin(beta)-A*c)/B                                           ! field-line coordinate of the direction
+                q = q_tt*c**2 + 2*q_ta*c*s + q_aa*s**2
+                select case (ip)
+                    case (1)                                                    ! -pi/2 .. beta_1: lower edge alpha = alpha_0 - dalpha
+                        rho = B*dalpha/(A*c-sin(beta))
+                    case (2)                                                    ! beta_1 .. beta_2: far edge theta = theta_0 + dpar
+                        rho = dpar/c
+                    case default                                                ! beta_2 .. pi/2: upper edge alpha = alpha_0 + dalpha
+                        rho = B*dalpha/(sin(beta)-A*c)
+                end select
+                tot = tot + 0.5_dp*(p_hi-p_lo)*gl16_w(jd)*q*rho
+            end do
+        end do
+        I_sing = -sqrt(g(1))/(2*nn**2)*tot
+    end subroutine H_sing_node
+    
+    !> \public Direct diagonals of H for the field-line vacuum.
+    !!
+    !! Two variants, both with the cell integral of the kernel (H_sing_node):
+    !!  - smooth: \f$-2\pi\f$ for the corner term, the solid angle of the
+    !!    vacuum at a point of the smooth surface, consistent with the kernels
+    !!    of calc_GH_int_1, which are evaluated on the smooth surface;
+    !!  - faceted: minus the vacuum's solid angle at the node of the faceted
+    !!    surface, eq. (45) of the 2019 manuscript (solid_angle_node), which
+    !!    belongs to a discretization with flat elements; on a skewed mesh,
+    !!    such as the field-aligned one, the facets tilt strongly (erratum E6)
+    !!    and this value is far from \f$2\pi\f$.
+    !! The four edges run to the neighbours along the field line and on the
+    !! neighbouring lines (periodic in the field-line label). The second
+    !! derivatives of the position come from second differences of the stored
+    !! points. The end points of the field lines have only three edges and
+    !! half a cell, and are left out (\c avail false).
+    integer function calc_diag_direct(vac,dpar,dalpha,diag_direct,diag_facet,&
+        &I_sing,omega_v,avail) result(ierr)
+        
+        character(*), parameter :: rout_name = 'calc_diag_direct'
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: dpar                                            !< parallel step
+        real(dp), intent(in) :: dalpha                                          !< step in the field-line label
+        real(dp), intent(out) :: diag_direct(:)                                 !< direct diagonal of H for the smooth surface: -2 pi plus the cell integral
+        real(dp), intent(out) :: diag_facet(:)                                  !< the same for the faceted surface: minus the vacuum's solid angle at the node plus the cell integral
+        real(dp), intent(out) :: I_sing(:)                                      !< its cell-integral part
+        real(dp), intent(out) :: omega_v(:)                                     !< the vacuum's solid angle at the node
+        logical, intent(out) :: avail(:)                                        !< whether the point has a direct value
+        
+        ! local variables
+        integer :: n_par, n_lin                                                 ! points per line, number of lines
+        integer :: ip, il, id                                                   ! point, line and global indices
+        integer :: ilm, ilp                                                     ! previous and next line (periodic)
+        integer :: idm, idp                                                     ! previous and next point on the line
+        real(dp) :: x0(3)                                                       ! position of the node
+        real(dp) :: u(4,3)                                                      ! edges
+        real(dp) :: n_hat(3)                                                    ! unit normal into the plasma
+        real(dp) :: dd(3,3)                                                     ! second derivatives
+        real(dp) :: omega_p                                                     ! the plasma's solid angle
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        ! initialize
+        ierr = 0
+        diag_direct = 0._dp
+        diag_facet = 0._dp
+        I_sing = 0._dp
+        omega_v = 0._dp
+        avail = .false.
+        n_par = vac%n_ang(1)
+        n_lin = vac%n_ang(2)
+        if (vac%style.ne.1) then
+            ierr = 1
+            err_msg = 'the direct diagonal of calc_diag_direct is for the &
+                &field-line vacuum'
+            CHCKERR(err_msg)
+        end if
+        if (n_lin.lt.3 .or. n_par.lt.3) then
+            ierr = 1
+            err_msg = 'the direct diagonal needs at least 3 field lines and &
+                &3 points per line'
+            CHCKERR(err_msg)
+        end if
+        
+        do il = 1,n_lin
+            ilm = modulo(il-2,n_lin)+1
+            ilp = modulo(il,n_lin)+1
+            do ip = 2,n_par-1
+                id = ip + (il-1)*n_par
+                idm = id-1
+                idp = id+1
+                x0 = vac%x_vec(id,:)
+                ! edges: -alpha, -theta, +alpha, +theta
+                u(1,:) = vac%x_vec(ip+(ilm-1)*n_par,:) - x0
+                u(2,:) = vac%x_vec(idm,:) - x0
+                u(3,:) = vac%x_vec(ip+(ilp-1)*n_par,:) - x0
+                u(4,:) = vac%x_vec(idp,:) - x0
+                ! solid angle of the plasma, then of the vacuum
+                n_hat = vac%norm(id,:)/norm2(vac%norm(id,:))
+                call solid_angle_node(u,n_hat,omega_p)
+                omega_v(id) = 4*pi - omega_p
+                ! second derivatives from second differences
+                dd(1,:) = (vac%x_vec(idp,:) - 2*x0 + vac%x_vec(idm,:))/dpar**2
+                dd(3,:) = (u(3,:) + u(1,:))/dalpha**2
+                dd(2,:) = (vac%x_vec(ip+1+(ilp-1)*n_par,:) - &
+                    &vac%x_vec(ip-1+(ilp-1)*n_par,:) - &
+                    &vac%x_vec(ip+1+(ilm-1)*n_par,:) + &
+                    &vac%x_vec(ip-1+(ilm-1)*n_par,:))/(4*dpar*dalpha)
+                call H_sing_node(vac%norm(id,:),vac%h_fac(id,1:3),dd,dpar,&
+                    &dalpha,I_sing(id))
+                diag_direct(id) = I_sing(id) - 2*pi
+                diag_facet(id) = I_sing(id) - omega_v(id)
+                avail(id) = .true.
+            end do
+        end do
+    end function calc_diag_direct
+    
+    !> \public Gathers the diagonal of a distributed matrix on all processes.
+    integer function dis_diag(vac,A,diag_glob) result(ierr)
+        use vac_vars, only: in_context
+        
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: A(:,:)                                          !< local part of distributed matrix
+        real(dp), intent(out) :: diag_glob(:)                                   !< its diagonal, global
+        
+        ! local variables
+        integer :: i_rd, i_cd                                                   ! index of subrow and subcolumn
+        integer :: rd                                                           ! global index on the diagonal
+        
+        ierr = 0
+        diag_glob = 0._dp
+        if (.not.in_context(vac%ctxt_HG)) return
+        do i_rd = 1,size(vac%lims_r,2)
+            do i_cd = 1,size(vac%lims_c,2)
+                do rd = max(vac%lims_r(1,i_rd),vac%lims_c(1,i_cd)), &
+                    &min(vac%lims_r(2,i_rd),vac%lims_c(2,i_cd))
+                    diag_glob(rd) = A(loc_idx(vac%lims_r,i_rd,rd),&
+                        &loc_idx(vac%lims_c,i_cd,rd))
+                end do
+            end do
+        end do
+        call dgsum2d(vac%ctxt_HG,'all',' ',size(diag_glob),1,diag_glob,&
+            &size(diag_glob),-1,-1)
+    end function dis_diag
 end module vac_utilities

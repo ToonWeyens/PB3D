@@ -81,9 +81,12 @@ contains
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
-        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero, &
-            &invert_top_bottom_H
-        use num_utilities, only: calc_int, spline
+        use num_vars, only: eq_name, eq_i, max_deriv, tol_zero
+#if ldebug
+        use num_vars, only: invert_top_bottom_H
+#endif
+        use num_utilities, only: calc_int
+        use spline_utilities, only: spline
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
             &nchi, chi_H, ias, RBphi_H, R_H, Z_H, RMtoG_H, BMtoG_H
         
@@ -1290,7 +1293,7 @@ contains
         use output_ops, only: plot_diff_HDF5
         use input_utilities, only: get_int
         use grid_vars, only: n_r_eq
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'test_metrics_H'
         
