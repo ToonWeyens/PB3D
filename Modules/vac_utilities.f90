@@ -127,6 +127,8 @@ contains
         ! local variables
         integer, parameter :: n_gl = 8                                          ! Gauss-Legendre points per half-interval
         real(dp), parameter :: n_near = 4._dp                                   ! near-field range in interval lengths
+        ! (a fixed count, to re-evaluate later: Documentation/vacuum_work_overview.md,
+        ! section 7, near-field criterion)
         real(dp), parameter :: gl_x(n_gl) = [&
             &-0.9602898564975363_dp, -0.7966664774136267_dp, &
             &-0.5255324099163290_dp, -0.1834346424956498_dp, &
