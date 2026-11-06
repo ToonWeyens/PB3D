@@ -99,7 +99,19 @@ contains
     !! the  cell integral  of the  H kernel  at the  singular point:  calc_GH_1
     !! sets the  diagonal of H  afterwards, from  the row-sum identity  or from
     !! the direct value of calc_diag_direct.
-    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol,i_int)
+    !!
+    !! \note With \c use_near false the near-field rule is not used. For
+    !! points off the boundary (vac_ops.eval_pot_ext()) it pays only within
+    !! about an interval length of the boundary: farther out the trapezoidal
+    !! rule along the lines and across them is more accurate, because the
+    !! errors of the trapezoidal rule at the ends of the lines cancel between
+    !! the lines, whose ends interleave, while the edge of the near-field zone
+    !! leaves an error of second order in the step along the lines (on the
+    !! circular VMEC twin at 64 lines of 100 points: 1e-3 of the potential at
+    !! half a minor radius from the boundary, against 1e-7 with the
+    !! trapezoidal rule alone; issue #4, 6 November 2026).
+    subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol,i_int,&
+        &use_near)
         ! input / output
         real(dp), intent(inout) :: G(2)                                         !< G
         real(dp), intent(inout) :: H(2)                                         !< H
@@ -110,6 +122,7 @@ contains
         real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
         real(dp), intent(in) :: tol                                             !< tolerance on distance between points
         integer, intent(in) :: i_int                                            !< stencil index of the left point of the interval (1, 2 or 3)
+        logical, intent(in), optional :: use_near                               !< whether the near-field rule may be used (default true)
 
         ! local variables
         integer, parameter :: n_gl = 8                                          ! Gauss-Legendre points per half-interval
@@ -143,6 +156,7 @@ contains
             r2(kd) = sum((x_s(i_int+kd-1,:)-x_in)**2)
         end do
         near = minval(r2).lt.n_near**2*sum((x_s(i_int+1,:)-x_s(i_int,:))**2)
+        if (present(use_near)) near = near .and. use_near
 
         do kd = 1,2
             if (r2(kd).le.tol) then                                             ! singular endpoint: analytical half-cell integral
@@ -521,9 +535,10 @@ contains
                 &h_fac((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
             vac%dnorm((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
                 &vac_old%dnorm((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
-            vac%ang((id-1)*n_ang(1)+1:id*n_ang(1):2,:) = &
-                &vac_old%ang((id-1)*n_ang_old(1)+1:id*n_ang_old(1):1,:)
         end do
+        ! (vac%ang, points along a line times lines, is set for the whole new
+        ! level by store_vac_VMEC; the flattened indices above would write
+        ! past it from the second field line on)
         
         ! set up transformation matrix A and dummy matrix B
         allocate(loc_A(vac%n_loc(1),vac_old%n_loc(2)))

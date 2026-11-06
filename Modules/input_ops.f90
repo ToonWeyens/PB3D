@@ -354,12 +354,11 @@ contains
             plot_E_rec = .true.                                                 ! plot energy reconstruction
             plot_vac_pot = .true.                                               ! plot vacuum potential
             POST_style = 1                                                      ! process on extended plot grid
-            write(*,*) '!!!!!! min and max need to take into account normalization'
-            min_Rvac_plot = 0.1*R_0                                             ! minimum R of vacuum plot
-            max_Rvac_plot = 2*R_0                                               ! maximum R of vacuum plot
-            min_Zvac_plot = -R_0                                                ! minimum R of vacuum plot
-            max_Zvac_plot = R_0                                                 ! maximum R of vacuum plot
-            n_vac_plot = [100,100]                                              ! number of points in R and Z of vacuum plot
+            min_Rvac_plot = 0._dp                                               ! minimum R of vacuum plot [m]
+            max_Rvac_plot = 0._dp                                               ! maximum R of vacuum plot [m] (not above the minimum: from the boundary, see vac_pot_plot)
+            min_Zvac_plot = 0._dp                                               ! minimum Z of vacuum plot [m]
+            max_Zvac_plot = 0._dp                                               ! maximum Z of vacuum plot [m] (not above the minimum: from the boundary)
+            n_vac_plot = [101,101]                                              ! number of points in R and Z of vacuum plot (odd: the midplane of a symmetric range is on the grid)
             
             ! variables concerning input / output
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
@@ -536,9 +535,10 @@ contains
             rich_lvl = PB3D_rich_lvl
             
             ! set POST_output_full and POST_output_sol
-            POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec
+            POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec .or. &
+                &plot_vac_pot
             POST_output_full = POST_output_sol .or. plot_B .or. plot_J .or. &
-                &plot_kappa .or. plot_vac_pot .or. compare_tor_pos
+                &plot_kappa .or. compare_tor_pos
         end function adapt_inoutput_POST
         
         ! Checks whether the variables concerning output are chosen correctly:
@@ -674,25 +674,21 @@ contains
                         CHCKERR(err_msg)
                     end if
                 end if
-                if (min_Rvac_plot.lt.0) then
-                    call writo('The minimum value for Rvac_plot has to be &
-                        &greater than zero',warning=.true.)
-                    call lvl_ud(1)
-                        min_Rvac_plot = 0.1*R_0
-                        call writo('It has been set to '//&
-                            &trim(r2str(min_Rvac_plot)))
-                    call lvl_ud(-1)
-                end if
-                if (max_Rvac_plot.lt.min_Rvac_plot) then
+                if (max_Rvac_plot.gt.min_Rvac_plot .and. &
+                    &min_Rvac_plot.le.0._dp) then
                     ierr = 1
-                    err_msg = 'The maximum value for Rvac_plot has to be &
-                        &greater than the minimum value'
+                    err_msg = 'min_Rvac_plot has to be positive'
                     CHCKERR(err_msg)
                 end if
-                if (eq_style.eq.1 .and. plot_vac_pot) then
+                if (minval(n_vac_plot).lt.2) then
+                    ierr = 1
+                    err_msg = 'n_vac_plot needs at least 2 points in R and Z'
+                    CHCKERR(err_msg)
+                end if
+                if (plot_vac_pot .and. BC_style(2).eq.1) then
                     plot_vac_pot = .false.
-                    call writo('Not plotting vacuum for VMEC yet',&
-                        &warning=.true.)
+                    call writo('No vacuum potential plot for a fixed &
+                        &boundary')
                 end if
             end if
         end function adapt_plot

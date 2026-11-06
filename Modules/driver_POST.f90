@@ -109,11 +109,12 @@ contains
         integer :: n_div_max                                                    ! maximum divisions of equilibrium jobs
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
+        logical, allocatable :: plot_mode(:)                                    ! eigenmodes in one of the three ranges
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+
         ! initialize ierr
         ierr = 0
-        
+
         ! user output
         select case (POST_style)
             case (1)                                                            ! extended grid
@@ -366,23 +367,6 @@ contains
                     call lvl_ud(-1)
                     call writo('Mode '//trim(i2str(id))//'/'//&
                         &trim(i2str(size(sol%val)))//' finished')
-                    
-                    ! vacuum plots if requested
-                    write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-                    plot_vac_pot = .false.
-                    if (plot_vac_pot) then
-                        ! user output
-                        call writo('Start vacuum plot for this solution')
-                        call lvl_ud(1)
-                        
-                        ! plot vacuum potential
-                        ierr = vac_pot_plot(grid_sol,vac,sol,id)
-                        CHCKERR('')
-                        
-                        ! user output
-                        call lvl_ud(-1)
-                        call writo('Done with vacuum plot')
-                    end if
                 end do
                 
                 call lvl_ud(-1)
@@ -390,6 +374,23 @@ contains
                     &writo('RANGE '//trim(i2str(jd))//' plotted')
             end do
             call lvl_ud(-1)
+            
+            ! vacuum potential of the same modes, in one go: the boundary
+            ! operators and the rows for the plot points are the same for all
+            ! (adapt_plot switches it off for a fixed boundary, which has no
+            ! vacuum in the output)
+            if (plot_vac_pot .and. BC_style(2).ne.1) then
+                allocate(plot_mode(size(sol%val)))
+                plot_mode = .false.
+                do jd = 1,3
+                    if (min_id(jd).le.max_id(jd)) &
+                        &plot_mode(min_id(jd):max_id(jd)) = .true.
+                end do
+                ierr = vac_pot_plot(grid_sol,vac,sol,&
+                    &pack([(id,id=1,size(sol%val))],plot_mode))
+                CHCKERR('')
+                deallocate(plot_mode)
+            end if
         end if
         
         ! Divide  the  equilibrium  jobs (see  subroutine  "calc_memory"  inside

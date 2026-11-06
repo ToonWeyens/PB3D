@@ -1681,7 +1681,7 @@ Seventy-three commits. Dates from `git log`.
 | `norm_style` | 1: MISHKA normalisation, used throughout. 2: a modified B_0 and ψ_0, with EV_COBRA = EV_PB3D · β/2. |
 | `K_style` | 1: perpendicular kinetic energy only. |
 | `X_grid_style` | Normal grid of the perturbation: 1 equilibrium, 2 solution, 3 enriched. |
-| `plot_vac_pot` | POST: plot the vacuum potential; not checked on the 3-D vacuum, `vac%style` 1. |
+| `plot_vac_pot` | POST: plot the vacuum potential of the computed eigenmodes outside the plasma, both vacuum styles (6 November 2026, checked against the exact exterior potentials of `check_vac`); box `min_Rvac_plot` … `max_Zvac_plot` in metres (default from the boundary), `n_vac_plot`, planes as the plasma plots. |
 | `--export_HEL` | Command-line option: PB3D writes a VMEC INDATA file from a HELENA mapping; used for the twins. |
 | `keep` | Sixth argument of `run_deck.sbatch`: keep `PB3D_out.h5` for the response tools. |
 | `PB3D_TEST_MPI_REGRESSION` | CMake option for the opt-in 2- and 4-process regression rows. |
