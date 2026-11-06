@@ -29,7 +29,7 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | `vac_utilities` `calc_GH_int_1`, `vac_ops` `calc_GH_1` | singular interval integral, quadrature weights, sign and a `**(−3)` far-field factor in the 3-D kernels (July) | near-field integration along the field line, Gauss–Legendre on the cubic interpolant through four points (31 October) |
 | `vac_ops` `calc_GH_1` | α spacing 2π/n_alpha instead of 2π/(n_alpha − 1); G and H no longer counted twice across Richardson levels | G diagonal from the identity for the linear interior harmonics, as the row sum sets the H diagonal |
 | `vac_ops` `store_vac_VMEC` | handed the kernels the outward normal where they take the inward one; the 3-D response was 3 to 4 times too small | |
-| `vac_ops` | | `check_vac_exact` and the input `check_vac`: Green identities and exact exterior solves on the real surface, per-point files, condition estimate |
+| `vac_ops` | | `check_vac_exact` and the input `check_vac`: Green identities and exact exterior solves on the real surface, per-point files, condition estimate; its CHECKVAC lines split so that `writo` prints none cut (6 November) |
 | `SLEPC_ops` energy assembly | the vacuum entered with the wrong sign and without the factor 2π, so it destabilised; now −2π X_e^H res X_e with the Hermitian part of the response | |
 | `SLEPC_ops` `fill_mat` | the free end point carried the full radial weight h instead of h/2; free-boundary eigenvalues converged at first order in `n_r_sol` | |
 | `SLEPC_utilities` boundary conditions | `BC_style` 4 overwrote the vacuum block; `BC_style` 3 removed; default back to `BC_style = 1 2` | `BC_style` 2, the variational (Hermitian) free-boundary condition (July) |

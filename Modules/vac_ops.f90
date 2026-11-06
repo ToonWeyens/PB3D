@@ -2017,7 +2017,8 @@ contains
     !! varies on the scale of the minor radius everywhere.
     !!
     !! Every number is printed on a line starting with CHECKVAC so that it can
-    !! be collected from the log. Switched on with the input \c check_vac.
+    !! be collected from the log, in lines short enough for writo, which cuts
+    !! beyond about 100 characters. Switched on with the input \c check_vac.
     !! For the field-line style (check_vac_exact_1): the Cartesian harmonics and
     !! the axis sources below; for the axisymmetric style (check_vac_exact_2):
     !! the potentials of set_pot_2, the ring-source solve, and the assembled
@@ -2071,7 +2072,6 @@ contains
         real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
         real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
         character(len=max_str_ln) :: pot_name                                   ! name of test potential
-        character(len=max_str_ln) :: res_str                                    ! residuals as string
         real(dp) :: c_exp                                                       ! expected offset of the identity
         real(dp) :: dpar, dalpha                                                ! steps of the field-line grid
         real(dp), allocatable :: diag_rs(:), diag_dir(:), diag_fac(:)           ! row-sum, smooth direct and faceted direct diagonal of H
@@ -2125,15 +2125,19 @@ contains
             ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
             CHCKERR('')
             lhs = lhs - rhs
-            res_str = ''
             do id = -2,2
                 res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
                     &maxval(abs(4._dp*pi*phi))
-                res_str = trim(res_str)//' '//trim(r2strt(res_off(id)))
             end do
+            ! (two lines: writo cuts lines beyond about 100 characters)
             call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
-                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
-                &trim(res_str),persistent=rank_o)
+                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0)='//&
+                &trim(r2strt(res_off(-2)))//' '//trim(r2strt(res_off(-1)))//&
+                &' '//trim(r2strt(res_off(0))),persistent=rank_o)
+            call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' res(c=2pi,4pi)='//&
+                &trim(r2strt(res_off(1)))//' '//trim(r2strt(res_off(2))),&
+                &persistent=rank_o)
             c_exp = 0._dp
             if (kd.le.5) c_exp = -4._dp*pi                                      ! interior harmonics
             call write_points_vac(vac,'check_vac_identity_'//trim(pot_name)//'.dat',&
@@ -2160,16 +2164,18 @@ contains
             where (avail) d_diag = abs(diag_rs-diag_dir)/(4._dp*pi)
             d_fac = 0._dp
             where (avail) d_fac = abs(diag_rs-diag_fac)/(4._dp*pi)
-            ! (two lines: writo cuts long ones)
+            ! (four lines: writo cuts lines beyond about 100 characters)
             call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&
                 &' n_points='//trim(i2str(count(avail)))//&
-                &' vac_diag_style='//trim(i2str(vac_diag_style))//&
-                &' max|assembled-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
-                &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail)))),&
+                &' vac_diag_style='//trim(i2str(vac_diag_style)),&
                 &persistent=rank_o)
-            call writo('CHECKVAC diagonal_parts n_bnd='//trim(i2str(n_bnd))//&
-                &' max|assembled-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&
-                &' max|I_sing|/4pi='//&
+            call writo('CHECKVAC diagonal max|assembled-direct|/4pi='//&
+                &trim(r2strt(maxval(d_diag)))//' mean='//&
+                &trim(r2strt(sum(d_diag)/max(1,count(avail)))),&
+                &persistent=rank_o)
+            call writo('CHECKVAC diagonal_parts max|assembled-faceted|/4pi='//&
+                &trim(r2strt(maxval(d_fac))),persistent=rank_o)
+            call writo('CHECKVAC diagonal_parts max|I_sing|/4pi='//&
                 &trim(r2strt(maxval(abs(I_sing)/(4._dp*pi))))//&
                 &' max|omega_v/4pi-1/2|='//&
                 &trim(r2strt(maxval(abs(omega_v/(4._dp*pi)-0.5_dp),&
@@ -2308,7 +2314,6 @@ contains
         real(dp), allocatable :: phi_num(:)                                     ! numerical boundary trace
         real(dp), allocatable :: dH0(:), dG0(:), dH(:), dG(:)                   ! assembled and indirect diagonals
         character(len=max_str_ln) :: pot_name                                   ! name of test potential
-        character(len=max_str_ln) :: res_str                                    ! residuals as string
         
         ! initialize ierr
         ierr = 0
@@ -2343,15 +2348,19 @@ contains
             ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,rhs)
             CHCKERR('')
             lhs = lhs - rhs
-            res_str = ''
             do id = -2,2
                 res_off(id) = maxval(abs(lhs - id*2._dp*pi*phi))/&
                     &maxval(abs(4._dp*pi*phi))
-                res_str = trim(res_str)//' '//trim(r2strt(res_off(id)))
             end do
+            ! (two lines: writo cuts lines beyond about 100 characters)
             call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
-                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0,2pi,4pi)='//&
-                &trim(res_str),persistent=rank_o)
+                &trim(i2str(n_bnd))//' res(c=-4pi,-2pi,0)='//&
+                &trim(r2strt(res_off(-2)))//' '//trim(r2strt(res_off(-1)))//&
+                &' '//trim(r2strt(res_off(0))),persistent=rank_o)
+            call writo('CHECKVAC identity '//trim(pot_name)//' n_bnd='//&
+                &trim(i2str(n_bnd))//' res(c=2pi,4pi)='//&
+                &trim(r2strt(res_off(1)))//' '//trim(r2strt(res_off(2))),&
+                &persistent=rank_o)
             call write_points_vac(vac,'check_vac_identity_'//trim(pot_name)//&
                 &'.dat',abs(lhs-c_free*phi)/maxval(abs(4._dp*pi*phi)))
         end do
@@ -2392,12 +2401,15 @@ contains
         CHCKERR('')
         ierr = diag_indirect_2(vac,dH,dG)
         CHCKERR('')
+        ! (three lines: writo cuts lines beyond about 100 characters)
         call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&
-            &' vac_diag_style='//trim(i2str(vac_diag_style))//&
-            &' max|H_assembled-H_indirect|/4pi='//&
+            &' vac_diag_style='//trim(i2str(vac_diag_style)),&
+            &persistent=rank_o)
+        call writo('CHECKVAC diagonal max|H_assembled-H_indirect|/4pi='//&
             &trim(r2strt(maxval(abs(dH0-dH))/(4._dp*pi)))//' mean='//&
-            &trim(r2strt(sum(abs(dH0-dH))/(4._dp*pi*n_bnd)))//&
-            &' max|G_assembled-G_indirect|/max|G|='//&
+            &trim(r2strt(sum(abs(dH0-dH))/(4._dp*pi*n_bnd))),&
+            &persistent=rank_o)
+        call writo('CHECKVAC diagonal max|G_assembled-G_indirect|/max|G|='//&
             &trim(r2strt(maxval(abs(dG0-dG))/maxval(abs(dG0)))),&
             &persistent=rank_o)
         call write_points_vac(vac,'check_vac_diag_diff.dat',&

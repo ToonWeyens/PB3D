@@ -4,7 +4,8 @@ code before this branch): the CHECKVAC lines of np*/run.log (identity residuals 
 free term, exact-solve errors, the condition estimate), the free-boundary eigenvalue, and the
 per-point files check_vac_*.dat (max, mean, median, and the position of the largest value: i_par,
 i_line, R and Z in units of R_0). The diagonal comparison is taken from the per-point files, not
-from the CHECKVAC diagonal lines, which writo cuts at 100 characters.
+from the CHECKVAC diagonal lines, which writo cut at 100 characters until 6 November 2026 (the
+lines are split since; the identity residuals come on two lines per potential).
 Usage: diag_table.py [--json out.json] <run-dir>..."""
 import sys, re, os, glob, json
 import numpy as np
@@ -47,9 +48,14 @@ for p in args:
             continue
         info = dict(run=name, series=series, n_alpha=na, n_par=npar, np=os.path.basename(rdir), ident={}, solve={})
         for line in open(log, errors='replace'):
-            m = re.search(r'CHECKVAC identity (\S+) n_bnd=(\d+) res\(c=[^)]*\)=\s*(.*)', line)
-            if m:
-                info['ident'][m.group(1)] = [num(x) for x in m.group(3).split()]; info['n_bnd'] = int(m.group(2))
+            m = re.search(r'CHECKVAC identity (\S+) n_bnd=(\d+) res\(c=([^)]*)\)=\s*(.*)', line)
+            if m:  # two lines per potential since 6 November 2026: c = -4pi, -2pi, 0 and c = 2pi, 4pi
+                vals = [num(x) for x in m.group(4).split()]
+                if m.group(3).startswith('-4pi'):
+                    info['ident'][m.group(1)] = vals
+                else:
+                    info['ident'].setdefault(m.group(1), []).extend(vals)
+                info['n_bnd'] = int(m.group(2))
             m = re.search(r'CHECKVAC solve (\S+) n_bnd=\d+ min_dist=\S+ err_max=(\S+) err_2=(\S+)', line)
             if m:
                 info['solve'][m.group(1)] = [float(m.group(2)), float(m.group(3))]

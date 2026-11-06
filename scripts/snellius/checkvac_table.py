@@ -13,9 +13,11 @@ for p in sys.argv[1:]:
     name = os.path.basename(p.rstrip('/'))
     ident, solve, nb, cond = {}, {}, '', ''
     for line in open(f):
-        m = re.search(r'CHECKVAC identity (\S+) n_bnd=(\d+) res\(c=[^)]*\)=\s*(.*)', line)
-        if m:
-            vals = m.group(3).split(); ident[m.group(1)] = vals; nb = m.group(2)
+        m = re.search(r'CHECKVAC identity (\S+) n_bnd=(\d+) res\(c=([^)]*)\)=\s*(.*)', line)
+        if m:  # two lines per potential since 6 November 2026: c = -4pi, -2pi, 0 and c = 2pi, 4pi
+            vals = m.group(4).split(); nb = m.group(2)
+            if m.group(3).startswith('-4pi'): ident[m.group(1)] = vals
+            else: ident.setdefault(m.group(1), []).extend(vals)
         m = re.search(r'CHECKVAC solve (\S+) n_bnd=\d+ min_dist=\S+ err_max=(\S+)', line)
         if m: solve[m.group(1)] = m.group(2)
         m = re.search(r'CHECKVAC condition .*cond1=\s*(\S+)', line)
