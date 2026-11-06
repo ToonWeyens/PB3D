@@ -3101,7 +3101,8 @@ logical, allocatable :: in_ext(:)                                       ! points
 
         if (.not.use_pol_flux_F) then
             ierr = 1
-            CHCKERR('The vacuum potential plot needs the poloidal flux')
+            err_msg = 'The vacuum potential plot needs the poloidal flux'
+            CHCKERR(err_msg)
         end if
 
         ! field-line style: the grid variables that vac_steps reads, here and
