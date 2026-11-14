@@ -2,17 +2,23 @@
 
 A guide for reviewing by hand every Fortran change between tag 2.47 and
 `dev/vacuum-fixes` at 9e9aba5 (6 November 2026), built on 14 November 2026.
-Open `index.html` in a browser; the page has an index, a status and a notes
-box per section, and the full diffs.
+Open `index.html` in a browser; the page has an index that marks the section
+in view, a status and a notes box per section, and the full diffs. Every diff
+is 2.47 against 9e9aba5: the non-vacuum modules file by file (stage 4), the
+vacuum modules routine by routine (stage 6). Each block names the commits that
+changed its lines; each commit has a card in the section that explains it,
+with links back to its blocks. Line numbers link to the line on GitHub (left
+at 2.47, right at 9e9aba5).
 
 - `index.html`: the guide (also published privately as a claude.ai artifact).
   Generated; do not edit by hand.
 - `report.src.html`: the prose, with markers that `build_report.py` fills
-  from git (per-commit diffs, per-routine vacuum diffs, demos, test sources,
+  from git (commit cards, per-file and per-routine diffs, demos, test sources,
   the eigenvalue table of appendix A, ledger).
 - `build_report.py`: `python3 review/build_report.py` rebuilds `index.html`
   and exits with status 1 if any Fortran change between 2.47 and 9e9aba5 is
-  missing from the page (`--no-run` reuses `demo_output/`).
+  missing from the page (`--no-run` reuses `demo_output/`). It finds the
+  commits behind each block with `git log -L`.
 - `demos/`: one script per area; each prints its numbers and writes one
   figure to `figures/`. Run with `~/Code/PB3D/.venv/bin/python` or after
   `uv sync`. `demo_output/` holds their captured output.
