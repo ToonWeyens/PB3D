@@ -4,10 +4,10 @@ A guide for reviewing by hand every Fortran change between tag 2.47 and
 `dev/vacuum-fixes` at 9e9aba5 (6 November 2026), built on 14 November 2026.
 Open `index.html` in a browser; the page has an index that marks the section
 in view, a status and a notes box per section, and the full diffs. Every diff
-is 2.47 against 9e9aba5: the non-vacuum modules file by file (stage 4), the
-vacuum modules routine by routine (stage 6). Each block names the commits that
-changed its lines; each commit has a card in the section that explains it,
-with links back to its blocks. Line numbers link to the line on GitHub (left
+is 2.47 against 9e9aba5 and sits in the section that explains it: a section
+lists its commits as cards, then shows each file they changed once, with the
+blocks they touched; the vacuum modules are shown routine by routine
+(stage 5). Each block names the commits that changed its lines. Line numbers link to the line on GitHub (left
 at 2.47, right at 9e9aba5).
 
 - `index.html`: the guide (also published privately as a claude.ai artifact).

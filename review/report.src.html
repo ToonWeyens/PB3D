@@ -153,6 +153,9 @@ body.hide-mech .hunk.mech.reveal, body.hide-mech details.fdiff.all-mech.reveal {
 a.cchip, a.bchip { text-decoration: none; border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; line-height: 18px; font-size: 11.5px; color: var(--fg); background: var(--panel); white-space: nowrap }
 a.cchip code { background: none; padding: 0; color: var(--accent); font-size: 11px }
 a.cchip:hover, a.bchip:hover { border-color: var(--accent) }
+a.cchip.here { border-color: var(--accent); background: var(--accent-soft) }
+a.also { font-size: 11.5px; white-space: nowrap }
+h4.codeh { margin-top: 16px }
 a.bchip.read { border-color: var(--read); color: var(--read); background: var(--read-bg) } a.bchip.auto { color: var(--auto) }
 .commit { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; background: var(--panel) }
 .commit .ch a.sha { text-decoration: none } .commit .ch a.sha code { color: var(--accent) }
@@ -235,7 +238,7 @@ git stash pop</pre>
 <h3>How to use this page</h3>
 <ul>
   <li>Each section has a status (to do, in progress, done, question) and a notes box. They are saved with the page, so they survive reloads and other devices, and Claude can read your notes back in a later session. When the HTML is opened as a local file they are kept in that browser only.</li>
-  <li>Every code change is in the page, and always as one diff from 2.47 to 9e9aba5: the non-vacuum modules file by file in <a href="#nonvac">stage 4</a>, the vacuum modules routine by routine in <a href="#stage5">stage 6</a>. The intermediate commits are not shown as diffs. Under each block of changed lines (a hunk) are the commits that changed those lines; a click on one opens its card in the section that explains it, with its message and links to all its blocks. Each commit's own diff stays one click away on GitHub.</li>
+  <li>Every code change is in the page, in the section that explains it, and always as one diff from 2.47 to 9e9aba5: each section lists its commits as cards (subject, message, what the commit's own diff holds), then shows each file those commits changed once, with only the blocks of changed lines (hunks) they touched. The vacuum modules are shown routine by routine in <a href="#stage5">stage 5</a>. The intermediate states are not shown; each commit's own diff is one click away on GitHub. Under each block are the commits that changed its lines; the ten blocks that commits of two sections changed appear in both.</li>
   <li>Blocks of the non-vacuum modules carry a badge from a mechanical classifier: <span class="badge auto">use-list</span>, <span class="badge auto">ldebug-guard</span>, <span class="badge auto">moved</span> and the like mean the block only moves or renames lines and was checked by script; <span class="badge read">read</span> means it changes what the code does.</li>
   <li>Line numbers are those of 2.47 (left) and of 9e9aba5 (right). A click on a number opens that line on GitHub at that version. In VS Code, Cmd+P and <code>vac_ops.f90:1537</code> opens the line in your checkout.</li>
   <li>Two switches in the index: "hide comment-only diff lines" (a quarter of the changed lines in <code>vac_ops</code> are comments) and "hide mechanical hunks", which leaves only what the classifier could not decide. Each section with diffs has "open what to read", which opens only the files with something to read. The index marks the section you are reading.</li>
@@ -250,19 +253,18 @@ git stash pop</pre>
 <thead><tr><th>stage</th><th>what</th><th class="num">time</th><th>minimum path</th></tr></thead>
 <tbody>
 <tr><td>0</td><td><a href="#S0">Set up</a>: pull, build, run the tests on your machine</td><td class="num">45 min</td><td>all</td></tr>
-<tr><td>1</td><td><a href="#M1">Mechanical changes</a>: port, warnings, lint, module splits, version. Tools did the checking; you confirm.</td><td class="num">40 min</td><td>section texts only</td></tr>
-<tr><td>2</td><td><a href="#fixes">Fixes outside the vacuum</a>: six bugs, each with a demo that shows why</td><td class="num">1.75 h</td><td>the summary table, F1, F5, F6</td></tr>
-<tr><td>3</td><td><a href="#R1">Restructure outside the vacuum</a>: the Fourier basis of the VMEC path</td><td class="num">30 min</td><td>none</td></tr>
-<tr><td>4</td><td><a href="#nonvac">The non-vacuum code, file by file</a>: one diff per module from 2.47 to 9e9aba5, the blocks to read only</td><td class="num">1.75 h</td><td>the blocks of F1, F5, F6</td></tr>
-<tr><td>5</td><td><a href="#V0">Vacuum design review</a>: data flow, the sign convention, the routine map, the questions to decide <em>before</em> verifying lines</td><td class="num">2 h</td><td>all</td></tr>
-<tr><td>6</td><td><a href="#V1">Vacuum verification</a>, routine by routine in the order the data flows</td><td class="num">5 h</td><td>V3, V4, V6, V8</td></tr>
-<tr><td>7</td><td><a href="#I">Inputs, defaults and output format</a></td><td class="num">30 min</td><td>all</td></tr>
-<tr><td>8</td><td><a href="#T">Tests</a>: what each one checks and which fix it guards; the gaps</td><td class="num">1.5 h</td><td>the guard table</td></tr>
-<tr><td>9</td><td><a href="#Q">Decisions</a>: the design questions in one list, with my recommendation for each</td><td class="num">1 h</td><td>all</td></tr>
-<tr><td>10</td><td><a href="#E">Afterwards: a cheaper vacuum</a>, a reading guide to the wave report</td><td class="num">1 to 2 h</td><td>later</td></tr>
+<tr><td>1</td><td><a href="#M1">Mechanical changes</a>: port, warnings, lint, module splits, version. Tools did the checking; you confirm.</td><td class="num">1 h</td><td>section texts only</td></tr>
+<tr><td>2</td><td><a href="#fixes">Fixes outside the vacuum</a>: six bugs, each with a demo that shows why</td><td class="num">2.5 h</td><td>the summary table, F1, F5, F6</td></tr>
+<tr><td>3</td><td><a href="#R1">Restructure outside the vacuum</a>: the Fourier basis of the VMEC path</td><td class="num">45 min</td><td>none</td></tr>
+<tr><td>4</td><td><a href="#V0">Vacuum design review</a>: data flow, the sign convention, the routine map, the questions to decide <em>before</em> verifying lines</td><td class="num">2 h</td><td>all</td></tr>
+<tr><td>5</td><td><a href="#V1">Vacuum verification</a>, routine by routine in the order the data flows</td><td class="num">5 h</td><td>V3, V4, V6, V8</td></tr>
+<tr><td>6</td><td><a href="#I">Inputs, defaults and output format</a></td><td class="num">30 min</td><td>all</td></tr>
+<tr><td>7</td><td><a href="#T">Tests</a>: what each one checks and which fix it guards; the gaps</td><td class="num">1.5 h</td><td>the guard table</td></tr>
+<tr><td>8</td><td><a href="#Q">Decisions</a>: the design questions in one list, with my recommendation for each</td><td class="num">1 h</td><td>all</td></tr>
+<tr><td>9</td><td><a href="#E">Afterwards: a cheaper vacuum</a>, a reading guide to the wave report</td><td class="num">1 to 2 h</td><td>later</td></tr>
 <tr><td>A</td><td><a href="#A">Eigenvalue at every commit</a> (optional): a lookup table, not a reading task</td><td class="num">&ndash;</td><td>none</td></tr>
 </tbody></table></div>
-<p class="note">About 15 hours in full, about 5 on the minimum path. With one hour only: <a href="#V0">V0</a> from "The convention" to the end, then <a href="#Q">Q</a>. Why this order: the mechanical changes go first because tools take about half of the non-vacuum blocks off your reading list. The small fixes come next because each one brings back a part of the code (equilibrium, eigenvalue problem, MPI layout) that the vacuum review needs. The vacuum design review comes before line-level verification: if you decide to change the convention or the structure, verifying the lines first would be wasted. Stages 1 to 3 explain the non-vacuum changes and stage 4 shows their code, so that you read each module once, from top to bottom, with the explanations already in mind.</p>
+<p class="note">About 15 hours in full, about 5 on the minimum path. With one hour only: <a href="#V0">V0</a> from "The convention" to the end, then <a href="#Q">Q</a>. Why this order: the mechanical changes go first because tools take about half of the non-vacuum blocks off your reading list. The small fixes come next because each one brings back a part of the code (equilibrium, eigenvalue problem, MPI layout) that the vacuum review needs. The vacuum design review comes before line-level verification: if you decide to change the convention or the structure, verifying the lines first would be wasted.</p>
 
 <!-- ================================================================== STAGE 0 -->
 <div class="stage" id="stage0"><span class="eyebrow">Stage 0</span><h2 class="st">Set up</h2></div>
@@ -287,11 +289,11 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <!-- ================================================================== STAGE 1 -->
 <div class="stage" id="stage1"><span class="eyebrow">Stage 1</span><h2 class="st">Mechanical changes</h2>
-<p>These commits were meant to change no result. Tools checked them; your job is to confirm the few blocks the classifier could not decide. Each commit card below says what its own diff holds and links to its blocks in the file diffs of <a href="#nonvac">stage 4</a>. (If you want numbers as well: in the optional <a href="#A">appendix A</a>, none of these commits after the port changes any of nine eigenvalues, not even in the last digit. The port itself cannot be compared, because 2.47 does not build against PETSc 3.25.)</p></div>
+<p>These commits were meant to change no result. Tools checked them; your job is to confirm the few blocks the classifier could not decide. Each section lists its commits as cards, then the code they changed, as 2.47 against 9e9aba5. (If you want numbers as well: in the optional <a href="#A">appendix A</a>, none of these commits after the port changes any of nine eigenvalues, not even in the last digit. The port itself cannot be compared, because 2.47 does not build against PETSc 3.25.)</p></div>
 
 <section class="area" id="M1" data-title="PETSc/SLEPc 3.9 to 3.25 port">
 <div class="ahead"><span class="aid">M1</span><h2>PETSc/SLEPc 3.9 to 3.25 port</h2></div>
-<div class="meta"><span><b>files</b> SLEPC_ops, SLEPC_utilities</span><span><b>commits</b> 775219a, d4812f7, 1862df0</span><span><b>time</b> 10 min</span><span class="tier read">read</span></div>
+<div class="meta"><span><b>files</b> SLEPC_ops, SLEPC_utilities</span><span><b>commits</b> 775219a, d4812f7, 1862df0</span><span><b>time</b> 15 min</span><span class="tier read">read</span></div>
 <p>2.47 used the PETSc 3.9 Fortran interface and no longer builds against a current PETSc. The port changes calls, not what is computed: <code>PetscBool</code> optional arguments become <code>logical</code>, <code>InsertMode</code> gets its own type, <code>MatSetValuesBlocked</code> takes index arrays and a flattened block, <code>PetscViewerSetFormat</code> becomes push/pop, <code>VecGetArrayF90</code> becomes <code>VecGetArray</code>, and <code>MatInfo</code> and <code>PETSC_NULL_SCALAR_ARRAY</code> are switched on <code>PETSC_VERSION_GE(3,22,0)</code>.</p>
 <p>Two hunks are more than renames:</p>
 <ul>
@@ -299,7 +301,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <li><b><code>MatCopy</code> flag.</b> 2.47 passed <code>MAT_SHARE_NONZERO_PATTERN</code> (a <code>MatDuplicateOption</code>) where a <code>MatStructure</code> is expected; the port passes <code>SAME_NONZERO_PATTERN</code>. In <code>petscmat.h</code> of PETSc 3.25.3 both names are the third entry of their enumeration (value 2), so this corrects the type, not the behaviour.</li>
 </ul>
 <div class="how"><b>How to check it</b><ol>
-<li>Read the blocks of the three commits (links in the cards below); in their own diffs the classifier marks three hunks as mechanical (two renames of <code>PetscBool</code>, one debug guard); the rest are API changes to read once.</li>
+<li>Read the code below the three cards; in their own diffs the classifier marks three hunks as mechanical (two renames of <code>PetscBool</code>, one debug guard); the rest are API changes to read once.</li>
 <li>The build at the tip and the regression anchors (<a href="#S0">S0</a>) show that the ported calls work; 2.47 cannot be built with PETSc 3.25, so there is no before/after run of the port itself.</li>
 </ol></div>
 <!--@demo implicit_save-->
@@ -310,14 +312,14 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="M2" data-title="Compiler-warning cleanup">
 <div class="ahead"><span class="aid">M2</span><h2>Compiler-warning cleanup</h2></div>
-<div class="meta"><span><b>files</b> 16 modules</span><span><b>commit</b> 6ce5029</span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
+<div class="meta"><span><b>files</b> 16 modules</span><span><b>commit</b> 6ce5029</span><span><b>time</b> 15 min</span><span class="tier skim">skim</span></div>
 <p>The warning count of a full build went from 321 to 124 (commit message). Most hunks move a declaration that only debug builds use under <code>#if ldebug</code>, or trim a <code>use</code> list. The classifier marks those. The hunks left to read:</p>
 <ul>
 <li><code>MPI_utilities</code>, the lock logic: <code>if (lock%blocking .or. wl_empty(...))</code> calls an impure function inside <code>.or.</code>. Fortran does not say whether the second operand is evaluated, so gfortran warns. The call now goes first into <code>no_NB_running</code>. Same result if the compiler evaluated both operands before; defined behaviour now.</li>
 <li>Declarations split so that only the debug-only counters go under the guard (<code>eq_ops</code>, <code>sol_ops</code>), an unused <code>rout_name</code> removed (<code>num_utilities</code>), an error message shortened (<code>input_ops</code>).</li>
 </ul>
-<p class="note">The vacuum-module part of this commit is inside the vacuum routine diffs of stage 6.</p>
-<div class="how"><b>How to check it</b>: the card below gives the verdict for each hunk of the commit's own diff; read its blocks marked <span class="badge read">read</span> in stage 4. A block can be marked read because another commit changed lines in it too: the commits under the block say which.</div>
+<p class="note">The vacuum-module part of this commit is inside the vacuum routine diffs of stage 5.</p>
+<div class="how"><b>How to check it</b>: the card below gives the verdict for each hunk of the commit's own diff; read its blocks marked <span class="badge read">read</span> below the card. A block can be marked read because another commit changed lines in it too: the commits under the block say which.</div>
 <!--@commit 6ce5029 NONVAC-->
 </section>
 
@@ -333,7 +335,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <div class="meta"><span><b>files</b> num_utilities &rarr; spline_utilities, HDF5_vars &rarr; var_1D_vars, and the <code>use</code> lines of 14 modules</span><span><b>commits</b> 8ac37d7, 17b712c</span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
 <p>The unit-test layer compiles parts of PB3D without PSPLINE and HDF5. For that, the PSPLINE wrapper <code>spline</code> moved out of <code>num_utilities</code> into a new module <code>spline_utilities</code>, and <code>var_1D_type</code> with <code>dealloc_var_1D</code> moved out of <code>HDF5_vars</code> into <code>var_1D_vars</code> (which <code>HDF5_vars</code> re-exports). Every caller's <code>use num_utilities, only: spline</code> became <code>use spline_utilities, only: spline</code>.</p>
 <p>The checker below compares the removed lines with the new module line by line. Result: 339 of the 340 lines removed from <code>num_utilities</code> are in <code>spline_utilities</code> unchanged (the 340th is the <code>public</code> list, which lost <code>spline</code>), and 52 of 54 for <code>var_1D_vars</code> (the other two: the <code>public</code> list and a doc line that now says "1-D"). What is new in each module is boilerplate (header, <code>module</code>, <code>use</code>, <code>private</code>, <code>public</code>).</p>
-<div class="how"><b>How to check it</b>: read the checker's output below; the 37 <span class="badge auto">use-list</span> hunks of 8ac37d7 are the callers' <code>use</code> lines; read the remaining blocks (the <code>public</code> lists and the re-export in <code>HDF5_vars</code>), linked from the cards.</div>
+<div class="how"><b>How to check it</b>: read the checker's output below; the 37 <span class="badge auto">use-list</span> hunks of 8ac37d7 are the callers' <code>use</code> lines; read the remaining blocks below the cards (the <code>public</code> lists and the re-export in <code>HDF5_vars</code>).</div>
 <!--@demo pure_move_check-->
 <!--@commit 8ac37d7 NONVAC-->
 <!--@commit 17b712c NONVAC-->
@@ -364,11 +366,11 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F1" data-title="HELENA shear: the end condition of an odd spline">
 <div class="ahead"><span class="aid">F1</span><h2>HELENA shear: the end condition of an odd spline</h2></div>
-<div class="meta"><span><b>file</b> eq_ops (<code>calc_derived_q</code>)</span><span><b>commit</b> 28f8dab</span><span><b>time</b> 15 min</span><span class="tier study">study</span></div>
+<div class="meta"><span><b>file</b> eq_ops (<code>calc_derived_q</code>)</span><span><b>commit</b> 28f8dab</span><span><b>time</b> 20 min</span><span class="tier study">study</span></div>
 <p>For a HELENA equilibrium PB3D computes the magnetic shear as \(S = -\frac{1}{\mathcal{J}}\,\partial_\chi\!\left(h^{\alpha\psi}/h^{\psi\psi}\right)\) by fitting a cubic spline in χ and differentiating it (<code>calc_derived_S_from_deriv_HEL</code>). An up-down symmetric equilibrium (<code>ias = 0</code>) is stored on χ ∈ [0, π], so the spline needs a condition at both ends. The ratio \(h^{\alpha\psi}/h^{\psi\psi}\) is odd in χ: its slope is not zero at χ = 0 and π, its second derivative is. 2.47 passed <code>bcs(:,1)</code>, the zero-slope condition of even quantities. The fix passes <code>bcs(:,2)</code>, zero second derivative. One line; the other three hunks correct the comment "zero first derivative" next to <code>bcs(:,2) = [2,2]</code> in three places.</p>
 <p><b>Effect.</b> The zero-slope condition forced S to zero at both midplanes, χ = 0 and π. The cbm18a n = 10 fixed-boundary eigenvalue moved from −4.074e-2 to −4.357e-2, 6.5 % more unstable, and POST's energy balance closes to 0.08 %. The faulty argument dates from 18 June 2018 (b8c07f7, v2.36) and is in the code of the tag <code>Weyens2018expressions</code>. The demo shows that the error at the ends does not shrink with the number of poloidal points.</p>
 <div class="how"><b>How to check it</b><ol>
-<li>Read the change: <code>bcs(:,1)</code> &rarr; <code>bcs(:,2)</code> in the call for <code>eq_2%S</code> (block linked from the card below).</li>
+<li>Read the change: <code>bcs(:,1)</code> &rarr; <code>bcs(:,2)</code> in the call for <code>eq_2%S</code> (below the card).</li>
 <li>Look at the demo: with the even condition the derivative error stays 0.86 at the ends for 33 to 257 points; with the odd one it falls as 1/N⁴.</li>
 <li>Independent evidence: the VMEC path does not use this spline, and the HELENA and VMEC versions of the circular ε = 0.33 case agree to 1e-4 in their fixed-boundary eigenvalue (test <code>regression_circ_eps033_vmec_twin</code>, <code>TWIN_RTOL</code>).</li>
 <li>Guard: <code>regression_cbm18a_shear_HEL</code> compares the shear S in the output file with the direct formula from the stored metric derivatives: deviation 0.79 with the even condition, 1.5e-5 with the odd one.</li>
@@ -379,7 +381,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F2" data-title="setup_modes: table slot from the mode number">
 <div class="ahead"><span class="aid">F2</span><h2>setup_modes: table slot from the mode number</h2></div>
-<div class="meta"><span><b>file</b> X_ops (<code>setup_modes</code>)</span><span><b>commit</b> e4e3fdd</span><span><b>time</b> 15 min</span><span class="tier read">read</span></div>
+<div class="meta"><span><b>file</b> X_ops (<code>setup_modes</code>)</span><span><b>commit</b> e4e3fdd</span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
 <p>With the fast mode window (<code>X_style</code> 2) the window of <code>n_mod_X</code> poloidal modes follows nq across the radius, and modes end and start where the window moves. PB3D keeps two tables that must agree: <code>nm_X</code> (mode number per radial point and slot) and <code>ind_tot</code> (per mode: number, radial range, slot). 2.47 computed the slot of a new mode from the slot of the mode created last, which agrees with <code>nm_X</code> only while the window moves up. When it moves down (nq &lt; 0), reverses (reversed shear) or jitters (a flat q), two active modes shared a slot and their couplings were mixed without a message. That formula dates from 27 March 2018 (63ce0f4, v2.14). The fix takes the slot from the mode number with the formula <code>nm_X</code> uses, <code>modulo(m - nm_X(1,1), n_mod_X) + 1</code>, and adds a check that every mode finds its own number in its slot at every point of its range (a new runtime error if not).</p>
 <p>The script <code>tests/reference/setup_modes_sim.py</code> copies the index formulas of 2.47, of an unmerged 2020 rewrite (<code>afc9d17</code> on <code>origin/issue_vac_not_used_VMEC</code>), of a corrected version of that rewrite, and of the fix, and counts wrong (point, mode) entries for eight window histories. It runs in ctest as <code>unit_setup_modes_sim</code>.</p>
 <!--@demo setup_modes_sim-->
@@ -394,7 +396,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F3" data-title="MPI: every point from its owner">
 <div class="ahead"><span class="aid">F3</span><h2>MPI: every point from its owner</h2></div>
-<div class="meta"><span><b>files</b> MPI_utilities (<code>redistribute_var</code>), grid_ops</span><span><b>commit</b> 798fe50</span><span><b>time</b> 20 min</span><span class="tier study">study</span></div>
+<div class="meta"><span><b>files</b> MPI_utilities (<code>redistribute_var</code>), grid_ops</span><span><b>commit</b> 798fe50</span><span><b>time</b> 25 min</span><span class="tier study">study</span></div>
 <p>With 2 or 4 MPI processes every eigenvalue differed from the 1-process one by about 2e-5 relative. Cause: every process hands its whole local range to <code>redistribute_var</code>, ghost points included, so the source ranges overlap. 2.47 filled each destination point from the sources in rank order, which in an overlap takes the lower rank's ghost region, where derivatives are one-sided and splines end. A and B differed from the 1-process matrices in the 12 to 16 rows after each interface, by 6e-6 and 2e-5 of their largest entry. The fix splits each overlap in the middle (the convention of <code>trim_grid</code>) and takes every point from its owner. On Snellius the cbm18a fixed deck then gives the same eigenvalue with 1, 2, 3 and 4 processes to 1.5e-8, the circular deck to 2e-12. The rank-order loop dates from 22 March 2017 (2bc8bbc, v1.61).</p>
 <p>A second, smaller part: <code>grid_ops</code> widens the equilibrium range by 20 points (<code>ghost_interp</code>), because <code>interp_V</code> fits a cubic spline over exactly the local range and a spline's end effect reaches inward, falling by about 2 − √3 ≈ 0.27 per interval. Its contribution to the eigenvalue was 1e-6. The right panel of the demo shows the decay.</p>
 <div class="how"><b>How to check it</b><ol>
@@ -408,7 +410,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F4" data-title="VMEC: the Nyquist mode list and B_0">
 <div class="ahead"><span class="aid">F4</span><h2>VMEC: the Nyquist mode list and B<sub>0</sub></h2></div>
-<div class="meta"><span><b>file</b> VMEC_ops (<code>read_VMEC</code>)</span><span><b>commit</b> 0d49f19</span><span><b>time</b> 15 min</span><span class="tier read">read</span></div>
+<div class="meta"><span><b>file</b> VMEC_ops (<code>read_VMEC</code>)</span><span><b>commit</b> 0d49f19</span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
 <p><b>Mode list.</b> A VMEC wout file stores R, Z and λ on the main mode list (<code>xm</code>, <code>xn</code>, <code>mnmax</code> modes) and the Jacobian, |B| and the covariant B components on the Nyquist list (<code>xm_nyq</code>, <code>xn_nyq</code>, <code>mnmax_nyq</code> ≥ <code>mnmax</code>), each ordered by its own limits. 2.47 took <code>gmnc(1:mnmax,:)</code>, <code>bmnc(1:mnmax,:)</code> and <code>bsub*(1:mnmax,:)</code> and labelled them with the main list. That is right only when <code>ntor</code> = 0 or <code>mnmax_nyq</code> = <code>mnmax</code> (the STELLOPT W7-X file). For a VMEC++ file of the rippled twin (<code>mpol</code> 12, <code>ntor</code> 6) 143 of 150 labels were wrong, and the fixed-boundary eigenvalue was 37 % off. Commit 0d49f19 matched the modes by (m, n); the Fourier-basis commit 3b99109 (<a href="#R1">R1</a>) then kept the whole Nyquist list. The line as at 2.47 dates from July 2017 (ca8a070, v1.86).</p>
 <p><b>B<sub>0</sub>.</b> PB3D normalises with |B| on the axis. 2.47 summed all <code>bmnc</code> modes, which is |B| at θ = ζ = 0 and depends on where the toroidal origin lies; on a rippled axis it varies with the ripple amplitude δ, so the normalised eigenvalues varied linearly in δ while the physics is even in δ. Now B<sub>0</sub> is the (0, 0) Nyquist mode, the toroidal average. Even on the axisymmetric twin the old B<sub>0</sub> was 0.8 % low: the HELENA and VMEC fixed-boundary eigenvalues of the circular twin were 1.6 % apart and now agree to 2e-6. On the rippled twins the eigenvalues now change as δ² (ratios 4.0 and 3.9 fixed, 4.1 and 4.9 free, for doubling δ); W7-X eigenvalues rescale by 1.064. The sum dates from April 2017 (df0f239, v1.67).</p>
 <div class="how"><b>How to check it</b><ol>
@@ -422,7 +424,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F5" data-title="Free edge: the trapezoidal end weight">
 <div class="ahead"><span class="aid">F5</span><h2>Free edge: the trapezoidal end weight</h2></div>
-<div class="meta"><span><b>file</b> SLEPC_ops (<code>fill_mat</code>)</span><span><b>commit</b> 4915d4b</span><span><b>time</b> 20 min</span><span class="tier study">study</span></div>
+<div class="meta"><span><b>file</b> SLEPC_ops (<code>fill_mat</code>)</span><span><b>commit</b> 4915d4b</span><span><b>time</b> 25 min</span><span class="tier study">study</span></div>
 <p><code>fill_mat</code> adds the energy integrand of each radial point times the step size. With a fixed boundary the last row is replaced by the boundary condition, so the weight of the last point never enters. With a free boundary (<code>BC_style(2)</code> = 2 or 4) the last point stays in the system and the trapezoidal rule gives it half the weight. 2.47 gave it the full weight, so the free-boundary eigenvalues converged like 1/N in <code>n_r_sol</code> (2.3 % off at the 200 points of the regression decks on the HELENA circular ε = 0.33 kink: −0.44383 before, −0.43380 after, comment of the twin regression test) while fixed-boundary ones converged like 1/N². The fix multiplies the blocks of the last point by <code>w_q</code> = 1/2 for those two styles.</p>
 <p>The full end weight dates from November 2017 (5108fb5, v2.01), but it only affected free-boundary runs with style 4, since style 2 never ran before July 2026. The demo is a model, not PB3D's assembly: the 1-D problem −u″ = λu with a surface term κu(1)² at a free end. With the full end weight its eigenvalue error halves per doubling of N; with half the weight it falls by 4; with a fixed end both weights give the same result.</p>
 <div class="how"><b>How to check it</b><ol>
@@ -436,7 +438,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="F6" data-title="Boundary-condition styles 2, 3 and 4">
 <div class="ahead"><span class="aid">F6</span><h2>Boundary-condition styles 2, 3 and 4</h2></div>
-<div class="meta"><span><b>files</b> SLEPC_ops (<code>set_BC</code>), input_ops</span><span><b>commits</b> 41b5274, 1d74b8f, 83c02df</span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
+<div class="meta"><span><b>files</b> SLEPC_ops (<code>set_BC</code>), input_ops</span><span><b>commits</b> 41b5274, 1d74b8f, 83c02df</span><span><b>time</b> 25 min</span><span class="tier read">read</span></div>
 <p>At 2.47 the free-boundary styles 2 and 3 stopped with "Vacuum has not been implemented yet!", and style 4 did run but lost the vacuum. Three commits:</p>
 <ul>
 <li><b>Style 3 removed</b> (41b5274). It extended the grid by <code>ndps</code> points and was never more than a stub.</li>
@@ -460,13 +462,13 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="R1" data-title="The Fourier basis of the VMEC path">
 <div class="ahead"><span class="aid">R1</span><h2>The Fourier basis of the VMEC path</h2></div>
-<div class="meta"><span><b>files</b> VMEC_utilities, VMEC_ops, VMEC_vars, eq_ops, grid_utilities, grid_vars, sol_ops, PB3D_ops, input_ops</span><span><b>commits</b> 3b99109, 329b7a4, 1a53f50</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<div class="meta"><span><b>files</b> VMEC_utilities, VMEC_ops, VMEC_vars, eq_ops, grid_utilities, grid_vars, sol_ops, PB3D_ops, input_ops</span><span><b>commits</b> 3b99109, 329b7a4, 1a53f50</span><span><b>time</b> 45 min</span><span class="tier read">read</span></div>
 <p><code>calc_trigon_factors</code> stored, at every grid point, cos(mθ − nζ) and sin(mθ − nζ) for every mode of the main list, so the Nyquist modes beyond it could not be evaluated (<a href="#F4">F4</a>). It now stores the one-angle basis: cos and sin of mθ for m = 0 … <code>mpol_tf</code>−1 and of n N<sub>fp</sub> ζ for n = −<code>ntor_tf</code> … <code>ntor_tf</code>, with the grid points first in memory. <code>fourier2real</code> forms the products per mode for any mode list (<code>mn</code> argument, default the main list), so the Jacobian, |B| and B<sub>i</sub> are evaluated on the full Nyquist list. The derivative factors are those of 2.47. The angle version <code>fourier2real_2</code> now builds the basis for its angles and calls the table version (1a53f50, 90 lines fewer).</p>
 <p>Results (commit messages): W7-X identical to all digits (its two mode lists coincide); the circular twin to 4.5e-13 (fixed) and 1.4e-11 (free, 64 lines); the rippled twins (<code>ntor</code> 6) to 1.2e-12, 4.5e-9 and 1.5e-6 for δ = 0.01, 0.02 and 0.04, the last because the Nyquist modes beyond the main list are now kept. Appendix A agrees: W7-X bit for bit, the circular twin by at most 4.5e-13. The equilibrium phase of a 150-mode, 64-line run takes half the time and the W7-X decks 22 % less memory; the consolidation changed eigenvalues by at most 6e-13.</p>
 <p>Two consequences to check in the diffs: the index order of <code>trigon_factors</code> changed from (mode, θ, ζ, r, cos/sin) to (θ, ζ, r, basis, cos/sin), so every slice and every allocation that copies it changed too (<code>trim_grid</code>, <code>sol_ops</code>, <code>test_B_F</code>); and the output file gained <code>mn_V_nyq</code> and three entries in <code>misc_in_V</code>, so POST refuses output from before this commit ("rerun PB3D").</p>
 <div class="how"><b>How to check it</b><ol>
 <li>The demo copies the index arithmetic of the new <code>fourier2real_1</code> line by line (basis indices, derivative factors, the cos/sin swap for an odd number of derivatives, the skip of zero coefficient sets) and compares it with direct evaluation for the W7-X mode extent, all derivative orders up to 2 in each angle and all <code>sym</code> flags: agreement to 3e-14.</li>
-<li>Read <code>calc_trigon_factors</code> and <code>fourier2real_1</code> in the diff of <a href="#f-VMEC_utilities"><code>VMEC_utilities</code></a> (<a href="#N2">N2</a>), then the index-order blocks linked from the cards below.</li>
+<li>Read <code>calc_trigon_factors</code> and <code>fourier2real_1</code> in the diff of <code>VMEC_utilities</code> below the cards, then the index-order blocks in the other files.</li>
 </ol></div>
 <!--@demo fourier_basis_check-->
 <!--@commit 3b99109 NONVAC-->
@@ -475,39 +477,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 </section>
 
 <!-- ================================================================== STAGE 4 -->
-<div class="stage" id="nonvac"><span class="eyebrow">Stage 4</span><h2 class="st">The non-vacuum code, file by file</h2>
-<p>Stages 1 to 3, and <a href="#V1">V1</a> for the vacuum plumbing in the drivers, explain the changes outside the vacuum modules; this stage shows their code. Each of the 33 modules appears once, as one diff from 2.47 to 9e9aba5, in four groups. Every block carries the classifier's verdict and the commits that changed its lines; each commit links to its card in the section that explains it, and the card links back to all its blocks.</p>
-<div class="how"><b>How to read it</b><ol>
-<li>Switch on "hide mechanical hunks" in the index and press "open what to read" in a section; read each file from top to bottom.</li>
-<li>Click a commit under a block to see why its lines changed; the browser's back button brings you back to the block.</li>
-<li>Click a line number to open that line on GitHub: the left number at 2.47, the right one at 9e9aba5.</li>
-</ol></div></div>
-
-<section class="area" id="N1" data-title="Eigenvalue problem and solution">
-<div class="ahead"><span class="aid">N1</span><h2>Eigenvalue problem and solution</h2></div>
-<div class="meta"><span><b>files</b> SLEPC_ops, SLEPC_utilities, X_ops, sol_ops, sol_utilities</span><span><b>time</b> 25 min</span><span class="tier read">read</span></div>
-<!--@nonvac N1-->
-</section>
-
-<section class="area" id="N2" data-title="Equilibrium and grids">
-<div class="ahead"><span class="aid">N2</span><h2>Equilibrium and grids</h2></div>
-<div class="meta"><span><b>files</b> VMEC_ops, VMEC_utilities, VMEC_vars, HELENA_ops, eq_ops, grid_ops, grid_utilities, grid_vars</span><span><b>time</b> 45 min</span><span class="tier read">read</span></div>
-<!--@nonvac N2-->
-</section>
-
-<section class="area" id="N3" data-title="Numerics">
-<div class="ahead"><span class="aid">N3</span><h2>Numerics</h2></div>
-<div class="meta"><span><b>files</b> num_utilities, spline_utilities, num_ops, num_vars, dtorh</span><span><b>time</b> 5 min (the moved spline code is checked by the tool of M4)</span><span class="tier read">read</span></div>
-<!--@nonvac N3-->
-</section>
-
-<section class="area" id="N4" data-title="Drivers, input, output and MPI">
-<div class="ahead"><span class="aid">N4</span><h2>Drivers, input, output and MPI</h2></div>
-<div class="meta"><span><b>files</b> driver_eq, driver_sol, driver_POST, input_ops, PB3D_ops, PB3D_utilities, MPI_ops, MPI_utilities, HDF5_ops, HDF5_utilities, HDF5_vars, var_1D_vars, files_ops, messages, test</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
-<!--@nonvac N4-->
-</section>
-<!-- ================================================================== STAGE 5 -->
-<div class="stage" id="stage4"><span class="eyebrow">Stage 5</span><h2 class="st">Vacuum design review</h2>
+<div class="stage" id="stage4"><span class="eyebrow">Stage 4</span><h2 class="st">Vacuum design review</h2>
 <p>Decide before verifying. This stage has no diffs: it lays out what the vacuum code does now and where you might want it done differently.</p></div>
 
 <section class="area" id="V0" data-title="The vacuum now: data flow, convention, structure">
@@ -622,8 +592,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <div class="decide"><b>V0-f. Stale comments.</b> <code>solve_Phi_BEM</code> still says "solve (H + shift I) Phi = G R" twice, although there is no shift since 5 November; the full-stack test <code>greens_identity_indirect</code> says the direct diagonals are "the default of this style", which they are not since <code>49e2441</code>; <code>calc_GH_int_2</code> computes <code>n_loc</code> and <code>dn_loc</code> and never uses them (already so at 2.47); the comment of <code>set_BC_4</code> quotes a style-2/4 gap of 0.7 % on cbm18a that is 0.19 % since <a href="#F5">F5</a>.<br><b>Recommendation:</b> fix now; four small edits, no effect on results.</div>
 </section>
 
-<!-- ================================================================== STAGE 6 -->
-<div class="stage" id="stage5"><span class="eyebrow">Stage 6</span><h2 class="st">Vacuum verification</h2>
+<!-- ================================================================== STAGE 5 -->
+<div class="stage" id="stage5"><span class="eyebrow">Stage 5</span><h2 class="st">Vacuum verification</h2>
 <p>Routine by routine, in the order the data flows. Each group shows the 2.47 routine against the tip routine as one diff, with the commits that touched those lines. Use "hide comment-only diff lines" in the index for a first pass over the code alone: a quarter of the changed lines in <code>vac_ops</code> are comments.</p></div>
 
 <section class="area" id="V1" data-title="Vacuum plumbing outside the vacuum modules">
@@ -636,7 +606,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <li><b>POST plot wiring</b> (a8804ac): the plot is called once for all plotted modes after the mode loop; <code>reconstruct_PB3D_vac</code> rebuilds the parallel angle of the field-line style from two new entries of <code>misc_vac</code>; the plot ranges default to 0, which means "from the boundary".</li>
 </ul>
 <div class="how"><b>How to check it</b><ol>
-<li>Read the driver blocks (<a href="#N4">N4</a>, linked from the cards below): the two calls are skipped for <code>BC_style(2)</code> = 1 in <code>driver_eq</code>, <code>driver_sol</code> and <code>driver_POST</code> alike.</li>
+<li>Read the driver blocks below the cards: the two calls are skipped for <code>BC_style(2)</code> = 1 in <code>driver_eq</code>, <code>driver_sol</code> and <code>driver_POST</code> alike.</li>
 <li>Read the <code>sol_ops</code> condition for E_pot(7) and the input guards in <code>input_ops</code>.</li>
 <li>Check that the two new inputs are broadcast (<code>MPI_ops</code>) and defaulted (<code>input_ops</code>).</li>
 </ol></div>
@@ -821,8 +791,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <!--@group print-->
 </section>
 
-<!-- ================================================================== STAGE 7 -->
-<div class="stage" id="stage6"><span class="eyebrow">Stage 7</span><h2 class="st">Inputs, defaults and output format</h2></div>
+<!-- ================================================================== STAGE 6 -->
+<div class="stage" id="stage6"><span class="eyebrow">Stage 6</span><h2 class="st">Inputs, defaults and output format</h2></div>
 
 <section class="area" id="I" data-title="Inputs, defaults and output format">
 <div class="ahead"><span class="aid">I</span><h2>Inputs, defaults and output format</h2></div>
@@ -844,11 +814,12 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <tr><td>output <code>misc_vac</code></td><td>6 entries</td><td>8 (limits of the parallel angle); POST reads older output without them</td><td><a href="#V11">V11</a></td></tr>
 <tr><td>vacuum for a fixed boundary</td><td>computed and unused (VMEC); the run stopped (HELENA, since 2.44)</td><td>not computed, not written</td><td><a href="#V1">V1</a></td></tr>
 </tbody></table></div>
-<p>The code of these changes: the diff of <a href="#f-input_ops"><code>input_ops</code></a> in <a href="#N4">N4</a>.</p>
+<p>The whole diff of <code>input_ops</code>, 2.47 against 9e9aba5 (its blocks also appear in the sections of their commits):</p>
+<!--@wholefile Modules/input_ops.f90-->
 </section>
 
-<!-- ================================================================== STAGE 8 -->
-<div class="stage" id="stage7"><span class="eyebrow">Stage 8</span><h2 class="st">Tests</h2></div>
+<!-- ================================================================== STAGE 7 -->
+<div class="stage" id="stage7"><span class="eyebrow">Stage 7</span><h2 class="st">Tests</h2></div>
 
 <section class="area" id="T" data-title="The test layers and what they guard">
 <div class="ahead"><span class="aid">T</span><h2>The test layers and what they guard</h2></div>
@@ -908,8 +879,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <!--@testsrc tests/reference/gfortran14_bounds_repro.f90-->
 </section>
 
-<!-- ================================================================== STAGE 9 -->
-<div class="stage" id="stage8"><span class="eyebrow">Stage 9</span><h2 class="st">Decisions</h2></div>
+<!-- ================================================================== STAGE 8 -->
+<div class="stage" id="stage8"><span class="eyebrow">Stage 8</span><h2 class="st">Decisions</h2></div>
 
 <section class="area" id="Q" data-title="Design questions in one list">
 <div class="ahead"><span class="aid">Q</span><h2>Design questions in one list</h2></div>
@@ -953,8 +924,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 </ul>
 </section>
 
-<!-- ================================================================== STAGE 10 -->
-<div class="stage" id="stage9"><span class="eyebrow">Stage 10</span><h2 class="st">Afterwards: a cheaper vacuum</h2></div>
+<!-- ================================================================== STAGE 9 -->
+<div class="stage" id="stage9"><span class="eyebrow">Stage 9</span><h2 class="st">Afterwards: a cheaper vacuum</h2></div>
 
 <section class="area" id="E" data-title="Reading guide to the wave report">
 <div class="ahead"><span class="aid">E</span><h2>Reading guide to the wave report</h2></div>

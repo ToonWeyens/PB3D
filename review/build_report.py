@@ -8,9 +8,10 @@ generated from git, so that no code change is typed by hand or left out:
   <!--@commit SHA PATH...-->  a card for commit SHA: message, what its own diff
                               to PATH holds (by the mechanical classifier), and
                               links to the blocks of the file diffs it changed
-  <!--@nonvac KEY-->          2.47 vs tip of one group of non-vacuum modules,
-                              file by file; each block (hunk) is classified and
-                              lists the commits that changed its lines
+                              (after a section's last card: the blocks of the
+                              2.47 -> tip diff its commits changed, each block
+                              classified and listing the commits behind it)
+  <!--@wholefile PATH-->      the whole 2.47 -> tip diff of a non-vacuum module
   <!--@group KEY-->           2.47 vs tip of one group of vacuum routines
   <!--@demo NAME-->           demo script, its output and its figure
   <!--@testsrc PATH-->        the source of a test file (new since 2.47)
@@ -272,7 +273,8 @@ def class_summary(classes):
 
 def marker_commit(args, section):
     """A commit card: subject, message, what its own diff contains, and links to
-    the blocks of the file-by-file diffs (stage 4) whose lines it changed."""
+    the blocks of the 2.47 -> tip diff whose lines it changed (shown below the
+    cards of the same section)."""
     sha = args[0]
     paths = args[1:]
     if paths == ["ALL"] or not paths:
@@ -291,12 +293,9 @@ def marker_commit(args, section):
     classes = [classify_hunk(h, ctx) for f in files for h in f["hunks"]]
     nfiles = len(files)
     own = f'{class_summary(classes)} in {nfiles} file{"s" if nfiles != 1 else ""}'
-    chips = []
-    for p in paths:
-        for i in COMMIT_BLOCKS.get((s7, p), []):
-            chips.append(block_chip(p, i))
+    chips = [block_chip(section, p, i) for p in paths for i in COMMIT_BLOCKS.get((s7, p), [])]
     gone = [p for p in paths if not COMMIT_BLOCKS.get((s7, p))]
-    blocks = (f'<div class="cblocks"><span class="hc">its lines at 9e9aba5, in the file diffs of stage 4:</span> '
+    blocks = (f'<div class="cblocks"><span class="hc">its lines, 2.47 against 9e9aba5, below:</span> '
               f'{" ".join(chips)}</div>') if chips else ""
     if gone:
         blocks += (f'<p class="note">Nothing of its change to {", ".join("<code>" + esc(p.split("/")[-1]) + "</code>" for p in gone)} '
@@ -305,53 +304,46 @@ def marker_commit(args, section):
     vac = [p for p in fortran_paths_of_commit(sha) if p in VAC_FILES]
     if vac:
         blocks += ('<p class="note">Its change to the vacuum modules is in the routine diffs of '
-                   '<a href="#stage5">stage 6</a>.</p>')
+                   '<a href="#stage5">stage 5</a>.</p>')
     msgbox = (f'<details class="cmsg"><summary>commit message</summary><pre class="src">{esc(body)}</pre></details>'
               if body else "")
-    return (f'<div class="commit" id="c-{s7}"><div class="ch">'
+    card = (f'<div class="commit" id="c-{s7}"><div class="ch">'
             f'<a class="sha" href="{GH}/commit/{full}" target="_blank" rel="noopener" title="the commit on GitHub">'
             f'<code>{esc(s7)}</code></a><span class="date">{esc(date)}</span> {esc(msg)}</div>'
             f'<div class="cown">its own diff: {esc(own)}</div>{blocks}{msgbox}</div>')
+    if LAST_CARD.get(section) == s7:
+        card += section_code(section)
+    return card
 
 
-# ---------------------------------------------------------------- non-vacuum modules, file by file
-NONVAC_GROUPS = {
-    "N1": ("Eigenvalue problem and solution",
-           ["Modules/SLEPC_ops.f90", "Modules/SLEPC_utilities.f90", "Modules/X_ops.f90",
-            "Modules/sol_ops.f90", "Modules/sol_utilities.f90"]),
-    "N2": ("Equilibrium and grids",
-           ["Modules/VMEC_ops.f90", "Modules/VMEC_utilities.f90", "Modules/VMEC_vars.f90",
-            "Modules/HELENA_ops.f90", "Modules/eq_ops.f90", "Modules/grid_ops.f90",
-            "Modules/grid_utilities.f90", "Modules/grid_vars.f90"]),
-    "N3": ("Numerics",
-           ["Modules/num_utilities.f90", "Modules/spline_utilities.f90", "Modules/num_ops.f90",
-            "Modules/num_vars.f90", "Modules/dtorh.f90"]),
-    "N4": ("Drivers, input, output and MPI",
-           ["Modules/driver_eq.f90", "Modules/driver_sol.f90", "Modules/driver_POST.f90",
-            "Modules/input_ops.f90", "Modules/PB3D_ops.f90", "Modules/PB3D_utilities.f90",
-            "Modules/MPI_ops.f90", "Modules/MPI_utilities.f90", "Modules/HDF5_ops.f90",
-            "Modules/HDF5_utilities.f90", "Modules/HDF5_vars.f90", "Modules/var_1D_vars.f90",
-            "Modules/files_ops.f90", "Modules/messages.f90", "Modules/test.f90"]),
-}
-NV = {}                               # path -> {"file", "classes", "trails"}
+# ---------------------------------------------------------------- non-vacuum modules: 2.47 -> tip blocks
+NV = {}                               # path -> {"file", "classes", "trails", "labels"}
 COMMIT_BLOCKS = defaultdict(list)     # (sha7, path) -> block indices (1-based)
 CARD_SECTION = {}                     # sha7 -> section id of its commit card
+LAST_CARD = {}                        # section id -> sha7 of its last commit card
 SUBJECT = {}                          # sha7 -> "date subject"
+SECTION_ORDER = {}                    # section id -> page order
+SHOWN_BLOCKS = defaultdict(set)       # (path, i) -> sections showing the block
 
 
 def fslug(path):
     return re.sub(r"\W", "_", path.split("/")[-1].rsplit(".", 1)[0])
 
 
-def block_id(path, i):
-    return f"b-{fslug(path)}-{i}"
+def block_id(section, path, i):
+    return f"b-{section}-{fslug(path)}-{i}"
 
 
-def block_chip(path, i):
+def block_sections(path, i):
+    return sorted({CARD_SECTION[c] for c in NV[path]["trails"][i - 1] if c in CARD_SECTION},
+                  key=lambda s: SECTION_ORDER.get(s, 99))
+
+
+def block_chip(section, path, i):
     cls = NV[path]["classes"][i - 1]
     kind = "read" if cls == "read" else "auto"
     line = NV[path]["labels"][i - 1]
-    return (f'<a class="bchip {kind}" href="#{block_id(path, i)}" title="{esc(cls)}">'
+    return (f'<a class="bchip {kind}" href="#{block_id(section, path, i)}" title="{esc(cls)}">'
             f'{esc(path.split("/")[-1])}:{line}</a>')
 
 
@@ -376,10 +368,6 @@ def build_nonvac():
     the commits that changed the lines of each hunk (git log -L)."""
     paths = [p for p in git("diff", "--name-only", REV_A, REV_B, "--", "Modules", "Include").split()
              if p not in VAC_FILES and re.search(r"\.(f90|F90|h)$", p)]
-    grouped = [p for _, ps in NONVAC_GROUPS.values() for p in ps]
-    if sorted(grouped) != sorted(paths) or len(set(grouped)) != len(grouped):
-        raise SystemExit(f"NONVAC_GROUPS does not match the changed files: missing "
-                         f"{sorted(set(paths) - set(grouped))}, extra {sorted(set(grouped) - set(paths))}")
     order = git("log", "--reverse", "--no-merges", "--format=%h", f"{REV_A}..{REV_B}").split()
     order = [h[:7] for h in order]
     rank = {h: k for k, h in enumerate(order)}
@@ -417,43 +405,61 @@ def first_changed_line(h):
     return n
 
 
-def trail_chips(tr):
+def trail_chips(section, path, i):
     out = []
-    for c in tr:
+    for c in NV[path]["trails"][i - 1]:
         sec = CARD_SECTION.get(c, "")
-        out.append(f'<a class="cchip" href="#c-{c}" title="{esc(SUBJECT.get(c, ""))}">'
+        here = " here" if sec == section else ""
+        out.append(f'<a class="cchip{here}" href="#c-{c}" title="{esc(SUBJECT.get(c, ""))}">'
                    f'<code>{c}</code>{(" " + esc(sec)) if sec else ""}</a>')
-    return '<span class="hc">changed by</span> ' + " ".join(out)
+    secs = block_sections(path, i)
+    word = "also in" if section in secs else "explained in"
+    extra = "".join(f' <a class="also" href="#{block_id(s, path, i)}">{word} {esc(s)}</a>' for s in secs if s != section)
+    return '<span class="hc">changed by</span> ' + " ".join(out) + extra
 
 
-def nonvac_file_block(p):
+def code_file_block(section, p, idx):
     d = NV[p]
-    f, classes = d["file"], d["classes"]
-    adds = sum(1 for h in f["hunks"] for g, t in h["lines"] if g == "+")
-    dels = sum(1 for h in f["hunks"] for g, t in h["lines"] if g == "-")
+    hunks = [d["file"]["hunks"][i - 1] for i in idx]
+    classes = [d["classes"][i - 1] for i in idx]
+    adds = sum(1 for h in hunks for g, t in h["lines"] if g == "+")
+    dels = sum(1 for h in hunks for g, t in h["lines"] if g == "-")
     n_read = sum(1 for c in classes if c == "read")
-    secs = sorted({CARD_SECTION[c] for tr in d["trails"] for c in tr if c in CARD_SECTION},
-                  key=lambda s: SECTION_ORDER.get(s, 99))
-    nh = len(classes)
+    nh = len(idx)
+    whole = len(idx) == len(d["classes"])
     summ = (f'<code>{esc(p)}</code> <span class="pm">+{adds} &minus;{dels}</span> '
-            f'<span class="hc">{nh} block{"s" if nh != 1 else ""}: '
-            + (f'<b>{n_read} to read</b>' if n_read else '0 to read') + f', {nh - n_read} mechanical'
-            + (f'; explained in {", ".join(secs)}' if secs else "") + '</span>')
-    body = "".join(render_hunk(h, c, p, hid=block_id(p, i), trail=trail_chips(tr), ghf=p)
-                   for i, (h, c, tr) in enumerate(zip(f["hunks"], classes, d["trails"]), 1))
+            f'<span class="hc">{nh} block{"s" if nh != 1 else ""}'
+            + ("" if whole else f' of {len(d["classes"])}') + ': '
+            + (f'<b>{n_read} to read</b>' if n_read else '0 to read') + f', {nh - n_read} mechanical</span>')
+    body = ""
+    for i, h, c in zip(idx, hunks, classes):
+        SHOWN_BLOCKS[(p, i)].add(section)
+        body += render_hunk(h, c, p, hid=block_id(section, p, i), trail=trail_chips(section, p, i), ghf=p)
     kind = "has-read" if n_read else "all-mech"
-    return f'<details class="fdiff {kind}" id="f-{fslug(p)}"><summary>{summ}</summary>{body}</details>'
+    return f'<details class="fdiff {kind}" id="f-{section}-{fslug(p)}"><summary>{summ}</summary>{body}</details>'
 
 
-def marker_nonvac(args, section):
-    key = args[0]
-    _, paths = NONVAC_GROUPS[key]
-    for p in paths:
-        shown_pairs[("nonvac", p)].add(section)
-    return "".join(nonvac_file_block(p) for p in paths)
+def section_code(section):
+    """The blocks of the 2.47 -> tip diff that the commits carded in this section
+    changed, file by file."""
+    per = defaultdict(list)
+    for p in NV:
+        for i in range(1, len(NV[p]["classes"]) + 1):
+            if section in block_sections(p, i):
+                per[p].append(i)
+    if not per:
+        return ""
+    files = "".join(code_file_block(section, p, per[p]) for p in per)
+    nb = sum(len(v) for v in per.values())
+    return (f'<h4 class="codeh">The code: {nb} block{"s" if nb != 1 else ""} of the diff 2.47 &rarr; 9e9aba5 '
+            f'that these commits changed</h4>{files}')
 
 
-SECTION_ORDER = {}
+def marker_wholefile(args, section):
+    """The whole 2.47 -> tip diff of one non-vacuum module, shown again where a
+    section is about that file."""
+    p = args[0]
+    return code_file_block(section, p, list(range(1, len(NV[p]["classes"]) + 1)))
 
 
 # ---------------------------------------------------------------- vacuum groups
@@ -723,11 +729,11 @@ def ledger():
         f'{"all in a group" if not unc else str(len(unc)) + " lines outside every group: " + esc(str(unc[:20]))}</li>'
         for p, r, n, unc in vac_msgs)
     # non-vacuum modules: each file diff shown exactly once, and every commit's change traced
-    for p in NV:
-        secs = shown_pairs.get(("nonvac", p), set())
-        if len(secs) != 1:
-            missing.append(("file diff", f"{p} shown in {sorted(secs) or 'no section'}"))
-    nv_lines = sum(1 for d in NV.values() for h in d["file"]["hunks"] for g, _ in h["lines"] if g in "+-")
+    for p, d in NV.items():
+        for i in range(1, len(d["classes"]) + 1):
+            if not SHOWN_BLOCKS.get((p, i)):
+                missing.append(("block", f"{p} block {i} in no section"))
+    nv_lines = sum(1 for (p, i) in SHOWN_BLOCKS for g, _ in NV[p]["file"]["hunks"][i - 1]["lines"] if g in "+-")
     net = git("diff", "--numstat", REV_A, REV_B, "--", *NV.keys())
     net_lines = sum(int(a) + int(b) for a, b, _ in (l.split("\t") for l in net.splitlines()))
     if nv_lines != net_lines:
@@ -746,9 +752,13 @@ def ledger():
     nblocks = sum(len(d["classes"]) for d in NV.values())
     unt = ("; ".join(f"<code>{h}</code> in <code>{esc(p.split('/')[-1])}</code>" for h, p in untraced)
            if untraced else "none")
+    twice = sorted((p.split("/")[-1], i, sorted(v)) for (p, i), v in SHOWN_BLOCKS.items()
+                   if len(v - {"I"}) > 1)
+    tw = "; ".join(f"<code>{esc(p)}</code> block {i} in {', '.join(v)}" for p, i, v in twice) or "none"
     return (f'{status}<h4>Non-vacuum modules: {len(NV)} files, {nblocks} blocks, {nv_lines} changed lines, '
             f'as many as <code>git diff --numstat 2.47 9e9aba5</code> counts</h4>'
-            f'<p>Blocks by classifier verdict: {esc(hunk_line)}. Every block names at least one commit '
+            f'<p>Each block is shown in the section of every commit that changed it; blocks in two sections: {tw}. '
+            f'Blocks by classifier verdict: {esc(hunk_line)}. Every block names at least one commit '
             f'(<code>git log -L</code> over its lines). Commits whose change to a file is not in any block, '
             f'because later commits changed the same lines again: {unt}.</p>'
             f'<h4>Vacuum modules: every line of both versions lies in one routine group</h4><ul class="cov">{vac_rows}</ul>'
@@ -907,6 +917,7 @@ def main():
             SECTION_ORDER.setdefault(sec, len(SECTION_ORDER))
         elif m.group(2) == "commit":
             CARD_SECTION[m.group(3).split()[0][:7]] = sec
+            LAST_CARD[sec] = m.group(3).split()[0][:7]
     build_nonvac()
     ledger_at = fp_at = None
     for m in pat.finditer(src):
@@ -919,8 +930,8 @@ def main():
         kind, args = m.group(2), m.group(3).split()
         if kind == "commit":
             out.append(marker_commit(args, section))
-        elif kind == "nonvac":
-            out.append(marker_nonvac(args, section))
+        elif kind == "wholefile":
+            out.append(marker_wholefile(args, section))
         elif kind == "group":
             out.append(marker_group(args, section))
         elif kind == "demo":
