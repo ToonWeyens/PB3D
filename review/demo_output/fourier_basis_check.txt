@@ -1,0 +1,4 @@
+main list    : 288 modes, max relative difference over 27 cases so far 2.9e-14
+Nyquist list : 611 modes, max relative difference over 27 cases so far 2.9e-14
+mpol_tf = 19, ntor_tf = 16: basis of 52 functions instead of 288 (main) or 611 (Nyquist) per grid point
+PASS

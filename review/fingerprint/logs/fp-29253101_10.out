@@ -1,0 +1,14 @@
+label=cc4c96d sha=cc4c96d strumpack=nosdp node=tcn98.local.snellius.surf.nl start=2026-11-14 16:52:23
+-- STRUMPACK-Dense not found - the vacuum module will solve its boundary-element system with ScaLAPACK (pdgesv) instead of STRUMPACK's compressed solver. Set STRUMPACK_DIR to a STRUMPACK-Dense-1.1.1 build to use the latter.
+--   STRUMPACK:      FALSE
+build time 88 s
+FP cc4c96d c005_fixed rc=0 t=7s EV=7.7649903254609631E-02 IM=8.3067565309277302E-09 PREC=2.5642943836973631E-02
+FP cc4c96d c005_free2 rc=0 t=9s NO_EV  16:54:01:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:54:01:  >> calling routine: set_BC of rank 0  16:54:01:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+FP cc4c96d hel_fixed rc=0 t=12s EV=-4.0735999821208513E-02 IM=-7.2464797374242041E-10 PREC=3.9197479085949907E-02
+FP cc4c96d hel_free2 rc=0 t=13s NO_EV  16:54:05:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:54:05:  >> calling routine: set_BC of rank 0  16:54:05:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+FP cc4c96d hel_free4 rc=0 t=14s EV=-4.5574082986935049E-02 IM=5.1951382848468333E-08 PREC=4.2802814887095025E-01
+FP cc4c96d twin_fixed rc=0 t=17s EV=7.9716389579472524E-02 IM=9.4591287525132477E-11 PREC=3.3890089491270092E-02
+FP cc4c96d twin_free2 rc=0 t=129s NO_EV  16:56:01:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:56:01:  >> calling routine: set_BC of rank 0  16:56:01:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+FP cc4c96d w7x_fixed rc=0 t=8s EV=6.2315676647487883E-02 IM=6.2238534082303276E-09 PREC=4.3302098079550033E-01
+FP cc4c96d w7x_free2 rc=0 t=8s NO_EV  16:53:59:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:53:59:  >> calling routine: set_BC of rank 0  16:53:59:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+end=2026-11-14 16:56:01

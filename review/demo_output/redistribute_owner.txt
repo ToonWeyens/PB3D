@@ -1,0 +1,5 @@
+source ranges incl. ghosts: [(1, 24), (17, 44), (37, 60)]
+owned ranges after the split: [(1, 20), (21, 40), (41, 60)]
+points the 2.47 rule took from another process' ghost region: [21, 22, 23, 24, 41, 42, 43, 44]
+points the new rule takes from a non-owner: []
+figure: review/figures/redistribute_owner.png

@@ -1,0 +1,12 @@
+case                                    current  afc9d17  corrected  fixed
+monotonic up (q rising, m > 0)                0        0          0      0
+monotonic down (nq < 0, e.g. VMEC)            8        0          0      0
+up then down (q has a maximum)                1        0          0      0
+down then up (reversed shear)                 8        0          0      0
+jitter in flat q                              4        0          0      0
+jumps of 2 up                                 0        3          0      0
+jumps of 2 down                               6        3          0      0
+jumps of 3 up                                 0        2          0      0
+
+(numbers are counts of wrong (radial point, mode) entries; 0 = correct)
+PASS

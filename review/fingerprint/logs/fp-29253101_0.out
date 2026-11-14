@@ -1,0 +1,4 @@
+label=2.47 sha=5c2fe76 strumpack=sdp node=tcn14.local.snellius.surf.nl start=2026-11-14 16:52:23
+-- Found STRUMPACK-Dense: /home/tweyens/pb3d/deps/strumpack-dense/lib/libstrumpack.a
+--   Include dir: /home/tweyens/pb3d/deps/strumpack-dense/inc
+FP 2.47 BUILD_FAILED make: Error: Cannot convert TYPE(einsertmode) to INTEGER(4) at (1)|Error: Cannot convert TYPE(einsertmode) to INTEGER(4) at (1)|Error: Rank mismatch in argument ‘idxm’ at (1) (rank-1 and scalar)|

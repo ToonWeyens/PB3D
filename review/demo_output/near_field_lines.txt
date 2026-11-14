@@ -1,0 +1,7 @@
+  d/h   point rule G: min..max   point rule H: min..max  near rule H: max
+ 0.12     -13.97 ..  29.56 %      -88.8 ..    318.4 %          2.7e-03
+ 0.25      -5.89 ..   8.00 %      -61.7 ..    107.0 %          5.9e-05
+ 0.50      -1.13 ..   1.20 %      -20.1 ..     22.6 %          2.3e-04
+ 1.00      -0.04 ..   0.04 %       -1.2 ..      1.2 %          8.3e-04
+figure: review/figures/near_field_lines.png
+W7-X bean tips: d/h ~ 0.007/0.06 = 0.12 (median at 128 lines).
