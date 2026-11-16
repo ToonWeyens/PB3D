@@ -195,11 +195,20 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 <main>
 <header class="top">
   <h1>PB3D 2.49 review guide</h1>
-  <p class="sub">Everything that changed in the Fortran between tag <code>2.47</code> and <code>origin/dev/vacuum-fixes</code> at <code>9e9aba5</code> (6 November 2026): 92 commits, 36 modules, 17 new test files. Grouped by kind of change, ordered for reviewing, each with the method that checks it fastest. Built on 14 November 2026.</p>
+  <p class="sub">Everything that changed in the Fortran between tag <code>2.47</code> and <code>origin/dev/vacuum-fixes</code> at <code>9e9aba5</code> (6 November 2026): 92 commits, 36 modules, 17 new test files. Grouped by kind of change, ordered for reviewing, each with the method that checks it fastest. Built on 14 November 2026; updated on 16 November after stage 1.</p>
 </header>
 
 <div class="warnbox">
-  <b>Where to edit the code during the review:</b> on <code>dev/vacuum-fixes</code>, in your folder <code>~/Code/PB3D</code>; your commits there go into pull request ToonWeyens/PB3D#5. Git lets a branch be checked out in one folder only, so no second worktree can hold <code>dev/vacuum-fixes</code> as well. On 16 November <code>~/Code/PB3D</code> was brought from <code>d53b4ed</code> (2 November) to <code>9e9aba5</code>, the code this page shows, with your two uncommitted edits (the header of <code>vac_ops.f90</code> and the author lines of <code>README.md</code>) kept. Commits made in other sessions reach the folder only when you pull, so pull before you start:
+  <b>Where to edit the code during the review:</b> on <code>dev/vacuum-fixes</code>, in your folder <code>~/Code/PB3D</code>; your commits there go into pull request ToonWeyens/PB3D#5 when you push them. Git lets a branch be checked out in one folder only, so no second worktree can hold <code>dev/vacuum-fixes</code> as well.
+  <p><b>State after stage 1 (16 November):</b> your stage 1 edits are commit <code>18f87e8</code> "Stage 1 verified by toon" on <code>dev/vacuum-fixes</code>, directly on top of <code>9e9aba5</code>, not pushed. <code>~/Code/PB3D_toon_review</code> (branch <code>review/toon-review</code>) was fast-forwarded to the same commit, so both folders hold the same code. What the commit changed is listed at the top of <a href="#stage1">stage 1</a>.</p>
+  <p>This page still shows <code>9e9aba5</code>, the code under review, and its GitHub links point there. In your folders four files have other line numbers than the page:</p>
+  <ul>
+  <li><code>vac_ops.f90</code>: page lines 11 to 32 are one higher; from page line 33 on, every line is 8 lower (the header is 8 lines shorter).</li>
+  <li><code>PB3D_ops.f90</code>: from page line 205 on, 1 to 8 higher (eight <code>read_HDF5_arr</code> calls are now wrapped over two lines, the last after page line 373).</li>
+  <li><code>HDF5_vars.f90</code>: from page line 18 on, 3 lower (the comment about the re-export is gone).</li>
+  <li><code>var_1D_vars.f90</code> is <code>flat_vars.f90</code>: from page line 8 on, 1 lower (shorter header).</li>
+  </ul>
+  <p>Commits made in other sessions reach a folder only when you pull:</p>
   <pre class="out">git -C ~/Code/PB3D pull --ff-only --autostash</pre>
   This page and its scripts live in a separate worktree, <code>~/Code/PB3D/.claude/worktrees/review-since-2.47</code> (branch <code>claude/review-since-2.47</code>, at <code>9e9aba5</code> plus the <code>review/</code> folder, pull request ToonWeyens/PB3D#6 against <code>dev/vacuum-fixes</code>).
 </div>
@@ -259,7 +268,7 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 <thead><tr><th>stage</th><th>what</th><th class="num">time</th><th>minimum path</th></tr></thead>
 <tbody>
 <tr><td>0</td><td><a href="#S0">Set up</a>: pull, build, run the tests on your machine</td><td class="num">45 min</td><td>all</td></tr>
-<tr><td>1</td><td><a href="#M1">Mechanical changes</a>: port, warnings, lint, module splits, version. Tools did the checking; you confirm.</td><td class="num">1 h</td><td>section texts only</td></tr>
+<tr><td>1</td><td><a href="#M1">Mechanical changes</a>: port, warnings, lint, module splits, version. Tools did the checking; you confirm. <b>Done 16 November</b> (<code>18f87e8</code>).</td><td class="num">1 h</td><td>section texts only</td></tr>
 <tr><td>2</td><td><a href="#fixes">Fixes outside the vacuum</a>: six bugs, each with a demo that shows why</td><td class="num">2.5 h</td><td>the summary table, F1, F5, F6</td></tr>
 <tr><td>3</td><td><a href="#R1">Restructure outside the vacuum</a>: the Fourier basis of the VMEC path</td><td class="num">45 min</td><td>none</td></tr>
 <tr><td>4</td><td><a href="#V0">Vacuum design review</a>: data flow, the sign convention, the routine map, the questions to decide <em>before</em> verifying lines</td><td class="num">2 h</td><td>all</td></tr>
@@ -296,6 +305,14 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <!-- ================================================================== STAGE 1 -->
 <div class="stage" id="stage1"><span class="eyebrow">Stage 1</span><h2 class="st">Mechanical changes</h2>
 <p>These commits were meant to change no result. Tools checked them; your job is to confirm the few blocks the classifier could not decide. Each section lists its commits as cards, then the code they changed, as 2.47 against 9e9aba5. (If you want numbers as well: in the optional <a href="#A">appendix A</a>, none of these commits after the port changes any of nine eigenvalues, not even in the last digit. The port itself cannot be compared, because 2.47 does not build against PETSc 3.25.)</p></div>
+
+<div class="how" id="stage1-done"><b class="okline">Verified on 16 November 2026: commit <code>18f87e8</code> "Stage 1 verified by toon"</b> on <code>dev/vacuum-fixes</code>. What you changed during this stage:
+<ul>
+<li><a href="#M4">M4</a>: the module <code>var_1D_vars</code> is now <code>flat_vars</code>; its type <code>var_1D_type</code> is <code>var_flat_type</code>, and with it <code>dealloc_var_1D</code> &rarr; <code>dealloc_var_flat</code>, <code>max_dim_var_1D</code> &rarr; <code>max_dim_var_flat</code>, the local variables <code>var_1D</code> &rarr; <code>var_flat</code> and <code>conv_1D2ND</code> &rarr; <code>conv_flat2ND</code> (371 lines in 12 files). Mapping the new names back gives the old files exactly, apart from the spacing before trailing comments and eight calls in <code>PB3D_ops.f90</code> wrapped to stay within 80 columns. The comment in <code>HDF5_vars.f90</code> about the re-export is removed, and the header of <code>flat_vars.f90</code> says why the module exists (to compile and test without HDF5) instead of where it came from.</li>
+<li><a href="#M5">M5</a>: <code>prog_version</code> is 2.49, and so are <code>VERSION</code> in <code>CMakeLists.txt</code> and <code>PROJECT_NUMBER</code> in <code>Doxyfile</code>. <code>min_PB3D_version</code> went from 2.43 to 2.49, so POST now refuses PB3D output older than 2.49 at its version check, before the size check of <code>misc_in_V</code> is reached.</li>
+<li>Your own edits: the header of <code>vac_ops.f90</code> (the status paragraph replaced by two <code>\todo</code> lines, a line on the two field lines that the 3-D style needs) and the author lines of <code>README.md</code>.</li>
+</ul>
+<p>Checked before the commit: the unit tests (8 of 8); the full build; <code>ctest</code> 20 of 24, the four that fail being the <code>_np2</code>/<code>_np4</code> rows that crash at start-up in the Mac's MPI launcher, as in <a href="#S0">S0</a>; cbm18a fixed boundary through PB3D gives &minus;4.35729e&minus;2 (anchor &minus;4.3573e&minus;2), and POST reads that file and prints "PB3D version 2.49". Not checked: POST refusing a file from PB3D 2.48.</p></div>
 
 <section class="area" id="M1" data-title="PETSc/SLEPc 3.9 to 3.25 port">
 <div class="ahead"><span class="aid">M1</span><h2>PETSc/SLEPc 3.9 to 3.25 port</h2></div>
@@ -483,7 +500,7 @@ Claude-Session: https://claude.ai/code/session_01H8BZacVBuLNqVN7fSsaw1V</pre></d
 
 <section class="area" id="M4" data-title="Module splits for unit testing">
 <div class="ahead"><span class="aid">M4</span><h2>Module splits for unit testing</h2></div>
-<div class="meta"><span><b>files</b> num_utilities &rarr; spline_utilities, HDF5_vars &rarr; var_1D_vars, and the <code>use</code> lines of 14 modules</span><span><b>commits</b> 8ac37d7, 17b712c</span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
+<div class="meta"><span><b>files</b> num_utilities &rarr; spline_utilities, HDF5_vars &rarr; var_1D_vars, and the <code>use</code> lines of 14 modules</span><span><b>commits</b> 8ac37d7, 17b712c; <code>var_1D_vars</code> renamed <code>flat_vars</code> in <code>18f87e8</code></span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
 <p>The unit-test layer compiles parts of PB3D without PSPLINE and HDF5. For that, the PSPLINE wrapper <code>spline</code> moved out of <code>num_utilities</code> into a new module <code>spline_utilities</code>, and <code>var_1D_type</code> with <code>dealloc_var_1D</code> moved out of <code>HDF5_vars</code> into <code>var_1D_vars</code> (which <code>HDF5_vars</code> re-exports). Every caller's <code>use num_utilities, only: spline</code> became <code>use spline_utilities, only: spline</code>.</p>
 <p>The checker below compares the removed lines with the new module line by line. Result: 339 of the 340 lines removed from <code>num_utilities</code> are in <code>spline_utilities</code> unchanged (the 340th is the <code>public</code> list, which lost <code>spline</code>), and 52 of 54 for <code>var_1D_vars</code> (the other two: the <code>public</code> list and a doc line that now says "1-D"). What is new in each module is boilerplate (header, <code>module</code>, <code>use</code>, <code>private</code>, <code>public</code>).</p>
 <div class="how"><b>How to check it</b>: read the checker's output below; the 37 <span class="badge auto">use-list</span> hunks of 8ac37d7 are the callers' <code>use</code> lines; read the remaining blocks below the cards (the <code>public</code> lists and the re-export in <code>HDF5_vars</code>).</div>
@@ -651,7 +668,7 @@ Claude-Session: https://claude.ai/code/session_01H8BZacVBuLNqVN7fSsaw1V</pre></d
 <div class="ahead"><span class="aid">M5</span><h2>Version number</h2></div>
 <div class="meta"><span><b>file</b> num_vars</span><span><b>commit</b> a8c07b6</span><span><b>time</b> 2 min</span><span class="tier skim">skim</span></div>
 <p><code>prog_version</code> went from 2.47 to 2.48 in July. The README's newest changelog entry is 2.49 (October and November), but <code>prog_version</code> still says 2.48. POST refuses output written before the Nyquist change by the size of <code>misc_in_V</code> (<a href="#R1">R1</a>), not by the version number, so nothing breaks; the number is just behind.</p>
-<div class="decide"><b>Decide.</b> Set <code>prog_version</code> to 2.49 before the merge.</div>
+<div class="decide"><b>Decided.</b> Set <code>prog_version</code> to 2.49 before the merge. <b>Done</b> in <code>18f87e8</code>, together with <code>min_PB3D_version</code> 2.49.</div>
 <div class="commit" id="c-a8c07b6"><div class="ch"><a class="sha" href="https://github.com/ToonWeyens/PB3D/commit/a8c07b696211a5adb4783c82a0676a30e92e21d0" target="_blank" rel="noopener" title="the commit on GitHub"><code>a8c07b6</code></a><span class="date">2026-07-06</span> 2.48: Modernized testing infrastructure with CTest and test-drive.</div><div class="cown">its own diff: 1 hunk: 1 to read in 1 file</div><div class="cblocks"><span class="hc">its lines, 2.47 against 9e9aba5, below:</span> <a class="bchip read" href="#b-M5-num_vars-2" title="read: none of the mechanical patterns fits, so the block changes statements. A person has to look; it does not mean the change is important.">num_vars.f90:59</a></div><details class="cmsg"><summary>commit message</summary><pre class="src">* Added CTest-driven test suite in tests/, unit tests written in the
   vendored fortran-lang test-drive framework (v0.5.0, MIT/Apache-2.0).
 * New CMake option PB3D_BUILD_EXECUTABLES (default ON): with OFF, only a
@@ -2778,7 +2795,7 @@ if __name__ == "__main__":
 <thead><tr><th>question</th><th>recommendation</th><th>effort</th></tr></thead>
 <tbody>
 <tr><td><a href="#V0">V0-f</a> stale comments, unused variables</td><td>fix now</td><td>minutes</td></tr>
-<tr><td><a href="#M5">M5</a> <code>prog_version</code> 2.48 &rarr; 2.49</td><td>fix now</td><td>minutes</td></tr>
+<tr><td><a href="#M5">M5</a> <code>prog_version</code> 2.48 &rarr; 2.49</td><td><b>done</b> in <code>18f87e8</code></td><td>&ndash;</td></tr>
 <tr><td><a href="#V0">V0-e</a> history in comments</td><td>shorten to the reason (cleanup)</td><td>1 to 2 h</td></tr>
 <tr><td><a href="#V0">V0-d</a> check_vac and plot in their own modules</td><td>yes, a pure move (cleanup)</td><td>1 h</td></tr>
 <tr><td><a href="#V0">V0-c</a> external-point rows out of <code>calc_GH_1/2</code></td><td>yes, <code>calc_GH_ext</code> (cleanup)</td><td>half a day</td></tr>
