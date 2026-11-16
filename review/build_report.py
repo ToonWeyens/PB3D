@@ -167,15 +167,26 @@ def _sub_all(s, pairs):
     return s
 
 
-BADGE = {
-    "read": ("read", "substantive: read it"),
-    "use-list": ("auto", "only use-list lines"),
-    "ldebug-guard": ("auto", "lines moved under a preprocessor guard, unchanged"),
-    "comment": ("auto", "only comments changed (whole lines or trailing comments); the statements are identical"),
-    "whitespace": ("auto", "whitespace only"),
-    "intrinsic": ("auto", "specific intrinsic -> generic (DSQRT -> sqrt ...)"),
-    "petsc-api": ("auto", "PETSc API rename only"),
-    "moved": ("auto", "90 % or more of its code lines appear on the other side of the same commit (moved between files)"),
+BADGE = {   # hover texts; no double quotes (they go into a title attribute)
+    "read": ("read", "read: none of the mechanical patterns fits, so the block changes statements. "
+                     "A person has to look; it does not mean the change is important."),
+    "use-list": ("auto", "use-list: every changed code line is a Fortran use statement or its continuation, "
+                         "the line that imports names from another module. Only which names are imported, "
+                         "or from which module, changed. A wrong one stops the build."),
+    "ldebug-guard": ("auto", "ldebug-guard: the same lines, unchanged, now sit inside #if ldebug ... #endif, "
+                             "so only debug builds compile them (mostly declarations of counters that only debug "
+                             "output uses). A variable used outside the guard would stop the build."),
+    "comment": ("auto", "comment: only comments changed (whole ! lines or the comment after a statement); "
+                        "with the comments removed, the statements are identical."),
+    "whitespace": ("auto", "whitespace: old and new lines are identical apart from spaces, indentation "
+                           "and blank lines."),
+    "intrinsic": ("auto", "intrinsic: after replacing each old double-precision function name by its generic "
+                          "one (DSQRT by sqrt, DABS by abs, DLOG by log, DATAN by atan), old and new lines are "
+                          "identical. For real(dp) arguments it is the same function."),
+    "petsc-api": ("auto", "petsc-api: identical after replacing old PETSc names by their new ones (PetscBool by "
+                          "logical, VecGetArrayF90 by VecGetArray, PetscViewerSetFormat by PetscViewerPushFormat)."),
+    "moved": ("auto", "moved: 90 % or more of its code lines appear unchanged on the other side of the same "
+                      "diff: code moved from one file to another (checked line by line by the tool of M4)."),
 }
 
 
@@ -343,7 +354,7 @@ def block_chip(section, path, i):
     cls = NV[path]["classes"][i - 1]
     kind = "read" if cls == "read" else "auto"
     line = NV[path]["labels"][i - 1]
-    return (f'<a class="bchip {kind}" href="#{block_id(section, path, i)}" title="{esc(cls)}">'
+    return (f'<a class="bchip {kind}" href="#{block_id(section, path, i)}" title="{esc(BADGE[cls][1])}">'
             f'{esc(path.split("/")[-1])}:{line}</a>')
 
 
