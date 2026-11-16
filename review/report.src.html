@@ -34,8 +34,15 @@ nav.index { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); a
 nav.index h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; font-weight: 600 }
 nav.index a { display: flex; align-items: center; gap: 8px; color: var(--fg); text-decoration: none; padding: 2px 4px; border-radius: 4px }
 nav.index a:hover { background: var(--accent-soft) }
-nav.index .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--todo); flex: none }
-.dot.done { background: var(--done) } .dot.doing { background: var(--doing) } .dot.question { background: var(--question) }
+/* status marks: the shape tells the state without the color (empty, half, full with a check, full with a question mark) */
+.dot { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; flex: none; box-sizing: border-box;
+  border: 2px solid var(--todo); background: transparent; font: 700 9px/1 var(--font); color: var(--panel) }
+.dot.doing { border-color: var(--doing); background: linear-gradient(90deg, var(--doing) 50%, transparent 50%) }
+.dot.done { border-color: var(--done); background: var(--done) } .dot.done::after { content: "\2713" }
+.dot.question { border-color: var(--question); background: var(--question) } .dot.question::after { content: "?" }
+.dotlegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted) }
+.dotlegend span { display: inline-flex; align-items: center; gap: 5px }
+.rv button { display: inline-flex; align-items: center; gap: 6px }
 nav.index .tools { display: grid; gap: 6px; margin-top: 14px }
 main { min-width: 0 }
 header.top h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; font-weight: 600; text-wrap: balance; letter-spacing: -.01em }
@@ -180,6 +187,7 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
     <label><input type="checkbox" id="hidemech"> hide mechanical hunks</label>
     <button type="button" id="export">Copy my status and notes</button>
     <span class="savestate" id="savestate">Status and notes: saved in this browser</span>
+    <div class="dotlegend" aria-label="Status marks"><span><span class="dot"></span>to do</span><span><span class="dot doing"></span>in progress</span><span><span class="dot done"></span>done</span><span><span class="dot question"></span>question</span></div>
   </div>
   <div id="navlist"></div>
 </nav>
@@ -191,11 +199,8 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 </header>
 
 <div class="warnbox">
-  <b>Your checkout is 13 commits behind.</b> <code>~/Code/PB3D</code> is on <code>d53b4ed</code> (2 November); <code>origin/dev/vacuum-fixes</code> is at <code>9e9aba5</code>. The 13 missing commits change <code>vac_ops.f90</code> in 3292 lines: the one sign convention for both vacuum styles (<code>f3ebf11</code>), the direct and indirect diagonals, the simplifications, check_vac for the axisymmetric style and the POST vacuum plot. So the comparison against 2.47 that you have open in VS Code shows an older state, including the two H sign conventions you noticed. Your uncommitted edits (the header of <code>vac_ops.f90</code>, lines 8 to 33, and the author lines of <code>README.md</code>) do not overlap the 13 commits, which touch <code>vac_ops.f90</code> from line 50 and <code>README.md</code> from line 34 on. To bring the checkout to the tip and keep the edits:
-  <pre class="out">cd ~/Code/PB3D
-git stash push -m "header edits before review"
-git pull --ff-only
-git stash pop</pre>
+  <b>Where to edit the code during the review:</b> on <code>dev/vacuum-fixes</code>, in your folder <code>~/Code/PB3D</code>; your commits there go into pull request ToonWeyens/PB3D#5. Git lets a branch be checked out in one folder only, so no second worktree can hold <code>dev/vacuum-fixes</code> as well. On 16 November <code>~/Code/PB3D</code> was brought from <code>d53b4ed</code> (2 November) to <code>9e9aba5</code>, the code this page shows, with your two uncommitted edits (the header of <code>vac_ops.f90</code> and the author lines of <code>README.md</code>) kept. Commits made in other sessions reach the folder only when you pull, so pull before you start:
+  <pre class="out">git -C ~/Code/PB3D pull --ff-only --autostash</pre>
   This page and its scripts live in a separate worktree, <code>~/Code/PB3D/.claude/worktrees/review-since-2.47</code> (branch <code>claude/review-since-2.47</code>, at <code>9e9aba5</code> plus the <code>review/</code> folder, pull request ToonWeyens/PB3D#6 against <code>dev/vacuum-fixes</code>).
 </div>
 
@@ -1032,7 +1037,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
     const rv = document.createElement("div"); rv.className = "rv"; rv.setAttribute("role", "group");
     rv.setAttribute("aria-label", "Review status of " + id);
     for (const [k, lab] of STAT) {
-      const b = document.createElement("button"); b.type = "button"; b.className = k; b.textContent = lab;
+      const b = document.createElement("button"); b.type = "button"; b.className = k;
+      const bd = document.createElement("span"); bd.className = "dot " + k; b.append(bd, lab);
       b.dataset.status = k; b.id = "st-" + id + "-" + k; b.setAttribute("aria-pressed", "false");
       b.addEventListener("click", () => { if (state[id].status !== k) { state[id].status = k; render(id); save(id); } });
       rv.appendChild(b);
