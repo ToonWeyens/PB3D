@@ -106,7 +106,8 @@ button:hover { border-color: var(--accent) } button:focus-visible, a:focus-visib
 .rv button[aria-pressed="true"].question { border-color: var(--question); color: var(--question) }
 .notes { margin-top: 10px }
 .notes textarea { width: 100%; min-height: 70px; font: 13.5px/1.5 var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical }
-.secbtns { display: flex; gap: 6px; margin: 10px 0 0 }
+.secbtns { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; scroll-margin-top: 16px }
+button:disabled { opacity: .6; cursor: default } button:disabled:hover { border-color: var(--line) }
 .savestate { font-size: 12px; color: var(--muted) }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; margin: 10px 0 }
 ul.cov li.ok::marker { color: var(--done) } ul.cov li.miss { color: var(--question) }
@@ -241,7 +242,7 @@ git stash pop</pre>
   <li>Every code change is in the page, in the section that explains it, and always as one diff from 2.47 to 9e9aba5: each section lists its commits as cards (subject, message, what the commit's own diff holds), then shows each file those commits changed once, with only the blocks of changed lines (hunks) they touched. The vacuum modules are shown routine by routine in <a href="#stage5">stage 5</a>. The intermediate states are not shown; each commit's own diff is one click away on GitHub. Under each block are the commits that changed its lines; the ten blocks that commits of two sections changed appear in both.</li>
   <li>Blocks of the non-vacuum modules carry a badge from a mechanical classifier: <span class="badge auto">use-list</span>, <span class="badge auto">ldebug-guard</span>, <span class="badge auto">moved</span> and the like mean the block only moves or renames lines and was checked by script; <span class="badge read">read</span> means it changes what the code does.</li>
   <li>Line numbers are those of 2.47 (left) and of 9e9aba5 (right). A click on a number opens that line on GitHub at that version. In VS Code, Cmd+P and <code>vac_ops.f90:1537</code> opens the line in your checkout.</li>
-  <li>Two switches in the index: "hide comment-only diff lines" (a quarter of the changed lines in <code>vac_ops</code> are comments) and "hide mechanical hunks", which leaves only what the classifier could not decide. Each section with diffs has "open what to read", which opens only the files with something to read. The index marks the section you are reading.</li>
+  <li>Two switches in the index: "hide comment-only diff lines" (a quarter of the changed lines in <code>vac_ops</code> are comments) and "hide mechanical hunks", which leaves only what the classifier could not decide. Right above the code of each section, one button opens the files that have a block to read and jumps to the first of them; "close all files" closes them again. The index marks the section you are reading.</li>
   <li>Numbers: a number without a named source comes from the commit message of the commit the section is about. Other sources are named. Numbers from the demos and tools are produced by this page. Where I derived something for this page, the text says so.</li>
   <li><span class="badge demo">demo</span> blocks are small scripts in <code>review/demos/</code>. Each prints numbers and draws one figure; output and figure are in the page, so running them is optional.</li>
   <li>Tiers: <span class="tier skim">skim</span> the change is checked by a tool or is trivial; <span class="tier read">read</span> read the diff with the explanation; <span class="tier study">study</span> work through the reasoning before reading the code.</li>
@@ -1045,13 +1046,20 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
     nd.append(ns, ta);
     const meta = sec.querySelector(".meta");
     (meta || head).after(nd);
-    if (sec.querySelector("details.fdiff")) {
+    // file buttons, placed right above the section's first file diff
+    const firstDiff = sec.querySelector("details.fdiff");
+    if (firstDiff) {
       const bb = document.createElement("div"); bb.className = "secbtns";
-      const o = document.createElement("button"); o.type = "button"; o.textContent = "open what to read";
-      const c = document.createElement("button"); c.type = "button"; c.textContent = "close all";
-      o.addEventListener("click", () => sec.querySelectorAll("details.fdiff.has-read").forEach(d => d.open = true));
-      c.addEventListener("click", () => sec.querySelectorAll("details.fdiff").forEach(d => d.open = false));
-      bb.append(o, c); nd.after(bb);
+      const classified = sec.querySelectorAll("details.fdiff.has-read, details.fdiff.all-mech").length > 0;
+      const targets = [...sec.querySelectorAll(classified ? "details.fdiff.has-read" : "details.fdiff")];
+      const o = document.createElement("button"); o.type = "button";
+      const c = document.createElement("button"); c.type = "button"; c.textContent = "close all files";
+      if (!targets.length) { o.disabled = true; o.textContent = "nothing to read here: every block is mechanical"; }
+      else o.textContent = (classified ? "open the " + targets.length + " file" + (targets.length > 1 ? "s" : "") + " with blocks to read"
+                                       : "open all " + targets.length + " file" + (targets.length > 1 ? "s" : ""));
+      o.addEventListener("click", () => { targets.forEach(d => d.open = true); if (targets[0]) targets[0].scrollIntoView({ block: "start" }); });
+      c.addEventListener("click", () => { sec.querySelectorAll("details.fdiff[open]").forEach(d => d.open = false); bb.scrollIntoView({ block: "nearest" }); });
+      bb.append(o, c); firstDiff.before(bb);
     }
     const v = lsGet(id);
     if (v) { state[id].status = v.status || "todo"; state[id].note = v.note || ""; lastSaved[id] = JSON.stringify([state[id].status, state[id].note]); }
