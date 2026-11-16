@@ -13,7 +13,7 @@ module grid_utilities
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
-        &calc_int_vol, copy_grid, trim_grid, untrim_grid, calc_n_par_X_rich, &
+        &calc_int_vol, copy_grid, trim_grid, calc_n_par_X_rich, &
         &calc_vec_comp, nufft, find_compr_range, calc_arc_angle, calc_tor_diff
 #if ldebug
     public debug_calc_int_vol, debug_calc_vec_comp
@@ -1750,75 +1750,6 @@ contains
                 &grid_in%trigon_factors(:,:,i_lim_out(1):i_lim_out(2),:,:)
         end if
     end function trim_grid
-    
-    !> Untrims a trimmed grid by  introducing an asymmetric ghost regions at the
-    !! right.
-    !!
-    !! The width of the ghost region has to be provided.
-    !!
-    !! \note
-    !!  -# the ghosted grid should be deallocated (with dealloc_grid()).
-    !!  -# the input grid has to be trimmed.
-    !!
-    !! \return ierr
-    integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
-        use num_vars, only: n_procs, rank
-        use mpi_utilities, only: get_ghost_arr, get_ser_var
-        
-        character(*), parameter :: rout_name = 'untrim_grid'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_in                                  !< input grid
-        type(grid_type), intent(inout) :: grid_out                              !< ghosted grid
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: i_lim_in(2)                                                  ! limits of input grid
-        integer :: i_lim_out(2)                                                 ! limits of ghosted grid
-        integer, allocatable :: tot_loc_n_r(:)                                  ! loc_n_r of all processes
-        integer :: size_ghost_loc                                               ! local size_ghost
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! get array sizes of all processes
-        ierr = get_ser_var([grid_in%loc_n_r],tot_loc_n_r,scatter=.true.)
-        CHCKERR('')
-        
-        ! set local size_ghost
-        size_ghost_loc = min(size_ghost,minval(tot_loc_n_r)-1)
-        
-        ! set i_lim_in and i_lim_out
-        i_lim_in = [grid_in%i_min,grid_in%i_max]
-        i_lim_out = i_lim_in
-        if (rank.lt.n_procs-1) i_lim_out(2) = i_lim_out(2)+size_ghost_loc
-        
-        ! create grid
-        ierr = grid_out%init(grid_in%n,i_lim_out)
-        CHCKERR('')
-        
-        ! set ghosted variables
-        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3d grid
-            grid_out%theta_e(:,:,1:grid_in%loc_n_r) = grid_in%theta_e
-            grid_out%zeta_e(:,:,1:grid_in%loc_n_r) = grid_in%zeta_e
-            grid_out%theta_f(:,:,1:grid_in%loc_n_r) = grid_in%theta_f
-            grid_out%zeta_f(:,:,1:grid_in%loc_n_r) = grid_in%zeta_f
-            ierr = get_ghost_arr(grid_out%theta_e,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_e,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%theta_f,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_f,size_ghost_loc)
-            CHCKERR('')
-        end if
-        if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
-            grid_out%loc_r_e = grid_in%r_e(i_lim_out(1):i_lim_out(2))
-            grid_out%loc_r_f = grid_in%r_f(i_lim_out(1):i_lim_out(2))
-        end if
-        grid_out%r_e = grid_in%r_e
-        grid_out%r_f = grid_in%r_f
-    end function untrim_grid
     
     !> Calculates  contra- and  covariant  components of  a  vector in  multiple
     !! coordinate systems.

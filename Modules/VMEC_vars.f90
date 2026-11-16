@@ -35,7 +35,7 @@ module VMEC_vars
     integer :: mnmax_nyq_V                                                      !< number of modes of the Nyquist set
     integer :: mpol_tf                                                          !< poloidal extent of the trigonometric basis: m = 0 .. mpol_tf-1 (covers both mode sets)
     integer :: ntor_tf                                                          !< toroidal extent of the trigonometric basis: n = -ntor_tf .. ntor_tf
-    real(dp) :: B_0_V                                                           !< the magnitude of B at the magnetic axis, \f$\theta = \zeta = 0\f$
+    real(dp) :: B_0_V                                                           !< |B| on the magnetic axis: its (m,n) = (0,0) Fourier component, the average over \f$\theta\f$ and \f$\zeta\f$
     real(dp), allocatable :: flux_t_V(:,:)                                      !< toroidal flux
     real(dp), allocatable :: flux_p_V(:,:)                                      !< poloidal flux
     real(dp), allocatable :: pres_V(:,:)                                        !< pressure

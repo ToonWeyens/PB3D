@@ -27,7 +27,7 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, redistribute_var, get_ghost_arr, broadcast_var, &
+    public get_ser_var, redistribute_var, broadcast_var, &
         &wait_MPI, lock_req_acc, lock_return_acc
 #if ldebug
     public lock_header, lock_wl_change, &
@@ -59,26 +59,6 @@ module MPI_utilities
         module procedure get_ser_var_real
         !> \public
         module procedure get_ser_var_int
-    end interface
-    
-    !> \public Fill the ghost regions in an array.
-    !!
-    !! This is done by  sending the first normal point of a  process to the left
-    !! process.
-    !!
-    !! Every MPI message is identified by  its sending process. The array should
-    !! have the extended size, including ghost regions.
-    !!
-    !! \return ierr
-    interface get_ghost_arr
-        !> \public
-        module procedure get_ghost_arr_3D_complex
-        !> \public
-        module procedure get_ghost_arr_3D_real
-        !> \public
-        module procedure get_ghost_arr_2D_complex
-        !> \public
-        module procedure get_ghost_arr_1D_real
     end interface
     
     !> \public Wrapper function to broadcast a single variable using MPI.
@@ -372,19 +352,15 @@ contains
         ! means that  process 0  gets a  from process  0 and  b from  process 1.
         ! Process 1 gets c from process 0 and d from process 1.
         ! The  source  ranges  may  overlap:  the  grids  carry  ghost  regions
-        ! (4 norm_disc_prec_eq points  on either side of  the equilibrium range,
-        ! norm_disc_prec_sol on  the solution range,  and so on)  and every
-        ! process hands in its whole local  range. The old loop filled each
-        ! destination  from  the  sources  in  rank  order,  so  the  overlap
-        ! after  an interface  came from  the  lower rank's  ghost region,  whose
-        ! values are the  less accurate ones there  (radial derivatives and
-        ! interpolations  near the  end of  that  process' range):  with 2  or 4
-        ! processes the perturbation matrices differed from the one-process ones
-        ! in the 12 to 16 rows after each interface by up to 2E-5 relative, and
-        ! the eigenvalues  by 2E-5  (issue #4).  Every point  is now  taken from
-        ! its owner:  the overlap of two  neighbours is split  in the middle,
-        ! the convention of trim_grid, which is the  true owner boundary for the
-        ! symmetric ghost regions.
+        ! (4*norm_disc_prec_eq  points on either side of the equilibrium range,
+        ! norm_disc_prec_sol  on  the  solution  range,  and  so  on) and every
+        ! process  hands in its whole local range. Each point is taken from its
+        ! owner,  the process for which it is not a ghost point: the overlap of
+        ! two  neighbours is split in the middle, as in trim_grid, which is the
+        ! owner  boundary  for symmetric ghost regions. A ghost point lies near
+        ! the end of its process' range, where radial derivatives are one-sided
+        ! and splines end, so its value is less accurate; taken from the owner,
+        ! every point has the value it has with a single process.
         allocate(lims_eff_tot(2,n_procs))
         lims_eff_tot = lims_tot
         do id = 2,n_procs
@@ -442,182 +418,6 @@ contains
             !write(*,*) '    ', n_vars(id,:)
         !end do
     end function redistribute_var
-    
-    !> \private 3-D complex version
-    integer function get_ghost_arr_3D_complex(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_3D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: arr(:,:,:)                                !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes(2)                                                   ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = [size(arr,1),size(arr,2)]
-        tot_size = size(arr,3)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank-1,&
-                    &rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank-1,&
-                    &rank,arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_3D_complex
-    !> \private 3-D real version
-    integer function get_ghost_arr_3D_real(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_3D_real'
-        
-        ! input / output
-        real(dp), intent(inout) :: arr(:,:,:)                                   !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes(2)                                                   ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = [size(arr,1),size(arr,2)]
-        tot_size = size(arr,3)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank-1,rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank-1,&
-                    &rank,arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_3D_real
-    !> \private 2-D complex version
-    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: arr(:,:)                                  !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes                                                      ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = size(arr,1)
-        tot_size = size(arr,2)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*n_modes,MPI_DOUBLE_COMPLEX,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank-1,rank,MPI_Comm_world,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank-1,rank,&
-                    &arr(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank+1,rank+1,MPI_Comm_world,&
-                    &istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_2D_complex
-    !> \private 1-D real version
-    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_1D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: arr(:)                                          !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        tot_size = size(arr)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(tot_size-size_ghost+1:tot_size),&
-                    &size_ghost,MPI_DOUBLE_PRECISION,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank-1,rank,MPI_Comm_world,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank-1,rank,&
-                    &arr(tot_size-size_ghost+1:tot_size),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank+1,rank+1,&
-                    &MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_1D_real
     
     !> \private real version
     integer function broadcast_var_real(var,source) result(ierr)

@@ -1215,7 +1215,7 @@ contains
         use eq_vars, only: vac_perm
         use num_utilities, only: c
         use spline_utilities, only: spline
-        use grid_utilities, only: calc_int_vol, trim_grid, untrim_grid
+        use grid_utilities, only: calc_int_vol, trim_grid
         use grid_vars, only: alpha, n_alpha
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_XUQ

@@ -91,18 +91,16 @@ contains
         else
             flux_name = 'toroidal'
         end if
-        ! |B| on the magnetic axis as its (m,n) = (0,0) Fourier component, the
-        ! toroidal average.  Summing all modes  gives |B| at theta  = zeta = 0,
-        ! which for a 3-D equilibrium depends on the toroidal origin and made
-        ! the normalized  eigenvalues of  a rippled torus  vary linearly  with
-        ! the ripple amplitude while the physics  is even in it (issue #4, step
-        ! 6f). bmnc lives  on the Nyquist mode set  and on the half  mesh; its
-        ! first two interior values are extrapolated to the axis.
-        B_0_V = 0._dp
-        do id = 1,mnmax_nyq
-            if (nint(xm_nyq(id)).eq.0 .and. nint(xn_nyq(id)).eq.0) &
-                &B_0_V = B_0_V + 1.5_dp*bmnc(id,2) - 0.5_dp*bmnc(id,3)
-        end do
+        ! |B| on the magnetic axis: its (m,n) = (0,0) Fourier component, the
+        ! average over theta and zeta. VMEC lists that mode first; bmnc is on
+        ! the half mesh, so its first two interior values are extrapolated to
+        ! the axis.
+        if (nint(xm_nyq(1)).ne.0 .or. nint(xn_nyq(1)).ne.0) then
+            ierr = 1
+            err_msg = 'The first Nyquist mode of the VMEC file is not (0,0)'
+            CHCKERR(err_msg)
+        end if
+        B_0_V = 1.5_dp*bmnc(1,2) - 0.5_dp*bmnc(1,3)
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
