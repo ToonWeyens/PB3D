@@ -7,17 +7,14 @@ module HDF5_vars
     use messages
     use str_utilities, only: i2str, r2str, r2strt
     use HDF5
-    use var_1D_vars, only: var_1D_type, dealloc_var_1D, max_dim_var_1D
+    use flat_vars, only: var_flat_type, dealloc_var_flat, max_dim_var_flat
 
     implicit none
     private
-    ! var_1D_type, dealloc_var_1D and max_dim_var_1D moved to the
-    ! dependency-light var_1D_vars and are re-exported here for
-    ! compatibility
-    public init_HDF5, dealloc_XML_str, dealloc_var_1D, var_1D_type, &
+    public init_HDF5, dealloc_XML_str, dealloc_var_flat, var_flat_type, &
         &xmf_fmt, XDMF_num_types, XDMF_format_types, XDMF_geom_types, &
         &XDMF_top_types, XDMF_att_types, XDMF_center_types, XDMF_grid_types, &
-        &max_dim_var_1D
+        &max_dim_var_flat
 
     ! global variables
     integer, parameter :: max_xml_ln = 300                                      !< max. length of xml string

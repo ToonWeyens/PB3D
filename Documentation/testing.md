@@ -9,11 +9,11 @@ is needed).
 
 The unit tests build against a dependency-light subset of the code
 (`pb3d_core`: `num_vars`, `str_utilities`, `messages`, `files_utilities`,
-`dtorh`, the light type modules `var_1D_vars`/`grid_vars`/`X_vars`,
+`dtorh`, the light type modules `flat_vars`/`grid_vars`/`X_vars`,
 `PB3D_utilities`, and - when LAPACK is available - `num_utilities`,
 `X_utilities` and `num_ops`; the PSPLINE dependency of `num_utilities` was
 split off into `spline_utilities` and the HDF5 dependency of
-`PB3D_utilities` into `var_1D_vars`), so they compile with nothing but a
+`PB3D_utilities` into `flat_vars`), so they compile with nothing but a
 Fortran compiler, CMake and optionally LAPACK:
 
 ```bash
@@ -85,7 +85,7 @@ combined over all ranks.
   `setup_par_id` checked against its docstring formulas, including the
   partition property (the per-level index sets of an interlaced parallel
   grid tile it exactly), windows (`par_lim`) and per-level memory indices;
-  `setup_rich_id`; and the 1-D/n-D storage conversion `conv_1D2ND`.
+  `setup_rich_id`; and the flat/n-D storage conversion `conv_flat2ND`.
 - **`vac_kernels` (full-stack)** — the vacuum Green's function interval
   kernels (`vac_utilities::calc_GH_int_1/2`) against
   implementation-independent references: direct toroidal-harmonic

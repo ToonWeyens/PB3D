@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.48
+    VERSION 2.49
     LANGUAGES Fortran C CXX
     DESCRIPTION "Peeling Ballooning in 3D"
 )
@@ -232,7 +232,7 @@ set(PB3D_CORE_SOURCES
     Modules/files_utilities.f90
     Modules/dtorh.f90
     # light type modules and the pure index logic built on them
-    Modules/var_1D_vars.f90
+    Modules/flat_vars.f90
     Modules/grid_vars.f90
     Modules/X_vars.f90
     Modules/PB3D_utilities.f90
@@ -298,7 +298,7 @@ set(PB3D_MODULE_SOURCES
     Modules/MPI_ops.f90
 
     # HDF5 modules
-    Modules/var_1D_vars.f90
+    Modules/flat_vars.f90
     Modules/HDF5_vars.f90
     Modules/HDF5_utilities.f90
     Modules/HDF5_ops.f90

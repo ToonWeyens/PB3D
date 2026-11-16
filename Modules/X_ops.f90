@@ -412,8 +412,8 @@ contains
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use grid_utilities, only: trim_grid
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use X_vars, only: n_mod_X
         
         character(*), parameter :: rout_name = 'print_output_X_1'
@@ -431,8 +431,8 @@ contains
         integer :: n_tot(3)                                                     ! total n
         integer :: par_id(2)                                                    ! parallel interval
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
-        type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
+        type(var_flat_type), allocatable, target :: X_1D(:)                     ! 1D equivalent of X variables
+        type(var_flat_type), pointer :: X_1D_loc => null()                      ! local element in X_1D
         integer :: id                                                           ! counters
         logical :: par_div_loc                                                  ! local par_div
         integer :: lim_sec_X_loc(2)                                             ! local lim_sec_X
@@ -467,7 +467,7 @@ contains
         if (present(lim_sec_X)) lim_sec_X_loc = lim_sec_X
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(X_1D(max_dim_var_1D))
+        allocate(X_1D(max_dim_var_flat))
         
         ! set up variables X_1D
         id = 1
@@ -591,7 +591,7 @@ contains
         
         ! clean up
         call grid_trim%dealloc()
-        call dealloc_var_1D(X_1D)
+        call dealloc_var_flat(X_1D)
         nullify(X_1D_loc)
         
         ! user output
@@ -603,8 +603,8 @@ contains
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use grid_utilities, only: trim_grid
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use X_utilities, only: is_necessary_X, get_sec_X_range
         use X_vars, only: set_nn_mod
         use num_utilities, only: c
@@ -626,8 +626,8 @@ contains
         integer :: par_id(2)                                                    ! parallel interval
         integer :: par_id_loc(2)                                                ! local parallel interval
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(var_1D_type), allocatable, target :: X_1D(:)                       ! 1D equivalent of X variables
-        type(var_1D_type), pointer :: X_1D_loc => null()                        ! local element in X_1D
+        type(var_flat_type), allocatable, target :: X_1D(:)                     ! 1D equivalent of X variables
+        type(var_flat_type), pointer :: X_1D_loc => null()                      ! local element in X_1D
         logical :: print_this(2)                                                ! whether symmetric and asymmetric variables need to be printed
         integer :: nn_mod_tot(2)                                                ! total nr. of modes for symmetric and asymmetric variables
         integer :: nn_mod_loc(2)                                                ! local nr. of modes for symmetric and asymmetric variables
@@ -674,7 +674,7 @@ contains
         ! set dimensions, parallel limits and local and total nn_mod_X
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(X_1D(max_dim_var_1D))
+        allocate(X_1D(max_dim_var_flat))
         
         ! set up variables X_1D
         id = 1
@@ -888,7 +888,7 @@ contains
         
         ! clean up
         call grid_trim%dealloc()
-        call dealloc_var_1D(X_1D)
+        call dealloc_var_flat(X_1D)
         nullify(X_1D_loc)
         
         ! user output

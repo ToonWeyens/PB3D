@@ -1576,8 +1576,8 @@ contains
         
         use num_vars, only: PB3D_name, sol_n_procs, rank
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_sol'
@@ -1590,8 +1590,8 @@ contains
         logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
-        type(var_1D_type), allocatable, target :: sol_1D(:)                     ! 1D equivalent of eq. variables
-        type(var_1D_type), pointer :: sol_1D_loc => null()                      ! local element in sol_1D
+        type(var_flat_type), allocatable, target :: sol_1D(:)                   ! 1D equivalent of eq. variables
+        type(var_flat_type), pointer :: sol_1D_loc => null()                    ! local element in sol_1D
         type(grid_type) :: grid_trim                                            ! trimmed solution grid
         integer :: id                                                           ! counter
         
@@ -1609,7 +1609,7 @@ contains
             CHCKERR('')
             
             ! Set up the 1D equivalents of the solution variables
-            allocate(sol_1D(max_dim_var_1D))
+            allocate(sol_1D(max_dim_var_flat))
             
             id = 1
             
@@ -1674,7 +1674,7 @@ contains
             
             ! clean up
             call grid_trim%dealloc()
-            call dealloc_var_1D(sol_1D)
+            call dealloc_var_flat(sol_1D)
             nullify(sol_1D_loc)
             
             ! user output

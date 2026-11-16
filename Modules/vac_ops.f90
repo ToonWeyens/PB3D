@@ -8,6 +8,7 @@
 !!      magnetic field lines.
 !!      - The 3-D integrals are therefore integrated using Weyl's theorem
 !!      \cite Helander2014, p. 5.
+!!     - At least 2 fields lines are required, with alpha_style=2
 !!  -# axisymmetric:
 !!      - Makes use of an analytical  expression for the toroidal integration of
 !!      the Green's functions, as shown in \cite Cohl1999.
@@ -19,17 +20,8 @@
 !!
 !! \see See \cite Weyens3D.
 !!
-!! Status: verified by  the full-stack test suite  in tests/fullstack (see
-!! Documentation/testing.md): the axisymmetric building blocks (kernels,
-!! singular integrals, assembled G and H, boundary potential solve,
-!! response against the analytical cylinder limit), the free-boundary
-!! chain end-to-end (regression_cbm18a_free_bnd), and the 3-D field-line
-!! machinery (singular half-cell kernel, jump relations, response of an
-!! axisymmetric boundary cross-checked between the two styles). The 3-D
-!! style requires at least 2 field lines (n_alpha > 1, i.e. alpha_style 2,
-!! which is the recommended mode for 3-D runs anyway): single-field-line
-!! Weyl coverage would need per-point transverse spacings (three-distance
-!! theorem) and is deliberately not implemented.
+!! \todo Publish vacuum benchmarks and refer to them here.
+!! \todo Investigate Strumpack rather than inefficient scalapack
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
@@ -3719,8 +3711,8 @@ logical, allocatable :: in_ext(:)                                       ! points
         use num_vars, only: PB3D_name
         use grid_vars, only: min_par_X, max_par_X
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         
         character(*), parameter :: rout_name = 'print_output_vac'
         
@@ -3730,8 +3722,8 @@ logical, allocatable :: in_ext(:)                                       ! points
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to print
         
         ! local variables
-        type(var_1D_type), allocatable, target :: vac_1D(:)                     ! 1D equivalent of vac variables
-        type(var_1D_type), pointer :: vac_1D_loc => null()                      ! local element in vac_1D
+        type(var_flat_type), allocatable, target :: vac_1D(:)                   ! 1D equivalent of vac variables
+        type(var_flat_type), pointer :: vac_1D_loc => null()                    ! local element in vac_1D
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -3742,7 +3734,7 @@ logical, allocatable :: in_ext(:)                                       ! points
         call lvl_ud(1)
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(vac_1D(max_dim_var_1D))
+        allocate(vac_1D(max_dim_var_flat))
         
         ! set up variables vac_1D
         id = 1
@@ -3869,7 +3861,7 @@ logical, allocatable :: in_ext(:)                                       ! points
         CHCKERR('')
         
         ! clean up
-        call dealloc_var_1D(vac_1D)
+        call dealloc_var_flat(vac_1D)
         nullify(vac_1D_loc)
         
         ! user output

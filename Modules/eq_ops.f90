@@ -2278,8 +2278,8 @@ contains
     integer function print_output_eq_1(grid_eq,eq,data_name) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_eq_1'
@@ -2291,8 +2291,8 @@ contains
         
         ! local variables
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
-        type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
+        type(var_flat_type), allocatable, target :: eq_1D(:)                    ! 1D equivalent of eq. variables
+        type(var_flat_type), pointer :: eq_1D_loc => null()                     ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
         integer :: loc_size                                                     ! local size
@@ -2309,7 +2309,7 @@ contains
         CHCKERR('')
         
         ! set up the 1D equivalents of the equilibrium variables
-        allocate(eq_1D(max_dim_var_1D))
+        allocate(eq_1D(max_dim_var_flat))
         
         ! Set up common variables eq_1D
         id = 1
@@ -2400,7 +2400,7 @@ contains
         
         ! clean up
         call grid_trim%dealloc()
-        call dealloc_var_1D(eq_1D)
+        call dealloc_var_flat(eq_1D)
         nullify(eq_1D_loc)
         
         ! user output
@@ -2411,8 +2411,8 @@ contains
         &dealloc_vars) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_eq_2'
@@ -2429,8 +2429,8 @@ contains
         integer :: n_tot(3)                                                     ! total n
         integer :: par_id(2)                                                    ! local parallel interval
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
-        type(var_1D_type), allocatable, target :: eq_1D(:)                      ! 1D equivalent of eq. variables
-        type(var_1D_type), pointer :: eq_1D_loc => null()                       ! local element in eq_1D
+        type(var_flat_type), allocatable, target :: eq_1D(:)                    ! 1D equivalent of eq. variables
+        type(var_flat_type), pointer :: eq_1D_loc => null()                     ! local element in eq_1D
         type(grid_type) :: grid_trim                                            ! trimmed grid
         integer :: id                                                           ! counter
         logical :: par_div_loc                                                  ! local par_div
@@ -2465,7 +2465,7 @@ contains
         if (present(dealloc_vars)) dealloc_vars_loc = dealloc_vars
         
         ! set up the 1D equivalents of the equilibrium variables
-        allocate(eq_1D(max_dim_var_1D))
+        allocate(eq_1D(max_dim_var_flat))
         
         ! Set up common variables eq_1D
         id = 1
@@ -2588,7 +2588,7 @@ contains
         
         ! clean up
         call grid_trim%dealloc()
-        call dealloc_var_1D(eq_1D)
+        call dealloc_var_flat(eq_1D)
         nullify(eq_1D_loc)
         
         ! user output

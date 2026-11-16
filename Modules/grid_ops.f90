@@ -1503,8 +1503,8 @@ contains
         &par_div,remove_previous_arrs) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: var_flat_type, &
+            &max_dim_var_flat
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_grid'
@@ -1521,8 +1521,8 @@ contains
         integer :: n_tot(3)                                                     ! total n
         integer :: par_id(2)                                                    ! local parallel interval
         type(grid_type) :: grid_trim                                            ! trimmed grid
-        type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
-        type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
+        type(var_flat_type), allocatable, target :: grid_1D(:)                  ! 1D equivalent of grid variables
+        type(var_flat_type), pointer :: grid_1D_loc => null()                   ! local element in grid_1D
         integer :: id                                                           ! counter
         logical :: par_div_loc                                                  ! local par_div
         
@@ -1551,7 +1551,7 @@ contains
         end if
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(grid_1D(max_dim_var_1D))
+        allocate(grid_1D(max_dim_var_flat))
         
         ! set up variables grid_1D
         id = 1

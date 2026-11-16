@@ -1,7 +1,7 @@
 !------------------------------------------------------------------------------!
 !> Unit tests for the pure Richardson/parallel index arithmetic of
 !! PB3D_utilities (setup_rich_id, setup_par_id) and the 1-D <-> n-D storage
-!! conversion (conv_1D2ND).
+!! conversion (conv_flat2ND).
 !!
 !! The setup_par_id spec comes from its ~50-line docstring: at Richardson
 !! level i (max. I), the points of an interlaced parallel grid with
@@ -17,8 +17,8 @@ module test_PB3D_utilities
     use num_vars, only: dp
     use str_utilities, only: i2str
     use grid_vars, only: grid_type
-    use var_1D_vars, only: var_1D_type
-    use PB3D_utilities, only: setup_rich_id, setup_par_id, conv_1D2ND
+    use flat_vars, only: var_flat_type
+    use PB3D_utilities, only: setup_rich_id, setup_par_id, conv_flat2ND
 
     implicit none
     private
@@ -33,7 +33,7 @@ contains
             &new_unittest("setup_rich_id", test_setup_rich_id), &
             &new_unittest("par_id_partition", test_par_id_partition), &
             &new_unittest("par_id_window_and_memory", test_par_id_window), &
-            &new_unittest("conv_1D2ND", test_conv_1D2ND) &
+            &new_unittest("conv_flat2ND", test_conv_flat2ND) &
             &]
     end subroutine collect_PB3D_utilities
 
@@ -168,10 +168,10 @@ contains
     end subroutine test_par_id_window
 
     !> 1-D to n-D conversion restores shape, bounds and values.
-    subroutine test_conv_1D2ND(error)
+    subroutine test_conv_flat2ND(error)
         type(error_type), allocatable, intent(out) :: error
 
-        type(var_1D_type) :: var                                                ! 1-D variable
+        type(var_flat_type) :: var                                              ! 1-D variable
         real(dp), allocatable :: var_2D(:,:), var_3D(:,:,:)                     ! converted variables
         integer :: id, jd, kd                                                   ! counters
         integer :: ld                                                           ! linear counter
@@ -180,7 +180,7 @@ contains
         var%tot_i_min = [0,3]
         var%tot_i_max = [2,4]
         var%p = [(1._dp*ld, ld = 1,6)]
-        call conv_1D2ND(var,var_2D)
+        call conv_flat2ND(var,var_2D)
         call check(error, lbound(var_2D,1).eq.0 .and. ubound(var_2D,1).eq.2 &
             &.and. lbound(var_2D,2).eq.3 .and. ubound(var_2D,2).eq.4, &
             &'2-D bounds')
@@ -200,7 +200,7 @@ contains
         var%tot_i_min = [1,1,1]
         var%tot_i_max = [2,3,2]
         var%p = [(2._dp*ld, ld = 1,12)]
-        call conv_1D2ND(var,var_3D)
+        call conv_flat2ND(var,var_3D)
         call check(error, all(shape(var_3D).eq.[2,3,2]), '3-D shape')
         if (allocated(error)) return
         ld = 0
@@ -214,5 +214,5 @@ contains
                 end do
             end do
         end do
-    end subroutine test_conv_1D2ND
+    end subroutine test_conv_flat2ND
 end module test_PB3D_utilities

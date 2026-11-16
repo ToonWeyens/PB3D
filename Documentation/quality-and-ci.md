@@ -78,8 +78,8 @@ Notes:
   `X_utilities` (mode-index logic incl. the documented `get_sec_X_range`
   example) and `PB3D_utilities` (`setup_par_id`/`setup_rich_id` spec tests
   from the docstring formulas incl. the Richardson partition property,
-  `conv_1D2ND`). The enabling split: `var_1D_type` moved from `HDF5_vars`
-  to the light `var_1D_vars` (re-exported for compatibility), and
+  `conv_flat2ND`). The enabling split: `var_flat_type` moved from `HDF5_vars`
+  to the light `flat_vars` (re-exported for compatibility), and
   `grid_vars`/`X_vars` joined `pb3d_core`.
 - **Next candidates, cheap**:
   - `num_utilities` remainder: `con`, `conv_mat`, `calc_mult`,
@@ -188,7 +188,7 @@ executable) are still single-process.
    (S101 trailing whitespace is auto-fixable).
 5. **Second-stage core expansion**: ~~`X_utilities` and
    `PB3D_utilities::setup_par_id`/`setup_rich_id` unit suites (move
-   `var_1D_type` to a light module)~~ **done**; remaining: demote
+   `var_flat_type` to a light module)~~ **done**; remaining: demote
    `use output_ops` to ldebug in
    `eq_utilities`/`sol_utilities`/`grid_utilities` and add their pure
    routines.

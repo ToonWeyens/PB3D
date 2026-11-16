@@ -694,7 +694,7 @@ The rippled changes grow as δ², as the Nyquist content beyond (12, 6) does. W7
 | Consolidation | Where | Lines | Date |
 |---|---|---|---|
 | PSPLINE wrappers split from `num_utilities` into `spline_utilities`; 34 use sites | `Modules/spline_utilities.f90` | | July, 8ac37d7 |
-| `var_1D_type` moved to the light `var_1D_vars` | `Modules/var_1D_vars.f90` | | July |
+| `var_flat_type` moved to the light `flat_vars` (first named `var_1D_type` in `var_1D_vars`, both renamed 16 November) | `Modules/flat_vars.f90` | | July |
 | distributed vector helpers `n_col1_loc`, `vec_glob2dis`, `dis_matvec` moved from the test helpers | `vac_utilities.f90` | 57 fewer | 31 October, fe305fd |
 | one routine `set_diag` for both diagonals | `vac_ops.f90` | 24 fewer net | 31 October, 0bbda47 |
 | the angle version of `fourier2real` calls the table version | `VMEC_utilities.f90` | 90 fewer | 31 October, 1a53f50 |
@@ -705,7 +705,7 @@ STRUMPACK-Dense 1.1.1 has become hard to obtain. Since 429f003 PB3D builds witho
 
 ### 5.7 A dependency-light core build (July)
 
-`-DPB3D_BUILD_EXECUTABLES=OFF` builds only the core library `pb3d_core` and its unit tests. The core holds `num_vars`, `str_utilities`, `messages`, `files_utilities`, `dtorh`, the light type modules `var_1D_vars`, `grid_vars` and `X_vars`, `PB3D_utilities`, and with LAPACK `num_utilities`, `X_utilities` and `num_ops`. It needs a Fortran compiler and CMake, LAPACK optional. CI's unit and sanitiser jobs use it.
+`-DPB3D_BUILD_EXECUTABLES=OFF` builds only the core library `pb3d_core` and its unit tests. The core holds `num_vars`, `str_utilities`, `messages`, `files_utilities`, `dtorh`, the light type modules `flat_vars`, `grid_vars` and `X_vars`, `PB3D_utilities`, and with LAPACK `num_utilities`, `X_utilities` and `num_ops`. It needs a Fortran compiler and CMake, LAPACK optional. CI's unit and sanitiser jobs use it.
 
 ## 6. The 3-D vacuum in depth
 
@@ -1151,7 +1151,7 @@ With `LCURRF = 1` the n = 10 eigenvalue λ is one eighth of the right one, −0.
 | unit | `unit_num_utilities` | trapezoidal integration, finite-difference weights, the Björck-Pereyra solver, symmetric-storage indexing, sorting, LAPACK determinant and inverse, extrapolation, GCD and LCM |
 | unit | `unit_num_ops` | Householder orders 1 to 3 and Zhang zero finders on known roots |
 | unit | `unit_X_utilities` | mode-index logic, including the documented example of `get_sec_X_range` |
-| unit | `unit_PB3D_utilities` | `setup_par_id`, `setup_rich_id`, `conv_1D2ND`; the partition property of the Richardson levels |
+| unit | `unit_PB3D_utilities` | `setup_par_id`, `setup_rich_id`, `conv_flat2ND`; the partition property of the Richardson levels |
 | unit | `unit_setup_modes_sim` | the slot simulation of section 4.13; needs python3 |
 | smoke | `smoke_PB3D_usage`, `smoke_POST_usage` | usage messages |
 | full-stack | `fullstack_vac_kernels` | interval kernels of `vac%style` 2 against direct evaluation, numerical derivatives and brute force; the Q asymptote |
@@ -1525,11 +1525,11 @@ From `git diff --stat master...HEAD`: 140 files, 17 668 lines added and 1255 rem
 | `Modules/HELENA_ops.f90` | spline imports; `invert_top_bottom_H` under `ldebug` |
 | `Modules/spline_utilities.f90` | new: the PSPLINE wrappers split out of `num_utilities` |
 | `Modules/num_utilities.f90` | spline wrappers moved out, 390 lines fewer |
-| `Modules/var_1D_vars.f90` | new: `var_1D_type` without HDF5 |
-| `Modules/HDF5_vars.f90` | `var_1D_type` re-exported from `var_1D_vars` |
+| `Modules/flat_vars.f90` | new: `var_flat_type` without HDF5 |
+| `Modules/HDF5_vars.f90` | `var_flat_type` re-exported from `flat_vars` |
 | `Modules/HDF5_ops.f90` | a debug-only use under `#if ldebug` |
 | `Modules/HDF5_utilities.f90` | one declaration line reformatted |
-| `Modules/PB3D_utilities.f90` | `var_1D_type` from `var_1D_vars` |
+| `Modules/PB3D_utilities.f90` | `var_flat_type` from `flat_vars` |
 | `Modules/sol_utilities.f90` | spline imports; `ldebug` guards |
 | `Modules/dtorh.f90` | type-specific intrinsics such as `DSQRT` replaced by generic ones |
 | `Modules/num_ops.f90` | `output_ops` only under `ldebug` |

@@ -1221,8 +1221,8 @@ contains
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
@@ -1242,8 +1242,8 @@ contains
         logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
-        type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
-        type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
+        type(var_flat_type), allocatable, target :: in_1D(:)                    ! 1D equivalent of input variables
+        type(var_flat_type), pointer :: in_1D_loc => null()                     ! local element in in_1D
         integer :: id                                                           ! counter
         integer :: in_limits(2)                                                 ! min. and max. index of input variable grid of this process
         integer :: loc_size                                                     ! local size
@@ -1307,7 +1307,7 @@ contains
             &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//')')
         
         ! set up 1D equivalents of input variables
-        allocate(in_1D(max_dim_var_1D))
+        allocate(in_1D(max_dim_var_flat))
         
         ! Set up common variables in_1D
         id = 1
@@ -1693,7 +1693,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_var_1D(in_1D)
+        call dealloc_var_flat(in_1D)
         nullify(in_1D_loc)
         
         ! user output
