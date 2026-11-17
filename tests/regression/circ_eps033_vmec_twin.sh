@@ -7,9 +7,20 @@
 # which no vacuum enters: HELENA +7.84304e-2, VMEC +7.84306e-2 (2.4e-6 apart) on
 # 30 October 2026, once PB3D's reference field B_0 is the (0,0) mode of |B| on
 # the axis; with the old B_0 (all modes summed at theta = zeta = 0) the VMEC
-# value was +7.9716e-2, 1.6 % off. The test asks for 1e-4 between the twins and
-# anchors the VMEC value at 1e-3, as the regression layer's only fixed-boundary
-# VMEC number, so that a change in the VMEC path shows.
+# value was +7.9716e-2, 1.6 % off. With VMEC's half-mesh values (lambda, the
+# Jacobian, B_u, B_v) at VMEC's positions (j - 3/2)/(ns - 1) (issue #16), the
+# VMEC value is +7.84303e-2, 1.1e-6 below HELENA's. The test asks for 1e-4
+# between the twins and anchors the VMEC value at 1e-3, as the regression
+# layer's only fixed-boundary VMEC number, so that a change in the VMEC path
+# shows.
+#
+# Between the fixed VMEC run and the free one, check_vmec_read.py compares what
+# PB3D stored in PB3D_out.h5 with the wout file (issue #16): the file's mode
+# lists against VMEC's conventions, PB3D's mode lists and sizes, R, Z and
+# B_s, and the half-mesh coefficients against a cubic spline from VMEC's
+# positions, to 1e-12 away from the two surfaces at each end. It fails when
+# read_VMEC places the half mesh elsewhere or leaves B_s unset. It needs h5py
+# and scipy, and is skipped with a note when they are missing.
 #
 # The twin is then run free-boundary through the 3-D vacuum (style 1:
 # alpha_style 2, 64 field lines, the deck's 100 parallel points). With the
@@ -30,13 +41,15 @@
 # was 0.27 of the axisymmetric one and the eigenvalue -0.083 (issue #4,
 # step 6e).
 #
-# Usage: circ_eps033_vmec_twin.sh <PB3D-executable> <input-deck> <HELENA-file> <wout-file>
+# Usage: circ_eps033_vmec_twin.sh <PB3D-executable> <input-deck> <HELENA-file> <wout-file> [python3]
 set -u
 
 PB3D_EXE=$1
 INPUT=$2
 HEL_FILE=$3
 WOUT_FILE=$4
+PYTHON=${5:-}
+CHECK=$(cd "$(dirname "$0")" && pwd)/check_vmec_read.py
 
 ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
@@ -75,6 +88,15 @@ run_deck input_fixed eq_HEL
 EV_HEL=$EV
 run_deck input_fixed wout_eq.nc
 EV_VMEC=$EV
+
+# what PB3D stored from the wout file, before the free run overwrites it
+if [ -z "$PYTHON" ]; then
+    echo "NOTE: check_vmec_read.py skipped: no python3 with h5py"
+elif ! "$PYTHON" -c 'import scipy' > /dev/null 2>&1; then
+    echo "NOTE: check_vmec_read.py skipped: $PYTHON has no scipy"
+else
+    "$PYTHON" "$CHECK" PB3D_out.h5 wout_eq.nc || exit 1
+fi
 
 # free boundary through the 3-D vacuum: the deck with the field lines added
 {

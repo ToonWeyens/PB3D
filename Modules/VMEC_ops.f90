@@ -45,6 +45,7 @@ contains
         ! local variables
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: r_V(:)                                         ! normal coordinate
+        real(dp), allocatable :: r_V_H(:)                                       ! normal coordinate of VMEC's half mesh
         real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
@@ -194,6 +195,10 @@ contains
         allocate(r_V(n_r_in))
         r_V = [((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]
         
+        ! VMEC stores  the half-mesh quantities  in rows 2 ..  n_r_in, row  j at
+        ! (j-3/2)/(n_r_in-1), halfway between full-mesh points j-1 and j
+        r_V_H = r_V(2:n_r_in) - 0.5_dp/(n_r_in-1)
+        
         ! up to order 2, full mesh
         do kd = 1,2
             ierr = spline(r_V,q_saf_V(:,0),r_V,q_saf_V(:,kd),&
@@ -216,12 +221,12 @@ contains
         ! up to order 2, half mesh: also extrapolate
         do kd = 0,2
             do id = 1,mnmax_nyq_V
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &jac_c_H(id,2:n_r_in,0),r_V,jac_V_c(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                 CHCKERR('')
                 if (is_asym_V) then
-                    ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    ierr = spline(r_V_H,&
                         &jac_s_H(id,2:n_r_in,0),r_V,jac_V_s(id,:,kd),&
                         &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                     CHCKERR('')
@@ -253,12 +258,12 @@ contains
         ! up to order 2, half mesh: also extrapolate
         do kd = 0,3
             do id = 1,mnmax_V
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &L_s_H(id,2:n_r_in,0),r_V,L_V_s(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                 CHCKERR('')
                 if (is_asym_V) then
-                    ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    ierr = spline(r_V_H,&
                         &L_c_H(id,2:n_r_in,0),r_V,L_V_c(id,:,kd),&
                         &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                     CHCKERR('')
@@ -316,23 +321,27 @@ contains
         ! half mesh: extrapolate
         do id = 1,mnmax_nyq_V
             do kd = 2,3
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &B_V_sub_c_M(id,2:n_r_in,kd),r_V,B_V_sub_c(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
                 CHCKERR('')
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &B_V_sub_s_M(id,2:n_r_in,kd),r_V,B_V_sub_s(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
                 CHCKERR('')
             end do
         end do
+        
+        ! full mesh: B_s, no interpolation
+        B_V_sub_c(:,:,1) = B_V_sub_c_M(:,:,1)
+        B_V_sub_s(:,:,1) = B_V_sub_s_M(:,:,1)
 #if ldebug
         do id = 1,mnmax_nyq_V
-            ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline(r_V_H,&
                 &B_V_c_H(id,2:n_r_in),r_V,B_V_c(id,:),&
                 &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
             CHCKERR('')
-            ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline(r_V_H,&
                 &B_V_s_H(id,2:n_r_in),r_V,B_V_s(id,:),&
                 &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
             CHCKERR('')
