@@ -545,7 +545,8 @@ contains
         &result(ierr)
         
         use vac_vars, only: in_context
-        use vac_utilities, only: vec_dis2loc
+        use vac_utilities, only: vec_dis2loc, vac_steps, calc_diag_direct
+        use num_vars, only: vac_diag_style
 #if ldebug
         use num_vars, only: rank, n_procs
         use vac_utilities, only: mat_dis2loc
@@ -569,6 +570,10 @@ contains
         real(dp), pointer :: x_vec(:,:)                                         ! x_vec used in row
         character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: ext_in                                                       ! external influence point
+        real(dp) :: dpar, dalpha                                                ! steps of the field-line grid
+        real(dp), allocatable :: dH(:), dG(:)                                   ! diagonals of H and G (global)
+        real(dp), allocatable :: diag_dir(:), diag_fac(:), I_sing(:), omega_v(:) ! direct diagonals of H and their parts
+        logical, allocatable :: avail(:)                                        ! direct value available
 #if ldebug
         real(dp), allocatable :: loc_ser(:,:)                                   ! serial copy of a matrix
 #endif
@@ -628,6 +633,44 @@ contains
                 CHCKERR(err_msg)
         end select
         
+        ! diagonals of the boundary rows
+        !  - vac_diag_style 1: the indirect diagonals of diag_indirect, which
+        !    replace those of the assembly;
+        !  - vac_diag_style 2: the direct diagonals. For the field-line style,
+        !    H_ii is -2 pi plus the integral of the kernel over the node's cell
+        !    (calc_diag_direct) where the node has a full cell, and the
+        !    indirect value at the ends of the lines, which have none; G_ii
+        !    keeps the half-cell integral of calc_GH_int_1. For the
+        !    axisymmetric style both keep the values of the assembly in
+        !    calc_GH_2, with the corner term and the analytical near-singular
+        !    integrals.
+        if (.not.ext_in .and. in_context(vac%ctxt_HG)) then
+            allocate(dH(vac%n_bnd),dG(vac%n_bnd))
+            select case (vac_diag_style)
+                case (1)                                                        ! indirect
+                    ierr = diag_indirect(vac,dH,dG)
+                    CHCKERR('')
+                    call set_diag_vac(vac,H,dH)
+                    call set_diag_vac(vac,G,dG)
+                case (2)                                                        ! direct
+                    if (vac%style.eq.1) then
+                        ierr = diag_indirect(vac,dH,dG)
+                        CHCKERR('')
+                        call vac_steps(dpar,dalpha)
+                        allocate(diag_dir(vac%n_bnd),diag_fac(vac%n_bnd),&
+                            &I_sing(vac%n_bnd),omega_v(vac%n_bnd),&
+                            &avail(vac%n_bnd))
+                        ierr = calc_diag_direct(vac,dpar,dalpha,diag_dir,&
+                            &diag_fac,I_sing,omega_v,avail)
+                        CHCKERR('')
+                        where (avail) dH = diag_dir
+                        call set_diag_vac(vac,H,dH)
+                        deallocate(diag_dir,diag_fac,I_sing,omega_v,avail)
+                    end if
+            end select
+            deallocate(dH,dG)
+        end if
+        
         ! clean up
         if (.not.present(lims_r_in)) then
             deallocate(lims_r)
@@ -674,11 +717,10 @@ contains
     integer function calc_GH_1(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in,ext_in) &
         &result(ierr)
         
-        use vac_utilities, only: calc_GH_int_1, dis_matvec, vac_steps, &
-            &calc_diag_direct
+        use vac_utilities, only: calc_GH_int_1, vac_steps
         use grid_vars, only: n_alpha
-        use num_vars, only: tol_zero, vac_diag_style
-        use vac_vars, only: in_context, loc_idx
+        use num_vars, only: tol_zero
+        use vac_vars, only: loc_idx
         
         character(*), parameter :: rout_name = 'calc_GH_1'
         
@@ -706,10 +748,6 @@ contains
         real(dp) :: h_fac_in(3)                                                 ! metric factors for the singular half-cell
         integer :: j_min, j_nb                                                  ! boundary point nearest to an external point and its neighbour on the line
         logical :: near_row                                                     ! near-field rule allowed for this row
-        real(dp), allocatable :: loc_res(:)                                     ! global vector: diagonal values or data
-        real(dp), allocatable :: lin_res(:)                                     ! global vector: matrix-vector products
-        real(dp), allocatable :: diag_dir(:), diag_fac(:), I_sing(:), omega_v(:) ! direct diagonals of H and their parts
-        logical, allocatable :: avail(:)                                        ! direct value available
         character(len=max_str_ln) :: err_msg                                    ! error message
 
         ! initialize ierr
@@ -818,97 +856,6 @@ contains
                 end do subcols
             end do row
         end do subrows
-        
-        ! if in context and not external, set the diagonals.
-        !  - indirect (vac_diag_style 1, the default): H through
-        !    the row-sum identity for the constant potential and G through the
-        !    identities for the linear interior harmonics, which absorb the
-        !    first-order quadrature error of the off-diagonal entries into the
-        !    diagonal;
-        !  - direct (vac_diag_style 2): H from the corner term of the smooth
-        !    surface, -2 pi, plus the cell integral of the kernel
-        !    (calc_diag_direct; the row sum at the end points of the lines,
-        !    which have no full cell), G from the analytical cell integral of
-        !    calc_GH_int_1, already in place.
-        if (in_context(vac%ctxt_HG) .and. .not.ext_in) then
-            allocate(loc_res(vac%n_bnd),lin_res(vac%n_bnd))
-            
-            ! H: the row-sum identity H 1 = -4 pi 1 (interior harmonic 1)
-            loc_res = 0._dp
-            call set_diag(H_in,loc_res,.false.)                                 ! diagonal of H to zero
-            loc_res = 1._dp
-            ierr = dis_matvec(vac,vac%H,vac%desc_H,loc_res,lin_res)             ! sum of rows of H
-            CHCKERR('')
-            loc_res = -lin_res-4*pi
-            if (vac_diag_style.eq.2) then                                       ! direct where available
-                allocate(diag_dir(vac%n_bnd),diag_fac(vac%n_bnd),&
-                    &I_sing(vac%n_bnd),omega_v(vac%n_bnd),avail(vac%n_bnd))
-                ierr = calc_diag_direct(vac,dpar_X,dalpha,diag_dir,diag_fac,&
-                    &I_sing,omega_v,avail)
-                CHCKERR('')
-                where (avail) loc_res = diag_dir
-                deallocate(diag_dir,diag_fac,I_sing,omega_v,avail)
-            end if
-            call set_diag(H_in,loc_res,.false.)
-            
-            ! G: the identity H x - G norm_x = -4 pi x for the linear interior
-            ! harmonics x, y, z, projected on the normal: the analytical
-            ! half-cell integral of calc_GH_int_1 is exact for the singular
-            ! cell, but the one-point rule across the neighbouring field lines
-            ! leaves a first-order error that depends on the lattice of
-            ! points; the identity absorbs it into the diagonal, as the row
-            ! sum does for H (issue #4, 31 October 2026)
-            if (vac_diag_style.ne.2) then
-                lin_res = 0._dp
-                do kd = 1,3
-                    ierr = dis_matvec(vac,vac%H,vac%desc_H,vac%x_vec(:,kd),&
-                        &loc_res)
-                    CHCKERR('')
-                    lin_res = lin_res + vac%norm(:,kd)*&
-                        &(loc_res+4*pi*vac%x_vec(:,kd))
-                    ierr = dis_matvec(vac,vac%G,vac%desc_G,vac%norm(:,kd),&
-                        &loc_res)
-                    CHCKERR('')
-                    lin_res = lin_res - vac%norm(:,kd)*loc_res
-                end do
-                lin_res = lin_res/sum(vac%norm**2,2)
-                call set_diag(G_in,lin_res,.true.)
-            end if
-            
-            ! clean up
-            deallocate(loc_res,lin_res)
-        end if
-    contains
-        ! Sets the diagonal of the local matrix A_in to vec, or adds vec to it.
-        subroutine set_diag(A_in,vec,add)
-        use vac_vars, only: loc_idx
-            ! input / output
-            real(dp), intent(in), pointer :: A_in(:,:)                          ! local matrix
-            real(dp), intent(in) :: vec(:)                                      ! global vector of diagonal values
-            logical, intent(in) :: add                                          ! add instead of set
-            
-            ! local variables
-            integer :: i_rd, i_cd                                               ! index of subrow and column
-            integer :: rd                                                       ! global row
-            integer :: rdl, cdl                                                 ! local row and column
-            
-            do i_rd = 1,size(lims_r_in,2)
-                do rd = lims_r_in(1,i_rd),lims_r_in(2,i_rd)
-                    rdl = loc_idx(lims_r_in,i_rd,rd)
-                    do i_cd = 1,size(vac%lims_c,2)
-                        if (vac%lims_c(1,i_cd).le.rd .and. &
-                            &rd.le.vac%lims_c(2,i_cd)) then                     ! this subcolumn includes the diagonal
-                            cdl = loc_idx(vac%lims_c,i_cd,rd)
-                            if (add) then
-                                A_in(rdl,cdl) = A_in(rdl,cdl) + vec(rd)
-                            else
-                                A_in(rdl,cdl) = vec(rd)
-                            end if
-                        end if
-                    end do
-                end do
-            end do
-        end subroutine set_diag
     end function calc_GH_1
     
     !> \public Calculates matrices \c G and \c H in axisymmetric configurations.
@@ -922,8 +869,7 @@ contains
         use dtorh, only: dtorh1
         use vac_utilities, only: calc_GH_int_2
         use num_ops, only: calc_zero_HH, calc_zero_Zhang
-        use num_vars, only: vac_diag_style
-        use vac_vars, only: in_context, loc_idx
+        use vac_vars, only: loc_idx
 #if ldebug
         use num_vars, only: rank
         use MPI_utilities, only: get_ser_var
@@ -967,7 +913,6 @@ contains
         real(dp) :: norm_in(2)                                                  ! normal at the influence point
         logical :: was_calc_sym                                                 ! symmetrical was_calc
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), allocatable :: dH(:), dG(:)                                   ! indirect diagonals
 #if ldebug
         real(dp), allocatable :: loc_ser(:)                                     ! dummy serial variable
         real(dp) :: rho2_lims(2)                                                ! limits on rho2
@@ -1238,22 +1183,6 @@ contains
             deallocate(beta)
         end do subrows
         
-        ! indirect diagonals (vac_diag_style 1): H_ii and G_ii from the
-        ! identities for the test potentials of set_pot_2 (diag_indirect_2),
-        ! the counterpart of the identities of the field-line style; the
-        ! direct diagonals (the corner angle and the analytical near-singular
-        ! integrals, vac_diag_style 2) are first order in the poloidal points,
-        ! the indirect ones third order (full-stack test exact_exterior_2d_options)
-        if (in_context(vac%ctxt_HG) .and. .not.ext_in .and. &
-            &vac_diag_style.eq.1) then
-            allocate(dH(vac%n_bnd),dG(vac%n_bnd))
-            ierr = diag_indirect_2(vac,dH,dG)
-            CHCKERR('')
-            call set_diag_vac(vac,H_in,dH)
-            call set_diag_vac(vac,G_in,dG)
-            deallocate(dH,dG)
-        end if
-        
 #if ldebug
         if (debug_calc_GH) then
             ! output
@@ -1397,21 +1326,27 @@ contains
         end function ring_pot
     end function set_pot_2
     
-    !> Indirect diagonals of the axisymmetric vacuum operators.
+    !> Indirect diagonals of the vacuum operators.
     !!
-    !! \f$H_{ii}\f$ and \f$G_{ii}\f$ from the least-squares solution, row by
-    !! row, of the identities \f$\overline{\text{H}}\phi -
-    !! \overline{\text{G}}\,\text{d}\phi = c\,\phi\f$ for the three test
-    !! potentials of set_pot_2, with the off-diagonal parts of the products
-    !! moved to the right-hand side (each potential scaled to unit maximum).
-    !! The counterpart of the identities that the field-line style uses by
-    !! default (calc_GH_1). The matrices keep their current diagonals during
-    !! the computation.
-    integer function diag_indirect_2(vac,dH,dG) result(ierr)
+    !! The diagonals \f$H_{ii}\f$ and \f$G_{ii}\f$ are chosen so that the
+    !! discrete operators satisfy Green's identity for potentials whose
+    !! boundary values and normal data are known exactly
+    !! (vac_utilities.fit_diag()):
+    !!  - field-line style, in two steps: first \f$H_{ii}\f$ from the constant
+    !!    potential, which is harmonic inside the boundary and has zero normal
+    !!    data, so that it gives the row-sum rule \f$\sum_j H_{ij} = -4\pi\f$;
+    !!    then \f$G_{ii}\f$ from the potentials x, y and z, which are harmonic
+    !!    inside the boundary, with that \f$H_{ii}\f$;
+    !!  - axisymmetric style, in one step: both from the three potentials of
+    !!    set_pot_2(), each scaled to unit maximum. They converge to third order
+    !!    in the poloidal points, the direct diagonals to first order
+    !!    (full-stack test \c exact_exterior_2d_options).
+    !! The matrices keep their current diagonals.
+    integer function diag_indirect(vac,dH,dG) result(ierr)
         use vac_vars, only: in_context
-        use vac_utilities, only: dis_matvec, dis_diag
+        use vac_utilities, only: fit_diag
         
-        character(*), parameter :: rout_name = 'diag_indirect_2'
+        character(*), parameter :: rout_name = 'diag_indirect'
         
         ! input / output
         type(vac_type), intent(in) :: vac                                       !< vacuum variables
@@ -1419,60 +1354,46 @@ contains
         real(dp), intent(out) :: dG(:)                                          !< indirect diagonal of G (global)
         
         ! local variables
-        integer :: kd, rd                                                       ! counters
+        integer :: kd                                                           ! counter
         real(dp) :: x_src(2)                                                    ! ring source
-        real(dp) :: c_free                                                      ! free term of the identity
-        real(dp) :: rr                                                          ! residual of an identity at a point
-        real(dp) :: det_loc                                                     ! determinant of the normal equations
-        real(dp), allocatable :: phi(:), dphi(:)                                ! test potential and its normal data
-        real(dp), allocatable :: yH(:), yG(:)                                   ! products with the full H and G
-        real(dp), allocatable :: dH0(:), dG0(:)                                 ! current diagonals
-        real(dp), allocatable :: a11(:), a12(:), a22(:), b1(:), b2(:)           ! normal equations per row
+        real(dp) :: c_free(3)                                                   ! free terms of the identities
+        real(dp), allocatable :: phi(:,:), dphi(:,:)                            ! potentials and their normal data
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ierr = 0
         dH = 0._dp
         dG = 0._dp
         if (.not.in_context(vac%ctxt_HG)) return
-        allocate(phi(vac%n_bnd),dphi(vac%n_bnd),yH(vac%n_bnd),yG(vac%n_bnd))
-        allocate(dH0(vac%n_bnd),dG0(vac%n_bnd))
-        allocate(a11(vac%n_bnd),a12(vac%n_bnd),a22(vac%n_bnd),b1(vac%n_bnd),&
-            &b2(vac%n_bnd))
-        x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd             ! centroid of the boundary points
-        ierr = dis_diag(vac,vac%H,dH0)
-        CHCKERR('')
-        ierr = dis_diag(vac,vac%G,dG0)
-        CHCKERR('')
-        a11 = 0._dp
-        a12 = 0._dp
-        a22 = 0._dp
-        b1 = 0._dp
-        b2 = 0._dp
-        do kd = 1,3
-            ierr = set_pot_2(vac,kd,x_src,phi,dphi,c_free)
-            CHCKERR('')
-            dphi = dphi/maxval(abs(phi))
-            phi = phi/maxval(abs(phi))
-            ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,yH)
-            CHCKERR('')
-            ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi,yG)
-            CHCKERR('')
-            do rd = 1,vac%n_bnd
-                ! h phi - g dphi = rr for the unknown diagonals h and g
-                rr = c_free*phi(rd) - (yH(rd)-dH0(rd)*phi(rd)) + &
-                    &(yG(rd)-dG0(rd)*dphi(rd))
-                a11(rd) = a11(rd) + phi(rd)**2
-                a12(rd) = a12(rd) - phi(rd)*dphi(rd)
-                a22(rd) = a22(rd) + dphi(rd)**2
-                b1(rd) = b1(rd) + phi(rd)*rr
-                b2(rd) = b2(rd) - dphi(rd)*rr
-            end do
-        end do
-        do rd = 1,vac%n_bnd
-            det_loc = a11(rd)*a22(rd) - a12(rd)**2
-            dH(rd) = (a22(rd)*b1(rd) - a12(rd)*b2(rd))/det_loc
-            dG(rd) = (a11(rd)*b2(rd) - a12(rd)*b1(rd))/det_loc
-        end do
-    end function diag_indirect_2
+        select case (vac%style)
+            case (1)                                                            ! field-line 3-D
+                c_free = -4._dp*pi
+                allocate(phi(vac%n_bnd,1),dphi(vac%n_bnd,1))
+                phi = 1._dp
+                dphi = 0._dp
+                ierr = fit_diag(vac,phi,dphi,c_free(1:1),.true.,.false.,dH,dG)
+                CHCKERR('')
+                ierr = fit_diag(vac,vac%x_vec,vac%norm,c_free,.false.,.true.,&
+                    &dH,dG)
+                CHCKERR('')
+            case (2)                                                            ! axisymmetric
+                allocate(phi(vac%n_bnd,3),dphi(vac%n_bnd,3))
+                x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd     ! centroid of the boundary points
+                do kd = 1,3
+                    ierr = set_pot_2(vac,kd,x_src,phi(:,kd),dphi(:,kd),&
+                        &c_free(kd))
+                    CHCKERR('')
+                    dphi(:,kd) = dphi(:,kd)/maxval(abs(phi(:,kd)))
+                    phi(:,kd) = phi(:,kd)/maxval(abs(phi(:,kd)))
+                end do
+                ierr = fit_diag(vac,phi,dphi,c_free,.true.,.true.,dH,dG)
+                CHCKERR('')
+            case default
+                ierr = 1
+                err_msg = 'No vacuum style '//trim(i2str(vac%style))//&
+                    &' possible'
+                CHCKERR(err_msg)
+        end select
+    end function diag_indirect
     
     !> Sets the diagonal of a distributed matrix of the vacuum to a global
     !! vector.
@@ -2050,7 +1971,7 @@ contains
     !! \overline{\text{G}} \partial_n \phi - c \phi\f$ is printed for
     !! \f$c = -4\pi, -2\pi, 0, 2\pi, 4\pi\f$, scaled by \f$\max |4 \pi \phi|\f$
     !! (interior potentials satisfy the identity with \f$c = -4\pi\f$,
-    !! exterior ones with \f$c = 0\f$, as calc_GH_1 builds the diagonal; see
+    !! exterior ones with \f$c = 0\f$, as calc_GH builds the diagonal; see
     !! the full-stack test greens_identity_3d). Then the exterior problem is
     !! solved for the two exterior potentials with solve_Phi_BEM() and the
     !! boundary trace is compared with the exact one. The point source is
@@ -2061,9 +1982,11 @@ contains
     !! be collected from the log, in lines short enough for writo, which cuts
     !! beyond about 100 characters. Switched on with the input \c check_vac.
     !! For the field-line style (check_vac_exact_1): the Cartesian harmonics and
-    !! the axis sources below; for the axisymmetric style (check_vac_exact_2):
-    !! the potentials of set_pot_2, the ring-source solve, and the assembled
-    !! diagonals against the indirect ones of diag_indirect_2.
+    !! the axis sources below, the assembled diagonal of H against the direct
+    !! one, and the assembled diagonal of G against the indirect one of
+    !! diag_indirect(); for the axisymmetric style (check_vac_exact_2): the
+    !! potentials of set_pot_2, the ring-source solve, and the assembled
+    !! diagonals of H and G against the indirect ones of diag_indirect().
     integer function check_vac_exact(vac) result(ierr)
         character(*), parameter :: rout_name = 'check_vac_exact'
         
@@ -2129,6 +2052,7 @@ contains
         real(dp), allocatable :: diag_rs(:), diag_dir(:), diag_fac(:)           ! row-sum, smooth direct and faceted direct diagonal of H
         real(dp), allocatable :: I_sing(:), omega_v(:)                          ! cell integral and vacuum's solid angle
         real(dp), allocatable :: d_diag(:), d_fac(:)                            ! differences per point
+        real(dp), allocatable :: dG0(:), dH_ind(:), dG_ind(:)                   ! assembled diagonal of G and indirect diagonals
         logical, allocatable :: avail(:)                                        ! direct value available
 
         ! initialize ierr
@@ -2238,6 +2162,22 @@ contains
             call write_points_vac(vac,'check_vac_diag_omega.dat',omega_v/(4._dp*pi))
             deallocate(diag_rs,diag_dir,diag_fac,I_sing,omega_v,d_diag,d_fac,&
                 &avail)
+            
+            ! the assembled diagonal of G against the indirect one (equal up
+            ! to rounding when vac_diag_style is 1; with 2 the difference is
+            ! that of the half-cell integral of calc_GH_int_1 from the
+            ! identities)
+            allocate(dG0(n_bnd),dH_ind(n_bnd),dG_ind(n_bnd))
+            ierr = dis_diag(vac,vac%G,dG0)
+            CHCKERR('')
+            ierr = diag_indirect(vac,dH_ind,dG_ind)
+            CHCKERR('')
+            call writo('CHECKVAC diagonal max|G_assembled-G_indirect|/max|G|='//&
+                &trim(r2strt(maxval(abs(dG0-dG_ind))/maxval(abs(dG0)))),&
+                &persistent=rank_o)
+            call write_points_vac(vac,'check_vac_diag_diff_G.dat',&
+                &abs(dG0-dG_ind)/maxval(abs(dG0)))
+            deallocate(dG0,dH_ind,dG_ind)
         end if
         
 
@@ -2521,7 +2461,7 @@ contains
         CHCKERR('')
         ierr = dis_diag(vac,vac%G,dG0)
         CHCKERR('')
-        ierr = diag_indirect_2(vac,dH,dG)
+        ierr = diag_indirect(vac,dH,dG)
         CHCKERR('')
         ! (three lines: writo cuts lines beyond about 100 characters)
         call writo('CHECKVAC diagonal n_bnd='//trim(i2str(n_bnd))//&

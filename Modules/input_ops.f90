@@ -901,6 +901,10 @@ contains
                     &identities) or 2 (direct, corner term and cell integral)'
                 CHCKERR(err_msg)
             end if
+            if (vac_diag_style.eq.2 .and. BC_style(2).ne.1) then
+                call writo('vac_diag_style 2 is a diagnostic, less accurate &
+                    &than 1: not for production runs',warning=.true.)
+            end if
 
             ! for HELENA, warn about axisymmetry
             if (eq_style.eq.2) then
