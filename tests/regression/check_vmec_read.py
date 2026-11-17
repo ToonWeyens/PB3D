@@ -11,7 +11,8 @@ Compares the group 'in' of PB3D_out.h5 with the wout file of the same run:
  2. PB3D's mode lists mn_V and mn_V_nyq against xm, xn and xm_nyq, xn_nyq,
     and PB3D's sizes (misc_in_V) against the file, exactly;
  3. the full-mesh coefficients rmnc, zmns (and rmns, zmnc for lasym) against
-    PB3D's R_V and Z_V times R_0, to rounding;
+    PB3D's R_V and Z_V times R_0, and bsubsmns (and bsubsmnc) against
+    component 1 of PB3D's B_V_sub times R_0 B_0, to rounding;
  4. the half-mesh coefficients lmns, gmnc, bsubumnc, bsubvmnc (and their
     lasym partners) against PB3D's full-mesh values, through an independent
     cubic spline of the half-mesh points placed at
@@ -56,7 +57,8 @@ def read_wout(path):
     names = ['ns', 'mpol', 'ntor', 'nfp', 'mnmax', 'mnmax_nyq', 'xm', 'xn',
              'xm_nyq', 'xn_nyq', 'rmnc', 'zmns', 'lmns', 'gmnc', 'bmnc',
              'bsubumnc', 'bsubvmnc', 'rmns', 'zmnc', 'lmnc', 'gmns', 'bmns',
-             'bsubumns', 'bsubvmns', 'lasym__logical__', 'lasym']
+             'bsubumns', 'bsubvmns', 'bsubsmns', 'bsubsmnc',
+             'lasym__logical__', 'lasym']
     out = {}
     try:
         import netCDF4
@@ -217,9 +219,12 @@ def main():
     print('   written surfaces %d..%d of %d (1-based)' % (i0 + 1, i0 + n_r_eq, ns))
 
     # 3. full-mesh coefficients
-    full = [('rmnc', RZL[:, :, 0, 0], R_0), ('zmns', RZL[:, :, 0, 3], R_0)]
+    full = [('rmnc', RZL[:, :, 0, 0], R_0), ('zmns', RZL[:, :, 0, 3], R_0),
+            ('bsubsmns', Bsub[:, :, 0, 1], R_0*B_0)]
     if w['lasym']:
-        full += [('rmns', RZL[:, :, 0, 1], R_0), ('zmnc', RZL[:, :, 0, 2], R_0)]
+        full += [('rmns', RZL[:, :, 0, 1], R_0), ('zmnc', RZL[:, :, 0, 2], R_0),
+                 ('bsubsmnc', Bsub[:, :, 0, 0], R_0*B_0)]
+    full = [x for x in full if x[0] in w]                                       # B_s is optional in a wout file
     f3 = []
     res['full'] = {}
     for name, pb, sc in full:

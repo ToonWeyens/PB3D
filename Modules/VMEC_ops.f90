@@ -332,6 +332,10 @@ contains
                 CHCKERR('')
             end do
         end do
+        
+        ! full mesh: B_s, no interpolation
+        B_V_sub_c(:,:,1) = B_V_sub_c_M(:,:,1)
+        B_V_sub_s(:,:,1) = B_V_sub_s_M(:,:,1)
 #if ldebug
         do id = 1,mnmax_nyq_V
             ierr = spline(r_V_H,&
