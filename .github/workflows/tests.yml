@@ -95,7 +95,7 @@ jobs:
             libpetsc-complex3.19-dev libslepc-complex3.19-dev \
             libhdf5-openmpi-dev libnetcdff-dev \
             liblapack-dev libblas-dev libscalapack-openmpi-dev
-          pip install h5py==3.16.0
+          pip install h5py==3.16.0 scipy==1.18.1
 
       - name: Cache PSPLINE
         id: cache-pspline

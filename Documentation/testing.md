@@ -254,8 +254,9 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   twin `wout_circ_eps033_q104.nc` (made from the HELENA file by
   `tests/reference/make_vmec_twin.sh`: PB3D `--export_HEL`, then VMEC++) give
   the same fixed-boundary eigenvalue at n = 10 within 1e-4 (measured 2.4e-6
-  once B_0 is the toroidal average of |B| on the axis; 1.6 % with the old
-  B_0); the VMEC value \(+7.8431\times10^{-2}\) is anchored at 1e-3 as the
+  once B_0 is the toroidal average of |B| on the axis, 1.6 % with the old
+  B_0, and 1.1e-6 since `read_VMEC` places VMEC's half-mesh values at VMEC's
+  positions, issue #16); the VMEC value \(+7.8431\times10^{-2}\) is anchored at 1e-3 as the
   layer's only VMEC number. The twin is then run free-boundary through the
   3-D vacuum (`alpha_style 2`, 64 field lines): \(-4.3914\times10^{-1}\),
   anchored at 1e-3, below the fixed value and within 3 % of the HELENA
@@ -263,6 +264,15 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   error of the field-line BEM at 64 lines; both values with the trapezoidal
   weight of the free edge of 31 October 2026), which pins the orientation of the normal that
   `store_vac_VMEC` hands to the kernels (issue #4, steps 6e and 6f).
+  Between the fixed VMEC run and the free one, `check_vmec_read.py` compares
+  what PB3D stored in `PB3D_out.h5` with the wout file (issue #16). It checks
+  the file's mode lists against VMEC's conventions and PB3D's mode lists and
+  sizes exactly, R and Z to 1e-13, and the half-mesh coefficients (λ, the
+  Jacobian, B_u, B_v) against a cubic spline from VMEC's positions to 1e-12,
+  away from the two surfaces at each end. With the half-mesh positions that
+  `read_VMEC` used before 17 November 2026 it fails by 5.4e-6 in λ and 1.1e-6
+  in the Jacobian. It needs scipy as well as h5py, and is skipped with a note
+  without it.
 
 **The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
 failed `H5Fcreate` on about every other launch) were a heap overrun in
@@ -289,7 +299,8 @@ uv run python tests/reference/cyl_kink.py
 
 CMake finds a Python by itself. To make the regression layer use this one,
 configure with `-DPython3_EXECUTABLE=$PWD/.venv/bin/python`. CI does not use
-uv: its jobs install the pinned `h5py` with pip (`.github/workflows/tests.yml`).
+uv: its jobs install the pinned `h5py` with pip, and the full-stack job also
+`scipy` for `check_vmec_read.py` (`.github/workflows/tests.yml`).
 
 The default group `dev` also installs `fortls`, the Fortran language server of
 VS Code's Modern Fortran extension (point its setting `fortran.fortls.path` at

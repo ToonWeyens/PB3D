@@ -376,7 +376,8 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
     endif()
-    # the HELENA fixture against its VMEC twin, fixed boundary (issue #4, step 6e)
+    # the HELENA fixture against its VMEC twin, fixed boundary (issue #4, step 6e);
+    # with a python, also what PB3D stored from the wout file (issue #16)
     if(EXISTS ${PB3D_FIXTURE_DIR}/circ_eps033_q104.12 AND
        EXISTS ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc)
         add_test(NAME regression_circ_eps033_vmec_twin
@@ -384,7 +385,8 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 $<TARGET_FILE:PB3D>
                 ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_circ_eps033
                 ${PB3D_FIXTURE_DIR}/circ_eps033_q104.12
-                ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc)
+                ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc
+                ${PB3D_TEST_PYTHON})
         set_tests_properties(regression_circ_eps033_vmec_twin PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"

@@ -9,11 +9,12 @@ requires-python = ">=3.10"
 dependencies = [
     "h5py>=3.16",                                   # tests/regression/check_*.py; CI pins 3.16.0
     "numpy",
+    "scipy",                                        # check_vmec_read.py; CI pins 1.18.1
 ]
 
 [dependency-groups]
 # reference derivations, figures, the cbm18a cut and the TERPSICHORE converter
-scripts = ["matplotlib", "netCDF4", "scipy", "sympy"]
+scripts = ["matplotlib", "netCDF4", "sympy"]
 # editor and lint tools: the Fortran language server of the Modern Fortran
 # extension, and the linter of the CI job, at the CI version
 dev = ["fortls", "fortitude-lint==0.9.2"]
