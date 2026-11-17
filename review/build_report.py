@@ -34,7 +34,11 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REV_A = "2.47"
-REV_B = "9e9aba5"                     # origin/dev/vacuum-fixes on 14 November 2026
+REV_B = "6463fc2"                     # origin/dev/vacuum-fixes on 17 November 2026: the code from stage 5 on
+REV_R = "9e9aba5"                     # the code that stages 0 to 4 were reviewed at
+GUIDE_R = "df519a4"                   # the commit of this guide whose page holds stages 0 to 4 as reviewed
+FROZEN_A = "<!-- ================================================================== STAGE 0 -->"
+FROZEN_B = "<!-- ================================================================== STAGE 5 -->"
 VAC_FILES = ["Modules/vac_ops.f90", "Modules/vac_utilities.f90", "Modules/vac_vars.f90"]
 GH = "https://github.com/ToonWeyens/PB3D"   # public; both revisions are pushed there
 PY = os.environ.get("PB3D_PY", os.path.join(ROOT, "..", "..", "..", ".venv", "bin", "python"))
@@ -306,11 +310,11 @@ def marker_commit(args, section):
     own = f'{class_summary(classes)} in {nfiles} file{"s" if nfiles != 1 else ""}'
     chips = [block_chip(section, p, i) for p in paths for i in COMMIT_BLOCKS.get((s7, p), [])]
     gone = [p for p in paths if not COMMIT_BLOCKS.get((s7, p))]
-    blocks = (f'<div class="cblocks"><span class="hc">its lines, 2.47 against 9e9aba5, below:</span> '
+    blocks = (f'<div class="cblocks"><span class="hc">its lines, 2.47 against {REV_B}, below:</span> '
               f'{" ".join(chips)}</div>') if chips else ""
     if gone:
         blocks += (f'<p class="note">Nothing of its change to {", ".join("<code>" + esc(p.split("/")[-1]) + "</code>" for p in gone)} '
-                   f'is left at 9e9aba5: later commits changed those lines again. Its own diff is on '
+                   f'is left at {REV_B}: later commits changed those lines again. Its own diff is on '
                    f'<a href="{GH}/commit/{full}" target="_blank" rel="noopener">GitHub</a>.</p>')
     vac = [p for p in fortran_paths_of_commit(sha) if p in VAC_FILES]
     if vac:
@@ -335,6 +339,67 @@ LAST_CARD = {}                        # section id -> sha7 of its last commit ca
 SUBJECT = {}                          # sha7 -> "date subject"
 SECTION_ORDER = {}                    # section id -> page order
 SHOWN_BLOCKS = defaultdict(set)       # (path, i) -> sections showing the block
+
+
+# ---------------------------------------------------------------- stages 0 to 4, as reviewed
+# Toon reviewed stages 0 to 4 on the page of commit GUIDE_R, which shows the code at REV_R.
+# That part of the page is inserted unchanged; the sections from stage 5 on show REV_B.
+FROZEN = {"html": "", "sections": [], "cards": {}, "files": defaultdict(set), "old": defaultdict(set)}
+AFTER = {}                            # (sha7, path) -> reviewed sections, for later changes shown only as a list
+
+
+def load_frozen():
+    page = git("show", f"{GUIDE_R}:review/index.html")
+    part = page[page.index(FROZEN_A):page.index(FROZEN_B)]
+    FROZEN["html"] = part
+    sec = None
+    for m in re.finditer(r'<section class="area" id="([^"]+)"|<div class="commit" id="c-([0-9a-f]{7})"'
+                         r'|data-f="([^"]+)"', part):
+        if m.group(1):
+            sec = m.group(1)
+            FROZEN["sections"].append(sec)
+        elif m.group(2) and sec:
+            FROZEN["cards"][m.group(2)] = sec
+        elif m.group(3) and sec:
+            FROZEN["files"][sec].add(m.group(3))
+    # where the ledger of that page showed each (commit, file)
+    led = page[page.index('<table class="ledger">'):]
+    led = led[:led.index("</table>")]
+    for row in re.finditer(r"<tr><td><code>([0-9a-f]+)</code></td><td>.*?</td><td><ul>(.*?)</ul></td></tr>", led, re.S):
+        for li in re.finditer(r'<li class="(?:ok|miss)"><code>([^<]+)</code> &rarr; (.*?)</li>', row.group(2)):
+            FROZEN["old"][(row.group(1)[:7], li.group(1))].update(re.findall(r'href="#([^"]+)"', li.group(2)))
+
+
+def marker_frozen():
+    sha = git("rev-parse", REV_R + "^{commit}").strip()
+    return f'<div class="frozen" data-rev="{sha}" data-revname="{REV_R}">\n{FROZEN["html"]}</div>\n\n'
+
+
+def after_review():
+    """The commits after REV_R whose change to a non-vacuum module no section from stage 5
+    on shows: their lines lie in code that stages 0 to 4 show as reviewed."""
+    items = []
+    for h in git("log", "--reverse", "--no-merges", "--format=%h", f"{REV_R}..{REV_B}").split():
+        h7 = h[:7]
+        paths = [p for p in fortran_paths_of_commit(h) if p not in VAC_FILES and not shown_pairs.get((h7, p))]
+        if not paths:
+            continue
+        full = git("rev-parse", h).strip()
+        date, msg = git("show", "-s", "--format=%ad %s", "--date=short", h).strip().split(" ", 1)
+        renamed = {l.split("\t")[2]: l.split("\t")[1] for l in git("show", "-M", "--format=", "--name-status", h).splitlines()
+                   if l.startswith("R")}
+        lis = []
+        for p in paths:
+            names = {p, renamed.get(p, p)}
+            secs = sorted((s for s, fs in FROZEN["files"].items() if fs & names), key=lambda s: SECTION_ORDER.get(s, 99))
+            AFTER[(h7, p)] = secs
+            where = (", ".join(f'<a href="#{s}">{s}</a>' for s in secs) if secs
+                     else "<b>no reviewed section shows this file</b>")
+            was = (f' (was <code>{esc(renamed[p].split("/")[-1])}</code>)' if p in renamed else "")
+            lis.append(f'<li><code>{esc(p.split("/")[-1])}</code>{was}: in {where}</li>')
+        items.append(f'<li><a class="sha" href="{GH}/commit/{full}" target="_blank" rel="noopener"><code>{h7}</code></a> '
+                     f'<span class="date">{esc(date)}</span> {esc(msg)}<ul>{"".join(lis)}</ul></li>')
+    return f'<ul class="after">{"".join(items)}</ul>' if items else '<p class="note">None.</p>'
 
 
 def fslug(path):
@@ -419,7 +484,7 @@ def first_changed_line(h):
 def trail_chips(section, path, i):
     out = []
     for c in NV[path]["trails"][i - 1]:
-        sec = CARD_SECTION.get(c, "")
+        sec = CARD_SECTION.get(c) or FROZEN["cards"].get(c, "")
         here = " here" if sec == section else ""
         out.append(f'<a class="cchip{here}" href="#c-{c}" title="{esc(SUBJECT.get(c, ""))}">'
                    f'<code>{c}</code>{(" " + esc(sec)) if sec else ""}</a>')
@@ -462,7 +527,7 @@ def section_code(section):
         return ""
     files = "".join(code_file_block(section, p, per[p]) for p in per)
     nb = sum(len(v) for v in per.values())
-    return (f'<h4 class="codeh">The code: {nb} block{"s" if nb != 1 else ""} of the diff 2.47 &rarr; 9e9aba5 '
+    return (f'<h4 class="codeh">The code: {nb} block{"s" if nb != 1 else ""} of the diff 2.47 &rarr; {REV_B} '
             f'that these commits changed</h4>{files}')
 
 
@@ -507,7 +572,7 @@ GROUPS = {
     "calcgh": ("Modules/vac_ops.f90", ["calc_gh"], ["calc_gh"], "calc_GH"),
     "gh1": ("Modules/vac_ops.f90", ["calc_gh_1"], ["calc_gh_1"], "calc_GH_1 (field-line style)"),
     "gh2": ("Modules/vac_ops.f90", ["calc_gh_2"], ["calc_gh_2"], "calc_GH_2 (axisymmetric style)"),
-    "diag2": ("Modules/vac_ops.f90", [], ["set_pot_2", "diag_indirect_2", "set_diag_vac"], "indirect diagonals of the axisymmetric style (new)"),
+    "diag2": ("Modules/vac_ops.f90", [], ["set_pot_2", "diag_indirect", "set_diag_vac"], "indirect diagonals of both styles (new)"),
     "res": ("Modules/vac_ops.f90", ["calc_vac_res"], ["calc_vac_res"], "calc_vac_res"),
     "check": ("Modules/vac_ops.f90", [], ["write_points_vac", "check_vac_exact", "check_vac_exact_1", "check_vac_exact_2"], "check_vac diagnostics (new)"),
     "plot": ("Modules/vac_ops.f90", ["vac_pot_plot"], ["eval_pot_ext", "glob2dis_cols", "sub_nearest", "grad_bnd_1", "check_vac_ext", "vac_pot_plot"], "POST vacuum potential plot"),
@@ -521,6 +586,7 @@ GROUPS = {
              "distributed-matrix helpers"),
     "direct": ("Modules/vac_utilities.f90", [], ["vac_steps", "cross3", "solid_angle_node", "H_sing_node", "calc_diag_direct"],
                "direct diagonals of the field-line style (new)"),
+    "fit": ("Modules/vac_utilities.f90", [], ["fit_diag"], "fit_diag: the least-squares fit of the indirect diagonals (new)"),
     "vars": ("Modules/vac_vars.f90", ["@all"], ["@all"], "vac_vars (whole module)"),
 }
 group_cover = defaultdict(lambda: defaultdict(set))   # (rev, file) -> line numbers covered
@@ -587,7 +653,7 @@ def marker_group(args, section):
                      for f in files)
     if not files:
         blocks = f'<p class="note">{esc(title)}: identical.</p>'
-    blocks = _ranges_line(path, omap, nmap) + blocks + _full_text(path, new, nmap, "now (9e9aba5)") \
+    blocks = _ranges_line(path, omap, nmap) + blocks + _full_text(path, new, nmap, f"now ({REV_B})") \
         + _full_text(path, old, omap, "at 2.47")
     tr = ""
     if trail:
@@ -703,12 +769,15 @@ def marker_testsrc(args, section):
 
 # ---------------------------------------------------------------- ledger
 def ledger():
-    commits = git("log", "--reverse", "--format=%h", f"{REV_A}..{REV_B}").split()
+    commits = git("log", "--reverse", "--no-merges", "--format=%h", f"{REV_A}..{REV_B}").split()
+    later = {h[:7] for h in git("log", "--no-merges", "--format=%h", f"{REV_R}..{REV_B}").split()}
+    frozen = set(FROZEN["sections"])
     rows, missing = [], []
     for h in commits:
         paths = fortran_paths_of_commit(h)
         if not paths:
             continue
+        h7 = h[:7]
         subj = git("show", "-s", "--format=%ad %s", "--date=short", h).strip()
         cells = []
         for p in paths:
@@ -716,9 +785,14 @@ def ledger():
                 where = "vacuum routine diffs (V-sections)"
                 ok = True
             else:
-                secs = shown_pairs.get((h[:7], p), set())
-                ok = bool(secs)
-                where = ", ".join(sorted(f'<a href="#{s}">{s}</a>' for s in secs)) if secs else "NOT SHOWN"
+                secs = set(shown_pairs.get((h7, p), set()))
+                if h7 not in later:          # shown in stages 0 to 4 as reviewed
+                    secs |= FROZEN["old"].get((h7, p.split("/")[-1]), set()) & frozen
+                links = [f'<a href="#{s}">{s}</a>' for s in sorted(secs, key=lambda s: SECTION_ORDER.get(s, 99))]
+                if AFTER.get((h7, p)):
+                    links.append('<a href="#after">changed after the review</a>')
+                ok = bool(links)
+                where = ", ".join(links) if ok else "NOT SHOWN"
                 if not ok:
                     missing.append((h, p))
             cells.append(f'<li class="{"ok" if ok else "miss"}"><code>{esc(p.split("/")[-1])}</code> &rarr; {where}</li>')
@@ -739,16 +813,16 @@ def ledger():
         f'<li class="{"miss" if unc else "ok"}"><code>{esc(p)}</code> at {esc(r)}: {n} lines, '
         f'{"all in a group" if not unc else str(len(unc)) + " lines outside every group: " + esc(str(unc[:20]))}</li>'
         for p, r, n, unc in vac_msgs)
-    # non-vacuum modules: each file diff shown exactly once, and every commit's change traced
+    # non-vacuum modules: every block that a commit carded from stage 5 on changed is shown there
+    # (the other blocks are in stages 0 to 4 as reviewed, whose ledger checked them against REV_R)
     for p, d in NV.items():
         for i in range(1, len(d["classes"]) + 1):
-            if not SHOWN_BLOCKS.get((p, i)):
+            if block_sections(p, i) and not SHOWN_BLOCKS.get((p, i)):
                 missing.append(("block", f"{p} block {i} in no section"))
+    for (h7, p), secs in AFTER.items():
+        if not secs:
+            missing.append((h7, f"{p}: changed after the review, in no section"))
     nv_lines = sum(1 for (p, i) in SHOWN_BLOCKS for g, _ in NV[p]["file"]["hunks"][i - 1]["lines"] if g in "+-")
-    net = git("diff", "--numstat", REV_A, REV_B, "--", *NV.keys())
-    net_lines = sum(int(a) + int(b) for a, b, _ in (l.split("\t") for l in net.splitlines()))
-    if nv_lines != net_lines:
-        missing.append(("file diffs", f"{nv_lines} changed lines shown, git counts {net_lines}"))
     untraced = sorted({(h, p) for (h, p) in shown_pairs if p in NV and not COMMIT_BLOCKS.get((h, p))})
     # tests
     test_files = [p for p in git("diff", "--name-only", REV_A, REV_B, "--", "tests").split()
@@ -758,17 +832,22 @@ def ledger():
         missing.append(("tests", p))
     hc = stats["hunks"]
     hunk_line = ", ".join(f"{k}: {v}" for k, v in sorted(hc.items(), key=lambda kv: -kv[1]))
-    status = ("<p class='okline'>Every Fortran change between 2.47 and the tip is shown in this page.</p>" if not missing
+    status = (f"<p class='okline'>Every Fortran change between 2.47 and {REV_B} is shown in this page: up to "
+              f"{REV_R} in stages 0 to 4 as you reviewed them or in the sections from stage 5 on, after {REV_R} "
+              f"in the sections from stage 5 on or in the list of changes after the review.</p>" if not missing
               else "<p class='missline'>Not shown: " + esc(str(missing)) + "</p>")
     nblocks = sum(len(d["classes"]) for d in NV.values())
+    nshown = len({(p, i) for (p, i) in SHOWN_BLOCKS})
     unt = ("; ".join(f"<code>{h}</code> in <code>{esc(p.split('/')[-1])}</code>" for h, p in untraced)
            if untraced else "none")
     twice = sorted((p.split("/")[-1], i, sorted(v)) for (p, i), v in SHOWN_BLOCKS.items()
                    if len(v - {"I"}) > 1)
     tw = "; ".join(f"<code>{esc(p)}</code> block {i} in {', '.join(v)}" for p, i, v in twice) or "none"
-    return (f'{status}<h4>Non-vacuum modules: {len(NV)} files, {nblocks} blocks, {nv_lines} changed lines, '
-            f'as many as <code>git diff --numstat 2.47 9e9aba5</code> counts</h4>'
-            f'<p>Each block is shown in the section of every commit that changed it; blocks in two sections: {tw}. '
+    return (f'{status}<h4>Non-vacuum modules from stage 5 on: {nshown} of the {nblocks} blocks of the diff '
+            f'2.47 &rarr; {REV_B} ({len(NV)} files), {nv_lines} changed lines</h4>'
+            f'<p>The other blocks lie in code that stages 0 to 4 show at {REV_R}, as reviewed; the ledger of that '
+            f'page (commit {GUIDE_R}) checked that they showed every change up to {REV_R}. '
+            f'Each block is shown in the section of every commit that changed it; blocks in two sections: {tw}. '
             f'Blocks by classifier verdict: {esc(hunk_line)}. Every block names at least one commit '
             f'(<code>git log -L</code> over its lines). Commits whose change to a file is not in any block, '
             f'because later commits changed the same lines again: {unt}.</p>'
@@ -827,10 +906,13 @@ def fingerprint():
         for (h, p), s in shown_pairs.items():
             if h == sha[:7]:
                 secs |= s
+        for (h, b), s in FROZEN["old"].items():
+            if h == sha[:7]:
+                secs |= s & set(FROZEN["sections"])
+        secs.discard("group")
         if any(p in VAC_FILES for p in fortran_paths_of_commit(sha)):
             secs.add("V")
-        page = re.findall(r'<section[^>]*\bid="([^"]+)"', open(os.path.join(ROOT, "review", "report.src.html")).read())
-        return sorted(secs, key=lambda s: page.index(s) if s in page else page.index("V0") + 0.5)
+        return sorted(secs, key=lambda s: SECTION_ORDER.get(s, SECTION_ORDER.get("V0", 0) + 0.5))
 
     head = "".join(f'<th title="{d[3]}">{d[1]}<br><span class="fpb">{d[2]}</span></th>' for d in FP_DECKS)
     prev = {d[0]: None for d in FP_DECKS}          # last result per deck (from the previous built row)
@@ -922,15 +1004,19 @@ def main():
     pos = 0
     pat = re.compile(r'<section[^>]*\bid="([^"]+)"|<!--@(\w+)\s*([^>]*?)-->')
     sec = "top"
+    load_frozen()
     for m in pat.finditer(src):             # where each commit card is, before any rendering
         if m.group(1):
             sec = m.group(1)
             SECTION_ORDER.setdefault(sec, len(SECTION_ORDER))
+        elif m.group(2) == "frozen":
+            for s in FROZEN["sections"]:
+                SECTION_ORDER.setdefault(s, len(SECTION_ORDER))
         elif m.group(2) == "commit":
             CARD_SECTION[m.group(3).split()[0][:7]] = sec
             LAST_CARD[sec] = m.group(3).split()[0][:7]
     build_nonvac()
-    ledger_at = fp_at = None
+    ledger_at = fp_at = after_at = None
     for m in pat.finditer(src):
         out.append(src[pos:m.start()])
         pos = m.end()
@@ -958,9 +1044,17 @@ def main():
         elif kind == "fingerprint":
             fp_at = len(out)
             out.append("")
+        elif kind == "frozen":
+            out.append(marker_frozen())
+        elif kind == "afterreview":
+            after_at = len(out)
+            out.append("")
         else:
             raise SystemExit(f"unknown marker {kind}")
     out.append(src[pos:])
+    aft = after_review()
+    if after_at is not None:
+        out[after_at] = aft
     led, missing = ledger()
     if ledger_at is not None:
         out[ledger_at] = led
@@ -968,7 +1062,8 @@ def main():
         out[fp_at] = fingerprint()
     page = "".join(out)
     page = (page.replace("@@SHA_A@@", git("rev-parse", REV_A + "^{commit}").strip())
-                .replace("@@SHA_B@@", git("rev-parse", REV_B + "^{commit}").strip()))
+                .replace("@@SHA_B@@", git("rev-parse", REV_B + "^{commit}").strip())
+                .replace("@@NAME_B@@", REV_B).replace("@@NAME_R@@", REV_R))
     left = sorted(set(re.findall(r"@@[A-Z_0-9]+@@", page)))
     if left:
         raise SystemExit(f"placeholders left in the page: {left}")

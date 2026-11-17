@@ -195,28 +195,17 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 <main>
 <header class="top">
   <h1>PB3D 2.49 review guide</h1>
-  <p class="sub">Everything that changed in the Fortran between tag <code>2.47</code> and <code>origin/dev/vacuum-fixes</code> at <code>9e9aba5</code> (6 November 2026): 92 commits, 36 modules, 17 new test files. Grouped by kind of change, ordered for reviewing, each with the method that checks it fastest. Built on 14 November 2026; updated on 16 November after stages 1 and 2.</p>
+  <p class="sub">Everything that changed in the Fortran between tag <code>2.47</code> and <code>origin/dev/vacuum-fixes</code>, grouped by kind of change, ordered for reviewing, each with the method that checks it fastest. Stages 0 to 4 show <code>9e9aba5</code> (6 November 2026: 92 commits, 36 modules, 17 new test files) as you reviewed them; from stage 5 on the page shows <code>@@NAME_B@@</code> (17 November 2026), with your stage edits and the V0 decisions. Built on 14 November 2026; updated on 16 November after stages 1 and 2, and on 17 November after stage 4.</p>
 </header>
 
 <div class="warnbox">
   <b>Where to edit the code during the review:</b> on <code>dev/vacuum-fixes</code>, in your folder <code>~/Code/PB3D</code>; your commits there go into pull request ToonWeyens/PB3D#5 when you push them. Git lets a branch be checked out in one folder only, so no second worktree can hold <code>dev/vacuum-fixes</code> as well.
-  <p><b>State after stage 2 (16 November):</b> your edits are two commits on <code>dev/vacuum-fixes</code>, directly on top of <code>9e9aba5</code>: <code>18f87e8</code> "Stage 1 verified by toon" and <code>1839ea0</code> "Stage 2 verified by toon", both pushed. <code>~/Code/PB3D_toon_review</code> (branch <code>review/toon-review</code>) was fast-forwarded to <code>1839ea0</code>, so both folders hold the same code. What each commit changed is listed at the top of <a href="#stage1">stage 1</a> and <a href="#stage2-done">stage 2</a>.</p>
-  <p>This page still shows <code>9e9aba5</code>, the code under review, and its GitHub links point there. In your folders ten files have other line numbers than the page (all other files: the same numbers):</p>
-  <ul>
-  <li><code>vac_ops.f90</code>: page lines 11 to 32 are one higher; from page line 33 on, every line is 8 lower (the header is 8 lines shorter).</li>
-  <li><code>PB3D_ops.f90</code>: from page line 205 on, 1 to 8 higher (eight <code>read_HDF5_arr</code> calls are now wrapped over two lines, the last after page line 373).</li>
-  <li><code>HDF5_vars.f90</code>: from page line 18 on, 3 lower (the comment about the re-export is gone).</li>
-  <li><code>var_1D_vars.f90</code> is <code>flat_vars.f90</code>: from page line 7 on, 1 lower (shorter header).</li>
-  <li><code>MPI_utilities.f90</code>: page lines 64 to 83 (the interface of <code>get_ghost_arr</code>) are gone, so from page line 84 on 20 lower; from page line 388 on 24 lower (the comment in <code>redistribute_var</code>); page lines 446 to 621 (the four versions of <code>get_ghost_arr</code>) are gone, so from page line 622 on 200 lower.</li>
-  <li><code>grid_utilities.f90</code>: page lines 1754 to 1822 (<code>untrim_grid</code>) are gone, so from page line 1823 on 69 lower.</li>
-  <li><code>grid_ops.f90</code>: from page line 1022 on 1 lower, from page line 1046 on 10 lower (the margin of <code>redistribute_output_grid</code>).</li>
-  <li><code>num_vars.f90</code>: from page line 23 on 1 higher, from page line 126 on 15 higher (<code>interp_V_ord</code> and <code>size_ghost_interp_V</code>).</li>
-  <li><code>sol_utilities.f90</code>: page lines 796 to 880 (<code>interp_V_spline</code>) are rewritten; from page line 881 on 1 higher.</li>
-  <li><code>VMEC_ops.f90</code>: from page line 106 on 2 lower (the B<sub>0</sub> block of <code>read_VMEC</code>).</li>
-  </ul>
+  <p><b>State after stage 4 (17 November):</b> <code>dev/vacuum-fixes</code> is at <code>@@NAME_B@@</code>. On top of <code>9e9aba5</code> it holds your two stage commits, <code>18f87e8</code> "Stage 1 verified by toon" and <code>1839ea0</code> "Stage 2 verified by toon", and the pull requests of your V0 decisions: #31 (V0-a and V0-b), #33 (V0-e) and #32 (V0-f). Both folders, <code>~/Code/PB3D</code> and <code>~/Code/PB3D_toon_review</code>, are at <code>@@NAME_B@@</code>.</p>
+  <p><b>Which code the page shows.</b> Stages 0 to 4 (S0 to V0) are inserted unchanged from the page on which you reviewed them (commit <code>df519a4</code> of this guide). They show <code>9e9aba5</code>, and their GitHub links point there. From stage 5 on every section shows <code>@@NAME_B@@</code>, so while your folders are at that commit, the line numbers there are the ones in your folders. These later commits changed code that only stages 0 to 4 show. Each file is listed with the sections of stages 0 to 4 that show it, and the commit links to its diff on GitHub:</p>
+  <div id="after"><!--@afterreview--></div>
   <p>Commits made in other sessions reach a folder only when you pull:</p>
   <pre class="out">git -C ~/Code/PB3D pull --ff-only --autostash</pre>
-  This page and its scripts live in a separate worktree, <code>~/Code/PB3D/.claude/worktrees/review-since-2.47</code> (branch <code>claude/review-since-2.47</code>, at <code>9e9aba5</code> plus the <code>review/</code> folder, pull request ToonWeyens/PB3D#6 against <code>dev/vacuum-fixes</code>).
+  This page and its scripts are on the branch <code>claude/review-since-2.47</code> (pull request ToonWeyens/PB3D#6, never to be merged), which holds only the guide: <code>9e9aba5</code> plus the <code>review/</code> folder. <code>python3 review/build_report.py</code> rebuilds the page.
 </div>
 
 <h3>What happened since 2.47</h3>
@@ -224,6 +213,7 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 <ul>
 <li><b>6 to 10 July 2026: modernisation.</b> PETSc/SLEPc 3.9 &rarr; 3.25, a test framework (CTest with test-drive) with unit, full-stack and regression layers, CI on GitHub Actions, warning and lint cleanup, the module splits for unit testing. The cloud session also repaired the vacuum for the first time: the axisymmetric style solved the interior problem, the field-line kernels had wrong weights, a wrong sign and a wrong exponent, BC style 2 was implemented. On 27 October every hunk of its two vacuum commits <code>429f003</code> and <code>d6d49e6</code> was reviewed and kept (message of <code>50c9511</code>).</li>
 <li><b>27 October to 6 November 2026: issue #4.</b> The bug fixes outside the vacuum (shear, setup_modes, MPI ownership, VMEC mode list and B<sub>0</sub>, free-edge weight, style 4), the factor and sign with which the vacuum enters the energy, the 3-D vacuum made to work on real VMEC equilibria (normal, near-field quadrature, G diagonal), benchmarks against MISHKA-1 and TERPSICHORE, the one sign convention, the diagonal options, check_vac, the POST vacuum plot, and the Fourier basis of the VMEC path.</li>
+<li><b>16 and 17 November 2026: your review.</b> Stages 1 and 2 as two commits of your own (<code>18f87e8</code>, <code>1839ea0</code>), then the V0 decisions as pull requests #31 to #33: one routine for the indirect diagonals, <code>vac_diag_style</code> documented as a diagnostic, comments without history, four stale comments.</li>
 </ul>
 <!--@figure timeline.png-->
 <div class="tablewrap"><table>
@@ -287,396 +277,11 @@ nav.index a.current { background: var(--accent-soft); color: var(--accent); font
 </tbody></table></div>
 <p class="note">About 15 hours in full, about 5 on the minimum path. With one hour only: <a href="#V0">V0</a> from "The convention" to the end, then <a href="#Q">Q</a>. Why this order: the mechanical changes go first because tools take about half of the non-vacuum blocks off your reading list. The small fixes come next because each one brings back a part of the code (equilibrium, eigenvalue problem, MPI layout) that the vacuum review needs. The vacuum design review comes before line-level verification: if you decide to change the convention or the structure, verifying the lines first would be wasted.</p>
 
-<!-- ================================================================== STAGE 0 -->
-<div class="stage" id="stage0"><span class="eyebrow">Stage 0</span><h2 class="st">Set up</h2></div>
-
-<section class="area" id="S0" data-title="Set up and run the tests">
-<div class="ahead"><span class="aid">S0</span><h2>Set up and run the tests</h2></div>
-<div class="meta"><span><b>time</b> 45 min</span><span class="tier skim">skim</span></div>
-<p>Before reading, see the test suite pass on your machine at the tip. It tells you that the build environment works and gives you the numbers that later sections refer to.</p>
-<div class="how"><ol>
-<li>Pull (commands in the box above).</li>
-<li>Build and run the tests as <code>Documentation/testing.md</code> describes. On the Mac with the Spack environment <code>pb3d</code>:
-<pre class="out">export PATH="/opt/homebrew/bin:$PATH"; . ~/spack/share/spack/setup-env.sh; spack env activate pb3d
-cmake -S . -B build-review -DPSPLINE_DIR=$HOME/Code/pspline/install \
-      -DLIBSTELL_DIR=$HOME/Code/PB3D/Libraries/libstell-min -DPB3D_FIXTURE_DIR=$HOME/Code/PB3D-fixtures
-cmake --build build-review -j8
-ctest --test-dir build-review --output-on-failure</pre>
-On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_np2</code>/<code>_np4</code> rows, which crash in the Mac's MPI launcher at start-up (environment, not code; they pass in CI and on Snellius). You prefer runs on Snellius: <code>scripts/snellius/build_pb3d.sh</code> and <code>Documentation/snellius-setup.md</code> have the recipe.</li>
-<li>For the demos: <code>uv sync</code> in the worktree, or use <code>~/Code/PB3D/.venv/bin/python</code>, which has numpy, scipy, matplotlib and netCDF4.</li>
-</ol></div>
-<p class="note"><b>Optional:</b> <a href="#A">appendix A</a> gives the first eigenvalue of nine decks at every commit that changed the compiled code, built and run on Snellius on 14 November 2026. The review does not need it. Open it when you want to know which commit moved which number.</p>
-</section>
-
-<!-- ================================================================== STAGE 1 -->
-<div class="stage" id="stage1"><span class="eyebrow">Stage 1</span><h2 class="st">Mechanical changes</h2>
-<p>These commits were meant to change no result. Tools checked them; your job is to confirm the few blocks the classifier could not decide. Each section lists its commits as cards, then the code they changed, as 2.47 against 9e9aba5. (If you want numbers as well: in the optional <a href="#A">appendix A</a>, none of these commits after the port changes any of nine eigenvalues, not even in the last digit. The port itself cannot be compared, because 2.47 does not build against PETSc 3.25.)</p></div>
-
-<div class="how" id="stage1-done"><b class="okline">Verified on 16 November 2026: commit <code>18f87e8</code> "Stage 1 verified by toon"</b> on <code>dev/vacuum-fixes</code>. What you changed during this stage:
-<ul>
-<li><a href="#M4">M4</a>: the module <code>var_1D_vars</code> is now <code>flat_vars</code>; its type <code>var_1D_type</code> is <code>var_flat_type</code>, and with it <code>dealloc_var_1D</code> &rarr; <code>dealloc_var_flat</code>, <code>max_dim_var_1D</code> &rarr; <code>max_dim_var_flat</code>, the local variables <code>var_1D</code> &rarr; <code>var_flat</code> and <code>conv_1D2ND</code> &rarr; <code>conv_flat2ND</code> (371 lines in 12 files). Mapping the new names back gives the old files exactly, apart from the spacing before trailing comments and eight calls in <code>PB3D_ops.f90</code> wrapped to stay within 80 columns. The comment in <code>HDF5_vars.f90</code> about the re-export is removed, and the header of <code>flat_vars.f90</code> says why the module exists (to compile and test without HDF5) instead of where it came from.</li>
-<li><a href="#M5">M5</a>: <code>prog_version</code> is 2.49, and so are <code>VERSION</code> in <code>CMakeLists.txt</code> and <code>PROJECT_NUMBER</code> in <code>Doxyfile</code>. <code>min_PB3D_version</code> went from 2.43 to 2.49, so POST now refuses PB3D output older than 2.49 at its version check, before the size check of <code>misc_in_V</code> is reached.</li>
-<li>Your own edits: the header of <code>vac_ops.f90</code> (the status paragraph replaced by two <code>\todo</code> lines, a line on the two field lines that the 3-D style needs) and the author lines of <code>README.md</code>.</li>
-</ul>
-<p>Checked before the commit: the unit tests (8 of 8); the full build; <code>ctest</code> 20 of 24, the four that fail being the <code>_np2</code>/<code>_np4</code> rows that crash at start-up in the Mac's MPI launcher, as in <a href="#S0">S0</a>; cbm18a fixed boundary through PB3D gives &minus;4.35729e&minus;2 (anchor &minus;4.3573e&minus;2), and POST reads that file and prints "PB3D version 2.49". Not checked: POST refusing a file from PB3D 2.48.</p></div>
-
-<section class="area" id="M1" data-title="PETSc/SLEPc 3.9 to 3.25 port">
-<div class="ahead"><span class="aid">M1</span><h2>PETSc/SLEPc 3.9 to 3.25 port</h2></div>
-<div class="meta"><span><b>files</b> SLEPC_ops, SLEPC_utilities</span><span><b>commits</b> 775219a, d4812f7, 1862df0</span><span><b>time</b> 15 min</span><span class="tier read">read</span></div>
-<p>2.47 used the PETSc 3.9 Fortran interface and no longer builds against a current PETSc. The port changes calls, not what is computed: <code>PetscBool</code> optional arguments become <code>logical</code>, <code>InsertMode</code> gets its own type, <code>MatSetValuesBlocked</code> takes index arrays and a flattened block, <code>PetscViewerSetFormat</code> becomes push/pop, <code>VecGetArrayF90</code> becomes <code>VecGetArray</code>, and <code>MatInfo</code> and <code>PETSC_NULL_SCALAR_ARRAY</code> are switched on <code>PETSC_VERSION_GE(3,22,0)</code>.</p>
-<p>Two hunks are more than renames:</p>
-<ul>
-<li><b>An implicit SAVE, fixed.</b> In the routine that removes faulty eigenvalues, 2.47 declared <code>PetscBool :: remove_next_loc = .false.</code>. An initialisation in a declaration gives the variable the SAVE attribute, so after one call with <code>remove_next = .true.</code> every later call without the argument also removed all following eigenvalues. The port sets it to <code>.false.</code> at the start of each call. The demo shows the Fortran rule. (Effect by reading of the code: it only matters in runs where PB3D discards eigenvalues; I did not construct such a case.)</li>
-<li><b><code>MatCopy</code> flag.</b> 2.47 passed <code>MAT_SHARE_NONZERO_PATTERN</code> (a <code>MatDuplicateOption</code>) where a <code>MatStructure</code> is expected; the port passes <code>SAME_NONZERO_PATTERN</code>. In <code>petscmat.h</code> of PETSc 3.25.3 both names are the third entry of their enumeration (value 2), so this corrects the type, not the behaviour.</li>
-</ul>
-<div class="how"><b>How to check it</b><ol>
-<li>Read the code below the three cards; in their own diffs the classifier marks three hunks as mechanical (two renames of <code>PetscBool</code>, one debug guard); the rest are API changes to read once.</li>
-<li>The build at the tip and the regression anchors (<a href="#S0">S0</a>) show that the ported calls work; 2.47 cannot be built with PETSc 3.25, so there is no before/after run of the port itself.</li>
-</ol></div>
-<!--@demo implicit_save-->
-<!--@commit 775219a NONVAC-->
-<!--@commit d4812f7 NONVAC-->
-<!--@commit 1862df0 NONVAC-->
-</section>
-
-<section class="area" id="M2" data-title="Compiler-warning cleanup">
-<div class="ahead"><span class="aid">M2</span><h2>Compiler-warning cleanup</h2></div>
-<div class="meta"><span><b>files</b> 16 modules</span><span><b>commit</b> 6ce5029</span><span><b>time</b> 15 min</span><span class="tier skim">skim</span></div>
-<p>The warning count of a full build went from 321 to 124 (commit message). Most hunks move a declaration that only debug builds use under <code>#if ldebug</code>, or trim a <code>use</code> list. The classifier marks those. The hunks left to read:</p>
-<ul>
-<li><code>MPI_utilities</code>, the lock logic: <code>if (lock%blocking .or. wl_empty(...))</code> calls an impure function inside <code>.or.</code>. Fortran does not say whether the second operand is evaluated, so gfortran warns. The call now goes first into <code>no_NB_running</code>. Same result if the compiler evaluated both operands before; defined behaviour now.</li>
-<li>Declarations split so that only the debug-only counters go under the guard (<code>eq_ops</code>, <code>sol_ops</code>), an unused <code>rout_name</code> removed (<code>num_utilities</code>), an error message shortened (<code>input_ops</code>).</li>
-</ul>
-<p class="note">The vacuum-module part of this commit is inside the vacuum routine diffs of stage 5.</p>
-<div class="how"><b>How to check it</b>: the card below gives the verdict for each hunk of the commit's own diff; read its blocks marked <span class="badge read">read</span> below the card. A block can be marked read because another commit changed lines in it too: the commits under the block say which.</div>
-<!--@commit 6ce5029 NONVAC-->
-</section>
-
-<section class="area" id="M3" data-title="Lint: specific intrinsics">
-<div class="ahead"><span class="aid">M3</span><h2>Lint: specific intrinsics</h2></div>
-<div class="meta"><span><b>files</b> dtorh, num_vars</span><span><b>commit</b> 17716c4</span><span><b>time</b> 5 min</span><span class="tier skim">skim</span></div>
-<p>The Fortran linter (fortitude, category OB, obsolescent features, now a CI gate) rejects the specific double-precision intrinsics. <code>DSQRT</code>, <code>DABS</code>, <code>DLOG</code> and <code>datan</code> became the generic <code>sqrt</code>, <code>abs</code>, <code>log</code> and <code>atan</code>. For <code>real(dp)</code> arguments the generic and the specific function are the same function. Every hunk of the commit's own diff is classified <span class="badge auto">intrinsic</span>: after replacing each specific name by its generic one, the removed and added lines are identical. Nothing to read unless you want to. The unit test <code>unit_dtorh</code> checks <code>dtorh</code> against reference values (also at n = 20 to 80, to 1.4e-11).</p>
-<!--@commit 17716c4 NONVAC-->
-</section>
-
-<section class="area" id="M4" data-title="Module splits for unit testing">
-<div class="ahead"><span class="aid">M4</span><h2>Module splits for unit testing</h2></div>
-<div class="meta"><span><b>files</b> num_utilities &rarr; spline_utilities, HDF5_vars &rarr; var_1D_vars, and the <code>use</code> lines of 14 modules</span><span><b>commits</b> 8ac37d7, 17b712c; <code>var_1D_vars</code> renamed <code>flat_vars</code> in <code>18f87e8</code></span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
-<p>The unit-test layer compiles parts of PB3D without PSPLINE and HDF5. For that, the PSPLINE wrapper <code>spline</code> moved out of <code>num_utilities</code> into a new module <code>spline_utilities</code>, and <code>var_1D_type</code> with <code>dealloc_var_1D</code> moved out of <code>HDF5_vars</code> into <code>var_1D_vars</code> (which <code>HDF5_vars</code> re-exports). Every caller's <code>use num_utilities, only: spline</code> became <code>use spline_utilities, only: spline</code>.</p>
-<p>The checker below compares the removed lines with the new module line by line. Result: 339 of the 340 lines removed from <code>num_utilities</code> are in <code>spline_utilities</code> unchanged (the 340th is the <code>public</code> list, which lost <code>spline</code>), and 52 of 54 for <code>var_1D_vars</code> (the other two: the <code>public</code> list and a doc line that now says "1-D"). What is new in each module is boilerplate (header, <code>module</code>, <code>use</code>, <code>private</code>, <code>public</code>).</p>
-<div class="how"><b>How to check it</b>: read the checker's output below; the 37 <span class="badge auto">use-list</span> hunks of 8ac37d7 are the callers' <code>use</code> lines; read the remaining blocks below the cards (the <code>public</code> lists and the re-export in <code>HDF5_vars</code>).</div>
-<!--@demo pure_move_check-->
-<!--@commit 8ac37d7 NONVAC-->
-<!--@commit 17b712c NONVAC-->
-</section>
-
-<section class="area" id="M5" data-title="Version number">
-<div class="ahead"><span class="aid">M5</span><h2>Version number</h2></div>
-<div class="meta"><span><b>file</b> num_vars</span><span><b>commit</b> a8c07b6</span><span><b>time</b> 2 min</span><span class="tier skim">skim</span></div>
-<p><code>prog_version</code> went from 2.47 to 2.48 in July. The README's newest changelog entry is 2.49 (October and November), but <code>prog_version</code> still says 2.48. POST refuses output written before the Nyquist change by the size of <code>misc_in_V</code> (<a href="#R1">R1</a>), not by the version number, so nothing breaks; the number is just behind.</p>
-<div class="decide"><b>Decided.</b> Set <code>prog_version</code> to 2.49 before the merge. <b>Done</b> in <code>18f87e8</code>, together with <code>min_PB3D_version</code> 2.49.</div>
-<!--@commit a8c07b6 NONVAC-->
-</section>
-
-<!-- ================================================================== STAGE 2 -->
-<div class="stage" id="fixes"><span class="eyebrow">Stage 2</span><h2 class="st">Fixes outside the vacuum</h2>
-<p>Six bugs, each wrong at 2.47. The demos show why each fix is right; the tests named under each one fail if the fix is undone, where a test exists.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>fix</th><th>what was wrong</th><th>effect at the time of the fix</th><th>line as at 2.47 since</th><th>guard</th></tr></thead>
-<tbody>
-<tr><td><a href="#F1">F1</a> shear</td><td>HELENA shear spline with the even end condition on an odd quantity</td><td>cbm18a fixed −4.074e-2 &rarr; −4.357e-2 (6.5 % more unstable)</td><td>b8c07f7, v2.36, 18 June 2018</td><td>regression_cbm18a_shear_HEL</td></tr>
-<tr><td><a href="#F2">F2</a> setup_modes</td><td>slot of a new mode when the mode window moves down, reverses or jitters</td><td>none on the fixtures (no fixture moves the window down)</td><td>63ce0f4, v2.14, 27 March 2018</td><td>Python copy of the formulas; runtime check</td></tr>
-<tr><td><a href="#F3">F3</a> MPI ownership</td><td>overlap points taken from the lower rank's ghost region</td><td>every eigenvalue shifted about 2e-5 with 2 or 4 processes</td><td>2bc8bbc, v1.61, 22 March 2017</td><td>np2/np4 rows (opt-in, not in CI)</td></tr>
-<tr><td><a href="#F4">F4</a> VMEC modes, B<sub>0</sub></td><td>Nyquist arrays labelled with the main mode list; B<sub>0</sub> = |B| at θ = ζ = 0</td><td>37 % on a VMEC++ file with ntor 6; HELENA and VMEC twins 1.6 % apart (B<sub>0</sub>)</td><td>ca8a070, v1.86, July 2017; df0f239, v1.67, April 2017</td><td>none with ntor &gt; 0</td></tr>
-<tr><td><a href="#F5">F5</a> free-edge weight</td><td>full quadrature weight at the free end point</td><td>free eigenvalues converged like 1/N in n_r_sol (2.3 % at 200 points on the HELENA circular ε = 0.33 kink)</td><td>5108fb5, v2.01, November 2017</td><td>regression_circ_eps005_free_bnd (200 vs 400 points)</td></tr>
-<tr><td><a href="#F6">F6</a> BC styles</td><td>styles 2, 3 stopped; style 4 overwrote its edge block, dropping the vacuum</td><td>no free boundary with the vacuum could run correctly</td><td>108bc9f, v2.12, March 2018 (style 4 insertion)</td><td>regression_cbm18a_free_bnd</td></tr>
-</tbody></table></div>
-<p class="note">"Line as at 2.47 since": the commit in which the faulty line took the form it had at 2.47 (found with <code>git log -S</code>); an earlier form may have had the same error. The tag <code>Weyens2017PB3D</code> (v1.29, June 2016) contains none of these lines; the tag <code>Weyens2018expressions</code> (v2.37, 18 June 2018) contains all six. The implicit SAVE of <a href="#M1">M1</a> dates from v0.74 (April 2015) and is in both tags.</p></div>
-
-<div class="how" id="stage2-done"><b class="okline">Verified on 16 November 2026: commit <code>1839ea0</code> "Stage 2 verified by toon"</b> on <code>dev/vacuum-fixes</code>, pushed. What changed during this stage:
-<ul>
-<li><a href="#F3">F3</a>: the comments of <code>redistribute_var</code> and of the margin in <code>redistribute_output_grid</code> say what the code does, without its history. The margin is no longer a local <code>ghost_interp = 20</code>: <code>num_vars</code> holds the order of the radial interpolation, <code>interp_V_ord = 3</code>, and the margin computed from it, <code>size_ghost_interp_V</code>: 0 points for linear, 2 for Akima, &lceil;ln &epsilon; / ln(2 &minus; &radic;3)&rceil; = 28 for the cubic spline, whose end effect shrinks by 2 &minus; &radic;3 per equal interval. <code>interp_V_spline</code> takes as order the lower of <code>interp_V_ord</code> and what the points allow: 0 for one point (a copy), 1 for two or three, 3 for four or more, because PSPLINE's Akima and cubic splines both need four points. With the setting at 3 that is what the code did before. <code>untrim_grid</code> (<code>grid_utilities</code>) and <code>get_ghost_arr</code> with its four versions (<code>MPI_utilities</code>) were never called and are removed.</li>
-<li><a href="#F4">F4</a>: <code>read_VMEC</code> takes B<sub>0</sub> from the first Nyquist mode, after checking that it is (0,0), instead of searching all modes for it. The comment and the description of <code>B_0_V</code> say what B<sub>0</sub> is, and the README gives the factors by which VMEC eigenvalues changed: 0.9839 for the circular twin, 1.064 for W7-X.</li>
-</ul>
-<p>Checked before the commit: the full build on the Mac and <code>ctest</code> without the regression decks, 16 of 20, the four that fail being the <code>_np2</code>/<code>_np4</code> full-stack rows that crash at start-up in the Mac's MPI launcher; <code>interp_V_spline</code> on its own for 1, 2, 3, 4 and 10 points (order, <code>ivs_stat</code>, exact on linear and cubic data). On Snellius, 18f87e8 against the stage-2 code: 27 of 27 tests in both, the regression decks and the <code>_np2</code>/<code>_np4</code> rows included. With one process every eigenvalue is the same in all 16 digits (cbm18a fixed, cbm18a free with styles 2 and 4, the circular deck, the twin fixed and free, the last after the change of B<sub>0</sub>). With 2 and 4 processes cbm18a fixed moves by 3.7e&minus;13 and 6.1e&minus;13, from the margin of 28 instead of 20. Not checked: <code>interp_V_ord</code> set to 1 or 2. Left as they are: the header of <code>set_BC_4</code> (<a href="#F6">F6</a>) still cites "issue #4, step 4" and the 0.7 % gap from before <a href="#F5">F5</a>.</p></div>
-
-<section class="area" id="F1" data-title="HELENA shear: the end condition of an odd spline">
-<div class="ahead"><span class="aid">F1</span><h2>HELENA shear: the end condition of an odd spline</h2></div>
-<div class="meta"><span><b>file</b> eq_ops (<code>calc_derived_q</code>)</span><span><b>commit</b> 28f8dab</span><span><b>time</b> 20 min</span><span class="tier study">study</span></div>
-<p>For a HELENA equilibrium PB3D computes the magnetic shear as \(S = -\frac{1}{\mathcal{J}}\,\partial_\chi\!\left(h^{\alpha\psi}/h^{\psi\psi}\right)\) by fitting a cubic spline in χ and differentiating it (<code>calc_derived_S_from_deriv_HEL</code>). An up-down symmetric equilibrium (<code>ias = 0</code>) is stored on χ ∈ [0, π], so the spline needs a condition at both ends. The ratio \(h^{\alpha\psi}/h^{\psi\psi}\) is odd in χ: its slope is not zero at χ = 0 and π, its second derivative is. 2.47 passed <code>bcs(:,1)</code>, the zero-slope condition of even quantities. The fix passes <code>bcs(:,2)</code>, zero second derivative. One line; the other three hunks correct the comment "zero first derivative" next to <code>bcs(:,2) = [2,2]</code> in three places.</p>
-<p><b>Effect.</b> The zero-slope condition forced S to zero at both midplanes, χ = 0 and π. The cbm18a n = 10 fixed-boundary eigenvalue moved from −4.074e-2 to −4.357e-2, 6.5 % more unstable, and POST's energy balance closes to 0.08 %. The faulty argument dates from 18 June 2018 (b8c07f7, v2.36) and is in the code of the tag <code>Weyens2018expressions</code>. The demo shows that the error at the ends does not shrink with the number of poloidal points.</p>
-<div class="how"><b>How to check it</b><ol>
-<li>Read the change: <code>bcs(:,1)</code> &rarr; <code>bcs(:,2)</code> in the call for <code>eq_2%S</code> (below the card).</li>
-<li>Look at the demo: with the even condition the derivative error stays 0.86 at the ends for 33 to 257 points; with the odd one it falls as 1/N⁴.</li>
-<li>Independent evidence: the VMEC path does not use this spline, and the HELENA and VMEC versions of the circular ε = 0.33 case agree to 1e-4 in their fixed-boundary eigenvalue (test <code>regression_circ_eps033_vmec_twin</code>, <code>TWIN_RTOL</code>).</li>
-<li>Guard: <code>regression_cbm18a_shear_HEL</code> compares the shear S in the output file with the direct formula from the stored metric derivatives: deviation 0.79 with the even condition, 1.5e-5 with the odd one.</li>
-</ol></div>
-<!--@demo shear_odd_spline-->
-<!--@commit 28f8dab NONVAC-->
-</section>
-
-<section class="area" id="F2" data-title="setup_modes: table slot from the mode number">
-<div class="ahead"><span class="aid">F2</span><h2>setup_modes: table slot from the mode number</h2></div>
-<div class="meta"><span><b>file</b> X_ops (<code>setup_modes</code>)</span><span><b>commit</b> e4e3fdd</span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
-<p>With the fast mode window (<code>X_style</code> 2) the window of <code>n_mod_X</code> poloidal modes follows nq across the radius, and modes end and start where the window moves. PB3D keeps two tables that must agree: <code>nm_X</code> (mode number per radial point and slot) and <code>ind_tot</code> (per mode: number, radial range, slot). 2.47 computed the slot of a new mode from the slot of the mode created last, which agrees with <code>nm_X</code> only while the window moves up. When it moves down (nq &lt; 0), reverses (reversed shear) or jitters (a flat q), two active modes shared a slot and their couplings were mixed without a message. That formula dates from 27 March 2018 (63ce0f4, v2.14). The fix takes the slot from the mode number with the formula <code>nm_X</code> uses, <code>modulo(m - nm_X(1,1), n_mod_X) + 1</code>, and adds a check that every mode finds its own number in its slot at every point of its range (a new runtime error if not).</p>
-<p>The script <code>tests/reference/setup_modes_sim.py</code> copies the index formulas of 2.47, of an unmerged 2020 rewrite (<code>afc9d17</code> on <code>origin/issue_vac_not_used_VMEC</code>), of a corrected version of that rewrite, and of the fix, and counts wrong (point, mode) entries for eight window histories. It runs in ctest as <code>unit_setup_modes_sim</code>.</p>
-<!--@demo setup_modes_sim-->
-<div class="how"><b>How to check it</b><ol>
-<li>Read the two changed formulas against <code>nm_X</code>'s own rule, <code>modulo(m - nm_X(1,1), n_mod_X) + 1</code>.</li>
-<li>Read the new check loop after the main loop.</li>
-<li>Run or read the sim: the column "current" (the code as at 2.47; the script was written before the fix) has wrong entries for five of the eight window histories, the column "fixed" none.</li>
-</ol></div>
-<div class="gap"><b>Gap.</b> None of the fixtures moves the window down, so no eigenvalue changed and no regression test covers the case. The sim tests a Python copy of the formulas, not the Fortran; the Fortran's own check is the new loop, which stops a run whose tables disagree.</div>
-<!--@commit e4e3fdd NONVAC-->
-</section>
-
-<section class="area" id="F3" data-title="MPI: every point from its owner">
-<div class="ahead"><span class="aid">F3</span><h2>MPI: every point from its owner</h2></div>
-<div class="meta"><span><b>files</b> MPI_utilities (<code>redistribute_var</code>), grid_ops</span><span><b>commit</b> 798fe50; margin from <code>num_vars</code> and unused routines removed in <code>1839ea0</code></span><span><b>time</b> 25 min</span><span class="tier study">study</span></div>
-<p>With 2 or 4 MPI processes every eigenvalue differed from the 1-process one by about 2e-5 relative. Cause: every process hands its whole local range to <code>redistribute_var</code>, ghost points included, so the source ranges overlap. 2.47 filled each destination point from the sources in rank order, which in an overlap takes the lower rank's ghost region, where derivatives are one-sided and splines end. A and B differed from the 1-process matrices in the 12 to 16 rows after each interface, by 6e-6 and 2e-5 of their largest entry. The fix splits each overlap in the middle (the convention of <code>trim_grid</code>) and takes every point from its owner. On Snellius the cbm18a fixed deck then gives the same eigenvalue with 1, 2, 3 and 4 processes to 1.5e-8, the circular deck to 2e-12. The rank-order loop dates from 22 March 2017 (2bc8bbc, v1.61).</p>
-<p>A second, smaller part: <code>grid_ops</code> widens the equilibrium range by 20 points (<code>ghost_interp</code>), because <code>interp_V</code> fits a cubic spline over exactly the local range and a spline's end effect reaches inward, falling by about 2 − √3 ≈ 0.27 per interval. Its contribution to the eigenvalue was 1e-6. The right panel of the demo shows the decay.</p>
-<div class="how"><b>How to check it</b><ol>
-<li>Run or read the demo: it copies both versions of the index arithmetic and marks the eight points (of 60, with 3 processes and 4 ghost points) that 2.47 took from a ghost region.</li>
-<li>Read the new loop against the demo: <code>lims_eff_tot</code> is the owned range, <code>id_start</code> and <code>n_vars</code> the intersection of destination and owned range, and <code>id_rec</code>/<code>id_sen</code> the offsets into the local arrays.</li>
-<li>Guard: <code>regression_cbm18a_fixed_bnd_np2</code> and <code>_np4</code> (tolerance 1e-6 against one process). They are opt-in (<code>-DPB3D_TEST_MPI_REGRESSION=ON</code>, needs MUMPS in PETSc); they ran on Snellius, and CI does not run them.</li>
-</ol></div>
-<!--@demo redistribute_owner-->
-<!--@commit 798fe50 NONVAC-->
-</section>
-
-<section class="area" id="F4" data-title="VMEC: the Nyquist mode list and B_0">
-<div class="ahead"><span class="aid">F4</span><h2>VMEC: the Nyquist mode list and B<sub>0</sub></h2></div>
-<div class="meta"><span><b>file</b> VMEC_ops (<code>read_VMEC</code>)</span><span><b>commit</b> 0d49f19; B<sub>0</sub> from the first Nyquist mode in <code>1839ea0</code></span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
-<p><b>Mode list.</b> A VMEC wout file stores R, Z and λ on the main mode list (<code>xm</code>, <code>xn</code>, <code>mnmax</code> modes) and the Jacobian, |B| and the covariant B components on the Nyquist list (<code>xm_nyq</code>, <code>xn_nyq</code>, <code>mnmax_nyq</code> ≥ <code>mnmax</code>), each ordered by its own limits. 2.47 took <code>gmnc(1:mnmax,:)</code>, <code>bmnc(1:mnmax,:)</code> and <code>bsub*(1:mnmax,:)</code> and labelled them with the main list. That is right only when <code>ntor</code> = 0 or <code>mnmax_nyq</code> = <code>mnmax</code> (the STELLOPT W7-X file). For a VMEC++ file of the rippled twin (<code>mpol</code> 12, <code>ntor</code> 6) 143 of 150 labels were wrong, and the fixed-boundary eigenvalue was 37 % off. Commit 0d49f19 matched the modes by (m, n); the Fourier-basis commit 3b99109 (<a href="#R1">R1</a>) then kept the whole Nyquist list. The line as at 2.47 dates from July 2017 (ca8a070, v1.86).</p>
-<p><b>B<sub>0</sub>.</b> PB3D normalises with |B| on the axis. 2.47 summed all <code>bmnc</code> modes, which is |B| at θ = ζ = 0 and depends on where the toroidal origin lies; on a rippled axis it varies with the ripple amplitude δ, so the normalised eigenvalues varied linearly in δ while the physics is even in δ. Now B<sub>0</sub> is the (0, 0) Nyquist mode, the toroidal average. Even on the axisymmetric twin the old B<sub>0</sub> was 0.8 % low: the HELENA and VMEC fixed-boundary eigenvalues of the circular twin were 1.6 % apart and now agree to 2e-6. On the rippled twins the eigenvalues now change as δ² (ratios 4.0 and 3.9 fixed, 4.1 and 4.9 free, for doubling δ); W7-X eigenvalues rescale by 1.064. The sum dates from April 2017 (df0f239, v1.67).</p>
-<div class="how"><b>How to check it</b><ol>
-<li>Run or read the demo: it builds both mode lists with VMEC's ordering and counts the mislabelled entries, and checks the claim on the committed fixture (ntor 0: no mislabelling).</li>
-<li>Read the B<sub>0</sub> loop and the Nyquist block of <code>read_VMEC</code>; every <code>1:mnmax_V</code> on a Nyquist array became <code>1:mnmax_nyq_V</code>.</li>
-</ol></div>
-<!--@demo nyquist_modes-->
-<div class="gap"><b>Gap.</b> No committed test has a VMEC file with <code>ntor</code> &gt; 0: the only VMEC fixture, <code>wout_circ_eps033_q104.nc</code>, is axisymmetric, so neither the Nyquist fix, the B<sub>0</sub> fix nor the Nyquist path of the Fourier basis (<a href="#R1">R1</a>) is guarded in CI. The rippled twins and W7-X were run on Snellius.</div>
-<!--@commit 0d49f19 NONVAC-->
-</section>
-
-<section class="area" id="F5" data-title="Free edge: the trapezoidal end weight">
-<div class="ahead"><span class="aid">F5</span><h2>Free edge: the trapezoidal end weight</h2></div>
-<div class="meta"><span><b>file</b> SLEPC_ops (<code>fill_mat</code>)</span><span><b>commit</b> 4915d4b</span><span><b>time</b> 25 min</span><span class="tier study">study</span></div>
-<p><code>fill_mat</code> adds the energy integrand of each radial point times the step size. With a fixed boundary the last row is replaced by the boundary condition, so the weight of the last point never enters. With a free boundary (<code>BC_style(2)</code> = 2 or 4) the last point stays in the system and the trapezoidal rule gives it half the weight. 2.47 gave it the full weight, so the free-boundary eigenvalues converged like 1/N in <code>n_r_sol</code> (2.3 % off at the 200 points of the regression decks on the HELENA circular ε = 0.33 kink: −0.44383 before, −0.43380 after, comment of the twin regression test) while fixed-boundary ones converged like 1/N². The fix multiplies the blocks of the last point by <code>w_q</code> = 1/2 for those two styles.</p>
-<p>The full end weight dates from November 2017 (5108fb5, v2.01), but it only affected free-boundary runs with style 4, since style 2 never ran before July 2026. The demo is a model, not PB3D's assembly: the 1-D problem −u″ = λu with a surface term κu(1)² at a free end. With the full end weight its eigenvalue error halves per doubling of N; with half the weight it falls by 4; with a fixed end both weights give the same result.</p>
-<div class="how"><b>How to check it</b><ol>
-<li>Read the change: <code>w_q</code> multiplies all three block types of row <code>kd = n_r-1</code> (0-based: the last point), for A and B alike.</li>
-<li>Guard: <code>regression_circ_eps005_free_bnd</code> runs 200 and 400 radial points and fails if the eigenvalue moves by more than 5e-4 between them (<code>ORDER_RTOL</code>). With the full weight the eigenvalue converges like 1/N and moves by far more.</li>
-<li>Numbers after the fix: the circular ε = 0.33 kink agrees with MISHKA-1 without a wall to 0.005 % at n = 10 (the README later calls this a coincidence: the axisymmetric style then still converged like 1/N in the poloidal points, see <a href="#V6">V6</a>), 0.63 % and 0.89 % at n = 15 and 20; the cbm18a free anchors moved 4.5e-4 (style 2) and 0.9 % (style 4).</li>
-</ol></div>
-<!--@demo edge_weight_1d-->
-<!--@commit 4915d4b NONVAC-->
-</section>
-
-<section class="area" id="F6" data-title="Boundary-condition styles 2, 3 and 4">
-<div class="ahead"><span class="aid">F6</span><h2>Boundary-condition styles 2, 3 and 4</h2></div>
-<div class="meta"><span><b>files</b> SLEPC_ops (<code>set_BC</code>), input_ops</span><span><b>commits</b> 41b5274, 1d74b8f, 83c02df</span><span><b>time</b> 25 min</span><span class="tier read">read</span></div>
-<p>At 2.47 the free-boundary styles 2 and 3 stopped with "Vacuum has not been implemented yet!", and style 4 did run but lost the vacuum. Three commits:</p>
-<ul>
-<li><b>Style 3 removed</b> (41b5274). It extended the grid by <code>ndps</code> points and was never more than a stub.</li>
-<li><b>Style 2 implemented</b> (1d74b8f): the edge row is assembled by <code>fill_mat</code> like any bulk row (one-sided stencils), so the only boundary term of the energy is X<sub>e</sub><sup>H</sup> res X<sub>e</sub>, and <code>set_BC_2</code> adds <code>vac%res</code> to the edge diagonal block. The natural boundary condition then follows from stationarity of the discrete energy, and A and B stay Hermitian. The code change is small: the stop is removed; the explanation went into the comments.</li>
-<li><b>Style 4's edge block assembled once</b> (83c02df; the double insertion dates from March 2018, 108bc9f, v2.12). <code>set_BC_4</code> wrote the explicit natural-boundary-condition row V<sub>1</sub><sup>T</sup>X + V<sub>2</sub>X′ + res X = 0 in two insertions at block (0, 0), both with <code>overwrite=.true.</code>, so the second (the V<sub>2</sub> part) replaced the first (V<sub>1</sub><sup>T</sup> and the vacuum). Now the two are added and inserted once. The default <code>BC_style</code> went to [1, 4] in July and back to [1, 2] here, your choice since 2017.</li>
-</ul>
-<p>Style 4 still differs from style 2: on cbm18a by 0.19 % now (anchors −4.5051e-2 and −4.5136e-2), on the circular external kink by 7 %. Your own 2017 comment called it "does not work well yet"; its header now says "Not validated" and quotes 0.7 % on cbm18a, a number from before the edge weight of <a href="#F5">F5</a>. You decided on 6 November to keep the style.</p>
-<div class="how"><b>How to check it</b><ol>
-<li>Read <code>set_BC_2</code>: one insertion of <code>vac%res</code> at the edge diagonal block, no step size (a surface term).</li>
-<li>Read <code>set_BC_4</code> against the 2.47 version: the two former insertions at (0, 0) are summed before one insertion, and the V<sub>2</sub> loop now stops at jd = −1.</li>
-<li>Read the removal of style 3 and of the grid extension in <code>setup_mats</code> and <code>fill_mat</code>.</li>
-</ol></div>
-<p class="note">How the vacuum enters A and the POST energy (the factor 2π and the sign) is part of <a href="#V8">V8</a>.</p>
-<!--@commit 41b5274 NONVAC-->
-<!--@commit 1d74b8f NONVAC-->
-<!--@commit 83c02df NONVAC-->
-</section>
-
-<!-- ================================================================== STAGE 3 -->
-<div class="stage" id="stage3"><span class="eyebrow">Stage 3</span><h2 class="st">Restructure outside the vacuum</h2></div>
-
-<section class="area" id="R1" data-title="The Fourier basis of the VMEC path">
-<div class="ahead"><span class="aid">R1</span><h2>The Fourier basis of the VMEC path</h2></div>
-<div class="meta"><span><b>files</b> VMEC_utilities, VMEC_ops, VMEC_vars, eq_ops, grid_utilities, grid_vars, sol_ops, PB3D_ops, input_ops</span><span><b>commits</b> 3b99109, 329b7a4, 1a53f50</span><span><b>time</b> 45 min</span><span class="tier read">read</span></div>
-<p><code>calc_trigon_factors</code> stored, at every grid point, cos(mθ − nζ) and sin(mθ − nζ) for every mode of the main list, so the Nyquist modes beyond it could not be evaluated (<a href="#F4">F4</a>). It now stores the one-angle basis: cos and sin of mθ for m = 0 … <code>mpol_tf</code>−1 and of n N<sub>fp</sub> ζ for n = −<code>ntor_tf</code> … <code>ntor_tf</code>, with the grid points first in memory. <code>fourier2real</code> forms the products per mode for any mode list (<code>mn</code> argument, default the main list), so the Jacobian, |B| and B<sub>i</sub> are evaluated on the full Nyquist list. The derivative factors are those of 2.47. The angle version <code>fourier2real_2</code> now builds the basis for its angles and calls the table version (1a53f50, 90 lines fewer).</p>
-<p>Results (commit messages): W7-X identical to all digits (its two mode lists coincide); the circular twin to 4.5e-13 (fixed) and 1.4e-11 (free, 64 lines); the rippled twins (<code>ntor</code> 6) to 1.2e-12, 4.5e-9 and 1.5e-6 for δ = 0.01, 0.02 and 0.04, the last because the Nyquist modes beyond the main list are now kept. Appendix A agrees: W7-X bit for bit, the circular twin by at most 4.5e-13. The equilibrium phase of a 150-mode, 64-line run takes half the time and the W7-X decks 22 % less memory; the consolidation changed eigenvalues by at most 6e-13.</p>
-<p>Two consequences to check in the diffs: the index order of <code>trigon_factors</code> changed from (mode, θ, ζ, r, cos/sin) to (θ, ζ, r, basis, cos/sin), so every slice and every allocation that copies it changed too (<code>trim_grid</code>, <code>sol_ops</code>, <code>test_B_F</code>); and the output file gained <code>mn_V_nyq</code> and three entries in <code>misc_in_V</code>, so POST refuses output from before this commit ("rerun PB3D").</p>
-<div class="how"><b>How to check it</b><ol>
-<li>The demo copies the index arithmetic of the new <code>fourier2real_1</code> line by line (basis indices, derivative factors, the cos/sin swap for an odd number of derivatives, the skip of zero coefficient sets) and compares it with direct evaluation for the W7-X mode extent, all derivative orders up to 2 in each angle and all <code>sym</code> flags: agreement to 3e-14.</li>
-<li>Read <code>calc_trigon_factors</code> and <code>fourier2real_1</code> in the diff of <code>VMEC_utilities</code> below the cards, then the index-order blocks in the other files.</li>
-</ol></div>
-<!--@demo fourier_basis_check-->
-<!--@commit 3b99109 NONVAC-->
-<!--@commit 329b7a4 NONVAC-->
-<!--@commit 1a53f50 NONVAC-->
-</section>
-
-<!-- ================================================================== STAGE 4 -->
-<div class="stage" id="stage4"><span class="eyebrow">Stage 4</span><h2 class="st">Vacuum design review</h2>
-<p>Decide before verifying. This stage has no diffs: it lays out what the vacuum code does now and where you might want it done differently.</p></div>
-
-<section class="area" id="V0" data-title="The vacuum now: data flow, convention, structure">
-<div class="ahead"><span class="aid">V0</span><h2>The vacuum now: data flow, convention, structure</h2></div>
-<div class="meta"><span><b>modules</b> vac_ops 2503 &rarr; 3878 lines, vac_utilities 518 &rarr; 1015, vac_vars 388 &rarr; 405</span><span><b>time</b> 2 h</span><span class="tier study">study</span></div>
-
-<h3>Data flow</h3>
-<div class="tablewrap">
-<svg class="flow" viewBox="0 0 780 470" width="780" role="img" aria-label="Data flow of the vacuum response">
-<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="currentColor" style="fill: var(--muted)"/></marker></defs>
-<rect class="box core" x="20" y="14" width="430" height="58" rx="6"/>
-<text x="34" y="36"><tspan font-weight="600">store_vac</tspan> (equilibrium driver, last process)</text>
-<text class="small" x="34" y="56">x_vec, norm = −J∇ψ, ang; h_fac (field-line) or dnorm (axisymmetric)</text>
-<rect class="box core" x="20" y="96" width="430" height="74" rx="6"/>
-<text x="34" y="118"><tspan font-weight="600">calc_GH</tspan> → calc_GH_1 (field lines) | calc_GH_2 (axisymmetric)</text>
-<text class="small" x="34" y="138">kernels: calc_GH_int_1 | calc_GH_int_2; off-diagonal G, H</text>
-<text class="small" x="34" y="156">diagonals: indirect (identities, default) | direct (vac_diag_style 2)</text>
-<rect class="box core" x="20" y="194" width="430" height="196" rx="6"/>
-<text x="34" y="216"><tspan font-weight="600">calc_vac_res</tspan> (solution driver)</text>
-<text class="small" x="44" y="240">set_up_data: EP = −(nq − m)·[cos, sin](phase), one column pair per mode</text>
-<text class="small" x="44" y="262">solve_potential: solve_Phi_BEM, H Φ = G EP</text>
-<text class="small" x="44" y="284">project_response: res2 = (I EP)ᵀ Φ, I = quadrature weights</text>
-<text class="small" x="44" y="306">finish_response: res = (2π/μ₀) · complex(res2)</text>
-<text class="small" x="44" y="328">                 then its Hermitian part</text>
-<text class="small" x="44" y="356">output: vac%res (n_mod × n_mod) on the last process,</text>
-<text class="small" x="44" y="374">written by print_output_vac</text>
-<rect class="box core" x="20" y="414" width="430" height="44" rx="6"/>
-<text x="34" y="440"><tspan font-weight="600">SLEPC_ops set_BC_2</tspan>: A(edge, edge) += res;  sol_ops: E_pot(7)</text>
-<path class="arr" d="M235 72 V94"/><path class="arr" d="M235 170 V192"/><path class="arr" d="M235 390 V412"/>
-<rect class="box side" x="490" y="96" width="270" height="74" rx="6"/>
-<text x="504" y="118"><tspan font-weight="600">check_vac_exact</tspan> (input check_vac)</text>
-<text class="small" x="504" y="138">identities with exact potentials,</text>
-<text class="small" x="504" y="156">exterior solves, condition number</text>
-<path class="arr" d="M450 133 H488"/>
-<rect class="box side" x="490" y="214" width="270" height="92" rx="6"/>
-<text x="504" y="236"><tspan font-weight="600">vac_pot_plot</tspan> (POST)</text>
-<text class="small" x="504" y="256">eval_pot_ext: calc_GH with external</text>
-<text class="small" x="504" y="274">points (ext_in), Green representation</text>
-<text class="small" x="504" y="292">of Φ off the boundary</text>
-<path class="arr" d="M450 300 H488"/>
-</svg></div>
-
-<h3>The convention since 5 November (<code>f3ebf11</code>)</h3>
-<p>Both vacuum styles now use one convention, the vacuum's. The stored normal is \(\boldsymbol{n} = -\mathcal{J}\nabla\psi\): it points into the plasma, which is out of the vacuum region, and its length carries the surface element, \(\mathrm{d}S = |\mathcal{J}\nabla\psi|\,\mathrm{d}\theta\,\mathrm{d}\alpha\). With the normal data \(\phi' = \boldsymbol{n}\cdot\nabla\phi\) the discretised operators are</p>
-\[ G_{ij} \approx -\frac{w_j}{|\boldsymbol{x}_i-\boldsymbol{x}_j|}, \qquad H_{ij} \approx w_j\,\frac{\boldsymbol{n}_j\cdot(\boldsymbol{x}_j-\boldsymbol{x}_i)}{|\boldsymbol{x}_j-\boldsymbol{x}_i|^3} \quad (i\neq j), \]
-<p>with the quadrature weights \(w_j\) (field lines: Δp Δα / 2 per half interval; the axisymmetric style integrates over ζ analytically with the toroidal functions \(Q_{|n|-1/2}\)). For a point \(\boldsymbol{x}_i\) on the boundary and the diagonal included, the assembled operators satisfy</p>
-\[ \sum_j H_{ij}\phi_j - \sum_j G_{ij}\phi'_j = \begin{cases} 0 & \phi \text{ harmonic in the vacuum, decaying,}\\ -4\pi\,\phi_i & \phi \text{ harmonic in the plasma.}\end{cases} \]
-<p>The second line with φ = 1 gives \(\sum_j H_{ij} = -4\pi\), the row-sum rule that sets the field-line H diagonal (your design at 2.47). On a smooth surface the diagonal is \(H_{ii} = -2\pi\) plus the integral of the H kernel over the cell; at a corner it is \(-2\beta\) with β the vacuum's internal angle (β = π on a smooth surface), which is what <code>calc_GH_2</code> adds. The exterior problem is then \(H\Phi = G\,\phi'\), solved without any shift of the diagonal for both styles.</p>
-<p>The normal data come from the plasma displacement. With X = ξ·∇ψ and p the parallel angle, continuity of the normal field at the boundary gives \(\nabla\psi\cdot\nabla\phi = \boldsymbol{B}\cdot\nabla X\), and \(\mathcal{J}\boldsymbol{B}\cdot\nabla = \partial/\partial p\) along a field line in PB3D's flux coordinates, so \(\phi' = -\mathcal{J}\nabla\psi\cdot\nabla\phi = -\partial X/\partial p\), which for one mode \(X \propto e^{i(n\alpha + (nq-m)p)}\) gives \(-i(nq-m)X\). That is the factor \(-(nq-m)\) in <code>set_up_data</code>; the imaginary unit sits in the pairing of cos and sin columns. With this sign the vacuum energy \(\delta W_v = \frac{1}{2\mu_0}\oint \phi'^*\phi\,\mathrm{d}S\) is positive, and <code>finish_response</code> multiplies by 2π (the toroidal integral, since A carries 2δW including it) and divides by μ₀.</p>
-<p class="note">Derivation status: the identities and their constants follow from Green's second identity with this normal, and the data from the boundary condition above; I derived both for this page, and the toy below checks the identities numerically. The same convention is described in the commit message of <code>f3ebf11</code>. The code's own checks are the full-stack tests <code>greens_identity_3d</code>, <code>exact_exterior_2d</code> and <code>vac_response_cylinder</code> (<a href="#T">T</a>).</p>
-
-<h3>What changed against 2.47, sign by sign</h3>
-<div class="tablewrap"><table>
-<thead><tr><th>quantity</th><th>2.47</th><th>now</th><th>where</th></tr></thead>
-<tbody>
-<tr><td>stored normal, field-line style</td><td>+J∇ψ (out of the plasma)</td><td>−J∇ψ (into the plasma)</td><td>store_vac / store_geometry (e3b4847)</td></tr>
-<tr><td>stored normal, axisymmetric style</td><td>−J∇ψ</td><td>−J∇ψ</td><td>store_vac_HEL, unchanged</td></tr>
-<tr><td>H kernel, field-line</td><td>n·(x<sub>s</sub>−x)·r³ (exponent −3 on 1/r: wrong)</td><td>n·(x<sub>s</sub>−x)/r³</td><td>calc_GH_int_1</td></tr>
-<tr><td>H kernel, axisymmetric</td><td>eqs. (130)–(131) of the 2019 manuscript</td><td>the same with the sign of H reversed (normal derivative along −J∇ψ; erratum E1)</td><td>calc_GH_int_2, three lines</td></tr>
-<tr><td>H diagonal, field-line</td><td>row sum, Σ<sub>j</sub>H<sub>ij</sub> = −4π</td><td>the same (default); or −2π + cell integral (<code>vac_diag_style</code> 2)</td><td>calc_GH_1</td></tr>
-<tr><td>G diagonal, field-line</td><td>a half-cell formula that diverged for perpendicular cells</td><td>least squares per row over the identities of x, y, z (default); the exact half-cell integral only with <code>vac_diag_style</code> 2 (V0-a)</td><td>calc_GH_int_1, calc_GH_1</td></tr>
-<tr><td>H, G diagonals, axisymmetric</td><td>corner term −2β and the analytical near-singular integrals</td><td>least-squares fit of H<sub>ii</sub>, G<sub>ii</sub> to three exact potentials (default); or as 2.47 (<code>vac_diag_style</code> 2)</td><td>diag_indirect_2</td></tr>
-<tr><td>system solved</td><td>H Φ = G·EP: for the axisymmetric style this was the interior problem</td><td>H Φ = G·EP, the exterior problem for both styles</td><td>solve_Phi_BEM</td></tr>
-<tr><td>normal data EP</td><td>+(nq − m)</td><td>−(nq − m)</td><td>calc_vac_res / set_up_data</td></tr>
-<tr><td>projection weight, field-line</td><td>Δp Δα (ends ½)</td><td>Δp / n<sub>α</sub> (ends ½): the average over the lines</td><td>project_response</td></tr>
-<tr><td>final factor</td><td>1/μ₀</td><td>2π/μ₀, then the Hermitian part</td><td>finish_response</td></tr>
-<tr><td>use in the eigenvalue problem</td><td>none (styles 2, 3 stopped; style 4 lost it)</td><td>A(edge, edge) += res; E_pot(7) in POST</td><td>SLEPC_ops, sol_ops</td></tr>
-</tbody></table></div>
-<p class="note">Between July and 5 November there was an intermediate state: the axisymmetric style kept the plasma-side kernels and solved (H + 4πI)Φ = G·EP, and the field-line response was flipped in sign at the end, which is the "H and G in different signs" you saw. <code>Documentation/vacuum_work_overview.md</code>, section 2, has that history. The step from that state to the one convention, <code>f3ebf11</code>, changes none of the nine eigenvalues of appendix A by more than 1e-13: the two sign choices described the same operators, and the commit re-expressed them.</p>
-
-<h3>Where this sits in your 2019 manuscript</h3>
-<div class="tablewrap"><table>
-<thead><tr><th>manuscript</th><th>in the code now</th><th>erratum</th></tr></thead>
-<tbody>
-<tr><td>eq. (22): the bracket sign; eqs. (130)–(131): the axisymmetric kernels</td><td>the H formulas of <code>calc_GH_int_2</code> with the opposite sign (normal derivative along −J∇ψ)</td><td>E1: two normals mixed, sign of the bracket in (22)</td></tr>
-<tr><td>eqs. (145)–(146): corner term −2β, convexity test</td><td><code>calc_GH_2</code> adds −2β, β the vacuum's internal angle</td><td>E10: the convexity test depends on the traversal direction (holds in PB3D, θ counterclockwise)</td></tr>
-<tr><td>eq. (149): test with Rⁿ; eqs. (151)–(152): switched spherical potential</td><td>the debug self-test of <code>calc_GH</code> that used them is gone (8d64b87); <code>set_pot_2</code> uses Rⁿ with free term −4π and a ring source</td><td>E16: the shell at infinity contributes −4πRⁿ; E17: (152) is not harmonic across Z = 0</td></tr>
-<tr><td>eqs. (45)–(46): solid angle at a faceted node</td><td><code>solid_angle_node</code> = (45), printed by check_vac only</td><td>E6: (46) is right only on special meshes; on the field-aligned torus node 16 % of 4π off</td></tr>
-<tr><td>eq. (69): principal-value cell integral of H</td><td><code>H_sing_node</code>, corrected, used by the direct diagonal</td><td>E22: wrong factor, wrong sign, one curvature scalar instead of the second fundamental form</td></tr>
-<tr><td>§VI.B, eqs. (109)–(111): reuse of the LU of H across Richardson levels</td><td>not implemented</td><td>E12: the old-to-old block is not the previous level's H</td></tr>
-</tbody></table></div>
-<p class="note">The erratum log is not in this branch: <code>~/Code/PB3D/.claude/worktrees/style2-plasma-angle/Documentation/erratum_vacuum_paper_2019.md</code> (untracked there, 375 lines, E1 to E22), and the extended version of the manuscript at <code>~/pCloud Drive/Toon/Documents/Papers/2018 - Vacuum/analysis/extended/vacuum_extended.pdf</code>.</p>
-
-<h3>A toy with the same convention</h3>
-<p>A boundary-element toy on a circular torus (R₀ = 3, a = 1, plain trapezoidal rule on a (θ, φ) grid) with PB3D's conventions. It shows three things. With the normal into the plasma, the exterior identity and the exterior solve converge. With the normal flipped (the field-line style before <code>e3b4847</code>) the interior identities are unchanged, because the row-sum diagonal adjusts to either sign of the off-diagonal entries. Only the exterior test fails, with a residual of exactly 2, so no test that used only interior potentials could detect the wrong normal. And the third point, for <a href="#V6">V6</a>: the diagonals from identities make the toy converge like 1/N³, against 1/N for the diagonal from the corner term alone.</p>
-<!--@demo torus_bem_toy-->
-
-<h3>The routines</h3>
-<div class="tablewrap"><table>
-<thead><tr><th>2.47</th><th>now</th><th class="num">lines now</th><th>role</th><th>section</th></tr></thead>
-<tbody>
-<tr><td>store_vac</td><td>store_vac with internal store_vac_VMEC, store_vac_HEL, restore_previous_level, store_geometry, broadcast_geometry</td><td class="num">447</td><td>core</td><td><a href="#V3">V3</a></td></tr>
-<tr><td>calc_GH</td><td>calc_GH</td><td class="num">159</td><td>core</td><td><a href="#V4">V4</a></td></tr>
-<tr><td>calc_GH_1</td><td>calc_GH_1 (+ set_diag)</td><td class="num">242</td><td>core</td><td><a href="#V4">V4</a></td></tr>
-<tr><td>calc_GH_2</td><td>calc_GH_2</td><td class="num">386</td><td>core</td><td><a href="#V5">V5</a></td></tr>
-<tr><td>(new)</td><td>set_pot_2, diag_indirect_2, set_diag_vac</td><td class="num">200</td><td>core: default diagonals of the axisymmetric style</td><td><a href="#V6">V6</a></td></tr>
-<tr><td>calc_vac_res</td><td>calc_vac_res with set_up_data, solve_potential, project_response, finish_response</td><td class="num">508</td><td>core</td><td><a href="#V8">V8</a></td></tr>
-<tr><td>solve_Phi_BEM</td><td>solve_Phi_BEM</td><td class="num">274</td><td>core</td><td><a href="#V7">V7</a></td></tr>
-<tr><td>print_output_vac</td><td>print_output_vac</td><td class="num">187</td><td>core</td><td><a href="#V11">V11</a></td></tr>
-<tr><td>(new)</td><td>write_points_vac, check_vac_exact, check_vac_exact_1, check_vac_exact_2</td><td class="num">570</td><td>diagnostic, off by default</td><td><a href="#V9">V9</a></td></tr>
-<tr><td>vac_pot_plot (stopped with "NO VACUUM")</td><td>eval_pot_ext, glob2dis_cols, sub_nearest, grad_bnd_1, check_vac_ext, vac_pot_plot</td><td class="num">823</td><td>POST</td><td><a href="#V10">V10</a></td></tr>
-</tbody></table></div>
-<p>Of the 3878 lines of <code>vac_ops</code>, about 2400 are the core path, 570 the diagnostics and 820 the POST plot. The code branches on <code>vac%style</code> in 19 places: 5 in the core path (dispatch to calc_GH_1/2, step sizes, phase of the normal data, projection weights, output name), 2 in check_vac and 12 in the plot.</p>
-
-<h3>Questions to decide before verifying lines</h3>
-<p>My observations, each with a recommendation; the decision is yours. Write it in this section's notes, one line per question: "yes" (do what is recommended), "no" (leave the code as it is), "after the review", or another option in your own words. Decide before you check the lines of V3 to V11, because V0-a and V0-e change the code those sections show. Each "yes" becomes one commit on dev/vacuum-fixes, and this page is then rebuilt, so that you read the new code only once. "Cleanup" means that no number changes, which the regression anchors and the tools of this page (<code>review/tools/statement_diff.py</code>, <code>review/tools/pure_move_check.py</code>) can show.</p>
-<div class="decide"><b>V0-a. One routine for the indirect diagonals.</b>
-<p><b>What it is about.</b> Quadrature cannot give the diagonal entries H<sub>ii</sub> and G<sub>ii</sub>, because both kernels are singular at j = i: G behaves like 1/r and H like n·r/r³. "Indirect" means that the code chooses H<sub>ii</sub> and G<sub>ii</sub> so that the discrete operators satisfy Green's identity on row i,</p>
-\[ \sum_j H_{ij}\phi_j - \sum_j G_{ij}\phi'_j = c\,\phi_i , \]
-<p>for potentials φ whose boundary values φ and normal data φ′ = n·∇φ are known exactly. The constant c is −4π for a potential that is harmonic inside the boundary, and 0 for one that is harmonic outside and decays. Two pieces of code do this, written separately.</p>
-<p><b>Field-line style</b>, at the end of <code>calc_GH_1</code>, in two steps. In the first step the code uses the potential φ = 1. It is harmonic inside the boundary, so c = −4π, and its normal data are zero, φ′ = 0. Green's identity on row i then contains only entries of H, and H<sub>ii</sub> is its only unknown, so the identity fixes H<sub>ii</sub> exactly:</p>
-\[ H_{ii} = -4\pi - \sum_{j\ne i} H_{ij} . \]
-<p>This is the row-sum rule you already had at 2.47. In the second step the code uses the three potentials φ = x, y and z, the Cartesian coordinates. Each of them is harmonic inside the boundary (c = −4π), and its normal data are the matching component of the stored normal, φ′ = n<sub>x</sub>, n<sub>y</sub> and n<sub>z</sub>. With H<sub>ii</sub> known from the first step, each of the three identities is an equation for the one remaining unknown, G<sub>ii</sub>. The off-diagonal entries carry quadrature errors, so the three equations have no common solution. The code therefore takes the value that minimises the sum of the three squared residuals, the least-squares solution:</p>
-\[ G_{ii} = \frac{\sum_k n_{k,i}\big[(Hx_k)_i + 4\pi x_{k,i} - \sum_{j\ne i} G_{ij}\, n_{k,j}\big]}{\sum_k n_{k,i}^2} , \]
-<p>where k runs over the components x, y and z, and (Hx<sub>k</sub>)<sub>i</sub> includes the H<sub>ii</sub> of the first step.</p>
-<p><b>Axisymmetric style</b>, in <code>diag_indirect_2</code>, in one step. The code uses three potentials: R<sup>|n|</sup> and R<sup>|n|</sup>Z, which are harmonic inside the boundary (c = −4π), and the potential of a ring source placed at the centroid of the boundary points, which is harmonic outside and decays (c = 0). For each row i the three identities are three equations for the two unknowns H<sub>ii</sub> and G<sub>ii</sub>, and the code takes their least-squares solution. Before the fit it divides each potential and its normal data by the largest value of that potential on the boundary, which puts the three equations on a comparable scale. The constant cannot be used in this style, because for n ≠ 0 every potential has to vary like e<sup>inζ</sup>; R<sup>|n|</sup> takes its place.</p>
-<p>Both styles therefore do the same thing. For each row i they solve, in the least-squares sense over the potentials k, the equations</p>
-\[ h\,\phi_{k,i} - g\,\phi'_{k,i} = c_k\phi_{k,i} - \sum_{j\ne i} H_{ij}\phi_{k,j} + \sum_{j\ne i} G_{ij}\phi'_{k,j} \]
-<p>for whichever of h = H<sub>ii</sub> and g = G<sub>ii</sub> are still unknown.</p>
-<p><b>Found while writing this out.</b> The field-line code does not evaluate the formula for G<sub>ii</sub> above directly. It starts from the half-cell value g<sub>0</sub> that <code>calc_GH_int_1</code> puts on the diagonal, and adds the correction</p>
-\[ \delta = \frac{\sum_k n_{k,i}\, r_{k,i}}{\sum_k n_{k,i}^2}, \qquad r_{k,i} = (Hx_k)_i - (Gn_k)_i + 4\pi x_{k,i} , \]
-<p>which is <code>lin_res / sum(norm**2)</code> in the code. The residual r<sub>k,i</sub> is computed with the full row of G, so it contains the term −g<sub>0</sub> n<sub>k,i</sub>, and δ therefore contains −g<sub>0</sub>. In the sum g<sub>0</sub> + δ the two cancel, and what is left is the formula above. In the default path the half-cell integral is therefore never used: the identities replace it. It matters only with <code>vac_diag_style</code> 2 and in check_vac. The table above said "plus a correction", and the comment in <code>calc_GH_1</code> says "the identity absorbs it into the diagonal"; both made it sound like a starting value that the identities correct.</p>
-<p><b>The proposal.</b> A routine <code>fit_diag</code> in <code>vac_utilities</code>, next to <code>dis_matvec</code> and <code>dis_diag</code>, solves the equations above for a given list of potentials and a given choice of unknowns. A caller <code>diag_indirect</code> in <code>vac_ops</code> passes each style's potentials to it. For the field-line style it calls <code>fit_diag</code> twice: first for H<sub>ii</sub> from the constant, then for G<sub>ii</sub> from x, y and z with the new H<sub>ii</sub>. For the axisymmetric style it calls <code>fit_diag</code> once, for both entries from the three potentials, each scaled to unit maximum as now. <code>calc_GH</code> calls <code>diag_indirect</code> once for the boundary rows. The contained <code>set_diag</code> of <code>calc_GH_1</code> and the routine <code>diag_indirect_2</code> are removed, and both check_vac styles call <code>diag_indirect</code>.</p>
-<p><b>Effect on the numbers.</b> The axisymmetric style and the field-line H<sub>ii</sub> keep the same arithmetic, so they stay bit-identical. The field-line G<sub>ii</sub> is computed in one step instead of as half-cell value plus correction. The two are equal in exact arithmetic but differ in rounding, by about 1e-13 in the eigenvalues, as for <code>f3ebf11</code>. The gate is the regression decks with both values of <code>vac_diag_style</code>, the CHECKVAC lines to their printed digits, and the tests <code>vac_3d</code> and <code>exact_exterior_2d_options</code>.</p>
-<p><b>What it gains.</b> The idea lives in one place with one explanation, and the code shows which value is used. check_vac could then report the H and G diagonals for both styles; today only the axisymmetric style reports G. It does not save lines: there are about 150 now and would be about 145 after.</p>
-<b>Recommendation (cleanup to rounding level):</b> yes, but with a lower priority than the other cleanups.</div>
-<div class="decide"><b>V0-b. Keep <code>vac_diag_style</code> as an input?</b>
-<p><b>What it is about.</b> The input <code>vac_diag_style</code> (in <code>num_vars</code>, default 1) chooses how the diagonals are set, for both styles (<a href="#V6">V6</a>). The value 1 selects the indirect diagonals of V0-a. The value 2 selects the direct ones, which evaluate the singular integrals themselves. For the field-line style, H<sub>ii</sub> is then −2π plus the integral of the H kernel over the node's cell (<code>calc_diag_direct</code>) wherever a full cell exists, and the row sum at the ends of the lines, where no full cell exists; G<sub>ii</sub> is the half-cell integral alone. For the axisymmetric style, both entries come from the analytical integrals over the near-singular intervals, and H<sub>ii</sub> gets the corner term −2β in addition, as at 2.47.</p>
-<p>You decided on 6 November that indirect is the default and direct a diagnostic. The direct diagonals are less accurate. On the exact toroidal harmonics (n = 10, 601 points) their errors are 2.1e-3 to 7.7e-3, against 4.6e-5 to 7.4e-4 with the indirect ones, and they fall by a factor 1.8 per doubling of the points instead of 8. On W7-X the eigenvalue with the direct diagonals still moves by 1.4e-4 at 31 000 points.</p>
-<p><b>The choice.</b> If the input stays, a full eigenvalue run with the direct diagonals stays possible. If it goes, production runs always use the indirect ones; check_vac computes the direct diagonals for its comparison whatever the input says. Removing it saves about 30 lines: the <code>vac_diag_style</code> branches in <code>calc_GH_1</code> and <code>calc_GH_2</code>, and the input lines in <code>num_vars</code>, <code>input_ops</code> and <code>MPI_ops</code>. <code>calc_diag_direct</code> and the corner term stay, because check_vac uses them. What removing it costs is the full solves with the direct diagonals: they produced the W7-X eigenvalue comparison of <code>Documentation/w7x_check_vac_diag.md</code> and the direct HELENA sequence of <a href="https://github.com/ToonWeyens/PB3D/issues/28">#28</a>.</p>
-<p><b>Documentation.</b> The input is described only by its comment in <code>num_vars</code>, which Doxygen shows as its documentation, and in the README changelog. Neither says that it is a diagnostic. The comment would become:</p>
-<pre class="out">    integer :: vac_diag_style = 1                                               !&lt; diagonal of the vacuum operators: 1 indirect (from identities, the default), 2 direct (corner term and cell integral; a diagnostic to compare with 1, not for production runs)</pre>
-<b>Recommendation:</b> keep the input and change that one comment.</div>
-<div class="decide"><b>V0-e. Comments that tell the history.</b>
-<p><b>What it is about.</b> A search for "issue #4" and for dates finds 14 new comments. Twelve of them name issue #4 (<code>vac_ops</code> 3, <code>vac_utilities</code> 2, <code>SLEPC_ops</code> 2, <code>VMEC_ops</code> 2, and <code>MPI_utilities</code>, <code>VMEC_utilities</code> and <code>input_ops</code> 1 each), and two more carry only a date. Some of them tell the old error at length, for example "the response of the circular VMEC twin came out 3 to 4 times too small". Your 2.47 comments say what the code does. For example, the comment on the G diagonal in <code>calc_GH_1</code> now reads:</p>
-<pre class="out">            ! G: the identity H x - G norm_x = -4 pi x for the linear interior
-            ! harmonics x, y, z, projected on the normal: the analytical
-            ! half-cell integral of calc_GH_int_1 is exact for the singular
-            ! cell, but the one-point rule across the neighbouring field lines
-            ! leaves a first-order error that depends on the lattice of
-            ! points; the identity absorbs it into the diagonal, as the row
-            ! sum does for H (issue #4, 31 October 2026)</pre>
-<p>It would become the following, which also corrects what V0-a found (the identities replace the half-cell value; they do not correct it):</p>
-<pre class="out">            ! G: G_ii is the least-squares fit, row by row, to the identities
-            ! H x - G norm_x = -4 pi x for the linear interior harmonics
-            ! x, y, z; it replaces the half-cell value of calc_GH_int_1, so
-            ! that the diagonal carries the quadrature error of the
-            ! off-diagonal row, as the row sum does for H</pre>
-<p>The history stays in the commit messages and in <code>Documentation/plan_vacuum_bugfix.md</code>. Only comments change, and <code>review/tools/statement_diff.py</code> shows that no statement did.</p>
-<b>Recommendation (cleanup):</b> yes. Keep the sentence that says why the code is as it is, and drop the dates, the step numbers and the account of the old error. It is the same rule as your removal of the "moved to X" comments. It takes 1 to 2 h.</div>
-<div class="decide"><b>V0-f. Four stale comments.</b>
-<ol>
-<li>In <code>solve_Phi_BEM</code>, two comments say "solve (H + shift I) Phi = G R", but there has been no shift since <code>f3ebf11</code> (5 November). The fix is to write "solve H Phi = G R".</li>
-<li>The full-stack test <code>greens_identity_indirect</code> (<code>tests/fullstack/test_vac_greens.f90</code>) calls the direct diagonals "the default of this style", but since <code>49e2441</code> the indirect ones are the default for both styles. The fix is to drop those words.</li>
-<li><code>calc_GH_int_2</code> declares and computes <code>n_loc</code> and <code>dn_loc</code> but never uses them, as already at 2.47. The fix is to delete the two declarations and the two assignments.</li>
-<li>The header of <code>set_BC_4</code> says that style 4 differs from style 2 by 0.7 % on cbm18a. Since the edge weight of <a href="#F5">F5</a> the difference is 0.19 % (anchors −4.5051e-2 and −4.5136e-2). The fix is to correct the number.</li>
-</ol>
-<b>Recommendation:</b> fix them now. They have no effect on results and take a few minutes.</div>
-</section>
+<!--@frozen-->
 
 <!-- ================================================================== STAGE 5 -->
 <div class="stage" id="stage5"><span class="eyebrow">Stage 5</span><h2 class="st">Vacuum verification</h2>
-<p>Routine by routine, in the order the data flows. Each group shows the 2.47 routine against the tip routine as one diff, with the commits that touched those lines. Use "hide comment-only diff lines" in the index for a first pass over the code alone: a quarter of the changed lines in <code>vac_ops</code> are comments.</p></div>
+<p>Routine by routine, in the order the data flows. From this stage on the page shows <code>dev/vacuum-fixes</code> at <code>@@NAME_B@@</code>, the code in your folders after the pull requests #31 to #33 of the V0 decisions; its GitHub links point there. Each group shows the 2.47 routine against the routine at <code>@@NAME_B@@</code> as one diff, with the commits that touched those lines. Use "hide comment-only diff lines" in the index for a first pass over the code alone: a quarter of the changed lines in <code>vac_ops</code> are comments.</p></div>
 
 <section class="area" id="V1" data-title="Vacuum plumbing outside the vacuum modules">
 <div class="ahead"><span class="aid">V1</span><h2>Vacuum plumbing outside the vacuum modules</h2></div>
@@ -684,13 +289,14 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <ul>
 <li><b>Fixed boundary skips the vacuum</b> (ad2313b): <code>store_vac</code> and <code>calc_vac_res</code> are not called for <code>BC_style(2)</code> = 1, and POST does not read a vacuum that is not in the output.</li>
 <li><b>The vacuum energy in POST</b> (212e3ec): the term E_pot(7) was switched off at 2.47 (<code>1.eq.2</code> and a "NO VACUUM" print); it is on whenever <code>vac%res</code> exists.</li>
-<li><b>Inputs</b>: <code>alpha_style</code> 1 with a free boundary and VMEC is refused (cc4c96d); a warning when <code>n_alpha</code> and the field period share a factor, because the average over the lines then aliases the field-period harmonic (50c9511); <code>check_vac</code> (6894199) and <code>vac_diag_style</code> (e027949, default 1 since 49e2441), both broadcast in <code>MPI_ops</code>.</li>
+<li><b>Inputs</b>: <code>alpha_style</code> 1 with a free boundary and VMEC is refused (cc4c96d); a warning when <code>n_alpha</code> and the field period share a factor, because the average over the lines then aliases the field-period harmonic (50c9511); <code>check_vac</code> (6894199) and <code>vac_diag_style</code> (e027949, default 1 since 49e2441), both broadcast in <code>MPI_ops</code>. Since your decision V0-b (bba7922), the comment of <code>vac_diag_style</code> in <code>num_vars</code> calls style 2 a diagnostic, and a free-boundary run with <code>vac_diag_style</code> 2 prints the warning "vac_diag_style 2 is a diagnostic, less accurate than 1: not for production runs".</li>
+<li><b>Comments without history</b> (f0273a7, your decision V0-e): the comment of the <code>n_alpha</code> warning in <code>input_ops</code> and the one on <code>par_lims_found</code> in <code>PB3D_ops</code> no longer name issue #4 or a date.</li>
 <li><b>POST plot wiring</b> (a8804ac): the plot is called once for all plotted modes after the mode loop; <code>reconstruct_PB3D_vac</code> rebuilds the parallel angle of the field-line style from two new entries of <code>misc_vac</code>; the plot ranges default to 0, which means "from the boundary".</li>
 </ul>
 <div class="how"><b>How to check it</b><ol>
 <li>Read the driver blocks below the cards: the two calls are skipped for <code>BC_style(2)</code> = 1 in <code>driver_eq</code>, <code>driver_sol</code> and <code>driver_POST</code> alike.</li>
 <li>Read the <code>sol_ops</code> condition for E_pot(7) and the input guards in <code>input_ops</code>.</li>
-<li>Check that the two new inputs are broadcast (<code>MPI_ops</code>) and defaulted (<code>input_ops</code>).</li>
+<li>Check that the two new inputs are broadcast (<code>MPI_ops</code>) and defaulted (<code>input_ops</code>), and that the warning for <code>vac_diag_style</code> 2 is printed only for a free boundary.</li>
 </ol></div>
 <!--@commit ad2313b NONVAC-->
 <!--@commit 212e3ec NONVAC-->
@@ -700,6 +306,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <!--@commit e027949 NONVAC-->
 <!--@commit 49e2441 NONVAC-->
 <!--@commit a8804ac NONVAC-->
+<!--@commit bba7922 NONVAC-->
+<!--@commit f0273a7 Modules/PB3D_ops.f90 Modules/input_ops.f90-->
 </section>
 
 <section class="area" id="V2" data-title="vac_vars and the distributed-matrix helpers">
@@ -745,15 +353,15 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <section class="area" id="V4" data-title="Field-line kernels and calc_GH_1">
 <div class="ahead"><span class="aid">V4</span><h2>Field-line kernels and calc_GH_1</h2></div>
 <div class="meta"><span><b>routines</b> calc_GH, calc_GH_1, calc_GH_int_1</span><span><b>time</b> 1.5 h</span><span class="tier study">study</span></div>
-<p><b>calc_GH.</b> G and H are set to zero before both styles accumulate into them. After a Richardson step the field-line arrays still held the interlaced copy of the previous level, so 2.47 counted those contributions twice.</p>
+<p><b>calc_GH.</b> G and H are set to zero before both styles accumulate into them. After a Richardson step the field-line arrays still held the interlaced copy of the previous level, so 2.47 counted those contributions twice. Since your decision V0-a (937d6a8), <code>calc_GH</code> also sets the diagonals of the boundary rows for both styles, after the assembly of the style; <a href="#V6">V6</a> explains that block.</p>
 <p><b>calc_GH_int_1</b>, the kernels on one interval of a field line, is rewritten:</p>
 <ul>
 <li><b>Far from the influence point</b>: the kernel values at the two ends (the trapezoidal rule along the line), with H = n·(x<sub>s</sub>−x)/r³. 2.47 had <code>(-G)**(-3)</code> = r³ instead of 1/r³.</li>
-<li><b>At the singular point</b>: the exact integral of 1/r over the half cell in the metric of the surface (the closed form F(U, V, s) in the comment and in the demo). The 2.47 expression had the same logarithm twice and diverged like 1/s² for perpendicular coordinates. H gets 0 there; <code>calc_GH_1</code> sets the H diagonal afterwards.</li>
+<li><b>At the singular point</b>: the exact integral of 1/r over the half cell in the metric of the surface (the closed form F(U, V, s) in the comment and in the demo). The 2.47 expression had the same logarithm twice and diverged like 1/s² for perpendicular coordinates. H gets 0 there; <code>calc_GH</code> sets the diagonals afterwards (<a href="#V6">V6</a>).</li>
 <li><b>Near the influence point</b> (within <code>n_near</code> = 4 interval lengths, a parameter): 8-point Gauss–Legendre on each half interval, on the cubic interpolant through a four-point stencil. This is the fix of 31 October for W7-X: at the inboard bean tips neighbouring lines are 0.007 R₀ apart and the points along them 0.06 R₀, so the kernel along the neighbouring line is a peak much narrower than the point spacing. The point rule then gives order-one errors whose sign depends on how the points of neighbouring lines line up; the diagonal of <code>vac%res</code> on W7-X ranged from 44 to 126 depending on the grid (7 000 to 62 000 boundary points), sorted by the fractional part of q Δθ/Δα. With the near-field rule the five grids from 64 × 121 to 144 × 121 and 128 × 141 agree to 1.2 % on the whole diagonal, and the circular twin's free eigenvalue went from −0.5189 to −0.4491 against HELENA's −0.4438. The demo shows the same effect on a straight line.</li>
 <li>The interval that bridges two field lines is skipped before any evaluation (2.47 evaluated it and dropped it with <code>on_field_line</code>).</li>
 </ul>
-<p><b>calc_GH_1</b>: the contributions get the weight Δp Δα / 2 per half interval, so G and H are true surface operators (consistent with the absolute −4π of the row sum); the α step is 2π/n<sub>α</sub> (<code>vac_steps</code>; 2.47 used 2π/(n<sub>α</sub>−1), 50c9511); at least 2 lines and 4 points per line are required. The diagonals are in <a href="#V6">V6</a>.</p>
+<p><b>calc_GH_1</b>: the contributions get the weight Δp Δα / 2 per half interval, so G and H are true surface operators (consistent with the absolute −4π of the row sum); the α step is 2π/n<sub>α</sub> (<code>vac_steps</code>; 2.47 used 2π/(n<sub>α</sub>−1), 50c9511); at least 2 lines and 4 points per line are required. Since V0-a it only assembles the rows: the diagonal block at its end and its contained <code>set_diag</code> are gone, and the diagonals are in <a href="#V6">V6</a>.</p>
 <div class="how"><b>How to check it</b><ol>
 <li>Half-cell demo: the closed form against brute-force quadrature for perpendicular, skewed and very anisotropic cells (agreement to 1e-14); then read the singular branch of <code>calc_GH_int_1</code> against the formula in its comment.</li>
 <li>Near-field demo: the point rule's error for the dipole kernel on a neighbouring line at d/h = 0.12 ranges from −89 % to +318 % with the offset of the points; the near-field rule stays below 3e-3. Then read the near branch: stencil parameter <code>s</code>, Lagrange weights <code>l</code>, the factor 0.5 for the half interval.</li>
@@ -762,7 +370,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <!--@demo halfcell_integral-->
 <!--@demo near_field_lines-->
 <p class="note">The α step 2π/n<sub>α</sub> is guarded by <code>response_1_vs_2</code>: since commit 798fe50 (30 October) it compares the field-line to axisymmetric ratio of res(m, m) with recorded values to 0.5 %, and the old step 2π/(n<sub>α</sub>−1) moved them by 1.25 % (comment in the test). A mutation test on 30 October, before those recorded values, had not caught it.</p>
-<div class="decide"><b>Recorded decision (6 November).</b> <code>n_near</code> = 4 stays, with a note to re-evaluate it once you have digested the vacuum work (comment in <code>calc_GH_int_1</code>; options in <code>Documentation/vacuum_work_overview.md</code>, section 7).</div>
+<div class="decide"><b>Recorded decision (6 November).</b> <code>n_near</code> = 4 stays, with a note to re-evaluate it once you have digested the vacuum work. The comment in <code>calc_GH_int_1</code> points to issue <a href="https://github.com/ToonWeyens/PB3D/issues/9">#9</a> since V0-e.</div>
 <!--@group calcgh-->
 <!--@group gh1-->
 <!--@group int1-->
@@ -773,8 +381,8 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <div class="meta"><span><b>routines</b> calc_GH_2, calc_GH_int_2</span><span><b>time</b> 40 min</span><span class="tier read">read</span></div>
 <p>This is the part closest to your 2.47 code.</p>
 <ul>
-<li><code>calc_GH_int_2</code>: the three H formulas change sign (normal derivative along the stored −J∇ψ). Nothing else.</li>
-<li><code>calc_GH_2</code>: the corner term is −2β with β the vacuum's internal angle (as at 2.47); the toroidal functions use |n| (Q<sub>−ν−1</sub> = Q<sub>ν</sub> for the half-integer degrees), so negative n works; the tolerance on ρ is computed from the boundary points every process holds, without a gather, so that the BLACS processes alone can call it with external points; an external point within the tolerance of a boundary point gets the row 4π φ<sub>j</sub> of that point.</li>
+<li><code>calc_GH_int_2</code>: the three H formulas change sign (normal derivative along the stored −J∇ψ). Since V0-f (ebd972c) the variables <code>n_loc</code> and <code>dn_loc</code>, which 2.47 computed and never used, are removed. Nothing else.</li>
+<li><code>calc_GH_2</code>: the corner term is −2β with β the vacuum's internal angle (as at 2.47); the toroidal functions use |n| (Q<sub>−ν−1</sub> = Q<sub>ν</sub> for the half-integer degrees), so negative n works; the tolerance on ρ is computed from the boundary points every process holds, without a gather, so that the BLACS processes alone can call it with external points; an external point within the tolerance of a boundary point gets the row 4π φ<sub>j</sub> of that point. Since V0-a its end no longer sets the indirect diagonals; <code>calc_GH</code> does (<a href="#V6">V6</a>).</li>
 </ul>
 <p>The plot commit a8804ac also fixed out-of-bounds reads for external points in <code>calc_GH_1</code> and <code>calc_GH_2</code>, and removed the gather of the tolerance in <code>calc_GH_2</code>, which is the same on every process.</p>
 <p>History, for orientation: 2 November (<code>f407afa</code>) changed the corner term to the plasma's angle 2π − β, because the kernels were then the plasma's; 5 November (<code>f3ebf11</code>) flipped the kernels to the vacuum's and returned to −2β. Net change against 2.47: only the H sign in <code>calc_GH_int_2</code>. In appendix A, <code>f407afa</code> moves the circular ε = 0.05 free eigenvalue by 0.67 % and cbm18a free by 1.4e-4, and <code>f3ebf11</code> then moves nothing by more than 1e-13: the result changed with the corner term of 2 November, and the flip of 5 November kept it.</p>
@@ -790,23 +398,34 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 
 <section class="area" id="V6" data-title="Diagonals: indirect and direct">
 <div class="ahead"><span class="aid">V6</span><h2>Diagonals: indirect and direct</h2></div>
-<div class="meta"><span><b>routines</b> set_diag (in calc_GH_1), set_pot_2, diag_indirect_2, set_diag_vac; vac_steps, solid_angle_node, H_sing_node, calc_diag_direct, dis_diag</span><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
+<div class="meta"><span><b>routines</b> the diagonal block of calc_GH, diag_indirect, set_pot_2, set_diag_vac; fit_diag, vac_steps, solid_angle_node, H_sing_node, calc_diag_direct, dis_diag</span><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
 <p>Input <code>vac_diag_style</code>: 1 indirect (default), 2 direct.</p>
 <ul>
-<li><b>Field-line, indirect</b>: H<sub>ii</sub> from the row sum (as 2.47); G<sub>ii</sub> = the least-squares solution, one per row, of H x − G n<sub>x</sub> = −4π x for x, y, z. The code writes it as the analytical half-cell value plus a correction, but the half-cell value cancels, so the result does not depend on it (<a href="#V0">V0-a</a>). The identities (31 October) put the error of the one-point rule across neighbouring lines into the diagonal.</li>
+<li><b>Field-line, indirect</b>: H<sub>ii</sub> from the row sum (as 2.47); G<sub>ii</sub> = the least-squares solution, one per row, of H x − G n<sub>x</sub> = −4π x for x, y, z. Until V0-a the code wrote it as the analytical half-cell value plus a correction in which the half-cell value cancelled (<a href="#V0">V0-a</a>); since then it computes the fit in one step. The identities (31 October) put the error of the one-point rule across neighbouring lines into the diagonal.</li>
 <li><b>Field-line, direct</b>: H<sub>ii</sub> = −2π + the integral of the H kernel over the cell (<code>calc_diag_direct</code>, with <code>H_sing_node</code> = the corrected eq. 69 of the manuscript, erratum E22), the row sum at the line ends; G<sub>ii</sub> from the half cells alone. <code>solid_angle_node</code> computes the faceted solid angle (eq. 45); on the field-aligned mesh it is 16 % of 4π away from 2π (mesh directions 14° apart, erratum E6), so it is printed by check_vac only.</li>
 <li><b>Axisymmetric, indirect</b>: per row, least squares for (H<sub>ii</sub>, G<sub>ii</sub>) over the identities of Rⁿ, RⁿZ (c = −4π) and the ring-source potential at the centroid (c = 0). It made the axisymmetric style converge like 1/N³ in the poloidal points instead of 1/N: exact harmonics k = 6/10/15 at 601 points 4.6e-5/2.2e-4/7.4e-4 against 2.1e-3/4.6e-3/7.7e-3 with the direct diagonals. The convergence like 1/N of style 2 in HELENA's poloidal points, found on 1 November, came from this diagonal.</li>
 </ul>
+<p><b>How the code does it since V0-a</b> (937d6a8, pull request #31). One routine does the fit for both styles, and one routine chooses the potentials:</p>
+<ul>
+<li><code>fit_diag</code> in <code>vac_utilities</code> solves, for each boundary row i and in the least-squares sense over a list of potentials k with known boundary values φ and normal data φ′, the identity
+\[ h\,\phi_{k,i} - g\,\phi'_{k,i} = c_k\phi_{k,i} - \sum_{j\ne i} H_{ij}\phi_{k,j} + \sum_{j\ne i} G_{ij}\phi'_{k,j} \]
+for h = H<sub>ii</sub>, for g = G<sub>ii</sub>, or for both. It takes the off-diagonal sums as the products with the full matrices minus their current diagonals, so the matrices are not changed. An entry that is not fitted is passed in as known, and its term moves to the right-hand side. For both entries it solves the 2 × 2 normal equations by Cramer's rule, as <code>diag_indirect_2</code> did; for one entry it divides once.</li>
+<li><code>diag_indirect</code> in <code>vac_ops</code> passes each style's potentials. For the field-line style it calls <code>fit_diag</code> twice: first for H<sub>ii</sub> from the constant, which gives the row sum, then for G<sub>ii</sub> from x, y and z with that H<sub>ii</sub>. For the axisymmetric style it calls it once, for both entries from the three potentials of <code>set_pot_2</code>, each scaled to unit maximum.</li>
+<li><code>calc_GH</code>, after the assembly, sets the indirect diagonals with <code>vac_diag_style</code> 1. With <code>vac_diag_style</code> 2 the axisymmetric style keeps the diagonals of its assembly (corner term and analytical integrals), and the field-line style gets the direct H<sub>ii</sub> where a node has a full cell, the row sum at the ends of the lines, and keeps the half-cell G<sub>ii</sub>.</li>
+<li>Both check_vac styles call <code>diag_indirect</code> to compare the assembled diagonals with the indirect ones (<a href="#V9">V9</a>).</li>
+</ul>
+<p>The numbers moved only at rounding level. On the Mac, with both trees built without STRUMPACK (whose solver gives eigenvalues up to 1e-7 apart from one run to the next), cbm18a free boundary with both values of <code>vac_diag_style</code> and the field-line style with <code>vac_diag_style</code> 2 are bit-identical, and the field-line style with the indirect diagonals moves the twin's eigenvalue by 1.05e-13 at 16 lines and 1.08e-13 at 64. Issue <a href="https://github.com/ToonWeyens/PB3D/issues/29">#29</a> (other test potentials for the axisymmetric style) would only change the list in <code>diag_indirect</code>.</p>
 <p>On the torus of the full-stack tests the field-line point-source solve gives 1.0e-2 &rarr; 3.1e-3 with the indirect diagonals and 1.9e-2 &rarr; 6.4e-3 with the direct ones, from 41 × 40 to 81 × 80 (commit e027949).</p>
 <p><b>Why the indirect ones won</b> (6 November, W7-X <code>check_vac</code> on nine grids, Snellius, commit 43a74ed): at 128 lines × 121 points the identity residual for x is 1.2e-3 indirect against 4.1e-2 direct, and the axis-ring solve 5.9e-3 against 5.2e-2. On the circular twin the direct diagonals moved the eigenvalue from −0.43914 to −0.48650. Report: <code>Documentation/w7x_check_vac_diag.md</code>.</p>
 <div class="how"><b>How to check it</b><ol>
 <li>The torus toy in <a href="#V0">V0</a>: in its figure the blue curve (row sum plus the identities of x, y, z) falls like 1/N³, the orange one (corner term −2π alone) like 1/N.</li>
-<li>Read <code>set_diag</code> and the identity block at the end of <code>calc_GH_1</code>, and check there that the half-cell value of G<sub>ii</sub> cancels (<a href="#V0">V0-a</a>); then <code>diag_indirect_2</code> (the 2 × 2 normal equations per row).</li>
+<li>Read the diagonal block of <code>calc_GH</code> (in its group in <a href="#V4">V4</a>), then <code>diag_indirect</code> and <code>fit_diag</code>: the right-hand side <code>rr</code>, how a known entry moves into it, and the normal equations (both entries: the 2 × 2 system; one entry: one division).</li>
 <li>Tests: <code>greens_identity_indirect</code>, <code>exact_exterior_2d_options</code>, <code>solid_angle_node</code>, <code>H_sing_node</code> (1e-5 against brute force), <code>diag_direct_3d</code>, <code>point_source_direct_3d</code>.</li>
 </ol></div>
-<div class="decide"><b>Recorded decisions (6 November).</b> Indirect diagonals are the default for both styles; the direct ones serve as the check_vac diagnostic. The work-bucket item on the quadrature of <code>H_sing_node</code> on very skewed cells is parked; after the W7-X result it would only sharpen the diagnostic. See also <a href="#V0">V0-a and V0-b</a>.</div>
+<div class="decide"><b>Recorded decisions (6 November).</b> Indirect diagonals are the default for both styles; the direct ones serve as the check_vac diagnostic. The work-bucket item on the quadrature of <code>H_sing_node</code> on very skewed cells is parked; after the W7-X result it would only sharpen the diagnostic. <b>Decided on 17 November</b> (<a href="#V0">V0</a>): V0-a, one routine for the indirect diagonals, is done (#31); V0-b keeps <code>vac_diag_style</code> as an input, documented as a diagnostic, with a warning for style 2 (#31, see <a href="#V1">V1</a>).</div>
 <!--@group diag2-->
 <!--@group direct-->
+<!--@group fit-->
 </section>
 
 <section class="area" id="V7" data-title="solve_Phi_BEM">
@@ -820,7 +439,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <div class="how"><b>How to check it</b><ol>
 <li>Read the STRUMPACK block only if you build with it (<code>PB3D_WITH_STRUMPACK</code>); the residual check after it and the fallback are the new parts.</li>
 <li>Read the ScaLAPACK branch: <code>pdgetrf</code>/<code>pdgetrs</code> on the copy <code>H_ext</code>, and <code>pdgecon</code> under <code>check_vac</code>.</li>
-<li>The two comments that still say "(H + shift I)" are stale (V0-f).</li>
+<li>The two comments that said "(H + shift I)" say "solve H Phi = G R" since V0-f (ebd972c).</li>
 </ol></div>
 <p>Test: <code>solve_Phi_BEM_roundtrip</code>.</p>
 <!--@group solve-->
@@ -849,7 +468,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <section class="area" id="V9" data-title="check_vac diagnostics">
 <div class="ahead"><span class="aid">V9</span><h2>check_vac diagnostics</h2></div>
 <div class="meta"><span><b>routines</b> check_vac_exact, check_vac_exact_1, check_vac_exact_2, write_points_vac</span><span><b>time</b> 30 min</span><span class="tier skim">skim</span></div>
-<p>Off by default (<code>check_vac = .false.</code>). With it, PB3D tests its own operators on the real equilibrium surface with potentials whose boundary data are exact, and prints lines that start with <code>CHECKVAC</code>. Field-line style: identity residuals for 1, x, y, z and x² − y² (interior) and for a point source on the axis and two rings of sources along the axis, with unit weights and with weights cos(nζ) (exterior), each for c = −4π, −2π, 0, 2π, 4π; exterior solves for the point source and the rings; per-point files of residuals and errors. Axisymmetric style: the potentials of <code>set_pot_2</code>, the ring solve, and the assembled diagonals against the alternative ones. The CHECKVAC lines are split so that <code>writo</code>, which cuts lines at about 100 characters, prints them whole. <code>scripts/snellius/checkvac_table.py</code> and <code>diag_table.py</code> collect them.</p>
+<p>Off by default (<code>check_vac = .false.</code>). With it, PB3D tests its own operators on the real equilibrium surface with potentials whose boundary data are exact, and prints lines that start with <code>CHECKVAC</code>. Field-line style: identity residuals for 1, x, y, z and x² − y² (interior) and for a point source on the axis and two rings of sources along the axis, with unit weights and with weights cos(nζ) (exterior), each for c = −4π, −2π, 0, 2π, 4π; exterior solves for the point source and the rings; per-point files of residuals and errors. Axisymmetric style: the potentials of <code>set_pot_2</code>, the ring solve, and the assembled diagonals against the alternative ones. Since V0-a the field-line style also compares the assembled diagonal of G with the indirect one (the line <code>CHECKVAC diagonal max|G_assembled-G_indirect|/max|G|</code> and the file <code>check_vac_diag_diff_G.dat</code>): on the twin at 16 lines × 100 points it reads 2.2e-13 with <code>vac_diag_style</code> 1, as it must, and 0.59 with <code>vac_diag_style</code> 2, where the half-cell G<sub>ii</sub> differs from the indirect one by up to 0.59 of the largest |G<sub>ii</sub>|. The CHECKVAC lines are split so that <code>writo</code>, which cuts lines at about 100 characters, prints them whole. <code>scripts/snellius/checkvac_table.py</code> and <code>diag_table.py</code> collect them.</p>
 <p>Reviewing these matters less than the core: they do not change the response. They do matter as evidence, since the W7-X conclusions rest on them.</p>
 <div class="how"><b>How to check it</b>: check that every call in check_vac is read-only for <code>vac</code> (it builds its own right-hand sides and solves into its own arrays), then read the free terms c of the identities (−4π for interior, 0 for exterior potentials) and how the exact normal data are formed.</div>
 <!--@group check-->
@@ -885,7 +504,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <tbody>
 <tr><td><code>BC_style</code> default</td><td>[1, 2], but style 2 stopped</td><td>[1, 2], style 2 implemented (variational, Hermitian); style 3 removed; 4 kept, not validated</td><td><a href="#F6">F6</a></td></tr>
 <tr><td><code>check_vac</code></td><td>(none)</td><td>new, default <code>.false.</code></td><td><a href="#V9">V9</a></td></tr>
-<tr><td><code>vac_diag_style</code></td><td>(none)</td><td>new, default 1 (indirect); 2 direct</td><td><a href="#V6">V6</a></td></tr>
+<tr><td><code>vac_diag_style</code></td><td>(none)</td><td>new, default 1 (indirect); 2 direct, a diagnostic: a free-boundary run with 2 prints a warning (V0-b)</td><td><a href="#V6">V6</a>, <a href="#V1">V1</a></td></tr>
 <tr><td><code>plot_vac_pot</code></td><td>switched off in the code</td><td>works for both styles; off automatically for a fixed boundary</td><td><a href="#V10">V10</a></td></tr>
 <tr><td><code>min/max_Rvac_plot</code>, <code>min/max_Zvac_plot</code></td><td>0.1 R₀ … 2 R₀, −R₀ … R₀ (with a "need to take normalisation into account" print)</td><td>0: range from the boundary; in metres when set</td><td><a href="#V10">V10</a></td></tr>
 <tr><td><code>n_vac_plot</code></td><td>[100, 100]</td><td>[101, 101] (odd: the midplane of a symmetric range is on the grid)</td><td><a href="#V10">V10</a></td></tr>
@@ -896,7 +515,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <tr><td>output <code>misc_vac</code></td><td>6 entries</td><td>8 (limits of the parallel angle); POST reads older output without them</td><td><a href="#V11">V11</a></td></tr>
 <tr><td>vacuum for a fixed boundary</td><td>computed and unused (VMEC); the run stopped (HELENA, since 2.44)</td><td>not computed, not written</td><td><a href="#V1">V1</a></td></tr>
 </tbody></table></div>
-<p>The whole diff of <code>input_ops</code>, 2.47 against 9e9aba5 (its blocks also appear in the sections of their commits):</p>
+<p>The whole diff of <code>input_ops</code>, 2.47 against <code>@@NAME_B@@</code> (its blocks also appear in the sections of their commits; the blocks of stages 1 to 3 are there at 9e9aba5, as you reviewed them):</p>
 <!--@wholefile Modules/input_ops.f90-->
 </section>
 
@@ -938,7 +557,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 </tbody></table></div>
 <p class="note">Eigenvalues are ω²/ω<sub>A</sub>² in PB3D's MISHKA normalisation (<code>norm_style</code> 1); the field-line anchors are reproducibility anchors at a fixed grid, not converged values.</p>
 <h3>Test sources</h3>
-<p>All new; the vendored test-drive framework (<code>tests/vendor/test-drive/testdrive.F90</code>) is left out.</p>
+<p>All new; the vendored test-drive framework (<code>tests/vendor/test-drive/testdrive.F90</code>) is left out. The sources are shown at <code>@@NAME_B@@</code>: since V0-e (f0273a7) and V0-f (ebd972c) their comments carry no dates or step numbers, and the measured values in the comment of <code>test_exact_exterior_2d</code> are said to be those of the direct diagonals.</p>
 <h4>Full-stack</h4>
 <!--@testsrc tests/fullstack/test_vac_kernels.f90-->
 <!--@testsrc tests/fullstack/test_vac_greens.f90-->
@@ -967,15 +586,15 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <section class="area" id="Q" data-title="Design questions in one list">
 <div class="ahead"><span class="aid">Q</span><h2>Design questions in one list</h2></div>
 <div class="meta"><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
-<p>Open, for you to decide (write your answer in the notes). My recommendation is after the dash; "cleanup" means no number changes.</p>
+<p>For you to decide (write your answer in the notes), with what is done since. "Cleanup" means no number changes.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>question</th><th>recommendation</th><th>effort</th></tr></thead>
 <tbody>
-<tr><td><a href="#V0">V0-f</a> stale comments, unused variables</td><td>fix now</td><td>minutes</td></tr>
+<tr><td><a href="#V0">V0-f</a> stale comments, unused variables</td><td><b>done</b> in #32 (<code>ebd972c</code>); the 0.7 % in <code>set_BC_4</code> is corrected in V0-e</td><td>&ndash;</td></tr>
 <tr><td><a href="#M5">M5</a> <code>prog_version</code> 2.48 &rarr; 2.49</td><td><b>done</b> in <code>18f87e8</code></td><td>&ndash;</td></tr>
-<tr><td><a href="#V0">V0-e</a> history in comments</td><td>yes: keep the reason, drop dates, steps and the old error (cleanup)</td><td>1 to 2 h</td></tr>
-<tr><td><a href="#V0">V0-a</a> one routine for the indirect diagonals</td><td>yes, lower priority; the field-line G<sub>ii</sub> changes at rounding level</td><td>half a day</td></tr>
-<tr><td><a href="#V0">V0-b</a> <code>vac_diag_style</code> as input</td><td>keep; one comment line says it is a diagnostic</td><td>minutes</td></tr>
+<tr><td><a href="#V0">V0-e</a> history in comments</td><td><b>done</b> in #33 (<code>f0273a7</code>): comments only, in 11 files</td><td>&ndash;</td></tr>
+<tr><td><a href="#V0">V0-a</a> one routine for the indirect diagonals</td><td><b>done</b> in #31 (<code>937d6a8</code>): <code>fit_diag</code> and <code>diag_indirect</code>, see <a href="#V6">V6</a>; the eigenvalues moved by 1e-13 or not at all</td><td>&ndash;</td></tr>
+<tr><td><a href="#V0">V0-b</a> <code>vac_diag_style</code> as input</td><td><b>done</b> in #31 (<code>bba7922</code>): kept, the comment says it is a diagnostic, and a free-boundary run with style 2 prints a warning</td><td>&ndash;</td></tr>
 <tr><td><a href="#T">T</a> rippled VMEC twin as a fixture</td><td>yes: the only way CI covers the 3-D vacuum on a non-axisymmetric surface and the Nyquist path</td><td>1 h plus a few MB of xz</td></tr>
 <tr><td><a href="#T">T</a> multi-process rows in CI</td><td>only if the CI PETSc gets MUMPS; otherwise leave them on Snellius</td><td>unknown</td></tr>
 </tbody></table></div>
@@ -1001,6 +620,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
 <li><code>n_near</code> = 4 stays, to be re-evaluated after this review (6 November).</li>
 <li>The <code>H_sing_node</code> quadrature item is parked (6 November).</li>
 <li>Ideas for a cheaper vacuum are exploration only, nothing decided (2 November).</li>
+<li>V0-a, V0-b, V0-e and V0-f are done; V0-c (the rows for points off the boundary in their own routine) and V0-d (check_vac and the plot in files of their own) are dropped (17 November).</li>
 </ul>
 </section>
 
@@ -1241,9 +861,14 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
   });
   if (location.hash) { const id = decodeURIComponent(location.hash.slice(1)); reveal(id); const t = document.getElementById(id); if (t) setTimeout(() => t.scrollIntoView(), 0); }
 
-  // line numbers -> the line on GitHub (left: 2.47, right: 9e9aba5); made into links when a diff is first touched
+  // line numbers -> the line on GitHub (left: 2.47, right: @@NAME_B@@, or @@NAME_R@@ in stages 0 to 4);
+  // made into links when a diff is first touched
   const GH = "https://github.com/ToonWeyens/PB3D/blob/";
-  const REV = { o: "@@SHA_A@@", n: "@@SHA_B@@" }, REVNAME = { o: "2.47", n: "9e9aba5" };
+  const REV = { o: "@@SHA_A@@", n: "@@SHA_B@@" }, REVNAME = { o: "2.47", n: "@@NAME_B@@" };
+  function revOf(pre, side) {
+    const fz = side === "n" && pre.closest("[data-rev]");
+    return fz ? [fz.dataset.rev, fz.dataset.revname] : [REV[side], REVNAME[side]];
+  }
   function linkPre(pre) {
     if (!pre || pre.dataset.linked) return;
     pre.dataset.linked = "1";
@@ -1254,9 +879,10 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
         if (i.tagName !== "I") break;
         const side = cols[k++], n = i.textContent;
         if (!side || !n) continue;
+        const [rev, name] = revOf(pre, side);
         const a = document.createElement("a");
-        a.href = GH + REV[side] + "/" + f + "#L" + n; a.target = "_blank"; a.rel = "noopener";
-        a.textContent = n; a.title = REVNAME[side] + ", " + f + " line " + n;
+        a.href = GH + rev + "/" + f + "#L" + n; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = n; a.title = name + ", " + f + " line " + n;
         i.replaceWith(a);
       }
     }
@@ -1270,7 +896,7 @@ On 6 November the Mac gave 20 of 24 passing; the four that fail are the <code>_n
     if (!i || !i.textContent) return;
     const pre = i.closest("pre"), k = [...i.parentElement.children].indexOf(i), side = (pre.dataset.c || "")[k];
     if (!side) return;
-    window.open(GH + REV[side] + "/" + pre.dataset.f + "#L" + i.textContent, "_blank", "noopener");
+    window.open(GH + revOf(pre, side)[0] + "/" + pre.dataset.f + "#L" + i.textContent, "_blank", "noopener");
   });
 
   // comment toggle
