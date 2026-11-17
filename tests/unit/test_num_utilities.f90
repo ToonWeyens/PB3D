@@ -10,7 +10,8 @@ module test_num_utilities
     use num_vars, only: dp, pi
     use str_utilities, only: r2str, i2str
     use num_utilities, only: GCD, LCM, fac, calc_int, calc_coeff_fin_diff, &
-        &solve_vand, c, is_sym, bubble_sort, calc_det, calc_inv, calc_ext_var
+        &calc_end_weights, solve_vand, c, is_sym, bubble_sort, calc_det, &
+        &calc_inv, calc_ext_var
 
     implicit none
     private
@@ -25,6 +26,7 @@ contains
             &new_unittest("integer_helpers", test_integer_helpers), &
             &new_unittest("calc_int", test_calc_int), &
             &new_unittest("fin_diff_coeffs", test_fin_diff_coeffs), &
+            &new_unittest("end_weights", test_end_weights), &
             &new_unittest("solve_vand", test_solve_vand), &
             &new_unittest("sym_indexing", test_sym_indexing), &
             &new_unittest("bubble_sort", test_bubble_sort), &
@@ -122,6 +124,83 @@ contains
             if (allocated(error)) return
         end do
     end subroutine test_fin_diff_coeffs
+
+    !> The weights of the last points of a sum that belong to left finite
+    !! differences: reference values (6/11 and 108/121 for order 3, 1 - 3^(-k)
+    !! for order 2, all 1 for order 1), their sum (half a point less than unit
+    !! weights, as for the trapezoidal rule), and the property that defines
+    !! them: the weighted sum of the finite difference of a grid function that
+    !! vanishes at the first points is its value at the last point.
+    subroutine test_end_weights(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: n = 120                                           ! grid points
+        integer :: ierr, id, md, ord                                            ! error status, counters, order
+        real(dp), allocatable :: w(:), coeff(:)                                 ! end weights, left differences
+        real(dp) :: X(n), w_tot(n)                                              ! grid function, weights of all points
+        real(dp) :: DX, res                                                     ! finite difference, weighted sum
+
+        ierr = calc_end_weights(3,w)
+        call check(error, ierr, 0, 'calc_end_weights failed for order 3')
+        if (allocated(error)) return
+        call check(error, w(1), 6._dp/11, thr=1.e-12_dp, &
+            &message='order 3, weight of the last point')
+        if (allocated(error)) return
+        call check(error, w(2), 108._dp/121, thr=1.e-12_dp, &
+            &message='order 3, weight of the point before the last')
+        if (allocated(error)) return
+
+        ierr = calc_end_weights(2,w)
+        call check(error, ierr, 0, 'calc_end_weights failed for order 2')
+        if (allocated(error)) return
+        do id = 1,5
+            call check(error, w(id), 1._dp-3._dp**(-id), thr=1.e-12_dp, &
+                &message='order 2, weight '//trim(i2str(id)))
+            if (allocated(error)) return
+        end do
+
+        ierr = calc_end_weights(1,w)
+        call check(error, ierr, 0, 'calc_end_weights failed for order 1')
+        if (allocated(error)) return
+        call check(error, maxval(abs(w-1._dp)), 0._dp, thr=1.e-12_dp, &
+            &message='order 1, all weights 1')
+        if (allocated(error)) return
+
+        do ord = 2,3
+            ierr = calc_end_weights(ord,w)
+            call check(error, ierr, 0, 'calc_end_weights failed')
+            if (allocated(error)) return
+            call check(error, size(w).lt.n-ord, &
+                &'more end weights than grid points for order '//&
+                &trim(i2str(ord)))
+            if (allocated(error)) return
+            call check(error, sum(w-1._dp), -0.5_dp, thr=1.e-10_dp, &
+                &message='sum of the weights minus 1, order '//trim(i2str(ord)))
+            if (allocated(error)) return
+
+            ierr = calc_coeff_fin_diff(1,ord+1,ord+1,coeff)
+            call check(error, ierr, 0, 'calc_coeff_fin_diff failed')
+            if (allocated(error)) return
+            w_tot = 1._dp
+            w_tot(n:n-size(w)+1:-1) = w
+            do id = 1,n
+                X(id) = sin(1.7_dp*id) + 0.3_dp*cos(0.4_dp*id*id)               ! not smooth on the grid
+            end do
+            X(1:ord) = 0._dp
+            res = 0._dp
+            do id = ord+1,n
+                DX = 0._dp
+                do md = 0,ord
+                    DX = DX + coeff(ord+1-md)*X(id-md)
+                end do
+                res = res + w_tot(id)*DX
+            end do
+            call check(error, res, X(n), thr=1.e-10_dp, &
+                &message='weighted sum of the finite difference, order '//&
+                &trim(i2str(ord)))
+            if (allocated(error)) return
+        end do
+    end subroutine test_end_weights
 
     !> Björck-Pereyra Vandermonde solver against a directly-constructed
     !! system: sum_j a_i^(j-1) x_j = b_i.

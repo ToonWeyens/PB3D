@@ -34,7 +34,10 @@
 # corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) carries the
 # plasma-side angle, which moves the HELENA style-2 value at the fixture's 257
 # poloidal points to -0.43679, 0.54 % from the twin's; the twin's value does
-# not change (the 3-D path sets its diagonal by the row sum). (Before the kernel changes
+# not change (the 3-D path sets its diagonal by the row sum). Since 17
+# November 2026 the last points of the free edge carry the weights of
+# calc_end_weights in the normal integral, which moves the twin's value to
+# -0.43901. (Before the kernel changes
 # the response was 0.85 of the axisymmetric one and the eigenvalue
 # -0.51892, 17 % below.) This pins the orientation of the normal that
 # store_vac_VMEC hands to the kernels: with the outward normal the response
@@ -54,7 +57,7 @@ CHECK=$(cd "$(dirname "$0")" && pwd)/check_vmec_read.py
 ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
 TWIN_RTOL=1e-4
-ANCHOR_FREE=-4.3914e-1
+ANCHOR_FREE=-4.3901e-1
 HEL_FREE=-4.3679e-1
 FREE_RTOL=0.03
 N_ALPHA=64

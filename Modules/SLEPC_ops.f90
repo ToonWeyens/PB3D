@@ -614,7 +614,7 @@ contains
         ! Makes use of mds, n_r and  grid_sol_trim
         !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
-            use num_utilities, only: con, calc_coeff_fin_diff
+            use num_utilities, only: con, calc_coeff_fin_diff, calc_end_weights
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -635,6 +635,7 @@ contains
             PetscInt :: ndc_ind                                                 ! index for finite differences
             PetscInt :: st_size                                                 ! stencil size
             PetscReal :: w_q                                                    ! quadrature weight of this point in the normal integral
+            PetscReal, allocatable :: w_end(:)                                  ! quadrature weights of the last points, starting from the last
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -669,6 +670,37 @@ contains
             ! allocate local block
             allocate(loc_block(n_mod_X,n_mod_X))
             
+            ! Quadrature weights of the last points in the normal integral, in
+            ! units of the step size; all other points have weight 1.
+            !
+            ! The last points of a free edge  count less than the others: the
+            ! cell around the  edge point lies half in the  vacuum. How this is
+            ! spread over the last points depends on the finite differences:
+            !   - Left  differences of  order 2 or  higher: the  weights of
+            !   calc_end_weights. The left stencils  of the points beyond the
+            !   edge do  not exist,  so the  last unknowns  appear in  fewer
+            !   stencils than  the others.  With these  weights the  sum over
+            !   the points of the finite  difference of X still gives X at the
+            !   edge,  as the  integral of  X' does.  The rows  of the  last
+            !   points are then consistent with  the Euler equation and with
+            !   the natural boundary condition, and the eigenvalue converges
+            !   at the order of the finite differences.
+            !   - Otherwise:  the trapezoidal  rule, half  a weight  for the
+            !   edge point.  The last rows are  then not consistent, and  a part
+            !   of the error of the eigenvalue is of first order in n_r_sol.
+            if (BC_style(2).eq.2 .or. BC_style(2).eq.4) then
+                if (norm_disc_style_sol.eq.2 .and. ndps.ge.2) then
+                    ierr = calc_end_weights(ndps,w_end)
+                    CHCKERR('')
+                else
+                    allocate(w_end(1))
+                    w_end = 0.5_dp
+                end if
+            else
+                allocate(w_end(1))
+                w_end = 1._dp
+            end if
+            
             ! iterate over all rows of this rank
             do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
                 ! set up local kd
@@ -692,14 +724,9 @@ contains
                 CHCKERR('')
                 ndc = ndc/step_size                                             ! scale by step size
                 
-                ! quadrature weight of this point in the normal integral: the
-                ! trapezoidal rule gives the free edge half the interior weight.
-                ! With a full weight there the discrete surface term differs
-                ! from the continuous one at O(h), and the free-boundary
-                ! eigenvalue converges only at first order in n_r_sol.
+                ! quadrature weight of this point in the normal integral
                 w_q = 1._dp
-                if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) .and. &
-                    &kd.eq.n_r-1) w_q = 0.5_dp
+                if (n_r-kd.le.size(w_end)) w_q = w_end(n_r-kd)                  ! kd = n_r-1 is the last point
                 
                 ! fill the blocks
                 
@@ -932,9 +959,11 @@ contains
     !!      stencils; natively for left differences, through the \c ndc_ind
     !!      shifting for central ones)  and the vacuum term  is added to the
     !!      edge diagonal  block. In contrast to  style 4 this keeps  A and B
-    !!      Hermitian. Agrees  with style 4 to  8 significant digits  on the
-    !!      cbm18a free-boundary benchmark, with much  cleaner numerics (see
-    !!      Documentation/testing.md).
+    !!      Hermitian. For  left differences of order  2 or higher the  last
+    !!      points get  the weights of  num_utilities::calc_end_weights in
+    !!      the normal  integral, with which  the rows  of the last  points
+    !!      are consistent  and the eigenvalue  converges at the  order of
+    !!      the finite differences (see Documentation/testing.md).
     !!  -# REMOVED (was: minimization of surface energy through extension of
     !!      grid - never implemented beyond a stub; use style 4).
     !!  -# Explicit introduction of the surface energy minimization:
@@ -942,8 +971,9 @@ contains
     !!      introduced explicitely  as an asymmetric finite  difference equation
     !!      in the  last row, using  left finite differences:  V1^T X +  V2 X' +
     !!      vac X =  0 (and the kinetic  analogue in B). This  breaks the
-    !!      Hermiticity of A  and B but is verified  end-to-end (see
-    !!      Documentation/testing.md).
+    !!      Hermiticity of A and B. It  converges to the eigenvalue of style
+    !!      2,  but  only at  first  order  in  the number  of  normal  points
+    !!      (see Documentation/testing.md).
     !!
     !! Makes use of n_r.
     !!
@@ -1219,10 +1249,14 @@ contains
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
         !
-        ! Not validated: it differs from the variational style 2 by 0.19 % on
-        ! cbm18a at psi = 0.75 and by far more on the circular external kink,
-        ! with no dependence on the radial resolution, while style 2 agrees
-        ! with MISHKA-1 to 1 %. Use style 2.
+        ! Less accurate than the variational style 2: it converges to the same
+        ! eigenvalue, but at first order in n_r_sol. At 200 points it is 0.08 %
+        ! from style 2 on cbm18a at psi = 0.75 and 1.2 % on the circular
+        ! external kink, and the difference halves with every doubling. This
+        ! holds with the weights of calc_end_weights for the last points (left
+        ! differences of order 2 or higher). With trapezoidal weights the rows
+        ! before the edge row are not consistent, and the eigenvalue converges
+        ! to another value (7 % off on the circular kink). Use style 2.
         !
         ! Makes use of mds.
         !> \private

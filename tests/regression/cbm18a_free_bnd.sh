@@ -24,16 +24,22 @@
 # the corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) got the
 # plasma-side angle: style 2 from -4.5039e-2 to -4.5046e-2, style 4 from
 # -4.5124e-2 to -4.5130e-2, 1.5e-4 and 1.3e-4; the vacuum enters this
-# pedestal mode weakly, and the 401-point mapping has 800 boundary points):
+# pedestal mode weakly, and the 401-point mapping has 800 boundary points;
+# and on 17 November 2026 when the last points of a free edge got the weights
+# of calc_end_weights in the normal integral, which moved style 2 by 3e-6 and
+# style 4 from -4.5136e-2 to -4.5088e-2):
 #   BC_style(2) = 2, variational (Hermitian) imposition: -4.5046e-2. This is
 #     the validated style: on the circular external-kink fixtures it agrees
 #     with MISHKA to 1.2 % or better (circ_eps005_free_bnd.sh). The 200-point
 #     value is 0.5 % from the radially converged -4.5263e-2 (first order, from
 #     the rational surfaces in the window; the fixed case converges the same).
-#   BC_style(2) = 4, explicit natural-boundary-condition row: -4.5130e-2.
-#     NOT validated: it differs from style 2 by 0.2 % here and by 7 % on the
-#     circular case, independently of the radial resolution (issue #4,
-#     step 4); it is anchored only so that a change shows up. Use style 2.
+#   BC_style(2) = 4, explicit natural-boundary-condition row: -4.5088e-2.
+#     Less accurate than style 2: with the weights of calc_end_weights it
+#     converges to the value of style 2, but at first order in n_r_sol (0.08 %
+#     from style 2 here and 1.2 % on the circular case at 200 points, halving
+#     with every doubling; with the trapezoidal weight it converged to another
+#     value, 0.1 % off here and 7 % on the circular case). It is anchored so
+#     that a change shows up. Use style 2.
 #
 # The deck specifies style 4; the script runs it as given and then with
 # style 2. With a python3 (with h5py) as fourth argument, the vacuum response
@@ -48,7 +54,7 @@ PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
 ANCHOR_2=-4.5051e-2
-ANCHOR_4=-4.5136e-2
+ANCHOR_4=-4.5088e-2
 RTOL=1e-3
 FIXED=-4.3573e-2
 

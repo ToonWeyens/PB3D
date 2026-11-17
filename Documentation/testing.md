@@ -233,7 +233,11 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   is anchored only so that a change shows, it is not a cross-check of style 2
   (both re-recorded on 31 October 2026, when the free end point got its
   trapezoidal weight h/2 in the normal integral; before, style 2 was
-  \(-4.5019\times10^{-2}\) and style 4 \(-4.4712\times10^{-2}\)).
+  \(-4.5019\times10^{-2}\) and style 4 \(-4.4712\times10^{-2}\)). Since 17
+  November 2026 the last points of a free edge carry the weights of
+  `calc_end_weights`; style 4 is then \(-4.5088\times10^{-2}\) and converges
+  to the value of style 2 at first order in the radial points (0.08 % apart
+  at the deck's 200), where it converged to another value before.
   The test also asserts free ≤ fixed and that the stored response matrix is
   Hermitian and positive semi-definite (`check_vac_res.py`).
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
@@ -246,10 +250,13 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   \(-4.2168\times10^{-1}\) against MISHKA's 0.42679 within 2 % (measured
   1.2 %; at n = 15 and 20 the gap is 0.55 and 0.26 %, falling as 1/n²;
   `tests/reference/mishka_circular.txt`), and the same deck at 400 radial
-  points within 5e-4 of the 200-point value: the second-order convergence of
-  the free edge since its trapezoidal weight (31 October 2026; the first-order
-  convergence before it gave 1.2e-2, and the anchor was
-  \(-4.3034\times10^{-1}\), 2.3 % from the converged value).
+  points within 5e-5 of the 200-point value. This guards the weights of the
+  last points of the free edge in the normal integral
+  (`num_utilities::calc_end_weights`, 17 November 2026): the move is 1.3e-5
+  with them, 1.4e-4 with the trapezoidal weight h/2 of 31 October 2026 and
+  1.2e-2 with the full weight before that (when the anchor was
+  \(-4.3034\times10^{-1}\), 2.3 % from the converged value). The anchor is
+  \(-4.2551\times10^{-1}\) now.
 - `circ_eps033_vmec_twin`: the circular ε = 0.33 HELENA fixture and its VMEC
   twin `wout_circ_eps033_q104.nc` (made from the HELENA file by
   `tests/reference/make_vmec_twin.sh`: PB3D `--export_HEL`, then VMEC++) give
