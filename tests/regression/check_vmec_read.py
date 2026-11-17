@@ -16,17 +16,20 @@ Compares the group 'in' of PB3D_out.h5 with the wout file of the same run:
     lasym partners) against PB3D's full-mesh values, through an independent
     cubic spline of the half-mesh points placed at
       (a) VMEC's positions s = (j - 1.5)/(ns - 1), what the file means, and
-      (b) the positions read_VMEC uses, s_j - 0.5/ns;
+      (b) s_j - 0.5/ns, where read_VMEC put them before the fix of #16
+          (0.5/(ns (ns - 1)) too far out), to show what that error was;
  5. the Jacobian in real space, sum over the Nyquist list, on one field
     period of every written surface: PB3D's coefficients with PB3D's labels
     against the file's coefficients (spline (a) and (b)) with the file's
     labels, and the size of the modes that only the Nyquist list has.
 
-Items 1 to 3 decide PASS or FAIL (exact, or relative 1e-13 for 3); items 4
-and 5 are measurements, printed for every run, to fix a tolerance later.
-Differences are relative to the largest coefficient (4) or the largest value
-on the surface (5). "interior" leaves out the two surfaces at each end, where
-the splines extrapolate.
+Items 1 to 3 decide PASS or FAIL (exact, or relative 1e-13 for 3), and so
+does item 4 (a) in the interior (relative 1e-12) when PB3D's radial
+interpolation is cubic (norm_disc_prec_eq = 3, the default), the order of
+the spline here; item 5 is a measurement. Differences are relative to the
+largest coefficient (4) or the largest value on the surface (5). "interior"
+leaves out the two surfaces at each end, where PSPLINE and scipy extrapolate
+differently.
 
 Usage: check_vmec_read.py PB3D_out.h5 wout.nc [out.json]
 Exit status 0 and "PASS" on success, 1 and "FAIL" otherwise.
@@ -235,11 +238,13 @@ def main():
         half += [('lmnc', RZL[:, :, 0, 4], 1.0), ('gmns', jac[:, :, 0, 1], R_0**3),
                  ('bsubumns', Bsub[:, :, 1, 1], R_0*B_0),
                  ('bsubvmns', Bsub[:, :, 2, 1], R_0*B_0)]
-    offsets = {'VMEC': 0.5/(ns - 1), 'PB3D': 0.5/ns}
+    offsets = {'VMEC': 0.5/(ns - 1), 'old': 0.5/ns}
+    cubic = int(misc[13]) == 3
     spl = {}
     res['half'] = {}
+    f4 = []
     print('4. half-mesh coefficients, max relative difference (all surfaces / interior):')
-    print('   %-9s %-25s %-25s' % ('', "(a) VMEC's s=(j-1.5)/(ns-1)", '(b) read_VMEC s_j-0.5/ns'))
+    print('   %-9s %-25s %-25s' % ('', "(a) VMEC's s=(j-1.5)/(ns-1)", '(b) old s_j-0.5/ns'))
     for name, pb, sc in half:
         line = []
         for key, off in offsets.items():
@@ -247,7 +252,14 @@ def main():
             d_all, d_int = rel_diff(pb.T*sc, spl[name, key][rows, :], interior)
             res['half'][name + '_' + key] = [d_all, d_int]
             line.append('%.1e / %.1e' % (d_all, d_int))
+            if key == 'VMEC' and cubic and d_int > 1e-12:
+                f4.append('%s %.2e' % (name, d_int))
         print('   %-9s %-25s %-25s' % (name, line[0], line[1]))
+    if not cubic:
+        print('   (a) not decisive: norm_disc_prec_eq = %d, the spline here is cubic' % misc[13])
+    elif f4:
+        f4 = ['half-mesh coefficients off VMEC\'s positions (interior): ' + ', '.join(f4)]
+    fails += f4
 
     # 5. the Jacobian in real space on one field period
     th = 2*np.pi*np.arange(32)/32
