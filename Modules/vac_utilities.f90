@@ -240,8 +240,6 @@ contains
         real(dp) :: delta_t(2)                                                  ! t_in - t_s
         real(dp) :: rho2(2)                                                     ! square of distance in projected poloidal plane
         real(dp) :: dlogd(2)                                                    ! delta log delta
-        real(dp) :: n_loc(2)                                                    ! norm_s / |norm_s|
-        real(dp) :: dn_loc(2)                                                   ! d n_loc / dtheta
         
         ! initialize
         G = 0._dp
@@ -256,10 +254,6 @@ contains
         else                                                                    ! t_s closer to t_in
             t_in_loc = t_in
         end if
-        n_loc = (norm_s(2,:)/sqrt(sum(norm_s(2,:)**2))+&
-            &norm_s(1,:)/sqrt(sum(norm_s(1,:)**2))) / 2._dp
-        dn_loc = (norm_s(2,:)/sqrt(sum(norm_s(2,:)**2))-&
-            &norm_s(1,:)/sqrt(sum(norm_s(1,:)**2))) / (t_s(2)-t_s(1))
         
         ! check for (near-)singular point
         if (minval(rho2).le.tol) then
