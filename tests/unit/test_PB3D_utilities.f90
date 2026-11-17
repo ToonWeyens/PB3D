@@ -167,7 +167,8 @@ contains
         if (allocated(error)) return
     end subroutine test_par_id_window
 
-    !> 1-D to n-D conversion restores shape, bounds and values.
+    !> 1-D to n-D conversion restores shape, bounds and values, and refuses a
+    !! rank that differs from the stored one.
     subroutine test_conv_flat2ND(error)
         type(error_type), allocatable, intent(out) :: error
 
@@ -175,12 +176,16 @@ contains
         real(dp), allocatable :: var_2D(:,:), var_3D(:,:,:)                     ! converted variables
         integer :: id, jd, kd                                                   ! counters
         integer :: ld                                                           ! linear counter
+        integer :: ierr                                                         ! error
 
         ! 2-D with non-unit lower bounds: (0:2, 3:4)
         var%tot_i_min = [0,3]
         var%tot_i_max = [2,4]
         var%p = [(1._dp*ld, ld = 1,6)]
-        call conv_flat2ND(var,var_2D)
+        var%var_name = 'test'
+        ierr = conv_flat2ND(var,var_2D)
+        call check(error, ierr, 0, '2-D conversion')
+        if (allocated(error)) return
         call check(error, lbound(var_2D,1).eq.0 .and. ubound(var_2D,1).eq.2 &
             &.and. lbound(var_2D,2).eq.3 .and. ubound(var_2D,2).eq.4, &
             &'2-D bounds')
@@ -200,7 +205,9 @@ contains
         var%tot_i_min = [1,1,1]
         var%tot_i_max = [2,3,2]
         var%p = [(2._dp*ld, ld = 1,12)]
-        call conv_flat2ND(var,var_3D)
+        ierr = conv_flat2ND(var,var_3D)
+        call check(error, ierr, 0, '3-D conversion')
+        if (allocated(error)) return
         call check(error, all(shape(var_3D).eq.[2,3,2]), '3-D shape')
         if (allocated(error)) return
         ld = 0
@@ -214,5 +221,10 @@ contains
                 end do
             end do
         end do
+
+        ! the 3-D variable into a 2-D array
+        ierr = conv_flat2ND(var,var_2D)
+        call check(error, ierr.ne.0, '3-D variable into 2-D array refused')
+        if (allocated(error)) return
     end subroutine test_conv_flat2ND
 end module test_PB3D_utilities

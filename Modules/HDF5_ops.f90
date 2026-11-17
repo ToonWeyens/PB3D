@@ -37,7 +37,7 @@ module HDF5_ops
     public print_HDF5_grid, print_HDF5_geom, print_HDF5_top, &
         &print_HDF5_att, print_HDF5_3D_data_item, open_HDF5_file, &
         &close_HDF5_file, reset_HDF5_item, add_HDF5_item, create_output_HDF5, &
-        &print_HDF5_arrs, read_HDF5_arr, merge_HDF5_3D_data_items
+        &print_HDF5_arrs, read_HDF5_ND, merge_HDF5_3D_data_items
 #if ldebug
     public debug_HDF5_ops, debug_print_HDF5_arrs
 #endif
@@ -1790,6 +1790,38 @@ contains
         err_msg = 'Failed to close FORTRAN HDF5 interface'
         CHCKERR(err_msg)
     end function read_HDF5_arr
+    
+    !> Reads a variable from a PB3D output file into an array of its rank.
+    !!
+    !! It reads the flattened variable with read_HDF5_arr() and converts it
+    !! with conv_flat2ND(). \c rich_lvl and \c lim_loc are passed on to
+    !! read_HDF5_arr().
+    !!
+    !! \return ierr
+    integer function read_HDF5_ND(PB3D_name,head_name,var_name,var_out,&
+        &rich_lvl,lim_loc) result(ierr)
+        use PB3D_utilities, only: conv_flat2ND
+        
+        character(*), parameter :: rout_name = 'read_HDF5_ND'
+        
+        ! input / output
+        character(len=*), intent(in) :: PB3D_name                               !< name of PB3D file
+        character(len=*), intent(in) :: head_name                               !< head name of variables
+        character(len=*), intent(in) :: var_name                                !< name of variable
+        real(dp), intent(out), allocatable :: var_out(..)                       !< variable read
+        integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
+        integer, intent(in), optional :: lim_loc(:,:)                           !< local limits
+        
+        ! local variables
+        type(var_flat_type) :: var_flat                                         ! flattened variable
+        
+        ! read the flattened variable and convert it
+        ierr = read_HDF5_arr(var_flat,PB3D_name,head_name,var_name,&
+            &rich_lvl=rich_lvl,lim_loc=lim_loc)
+        CHCKERR('')
+        ierr = conv_flat2ND(var_flat,var_out)
+        CHCKERR('')
+    end function read_HDF5_ND
     
     !> \private array version
     subroutine reset_HDF5_item_arr(XDMF_items,ind_plot)

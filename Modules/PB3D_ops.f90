@@ -16,7 +16,6 @@ module PB3D_ops
     use X_vars, only: X_1_type, X_2_type, modes_type
     use vac_vars, only: vac_type
     use sol_vars, only: sol_type
-    use HDF5_vars, only: dealloc_var_flat, var_flat_type
     use PB3D_utilities, only: setup_rich_id, setup_par_id
 
     implicit none
@@ -44,8 +43,7 @@ contains
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &norm_disc_style_sol, EV_BC, magn_int_style, K_style, &
             &alpha_style, X_grid_style, debug_version, max_njq_change
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, onLy: n_r_in, n_r_eq, n_r_sol, min_alpha, max_alpha, &
@@ -71,7 +69,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         real(dp), parameter :: tol_version = 1.E-4_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
         logical :: debug_version_PB3D                                           ! debug version of in
@@ -85,9 +82,8 @@ contains
         call lvl_ud(1)
         
         ! misc_in
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'misc_in')
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_in',dum_1D)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         PB3D_version = dum_1D(1)
         eq_style = nint(dum_1D(2))
         rho_style = nint(dum_1D(3))
@@ -112,7 +108,6 @@ contains
         max_flux_F = dum_1D(19)
         debug_version_PB3D = .false.
         if (dum_1D(20).gt.0) debug_version_PB3D = .true.
-        call dealloc_var_flat(var_flat)
         
         ! tests
         select case (prog_style)
@@ -158,10 +153,9 @@ contains
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! misc_in_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'misc_in_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_in_V',&
+                    &dum_1D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_1D)
                 is_asym_V = .false.
                 is_freeb_V = .false.
                 if (dum_1D(1).gt.0) is_asym_V = .true.
@@ -180,228 +174,145 @@ contains
                 mnmax_nyq_V = nint(dum_1D(8))
                 mpol_tf = nint(dum_1D(9))
                 ntor_tf = nint(dum_1D(10))
-                call dealloc_var_flat(var_flat)
                 
                 ! flux_t_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'flux_t_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_t_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(flux_t_V(n_r_eq,0:max_deriv+1))
-                flux_t_V = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(flux_t_V(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! flux_p_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'flux_p_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_p_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(flux_p_V(n_r_eq,0:max_deriv+1))
-                flux_p_V = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(flux_p_V(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! pres_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'pres_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'pres_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(pres_V(n_r_eq,0:max_deriv+1))
-                pres_V = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(pres_V(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! rot_t_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'rot_t_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'rot_t_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(rot_t_V(n_r_eq,0:max_deriv+1))
-                rot_t_V = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(rot_t_V(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! q_saf_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'q_saf_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'q_saf_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(q_saf_V(n_r_eq,0:max_deriv+1))
-                q_saf_V = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(q_saf_V(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! mn_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'mn_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'mn_V',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(mn_V(mnmax_V,2))
-                mn_V = nint(dum_2D)
-                call dealloc_var_flat(var_flat)
+                allocate(mn_V(mnmax_V,2),source=nint(dum_2D))
                 
                 ! mn_V_nyq
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'mn_V_nyq')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'mn_V_nyq',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(mn_V_nyq(mnmax_nyq_V,2))
-                mn_V_nyq = nint(dum_2D)
-                call dealloc_var_flat(var_flat)
+                allocate(mn_V_nyq(mnmax_nyq_V,2),source=nint(dum_2D))
                 
                 ! RZL_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'RZL_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RZL_V',dum_4D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_4D)
-                allocate(R_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(R_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(Z_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(Z_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(L_V_c(mnmax_V,n_r_eq,0:max_deriv+1))
-                allocate(L_V_s(mnmax_V,n_r_eq,0:max_deriv+1))
-                R_V_c = dum_4D(:,:,:,1)
-                R_V_s = dum_4D(:,:,:,2)
-                Z_V_c = dum_4D(:,:,:,3)
-                Z_V_s = dum_4D(:,:,:,4)
-                L_V_c = dum_4D(:,:,:,5)
-                L_V_s = dum_4D(:,:,:,6)
-                call dealloc_var_flat(var_flat)
+                allocate(R_V_c(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,1))
+                allocate(R_V_s(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,2))
+                allocate(Z_V_c(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,3))
+                allocate(Z_V_s(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,4))
+                allocate(L_V_c(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,5))
+                allocate(L_V_s(mnmax_V,n_r_eq,0:max_deriv+1),&
+                    &source=dum_4D(:,:,:,6))
                 
                 ! jac_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'jac_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'jac_V',dum_4D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_4D)
-                allocate(jac_V_c(mnmax_nyq_V,n_r_eq,0:max_deriv))
-                allocate(jac_V_s(mnmax_nyq_V,n_r_eq,0:max_deriv))
-                jac_V_c = dum_4D(:,:,:,1)
-                jac_V_s = dum_4D(:,:,:,2)
-                call dealloc_var_flat(var_flat)
+                allocate(jac_V_c(mnmax_nyq_V,n_r_eq,0:max_deriv),&
+                    &source=dum_4D(:,:,:,1))
+                allocate(jac_V_s(mnmax_nyq_V,n_r_eq,0:max_deriv),&
+                    &source=dum_4D(:,:,:,2))
                 
                 ! B_V_sub
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'B_V_sub')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'B_V_sub',dum_4D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_4D)
-                allocate(B_V_sub_c(mnmax_nyq_V,n_r_eq,3))
-                allocate(B_V_sub_s(mnmax_nyq_V,n_r_eq,3))
-                B_V_sub_c = dum_4D(:,:,:,1)
-                B_V_sub_s = dum_4D(:,:,:,2)
-                call dealloc_var_flat(var_flat)
+                allocate(B_V_sub_c(mnmax_nyq_V,n_r_eq,3),source=dum_4D(:,:,:,1))
+                allocate(B_V_sub_s(mnmax_nyq_V,n_r_eq,3),source=dum_4D(:,:,:,2))
                 
 #if ldebug
                 ! B_V
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'B_V')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'B_V',dum_3D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
-                allocate(B_V_c(mnmax_nyq_V,n_r_eq))
-                allocate(B_V_s(mnmax_nyq_V,n_r_eq))
-                B_V_c = dum_3D(:,:,1)
-                B_V_s = dum_3D(:,:,2)
-                call dealloc_var_flat(var_flat)
+                allocate(B_V_c(mnmax_nyq_V,n_r_eq),source=dum_3D(:,:,1))
+                allocate(B_V_s(mnmax_nyq_V,n_r_eq),source=dum_3D(:,:,2))
                 
                 ! J_V_sup_int
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'J_V_sup_int')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'J_V_sup_int',&
+                    &dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(J_V_sup_int(n_r_eq,1:2))
-                J_V_sup_int = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(J_V_sup_int(n_r_eq,1:2),source=dum_2D)
 #endif
             case (2)                                                            ! HELENA
                 ! misc_in_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'misc_in_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_in_H',&
+                    &dum_1D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_1D)
                 ias = nint(dum_1D(1))
                 nchi= nint(dum_1D(2))
-                call dealloc_var_flat(var_flat)
                 
                 ! RZ_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'RZ_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RZ_H',dum_3D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
-                allocate(R_H(nchi,n_r_eq))
-                allocate(Z_H(nchi,n_r_eq))
-                R_H = dum_3D(:,:,1)
-                Z_H = dum_3D(:,:,2)
-                call dealloc_var_flat(var_flat)
+                allocate(R_H(nchi,n_r_eq),source=dum_3D(:,:,1))
+                allocate(Z_H(nchi,n_r_eq),source=dum_3D(:,:,2))
                 
                 ! chi_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'chi_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'chi_H',dum_1D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_1D)
-                allocate(chi_H(nchi))
-                chi_H = dum_1D
-                call dealloc_var_flat(var_flat)
+                allocate(chi_H(nchi),source=dum_1D)
                 
                 ! flux_p_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'flux_p_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_p_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(flux_p_H(n_r_eq,0:max_deriv+1))
-                flux_p_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(flux_p_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! flux_t_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'flux_t_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_t_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(flux_t_H(n_r_eq,0:max_deriv+1))
-                flux_t_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(flux_t_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! q_saf_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'q_saf_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'q_saf_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(q_saf_H(n_r_eq,0:max_deriv+1))
-                q_saf_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(q_saf_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! rot_t_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'rot_t_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'rot_t_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(rot_t_H(n_r_eq,0:max_deriv+1))
-                rot_t_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(rot_t_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! pres_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'pres_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'pres_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(pres_H(n_r_eq,0:max_deriv+1))
-                pres_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(pres_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! RBphi_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'RBphi_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RBphi_H',dum_2D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                allocate(RBphi_H(n_r_eq,0:max_deriv+1))
-                RBphi_H = dum_2D
-                call dealloc_var_flat(var_flat)
+                allocate(RBphi_H(n_r_eq,0:max_deriv+1),source=dum_2D)
                 
                 ! h_H
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'h_H')
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'h_H',dum_3D)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
-                allocate(h_H_11(nchi,n_r_eq))
-                allocate(h_H_12(nchi,n_r_eq))
-                allocate(h_H_33(nchi,n_r_eq))
-                h_H_11 = dum_3D(:,:,1)
-                h_H_12 = dum_3D(:,:,2)
-                h_H_33 = dum_3D(:,:,3)
-                call dealloc_var_flat(var_flat)
+                allocate(h_H_11(nchi,n_r_eq),source=dum_3D(:,:,1))
+                allocate(h_H_12(nchi,n_r_eq),source=dum_3D(:,:,2))
+                allocate(h_H_33(nchi,n_r_eq),source=dum_3D(:,:,3))
         end select
         
         ! misc_X
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'misc_X')
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_X',dum_1D)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         prim_X = nint(dum_1D(1))
         n_mod_X = nint(dum_1D(2))
         min_sec_X = nint(dum_1D(3))
@@ -424,12 +335,10 @@ contains
         max_alpha = dum_1D(15)
         n_alpha = nint(dum_1D(16))
         max_njq_change = dum_1D(17)
-        call dealloc_var_flat(var_flat)
         
         ! misc_sol
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'misc_sol')
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_sol',dum_1D)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         min_r_sol = dum_1D(1)
         max_r_sol = dum_1D(2)
         norm_disc_prec_sol = nint(dum_1D(3))
@@ -438,7 +347,6 @@ contains
         BC_style(2) = nint(dum_1D(6))
         EV_style = nint(dum_1D(7))
         EV_BC = dum_1D(8)
-        call dealloc_var_flat(var_flat)
         
         ! user output
         call lvl_ud(-1)
@@ -468,8 +376,7 @@ contains
         &lim_pos,grid_limits) result(ierr)
         
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_grid'
         
@@ -482,7 +389,6 @@ contains
         integer, intent(in), optional :: grid_limits(2)                         !< i_limit of grid
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         integer :: lim_mem(3,2)                                                 ! memory limits for variables
         integer :: n(3)                                                         ! total n
         integer :: id                                                           ! counter
@@ -544,20 +450,16 @@ contains
             end if
             
             ! r_F
-            ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                &trim(data_name),'r_F',rich_lvl=id,lim_loc=lim_mem(3:3,:))
+            ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),'r_F',&
+                &dum_1D,rich_lvl=id,lim_loc=lim_mem(3:3,:))
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_1D)
             grid%r_F = dum_1D
-            call dealloc_var_flat(var_flat)
             
             ! r_E
-            ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                &trim(data_name),'r_E',rich_lvl=id,lim_loc=lim_mem(3:3,:))
+            ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),'r_E',&
+                &dum_1D,rich_lvl=id,lim_loc=lim_mem(3:3,:))
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_1D)
             grid%r_E = dum_1D
-            call dealloc_var_flat(var_flat)
             
             ! loc_r_F
             grid%loc_r_F = grid%r_F(grid%i_min:grid%i_max)
@@ -577,36 +479,28 @@ contains
             ! only for 3D grids
             if (product(grid%n(1:2)).ne.0) then
                 ! theta_F
-                ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                    &trim(data_name),'theta_F',rich_lvl=id,lim_loc=lim_mem)
+                ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),&
+                    &'theta_F',dum_3D,rich_lvl=id,lim_loc=lim_mem)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
                 grid%theta_F(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-                call dealloc_var_flat(var_flat)
                 
                 ! theta_E
-                ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                    &trim(data_name),'theta_E',rich_lvl=id,lim_loc=lim_mem)
+                ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),&
+                    &'theta_E',dum_3D,rich_lvl=id,lim_loc=lim_mem)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
                 grid%theta_E(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-                call dealloc_var_flat(var_flat)
                 
                 ! zeta_F
-                ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                    &trim(data_name),'zeta_F',rich_lvl=id,lim_loc=lim_mem)
+                ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),&
+                    &'zeta_F',dum_3D,rich_lvl=id,lim_loc=lim_mem)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
                 grid%zeta_F(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-                call dealloc_var_flat(var_flat)
                 
                 ! zeta_E
-                ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//&
-                    &trim(data_name),'zeta_E',rich_lvl=id,lim_loc=lim_mem)
+                ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(data_name),&
+                    &'zeta_E',dum_3D,rich_lvl=id,lim_loc=lim_mem)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_3D)
                 grid%zeta_E(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-                call dealloc_var_flat(var_flat)
             end if
         end do
     end function reconstruct_PB3D_grid
@@ -622,8 +516,7 @@ contains
     integer function reconstruct_PB3D_eq_1(grid_eq,eq,data_name,lim_pos) &
         &result(ierr)                                                           ! flux version
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_1'
         
@@ -634,7 +527,6 @@ contains
         integer, intent(in), optional :: lim_pos(1,2)                           !< position limits of subset of data
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         integer :: lim_mem(2,2)                                                 ! memory limits for variables
         
         ! initialize ierr
@@ -655,52 +547,40 @@ contains
         ! restore variables
         
         ! pres_FD
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'pres_FD',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'pres_FD',dum_2D,&
             &lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         eq%pres_FD = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! q_saf_FD
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'q_saf_FD',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'q_saf_FD',dum_2D,&
             &lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         eq%q_saf_FD = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! rot_t_FD
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'rot_t_FD',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'rot_t_FD',dum_2D,&
             &lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         eq%rot_t_FD = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! flux_p_FD
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'flux_p_FD',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_p_FD',dum_2D,&
             &lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         eq%flux_p_FD = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! flux_t_FD
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'flux_t_FD',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'flux_t_FD',dum_2D,&
             &lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         eq%flux_t_FD = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! rho
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'rho',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'rho',dum_1D,&
             &lim_loc=lim_mem(1:1,:))
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         eq%rho = dum_1D
-        call dealloc_var_flat(var_flat)
     end function reconstruct_PB3D_eq_1
     
     !> Reconstructs the equilibrium variables from PB3D HDF5 output.
@@ -720,8 +600,7 @@ contains
     integer function reconstruct_PB3D_eq_2(grid_eq,eq,data_name,rich_lvl,&
         &tot_rich,lim_pos) result(ierr)                                         ! metric version
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_eq_2'
         
@@ -734,7 +613,6 @@ contains
         integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         integer :: lim_mem(7,2)                                                 ! memory limits for variables
         integer :: id                                                           ! counter
         integer :: rich_lvl_loc                                                 ! local rich_lvl
@@ -782,60 +660,46 @@ contains
             end if
             
             ! g_FD
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'g_FD',&
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'g_FD',dum_7D,&
                 &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_7D)
             eq%g_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = dum_7D
-            call dealloc_var_flat(var_flat)
             
             ! h_FD
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'h_FD',&
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'h_FD',dum_7D,&
                 &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_7D)
             eq%h_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:,:) = dum_7D
-            call dealloc_var_flat(var_flat)
             
             ! jac_FD
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'jac_FD',&
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'jac_FD',dum_6D,&
                 &rich_lvl=id,lim_loc=lim_mem(1:6,:))
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_6D)
             eq%jac_FD(par_id(1):par_id(2):par_id(3),:,:,:,:,:) = dum_6D
-            call dealloc_var_flat(var_flat)
             
             ! S
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'S',&
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'S',dum_3D,&
                 &rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_3D)
             eq%S(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-            call dealloc_var_flat(var_flat)
             
             ! kappa_n
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'kappa_n',rich_lvl=id,lim_loc=lim_mem(1:3,:))
-            CHCKERR('')
-            call conv_flat2ND(var_flat,dum_3D)
-            eq%kappa_n(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-            call dealloc_var_flat(var_flat)
-            
-            ! kappa_g
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'kappa_g',rich_lvl=id,lim_loc=lim_mem(1:3,:))
-            CHCKERR('')
-            call conv_flat2ND(var_flat,dum_3D)
-            eq%kappa_g(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-            call dealloc_var_flat(var_flat)
-            
-            ! sigma
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'sigma',&
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'kappa_n',dum_3D,&
                 &rich_lvl=id,lim_loc=lim_mem(1:3,:))
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_3D)
+            eq%kappa_n(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
+            
+            ! kappa_g
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'kappa_g',dum_3D,&
+                &rich_lvl=id,lim_loc=lim_mem(1:3,:))
+            CHCKERR('')
+            eq%kappa_g(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
+            
+            ! sigma
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'sigma',dum_3D,&
+                &rich_lvl=id,lim_loc=lim_mem(1:3,:))
+            CHCKERR('')
             eq%sigma(par_id(1):par_id(2):par_id(3),:,:) = dum_3D
-            call dealloc_var_flat(var_flat)
         end do
     end function reconstruct_PB3D_eq_2
     
@@ -859,8 +723,7 @@ contains
         &tot_rich,lim_sec_X,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
         use X_vars, only: n_mod_X
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_1'
         
@@ -875,7 +738,6 @@ contains
         integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         integer :: lim_sec_X_loc(2)                                             ! local version of lim_sec_X
         integer :: lim_mem(4,2)                                                 ! memory limits for variables
         integer :: id                                                           ! counter
@@ -925,72 +787,56 @@ contains
             end if
             
             ! RE_U_0
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'RE_U_0',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_U_0',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%U_0(par_id(1):par_id(2):par_id(3),:,:,:) = dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! IM_U_0
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'IM_U_0',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_U_0',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%U_0(par_id(1):par_id(2):par_id(3),:,:,:) = &
                 X%U_0(par_id(1):par_id(2):par_id(3),:,:,:) + iu*dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! RE_U_1
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'RE_U_1',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_U_1',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%U_1(par_id(1):par_id(2):par_id(3),:,:,:) = dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! IM_U_1
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'IM_U_1',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_U_1',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%U_1(par_id(1):par_id(2):par_id(3),:,:,:) = &
                 X%U_1(par_id(1):par_id(2):par_id(3),:,:,:) + iu*dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! RE_DU_0
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'RE_DU_0',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_DU_0',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%DU_0(par_id(1):par_id(2):par_id(3),:,:,:) = dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! IM_DU_0
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'IM_DU_0',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_DU_0',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%DU_0(par_id(1):par_id(2):par_id(3),:,:,:) = &
                 X%DU_0(par_id(1):par_id(2):par_id(3),:,:,:) + iu*dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! RE_DU_1
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'RE_DU_1',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_DU_1',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%DU_1(par_id(1):par_id(2):par_id(3),:,:,:) = dum_4D
-            call dealloc_var_flat(var_flat)
             
             ! IM_DU_1
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'IM_DU_1',rich_lvl=id,lim_loc=lim_mem)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_DU_1',dum_4D,&
+                &rich_lvl=id,lim_loc=lim_mem)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_4D)
             X%DU_1(par_id(1):par_id(2):par_id(3),:,:,:) = &
                 X%DU_1(par_id(1):par_id(2):par_id(3),:,:,:) + iu*dum_4D
-            call dealloc_var_flat(var_flat)
         end do
     end function reconstruct_PB3D_X_1
     
@@ -1017,8 +863,7 @@ contains
     integer function reconstruct_PB3D_X_2(mds,grid_X,X,data_name,rich_lvl,&
         &tot_rich,lim_sec_X,lim_pos,is_field_averaged) result(ierr)
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         use X_utilities, only: get_sec_X_range
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_X_2'
@@ -1035,7 +880,6 @@ contains
         logical, intent(in), optional :: is_field_averaged                      !< if field-averaged, only one dimension for first index
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D var
         logical :: is_field_averaged_loc                                        ! local is_field_averaged
         integer :: id                                                           ! counter
         integer :: m, k                                                         ! counters
@@ -1120,126 +964,102 @@ contains
                 
                 if (read_this(1)) then
                     ! RE_PV_0
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_PV_0',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_PV_0',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_PV_0
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_PV_0',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_PV_0',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = &
                         &X%PV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! RE_PV_2
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_PV_2',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_PV_2',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_PV_2
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_PV_2',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_PV_2',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = &
                         &X%PV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! RE_KV_0
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_KV_0',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_KV_0',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_KV_0
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_KV_0',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_KV_0',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = &
                         &X%KV_0(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! RE_KV_2
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_KV_2',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_KV_2',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_KV_2
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_KV_2',rich_lvl=id,lim_loc=lim_mem(:,:,1))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_KV_2',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,1))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) = &
                         &X%KV_2(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,1):sXr_loc(2,1)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                 end if
                     
                 if (read_this(2)) then
                     ! RE_PV_1
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_PV_1',rich_lvl=id,lim_loc=lim_mem(:,:,2))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_PV_1',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,2))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_PV_1
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_PV_1',rich_lvl=id,lim_loc=lim_mem(:,:,2))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_PV_1',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,2))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%PV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) = &
                         &X%PV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! RE_KV_1
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'RE_KV_1',rich_lvl=id,lim_loc=lim_mem(:,:,2))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_KV_1',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,2))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) = dum_4D
-                    call dealloc_var_flat(var_flat)
                     
                     ! IM_KV_1
-                    ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                        &'IM_KV_1',rich_lvl=id,lim_loc=lim_mem(:,:,2))
+                    ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_KV_1',&
+                        &dum_4D,rich_lvl=id,lim_loc=lim_mem(:,:,2))
                     CHCKERR('')
-                    call conv_flat2ND(var_flat,dum_4D)
                     X%KV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) = &
                         &X%KV_1(par_id(1):par_id(2):par_id(3),:,:,&
                         &sXr_loc(1,2):sXr_loc(2,2)) + iu*dum_4D
-                    call dealloc_var_flat(var_flat)
                 end if
             end do
         end do
@@ -1253,8 +1073,7 @@ contains
     !! \return ierr
     integer function reconstruct_PB3D_vac(vac,data_name,rich_lvl) result(ierr)
         use num_vars, only: PB3D_name, rank, n_procs
-        use HDF5_ops, only: read_HDF5_arr
-        use PB3D_utilities, only: conv_flat2ND
+        use HDF5_ops, only: read_HDF5_ND
         use X_utilities, only: get_sec_X_range
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_vac'
@@ -1265,7 +1084,6 @@ contains
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to reconstruct
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D var
         integer :: rich_lvl_loc                                                 ! local rich_lvl
         integer :: style                                                        ! style of vacuum
         integer :: n_bnd                                                        ! number of terms in boundary
@@ -1285,10 +1103,9 @@ contains
         if (present(rich_lvl)) rich_lvl_loc = rich_lvl
         
         ! misc_vac
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'misc_vac',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'misc_vac',dum_1D,&
             &rich_lvl=rich_lvl_loc)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         style = nint(dum_1D(1))
         n_bnd = nint(dum_1D(2))
         prim_X = nint(dum_1D(3))
@@ -1296,47 +1113,38 @@ contains
         jq = dum_1D(6)
         par_lims_found = size(dum_1D).ge.8                                      ! written since November 2026
         if (par_lims_found) par_lims = dum_1D(7:8)
-        call dealloc_var_flat(var_flat)
 
         ! create vac
         ierr = vac%init(style,n_bnd,prim_X,n_ang,jq)
         CHCKERR('')
         
         ! secondary mode numbers
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-            &'sec_X',rich_lvl=rich_lvl_loc)
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'sec_X',dum_1D,&
+            &rich_lvl=rich_lvl_loc)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         vac%sec_X = nint(dum_1D)
         deallocate(dum_1D)
-        call dealloc_var_flat(var_flat)
         
         ! norm
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-            &'norm',rich_lvl=rich_lvl_loc)
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'norm',dum_2D,&
+            &rich_lvl=rich_lvl_loc)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         vac%norm = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! x_vec
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-            &'x_vec',rich_lvl=rich_lvl_loc)
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'x_vec',dum_2D,&
+            &rich_lvl=rich_lvl_loc)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_2D)
         vac%x_vec = dum_2D
-        call dealloc_var_flat(var_flat)
         
         ! copy variables specific to style
         select case (vac%style)
             case (1)                                                            ! field-line 3-D
                 ! h_fac
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'h_fac',rich_lvl=rich_lvl_loc)
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'h_fac',dum_2D,&
+                    &rich_lvl=rich_lvl_loc)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
                 vac%h_fac = dum_2D
-                call dealloc_var_flat(var_flat)
 
                 ! parallel angle, as store_vac_VMEC and calc_vac_res set it
                 ! up (zero if the output predates the limits in misc_vac)
@@ -1348,38 +1156,30 @@ contains
                 end if
             case (2)                                                            ! axisymmetric
                 ! ang
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'ang',rich_lvl=rich_lvl_loc)
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'ang',dum_2D,&
+                    &rich_lvl=rich_lvl_loc)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
                 vac%ang = dum_2D
-                call dealloc_var_flat(var_flat)
                 
                 ! dnorm
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'dnorm',rich_lvl=rich_lvl_loc)
+                ierr = read_HDF5_ND(PB3D_name,trim(data_name),'dnorm',dum_2D,&
+                    &rich_lvl=rich_lvl_loc)
                 CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
                 vac%dnorm = dum_2D
-                call dealloc_var_flat(var_flat)
         end select
         
         if (rank.eq.n_procs-1) then
             ! RE_res
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'RE_res',rich_lvl=rich_lvl_loc)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_res',dum_2D,&
+                &rich_lvl=rich_lvl_loc)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_2D)
             vac%res = dum_2D
-            call dealloc_var_flat(var_flat)
             
             ! IM_res
-            ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                &'IM_res',rich_lvl=rich_lvl_loc)
+            ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_res',dum_2D,&
+                &rich_lvl=rich_lvl_loc)
             CHCKERR('')
-            call conv_flat2ND(var_flat,dum_2D)
             vac%res = vac%res + iu*dum_2D
-            call dealloc_var_flat(var_flat)
         end if
     end function reconstruct_PB3D_vac
     
@@ -1399,9 +1199,8 @@ contains
     integer function reconstruct_PB3D_sol(mds,grid_sol,sol,data_name,rich_lvl,&
         &lim_sec_sol,lim_pos) result(ierr)
         use num_vars, only: PB3D_name
-        use HDF5_ops, only: read_HDF5_arr
+        use HDF5_ops, only: read_HDF5_ND
         use X_vars, only: n_mod_X
-        use PB3D_utilities, only: conv_flat2ND
         
         character(*), parameter :: rout_name = 'reconstruct_PB3D_sol'
         
@@ -1415,7 +1214,6 @@ contains
         integer, intent(in), optional :: lim_pos(1,2)                           !< position limits of subset of data
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         integer :: lim_sec_sol_loc(2)                                           ! local version of lim_sec_sol
         integer :: lim_mem(3,2)                                                 ! memory limits for variables
         integer :: n_EV                                                         ! nr. of Eigenvalues
@@ -1426,11 +1224,11 @@ contains
         ! prepare
         
         ! set n_EV
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'RE_sol_vec',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_sol_vec',dum_3D,&
             &rich_lvl=rich_lvl)
         CHCKERR('')
-        n_EV = var_flat%tot_i_max(3)-var_flat%tot_i_min(3)+1
-        call dealloc_var_flat(var_flat)
+        n_EV = size(dum_3D,3)
+        deallocate(dum_3D)
         
         ! set up local lim_sec_sol
         lim_sec_sol_loc = [1,n_mod_X]
@@ -1450,40 +1248,32 @@ contains
         ! restore variables
         
         ! RE_sol_val
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'RE_sol_val',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_sol_val',dum_1D,&
             &rich_lvl=rich_lvl)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         sol%val = dum_1D
         deallocate(dum_1D)
-        call dealloc_var_flat(var_flat)
         
         ! IM_sol_val
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'IM_sol_val',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_sol_val',dum_1D,&
             &rich_lvl=rich_lvl)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_1D)
         sol%val = sol%val + iu*dum_1D
         deallocate(dum_1D)
-        call dealloc_var_flat(var_flat)
         
         ! RE_sol_vec
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'RE_sol_vec',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'RE_sol_vec',dum_3D,&
             &rich_lvl=rich_lvl,lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_3D)
         sol%vec = dum_3D
         deallocate(dum_3D)
-        call dealloc_var_flat(var_flat)
         
         ! IM_sol_vec
-        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'IM_sol_vec',&
+        ierr = read_HDF5_ND(PB3D_name,trim(data_name),'IM_sol_vec',dum_3D,&
             &rich_lvl=rich_lvl,lim_loc=lim_mem)
         CHCKERR('')
-        call conv_flat2ND(var_flat,dum_3D)
         sol%vec = sol%vec + iu*dum_3D
         deallocate(dum_3D)
-        call dealloc_var_flat(var_flat)
     end function reconstruct_PB3D_sol
     
     !> get grid size
@@ -1494,8 +1284,7 @@ contains
     integer function get_PB3D_grid_size(n,grid_name,rich_lvl,tot_rich) &
         &result(ierr)
         use num_vars, only: PB3D_name
-        use PB3D_utilities, only: conv_flat2ND
-        use HDF5_ops, only: read_HDF5_arr
+        use HDF5_ops, only: read_HDF5_ND
         
         character(*), parameter :: rout_name = 'get_PB3D_grid_size'
         
@@ -1506,7 +1295,6 @@ contains
         logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
         
         ! local variables
-        type(var_flat_type) :: var_flat                                         ! 1D variable
         real(dp), allocatable :: dum_1D(:)                                      ! dummy variables
         
         ! initialize ierr
@@ -1514,13 +1302,10 @@ contains
         
         ! set n from HDF5 for local Richardson level
         n = 0
-        ierr = read_HDF5_arr(var_flat,PB3D_name,'grid_'//trim(grid_name),&
-            &'n',rich_lvl=rich_lvl)
+        ierr = read_HDF5_ND(PB3D_name,'grid_'//trim(grid_name),'n',dum_1D,&
+            &rich_lvl=rich_lvl)
         CHCKERR('')
-        ! loop over all equilibrium jobs
-        call conv_flat2ND(var_flat,dum_1D)
         n = nint(dum_1D)
-        call dealloc_var_flat(var_flat)
         
         ! possibly only half of the points were saved in local Richardson level
         if (present(tot_rich) .and. present(rich_lvl)) then

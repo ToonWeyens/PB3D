@@ -12,118 +12,70 @@ module PB3D_utilities
     private
     public conv_flat2ND, setup_rich_id, setup_par_id
     
-    ! interfaces
-    
-    !> \public Converts 1-D to n-D variables.
-    !!
-    !! The 1-D variables are used for  internal storage in HDF5, whereas the n_D
-    !! variables correspond to the ones in PB3D.
-    interface conv_flat2ND
-        !> \public
-        module procedure conv_flat2ND_1D
-        !> \public
-        module procedure conv_flat2ND_2D
-        !> \public
-        module procedure conv_flat2ND_3D
-        !> \public
-        module procedure conv_flat2ND_4D
-        !> \public
-        module procedure conv_flat2ND_6D
-        !> \public
-        module procedure conv_flat2ND_7D
-    end interface
-    
 contains
-    !> \private 1-D version
-    subroutine conv_flat2ND_1D(var_in,var_out)
+    !> Converts a flattened variable to a multi-dimensional array.
+    !!
+    !! The flattened variables are used for internal storage in HDF5, whereas
+    !! the multi-dimensional arrays correspond to the ones in PB3D. The array
+    !! gets the bounds \c tot_i_min to \c tot_i_max of the flattened variable,
+    !! and its rank has to equal their number.
+    !!
+    !! \return ierr
+    integer function conv_flat2ND(var_in,var_out) result(ierr)
+        character(*), parameter :: rout_name = 'conv_flat2ND'
+        
         ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:)                      !< output variable
+        type(var_flat_type), intent(in) :: var_in                               !< flattened variable
+        real(dp), intent(out), allocatable :: var_out(..)                       !< multi-dimensional array
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, allocatable :: lo(:), hi(:)                                    ! bounds of var_out
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! check the rank
+        if (size(var_in%tot_i_min).ne.rank(var_out)) then
+            ierr = 1
+            err_msg = 'Variable '//trim(var_in%var_name)//' has rank '//&
+                &trim(i2str(size(var_in%tot_i_min)))//', not '//&
+                &trim(i2str(rank(var_out)))
+            CHCKERR(err_msg)
+        end if
         
         ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(var_in%tot_i_min(1):var_in%tot_i_max(1)))
-        var_out = reshape(var_in%p,shape(var_out))
-    end subroutine conv_flat2ND_1D
-    !> \private 2-D version
-    subroutine conv_flat2ND_2D(var_in,var_out)
-        ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:)                    !< output variable
-        
-        ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2)))
-        var_out = reshape(var_in%p,[&
-            &var_in%tot_i_max(1)-var_in%tot_i_min(1)+1,&
-            &var_in%tot_i_max(2)-var_in%tot_i_min(2)+1])
-    end subroutine conv_flat2ND_2D
-    !> \private 3-D version
-    subroutine conv_flat2ND_3D(var_in,var_out)
-        ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:)                  !< output variable
-        
-        ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3)))
-        var_out = reshape(var_in%p,shape(var_out))
-    end subroutine conv_flat2ND_3D
-    !> \private 4-D version
-    subroutine conv_flat2ND_4D(var_in,var_out)
-        ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:)                !< output variable
-        
-        ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4)))
-        var_out = reshape(var_in%p,shape(var_out))
-    end subroutine conv_flat2ND_4D
-    !> \private 6-D version
-    subroutine conv_flat2ND_6D(var_in,var_out)
-        ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:)            !< output variable
-        
-        ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4),&
-            &var_in%tot_i_min(5):var_in%tot_i_max(5),&
-            &var_in%tot_i_min(6):var_in%tot_i_max(6)))
-        var_out = reshape(var_in%p,shape(var_out))
-    end subroutine conv_flat2ND_6D
-    !> \private 7-D version
-    subroutine conv_flat2ND_7D(var_in,var_out)
-        ! input / output
-        type(var_flat_type), intent(in) :: var_in                               !< 1D variable
-        real(dp), intent(inout), allocatable :: var_out(:,:,:,:,:,:,:)          !< output variable
-        
-        ! allocate and copy variable
-        if (allocated(var_out)) deallocate(var_out)
-        allocate(var_out(&
-            &var_in%tot_i_min(1):var_in%tot_i_max(1),&
-            &var_in%tot_i_min(2):var_in%tot_i_max(2),&
-            &var_in%tot_i_min(3):var_in%tot_i_max(3),&
-            &var_in%tot_i_min(4):var_in%tot_i_max(4),&
-            &var_in%tot_i_min(5):var_in%tot_i_max(5),&
-            &var_in%tot_i_min(6):var_in%tot_i_max(6),&
-            &var_in%tot_i_min(7):var_in%tot_i_max(7)))
-        var_out = reshape(var_in%p,shape(var_out))
-    end subroutine conv_flat2ND_7D
+        lo = var_in%tot_i_min
+        hi = var_in%tot_i_max
+        select rank (var_out)
+            rank (1)
+                allocate(var_out(lo(1):hi(1)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank (2)
+                allocate(var_out(lo(1):hi(1),lo(2):hi(2)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank (3)
+                allocate(var_out(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank (4)
+                allocate(var_out(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),&
+                    &lo(4):hi(4)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank (6)
+                allocate(var_out(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),&
+                    &lo(4):hi(4),lo(5):hi(5),lo(6):hi(6)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank (7)
+                allocate(var_out(lo(1):hi(1),lo(2):hi(2),lo(3):hi(3),&
+                    &lo(4):hi(4),lo(5):hi(5),lo(6):hi(6),lo(7):hi(7)))
+                var_out = reshape(var_in%p,shape(var_out))
+            rank default
+                ierr = 1
+                err_msg = 'Rank '//trim(i2str(rank(var_out)))//&
+                    &' is not implemented'
+                CHCKERR(err_msg)
+        end select
+    end function conv_flat2ND
     
     !> Setup parallel id.
     !!
