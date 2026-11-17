@@ -93,7 +93,7 @@ Pass:
 Do not pass, or are not validated:
 
 - `BC_style` 4 is 7 % off `BC_style` 2 on the circular kink and first order in the radial grid; kept as a change detector only.
-- The axisymmetric vacuum's limit on the circular kink, near −0.4379, sits 0.13 % from TERPSICHORE and from the 3-D vacuum on the twin; the cause of that 0.13 % is not known. HELENA mappings above 513 poloidal points, where the direct diagonal's sequence stopped being monotone (2049 points), have not been run with the indirect diagonal.
+- The axisymmetric vacuum's limit on the circular kink, near −0.4379, sits 0.13 % from TERPSICHORE and from the 3-D vacuum on the twin; the cause of that 0.13 % is not known. HELENA mappings above 513 poloidal points, where the direct diagonal's sequence stopped being monotone (2049 points), have not been run with the indirect diagonal (#28).
 - cbm18a converges only at first order in the radial grid (its 22 rational surfaces); the 200-point anchors are 0.5 % from the limit, and the cut case moves 1 % between 200 and 400 points at n = 20.
 - The α-spacing mutation (2π/(n_alpha − 1) instead of 2π/n_alpha) has not been rerun since `response_1_vs_2` got its five recorded ratios, with a 0.5 % tolerance against the 1.25 % change the mutation makes; the 3-D full-stack tests alone did not catch it.
 - Sixteen MPI processes hang in the parallel HDF5 write on the W7-X decks; four work (#25).
