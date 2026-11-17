@@ -34,7 +34,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REV_A = "2.47"
-REV_B = "593020a"                     # origin/dev/vacuum-fixes on 17 November 2026 (after #34): the code from stage 5 on
+REV_B = "59c6e90"                     # origin/dev/vacuum-fixes on 17 November 2026 (after 59c6e90, ang for both styles): the code from stage 5 on
 REV_R = "9e9aba5"                     # the code that stages 0 to 4 were reviewed at
 GUIDE_R = "df519a4"                   # the commit of this guide whose page holds stages 0 to 4 as reviewed
 FROZEN_A = "<!-- ================================================================== STAGE 0 -->"
