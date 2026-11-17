@@ -267,7 +267,7 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   Between the fixed VMEC run and the free one, `check_vmec_read.py` compares
   what PB3D stored in `PB3D_out.h5` with the wout file (issue #16). It checks
   the file's mode lists against VMEC's conventions and PB3D's mode lists and
-  sizes exactly, R and Z to 1e-13, and the half-mesh coefficients (λ, the
+  sizes exactly, R, Z and B_s to 1e-13, and the half-mesh coefficients (λ, the
   Jacobian, B_u, B_v) against a cubic spline from VMEC's positions to 1e-12,
   away from the two surfaces at each end. With the half-mesh positions that
   `read_VMEC` used before 17 November 2026 it fails by 5.4e-6 in λ and 1.1e-6

@@ -37,7 +37,7 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 | `X_ops`, `X_utilities` `setup_modes` | the slot of a mode was wrong for nq < 0; now from the mode number, with a consistency check | |
 | `VMEC_ops` `read_VMEC` | Jacobian, |B| and covariant B taken from the Nyquist arrays as if they followed the main mode list (37 % error on VMEC++ files with ntor > 0); matched by (m, n) | |
 | `VMEC_ops` normalisation | B_0 was |B| on the axis at θ = ζ = 0, which varies with the ripple; now the toroidal average | |
-| `VMEC_ops` `read_VMEC`, half mesh | λ, the Jacobian, B_u and B_v were interpolated from s_j − 1/(2 ns), while VMEC puts its half mesh at (j − 3/2)/(ns − 1); eigenvalues move by 2e−6 to 4e−6 relative (#16, 17 November) | `tests/regression/check_vmec_read.py`: what PB3D stored against the wout file, run by the twin regression test |
+| `VMEC_ops` `read_VMEC`, half mesh | λ, the Jacobian, B_u and B_v were interpolated from s_j − 1/(2 ns), while VMEC puts its half mesh at (j − 3/2)/(ns − 1); eigenvalues move by 2e−6 to 4e−6 relative; B_s was read but never copied, so the output carried it unassigned (#16, 17 November) | `tests/regression/check_vmec_read.py`: what PB3D stored against the wout file, run by the twin regression test |
 | `VMEC_utilities` `calc_trigon_factors`, `fourier2real` | | one-angle basis, full Nyquist set, one code path for both uses; half the equilibrium time |
 | `MPI_utilities` `redistribute_var` | the overlap of two process ranges came from the wrong rank; eigenvalues shifted 2e−5 with 2 or 4 processes, now 1.5e−8 | |
 | `vac_utilities` | | distributed vector helpers in one place (consolidation) |

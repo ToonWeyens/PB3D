@@ -7,21 +7,20 @@
 # which no vacuum enters: HELENA +7.84304e-2, VMEC +7.84306e-2 (2.4e-6 apart) on
 # 30 October 2026, once PB3D's reference field B_0 is the (0,0) mode of |B| on
 # the axis; with the old B_0 (all modes summed at theta = zeta = 0) the VMEC
-# value was +7.9716e-2, 1.6 % off. Since 17 November 2026 read_VMEC places
-# VMEC's half-mesh values (lambda, the Jacobian, B_u, B_v) at VMEC's positions
-# (j - 3/2)/(ns - 1) instead of s_j - 1/(2 ns) (issue #16); the VMEC value is
-# now +7.84303e-2, 1.1e-6 below HELENA's, and the free value below moves by
-# 3.7e-6, which leaves both anchors as they were. The test asks for 1e-4
+# value was +7.9716e-2, 1.6 % off. With VMEC's half-mesh values (lambda, the
+# Jacobian, B_u, B_v) at VMEC's positions (j - 3/2)/(ns - 1) (issue #16), the
+# VMEC value is +7.84303e-2, 1.1e-6 below HELENA's. The test asks for 1e-4
 # between the twins and anchors the VMEC value at 1e-3, as the regression
 # layer's only fixed-boundary VMEC number, so that a change in the VMEC path
 # shows.
 #
 # Between the fixed VMEC run and the free one, check_vmec_read.py compares what
 # PB3D stored in PB3D_out.h5 with the wout file (issue #16): the file's mode
-# lists against VMEC's conventions, PB3D's mode lists and sizes, R and Z, and
-# the half-mesh coefficients against a cubic spline from VMEC's positions,
-# to 1e-12 away from the two surfaces at each end. The old positions fail it.
-# It needs h5py and scipy, and is skipped with a note when they are missing.
+# lists against VMEC's conventions, PB3D's mode lists and sizes, R, Z and
+# B_s, and the half-mesh coefficients against a cubic spline from VMEC's
+# positions, to 1e-12 away from the two surfaces at each end. It fails when
+# read_VMEC places the half mesh elsewhere or leaves B_s unset. It needs h5py
+# and scipy, and is skipped with a note when they are missing.
 #
 # The twin is then run free-boundary through the 3-D vacuum (style 1:
 # alpha_style 2, 64 field lines, the deck's 100 parallel points). With the
