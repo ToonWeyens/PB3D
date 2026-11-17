@@ -9,8 +9,8 @@
 !!    \c legenp(n-1/2,0,z,type=3) and \c legenq(n-1/2,0,z,type=3), covering
 !!    the near-singular regime (z -> 1+, corresponding to nearby source and
 !!    influence points in the BEM) up to the far regime (z = 100).
-!!  - The same at the degrees of peeling-ballooning modes, n = 20 to 80
-!!    (issue #4, catalogue item T11): Chance, Turnbull and Snyder 2006 found
+!!  - The same at the degrees of peeling-ballooning modes, n = 20 to 80:
+!!    Chance, Turnbull and Snyder 2006 found
 !!    that toroidal functions built by upward recursion in n lose precision
 !!    there; dtorh1 recurs backward for Q and forward for P and must keep
 !!    its advertised precision over the same z range.
@@ -146,7 +146,7 @@ contains
         end do
     end subroutine test_reference_values
 
-    !> The same at high degree, n = 20 to 80 (T11 of issue #4).
+    !> The same at high degree, n = 20 to 80.
     subroutine test_high_degree(error)
         type(error_type), allocatable, intent(out) :: error
 

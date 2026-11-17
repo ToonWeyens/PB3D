@@ -1294,7 +1294,7 @@ contains
         prim_X = nint(dum_1D(3))
         n_ang = nint(dum_1D(4:5))
         jq = dum_1D(6)
-        par_lims_found = size(dum_1D).ge.8                                      ! written since November 2026
+        par_lims_found = size(dum_1D).ge.8                                      ! absent from files of earlier versions
         if (par_lims_found) par_lims = dum_1D(7:8)
         call dealloc_var_flat(var_flat)
 

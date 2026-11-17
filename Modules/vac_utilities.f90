@@ -63,9 +63,7 @@ contains
     !! along them (0.06 \f$R_0\f$), the  kernel seen along the neighbouring line
     !! is a peak much narrower than the point spacing, and sampling it at the
     !! points  gives  errors  of order  one  whose  sign depends  on how  the
-    !! points of neighbouring lines  happen to line up (issue #4,  31 October
-    !! 2026: the fractional part of \f$q \Delta\theta / \Delta\alpha\f$ sorted
-    !! every W7-X grid into far too large and plausible responses).
+    !! points of neighbouring lines happen to line up.
     !!
     !! For  subintegrals adjacent  to the  singularity (i.e.  with the  influence
     !! point as  one of  their endpoints), the  contribution of  the singular
@@ -91,9 +89,7 @@ contains
     !! \f$-2 F / (\Delta p \Delta a \sqrt{g_{\alpha\alpha} g_{\theta\theta}})
     !! \f$.
     !!
-    !! (The previous  expression had  the same  logarithm twice,  diverged for
-    !! orthogonal  coordinates  and  had  the  wrong  sign;  it  is  verified
-    !! against brute-force quadrature in the full-stack tests.)
+    !! (Verified against brute-force quadrature in the full-stack tests.)
     !!
     !! \note This routine does not calculate the contribution \f$2\beta\f$ nor
     !! the  cell integral  of the  H kernel  at the  singular point:  calc_GH_1
@@ -109,7 +105,7 @@ contains
     !! leaves an error of second order in the step along the lines (on the
     !! circular VMEC twin at 64 lines of 100 points: 1e-3 of the potential at
     !! half a minor radius from the boundary, against 1e-7 with the
-    !! trapezoidal rule alone; issue #4, 6 November 2026).
+    !! trapezoidal rule alone).
     subroutine calc_GH_int_1(G,H,x_s,x_in,norm_s,h_fac_in,step_size,tol,i_int,&
         &use_near)
         ! input / output
@@ -127,8 +123,7 @@ contains
         ! local variables
         integer, parameter :: n_gl = 8                                          ! Gauss-Legendre points per half-interval
         real(dp), parameter :: n_near = 4._dp                                   ! near-field range in interval lengths
-        ! (a fixed count, to re-evaluate later: Documentation/vacuum_work_overview.md,
-        ! section 7, near-field criterion)
+        ! (a fixed count; issue #9 re-evaluates it)
         real(dp), parameter :: gl_x(n_gl) = [&
             &-0.9602898564975363_dp, -0.7966664774136267_dp, &
             &-0.5255324099163290_dp, -0.1834346424956498_dp, &

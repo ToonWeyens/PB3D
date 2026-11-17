@@ -696,8 +696,7 @@ contains
                 ! trapezoidal rule gives the free edge half the interior weight.
                 ! With a full weight there the discrete surface term differs
                 ! from the continuous one at O(h), and the free-boundary
-                ! eigenvalue converges only at first order in n_r_sol (2.3 % at
-                ! 200 points on the circular case; 31 October 2026).
+                ! eigenvalue converges only at first order in n_r_sol.
                 w_q = 1._dp
                 if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) .and. &
                     &kd.eq.n_r-1) w_q = 0.5_dp
@@ -803,8 +802,8 @@ contains
             Mat, intent(inout) :: mat                                           ! either A or B
             
             ! local variables
-            ! (MatInfo became a derived type in the PETSc 3.22 Fortran
-            ! overhaul; before that it was an array indexed by MAT_INFO_*)
+            ! (MatInfo is a derived type from PETSc 3.22 on, and an array
+            ! indexed by MAT_INFO_* in older versions)
 #if PETSC_VERSION_GE(3,22,0)
             MatInfo :: mat_info                                                 ! information about matrix
 #else
@@ -1220,11 +1219,10 @@ contains
         ! Explicit introduction of the surface energy minimization
         !   V1^T X + V2 X' + delta_vac X = 0 at surface
         !
-        ! Not validated: with  the edge block assembled once  (issue #4, step
-        ! 4) it still differs from the  variational style 2 by 0.7 % on cbm18a
-        ! at psi =  0.75 and by far  more on the circular  external kink, with
-        ! no dependence  on the  radial resolution, while  style 2  agrees with
-        ! MISHKA to 1 %. Use style 2.
+        ! Not validated: it differs from the variational style 2 by 0.19 % on
+        ! cbm18a at psi = 0.75 and by far more on the circular external kink,
+        ! with no dependence on the radial resolution, while style 2 agrees
+        ! with MISHKA-1 to 1 %. Use style 2.
         !
         ! Makes use of mds.
         !> \private
@@ -1301,8 +1299,7 @@ contains
             
             ! set block r_id + (0,0): V1^T and vac together with the jd = 0 part
             ! of V_2, inserted once (the blocks overwrite the row, so a second
-            ! insertion at (0,0) would drop the first: that lost the vacuum and
-            ! V1^T until issue #4, step 4)
+            ! insertion at (0,0) would drop the first)
             ierr = insert_block_mat(mds,(loc_block(:,:,1)+&
                 &loc_block(:,:,3)*ndc(1+st_size))*ndc(1+st_size),A,r_id,&
                 &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
