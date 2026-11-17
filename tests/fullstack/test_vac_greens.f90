@@ -451,7 +451,7 @@ contains
     !> The Green identities with the indirect diagonals of the axisymmetric
     !! style (vac_diag_style 1: H_ii and G_ii from the least-squares solution
     !! of the identities for R^n, R^n Z and the ring-source potential), which
-    !! must hold as well as with the direct ones, the default of this style.
+    !! must hold as well as with the direct ones.
     subroutine test_greens_indirect(error)
         use num_vars, only: vac_diag_style
         type(error_type), allocatable, intent(out) :: error

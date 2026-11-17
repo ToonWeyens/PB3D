@@ -3545,7 +3545,7 @@ logical, allocatable :: in_ext(:)                                       ! points
             ! factorization
             call SDP_F90_double_factor(SDP_loc,CH,CdescH)
 
-            ! solve (H + shift I) Phi = G R
+            ! solve H Phi = G R
             call SDP_F90_double_solve(SDP_loc,CPhi,CdescPhi,CGR,CdescGR)
 
 #if ldebug
@@ -3584,7 +3584,7 @@ logical, allocatable :: in_ext(:)                                       ! points
 #endif
 
             if (.not.solved_ok) then
-                ! solve (H + shift I) Phi = G R with ScaLAPACK LU (pdgetrf and
+                ! solve H Phi = G R with ScaLAPACK LU (pdgetrf and
                 ! pdgetrs, what pdgesv does): the right-hand side is
                 ! overwritten with the solution and the matrix destroyed
                 ! (which is why H_ext is a copy). With check_vac the
