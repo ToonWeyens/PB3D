@@ -137,11 +137,10 @@ contains
         ! The Jacobian, |B| and the covariant  components of B live on VMEC's
         ! Nyquist mode set (xm_nyq, xn_nyq),  which is larger than (mpol, ntor)
         ! and  ordered on  its  own grid  of m  and  n; only  for  ntor =  0 or
-        ! mnmax_nyq = mnmax does  it start with the main  modes. Taking its first
-        ! mnmax entries mislabelled 143 of 150 modes of a VMEC++ file with ntor
-        ! = 6 (issue #4, step 6f). The set  is kept whole, with its own mode
-        ! list; fourier2real evaluates any mode list from the one-angle
-        ! trigonometric basis, whose extent covers both sets (step 9).
+        ! mnmax_nyq = mnmax does it start with the main modes. The set is
+        ! therefore kept whole, with its own mode list; fourier2real evaluates
+        ! any mode list from the one-angle trigonometric basis, whose extent
+        ! covers both sets.
         mnmax_nyq_V = mnmax_nyq
         allocate(mn_V_nyq(mnmax_nyq_V,2))
         mn_V_nyq(:,1) = nint(xm_nyq(1:mnmax_nyq_V))

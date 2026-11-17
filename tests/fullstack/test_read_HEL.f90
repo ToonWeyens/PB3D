@@ -144,8 +144,8 @@ contains
         if (allocated(error)) return
 
         ! golden profile and normalization values (recorded from the
-        ! current implementation; Linux gfortran 13, 2026-07-10 - if these
-        ! move, the parser or the MISHKA normalization changed)
+        ! implementation; if these move, the parser or the MISHKA
+        ! normalization changed)
         call check(error, q_saf_H(1,0), 1.0521365_dp, thr=1.e-10_dp, &
             &rel=.true., message='q on axis golden')
         if (allocated(error)) return

@@ -387,9 +387,9 @@ contains
     !! with resolution. Run on the circular torus and on a rippled torus
     !! a(zeta) = a (1 + 0.1 cos 5 zeta), both with PB3D's field-line grid
     !! (alpha without its end point). This pins the orientation of the
-    !! normal, the alpha weights and the exterior solve at once (issue #4,
-    !! step 6b): with the old alpha spacing (n_alpha - 1) and a grid with the
-    !! end point duplicated, the system had two identical rows.
+    !! normal, the alpha weights and the exterior solve at once; a grid with
+    !! the end point of alpha duplicated, as the spacing 2 pi/(n_alpha - 1)
+    !! implies, gives the system two identical rows.
     subroutine test_point_source_3d(error)
         type(error_type), allocatable, intent(out) :: error
 
@@ -575,7 +575,7 @@ contains
     end subroutine greens_residuals_3d
 
     !> Exact harmonics of the circular torus through the axisymmetric (style
-    !! 2) chain: catalogue item T4 of issue #4.
+    !! 2) chain.
     !!
     !! In toroidal coordinates (eta, theta_t, phi) with focal radius
     !! c = sqrt(R_0^2 - a^2) the circular torus is the surface cosh eta_0 =
@@ -587,19 +587,16 @@ contains
     !! data are exact (the gradient by central differences in (R, Z) of the
     !! closed form, the toroidal functions from dtorh1 at order n), so the
     !! assembled operators must satisfy H phi - G dphi = -4 pi phi for the Q
-    !! family and H phi = G dphi for the P family (one vacuum-side convention
-    !! for both styles since November 2026), and solve_Phi_BEM must return
+    !! family and H phi = G dphi for the P family (the vacuum-side convention
+    !! of both styles), and solve_Phi_BEM must return
     !! the P-family boundary traces, with errors that fall with the number of
     !! boundary points. This pins the axisymmetric vacuum at finite aspect
     !! ratio, poloidal mode coupling included, where the cylinder test (the
-    !! limit a/R_0 -> 0) and MISHKA (1 %) cannot. Measured on 31 October 2026
-    !! (issue #4): identity residuals 1e-3 to 1.2e-2 and solution errors 0.9 to
-    !! 2.4 % at 301 points for n = 2, k = 1 to 5 and n = 10, k = 6 to 15,
-    !! halving at 601 points. With the plasma-side corner angle in calc_GH_2
-    !! (2 November 2026), at 301 points: solution errors 0.19 to 1.07 %, P
-    !! (exterior) identity residuals 1.0e-3 to 5.4e-3 (4.5e-3 to 1.2e-2
-    !! before), Q (interior) ones 4.2e-3 to 1.2e-2 (1.0e-3 to 5.3e-3 before);
-    !! all still halving at 601 points.
+    !! limit a/R_0 -> 0) and MISHKA-1 (1 %) cannot. Measured with the direct
+    !! diagonals (vac_diag_style 2) at 301 points for n = 2, k = 1 to 5 and
+    !! n = 10, k = 6 to 15: solution errors 0.19 to 1.07 %, identity
+    !! residuals 1.0e-3 to 5.4e-3 for the P (exterior) and 4.2e-3 to 1.2e-2
+    !! for the Q (interior) family, all halving at 601 points.
     subroutine test_exact_exterior_2d(error)
         use num_vars, only: eq_style, rank
         use vac_vars, only: in_context, set_loc_lims
@@ -613,7 +610,7 @@ contains
         integer, parameter :: n_tors(2) = [2,10]                                ! toroidal mode numbers
         integer, parameter :: k_min(2) = [1,6]                                  ! lowest poloidal mode number per n
         integer, parameter :: k_max(2) = [5,15]                                 ! highest poloidal mode number per n
-        real(dp), parameter :: tol_fine = 3.e-2_dp                              ! residuals and solution error at the fine resolution (measured: up to 1.5e-2, 7.7e-3 since 2 November 2026)
+        real(dp), parameter :: tol_fine = 3.e-2_dp                              ! residuals and solution error at the fine resolution (measured with the direct diagonals: up to 7.7e-3)
         real(dp), parameter :: conv = 0.8_dp                                    ! largest allowed error ratio fine / coarse (measured 0.50 to 0.72: first order)
 
         type(vac_type) :: vac                                                   ! style-2 vacuum variables
@@ -753,27 +750,18 @@ contains
 
         type(error_type), allocatable, intent(out) :: error
 
-        ! the style-1 response converges at first order towards the style-2
-        ! one (ratios 0.952 to 0.849 for m = 1 to 5 at 61 x 60, 0.972 to
-        ! 0.908 at 101 x 100, with PB3D's field-line grid; issue #4, step 6b)
+        ! the style-1 response converges towards the style-2 one, with PB3D's
+        ! field-line grid
         integer, parameter :: n_par = 81                                        ! points per field line
         integer, parameter :: n_alpha_loc = 80                                  ! field lines
         integer, parameter :: n_bnd_2 = 301                                     ! boundary points for style 2
         integer, parameter :: n_mod = 5                                         ! poloidal modes m = 1..n_mod
         real(dp), parameter :: tol_diag = 0.15_dp                               ! relative tolerance on the diagonal
         real(dp), parameter :: tol_offdiag = 0.10_dp                            ! off-diagonal tolerance, rel. to largest diagonal
-        ! the ratios at 81 x 80 as recorded on 31 October 2026 with the
-        ! near-field quadrature along the field lines and the G diagonal from
-        ! the linear-potential identity (before them: 0.965, 0.946, 0.926,
-        ! 0.906, 0.886; gfortran 14 and 16, ScaLAPACK and STRUMPACK agree to
-        ! 1e-6); asserted to 0.5 % so that a change of the surface weights
-        ! shows: the field-line spacing 2 pi / (n_alpha - 1) instead of
-        ! 2 pi / n_alpha moved the old ones by 1.25 %, inside tol_diag but not
-        ! inside this (issue #4, step 7 mutation check); recorded again on 2
-        ! November 2026, when the corner term of calc_GH_2 got the plasma-side
-        ! angle: the style-2 response at these 300 boundary points dropped by
-        ! 1.2 to 1.4 % (the estimate 4/N for N points around is 1.3 %), so
-        ! the ratios rose from 0.994, 0.992, 0.988, 0.985, 0.982
+        ! the ratios at 81 x 80, asserted to 0.5 % so that a change of the
+        ! surface weights shows: a field-line spacing of 2 pi / (n_alpha - 1)
+        ! instead of 2 pi / n_alpha moves them by about 1.25 %, inside
+        ! tol_diag but not inside this
         real(dp), parameter :: ratio_rec(5) = &
             &[1.006_dp,1.005_dp,1.002_dp,0.999_dp,0.996_dp]
         real(dp), parameter :: tol_ratio = 0.005_dp                             ! tolerance on the recorded ratios

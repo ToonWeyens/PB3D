@@ -1148,7 +1148,7 @@ contains
                 ! harmonic that  is a multiple of  n_alpha into the  average,
                 ! so  if n_alpha  and the  field period  share a  factor, the
                 ! field-period harmonic  LCM(n_alpha, N_fp)  puts a  spurious
-                ! linear 3-D term into the averaged coefficients (issue #4).
+                ! linear 3-D term into the averaged coefficients.
                 if (alpha_style.eq.2 .and. n_alpha.gt.1 .and. &
                     &LCM(n_alpha,nfp_V).lt.n_alpha*nfp_V) call writo(&
                     &'n_alpha = '//trim(i2str(n_alpha))//' and the field &

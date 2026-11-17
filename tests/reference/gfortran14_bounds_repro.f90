@@ -1,5 +1,5 @@
 ! gfortran14_bounds_repro.f90 -- standalone reproducer for a gfortran 14 bug
-! that breaks PB3D's Debug build (issue #4, found on Snellius, 30 October 2026).
+! that breaks PB3D's Debug build.
 !
 ! With -fcheck=bounds (part of -fcheck=all), gfortran 14.2.0 and 14.3.0
 ! miscompile the bounds check of an array section whose subscript calls a

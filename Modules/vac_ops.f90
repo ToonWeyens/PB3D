@@ -426,12 +426,8 @@ contains
                 ! the  axisymmetric style  and as  the analytic  torus of  the
                 ! full-stack test  does (its normal  is e_theta x  e_alpha, which
                 ! points inward  for a  left-handed (alpha, psi,  theta) frame).
-                ! With +J nabla psi the off-diagonal H has the wrong sign, the
-                ! row-sum identity then sets a  wrong diagonal, and the response
-                ! of  the circular  VMEC twin  came out  3 to  4 times  too small
-                ! against the  HELENA one;  with -J nabla  psi the  two agree
-                ! within  the first-order  discretization error,  as  in  the
-                ! full-stack test response_1_vs_2 (issue #4, step 6e).
+                ! With +J nabla psi the off-diagonal H has the wrong sign and
+                ! the row-sum identity sets a wrong diagonal.
                 allocate(norm_com_C(grid%n(1),grid%n(2),3))
                 norm_com_C = 0._dp
                 allocate(T_CV_loc(size(eq_2%T_VC,1),size(eq_2%T_VC,2),1:1,&
@@ -1241,9 +1237,8 @@ contains
     !!     R_\text{src}}\f$, the n-mode Green's function of a ring source at
     !!     \c x_src inside the plasma, harmonic outside the boundary and
     !!     decaying, \f$c = 0\f$; its normal data by a central difference.
-    !! (The spherical potential of eq. 152 of the manuscript, which the debug
-    !! self-test of calc_GH used until November 2026, is not harmonic across
-    !! \f$Z = 0\f$, erratum E17.)
+    !! (The spherical potential of eq. 152 of the manuscript is not harmonic
+    !! across \f$Z = 0\f$, erratum E17, and is not used.)
     integer function set_pot_2(vac,kd,x_src,phi,dphi,c_free,x_ext,phi_ext) &
         &result(ierr)
         use dtorh, only: dtorh1
@@ -1944,8 +1939,7 @@ contains
                 ! displacement equals the field-line bending energy of a plasma
                 ! layer of  thickness a/|m|  at the edge, 4 pi^2 (nq-m)^2 |X_e|^2
                 ! / (mu_0 R_0 |m|) in A (full-stack test vac_response_cylinder).
-                ! Checked against MISHKA on the circular external kink (issue
-                ! #4, step 3).
+                ! Checked against MISHKA-1 on the circular external kink.
                 vac%res = 2._dp*pi*vac%res
                 
                 ! The exact  operator is Hermitian;  the discretization leaves
@@ -1956,10 +1950,9 @@ contains
         
     end function calc_vac_res
     
-    !> Checks the style-1 (3-D) vacuum operators on the equilibrium surface
-    !! itself with potentials whose boundary data are exact (issue #4: the
-    !! checks T5 and T6 of the validation catalogue on the real surface, not
-    !! on the analytic torus of the full-stack tests).
+    !> Checks the vacuum operators on the equilibrium surface itself with
+    !! potentials whose boundary data are exact, as the full-stack tests do on
+    !! an analytic torus.
     !!
     !! For a constant, the three Cartesian coordinates and \f$x^2 - y^2\f$,
     !! harmonic inside the surface, and for two potentials harmonic outside

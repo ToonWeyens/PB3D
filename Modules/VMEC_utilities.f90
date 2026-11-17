@@ -270,9 +270,7 @@ contains
     !! \zeta)\f$ and \f$\sin(m \theta - n \zeta)\f$ from the basis per mode, so
     !! the same  basis serves the  main VMEC mode set  and the Nyquist  set of the
     !! Jacobian,  \f$|B|\f$ and \f$B_i\f$:  \c mpol_tf and \c ntor_tf cover both
-    !! (see VMEC_ops.read_VMEC()). Previously the  factors were stored per mode of
-    !! the main set only, which is why  the Nyquist modes beyond it were dropped
-    !! (issue #4, step 9).
+    !! (see VMEC_ops.read_VMEC()).
     !!
     !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
     !!
