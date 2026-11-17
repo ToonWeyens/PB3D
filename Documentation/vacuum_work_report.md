@@ -629,6 +629,27 @@ PB3D and POST still exit silently with status 0 when a path exceeds 120 characte
 - **Test.** The ε = 0.05 anchor (moves 0.67 %) and the `response_1_vs_2` ratios (move 1.2 to 1.4 %, tolerance 0.5 %) catch the old corner term. The ε = 0.05 deck first passed ctest 6.7e−3 off its anchor: ctest decided on the regular expression "PASS", and `check_vac_res.py` prints "PASS" for the response matrix before the script's anchor verdict. The regression tests now also carry `FAIL_REGULAR_EXPRESSION "FAIL"`.
 - **Still open.** The `vac%style` 2 sequence is still not second order (steps of 5.3e−4 and 3.8e−4 from 257 to 513 to 1025 points), and the 2049-point value still breaks it, in both builds (section 11.2).
 
+### 4.19 The half mesh in `read_VMEC` (issue #16, 17 November)
+
+- **Symptom.** No eigenvalue showed it. A script written for #16 while reviewing the Nyquist changes of step 9, `tests/regression/check_vmec_read.py`, compares what PB3D stores in `PB3D_out.h5` with the wout file. With every surface written, it found PB3D's half-mesh coefficients off a cubic spline from VMEC's positions, relative to the largest coefficient and away from the two surfaces at each end: on the circular twin by 3.0e−5 in λ (`lmns`) and 6.1e−6 in the Jacobian (`gmnc`), on W7-X by 1.5e−4 and 2.6e−5.
+- **Cause.** VMEC stores λ, the Jacobian, |B| and B_u, B_v on its half mesh. Row j, for j = 2 … ns, sits at s = (j − 3/2)/(ns − 1), halfway between the full-mesh points j − 1 and j (LIBSTELL `read_wout_mod.f90`, where `shalf(js) = SQRT(hs*(js-1.5_dp))`). `read_VMEC` interpolated these rows to the full mesh from s_j − 1/(2 ns), with s_j = (j − 1)/(ns − 1). Every row therefore sat 1/(2 ns (ns − 1)) too far out: 5.2e−5 in s for W7-X's ns = 99 and 4.9e−6 for the twins' ns = 319. The code had been like this since v1.69. The B_0 of section 4.8 already used VMEC's positions, so the two disagreed within one file.
+- **Fix.** One local array in `read_VMEC`, `r_V_H = r_V(2:n_r_in) − 0.5/(n_r_in − 1)`, replaces the expression repeated in the eight spline calls (d0d10c6, 13 lines added and 8 removed).
+- **Effect.** The stored coefficients now equal the spline from VMEC's positions to 2e−16 to 6e−16 on the circular twin, the three rippled twins, the rotated non-symmetric copy of the δ = 0.04 twin and W7-X. Eigenvalues, the same decks before (c8ad352) and after on Snellius:
+
+| Case | Before | After | Relative change |
+|---|---|---|---|
+| circular twin, fixed | +7.84305776e−2 | +7.84303047e−2 | −3.5e−6 |
+| rippled twins δ = 0.01, 0.02, 0.04, fixed | +7.8356411e−2, +7.8134431e−2, +7.7283242e−2 | +7.8356137e−2, +7.8134157e−2, +7.7282967e−2 | −3.5e−6, −3.5e−6, −3.6e−6 |
+| circular twin, free, 64 lines | −0.439143979 | −0.439142348 | +3.7e−6 |
+| rippled twin δ = 0.04, free, 64 lines | −0.418838663 | −0.418837068 | +3.8e−6 |
+| W7-X, fixed at 61 and 121 parallel points | +6.6282557e−2, +6.6283501e−2 | +6.6282407e−2, +6.6283352e−2 | −2.3e−6, −2.3e−6 |
+| W7-X, free, 16 lines | +6.6270949e−2 | +6.6270807e−2 | −2.1e−6 |
+| cbm18a VMEC file (640 surfaces), fixed, 4 processes | −2.6417108e−3 | −2.6414007e−3 | +1.2e−4 (3.1e−7 absolute) |
+
+  The absolute change is about 3e−7 in every case. The fixed-boundary HELENA value of the twin, +7.84303924e−2, was 2.4e−6 below the VMEC value and is now 1.1e−6 above it. The fix closes no open issue: the 0.13 % gap of #28 (5.7e−4) is 350 times the change of the twin's free value. The Release ctest passes 25 of 25.
+- **Test.** `regression_circ_eps033_vmec_twin` runs `check_vmec_read.py` on its fixed VMEC run, for which PB3D writes surfaces 64 to 319 of 319. With the old positions the check fails there by 5.4e−6 in λ, 1.1e−6 in the Jacobian, 5.2e−6 in B_u and 5.4e−7 in B_v, and the test stops. With the fix the differences are 2.3e−16 to 2.7e−16 and the test goes on to the free run. Both builds were run on Snellius this way, and once with a Python without scipy, for which the check is skipped with a note. The twin's Nyquist list starts with its main list, so the check cannot see the mislabelling of section 4.7 on this file; a rippled fixture in CI would (#16).
+- **Found at the same time, not fixed.** `read_VMEC` reads B_s (`bsubsmns`, which VMEC computes on its full mesh) into its helper array, but its loop copies only the components 2 and 3 to `B_V_sub_c` and `B_V_sub_s`. Component 1 is never assigned and is written to `PB3D_out.h5` as it stands in memory. Only the debug test `test_B_F` reads it.
+
 ## 5. New capabilities
 
 ### 5.1 `BC_style` 2 (July)
@@ -1174,7 +1195,7 @@ The full-stack suites assert on globally gathered quantities, so the same assert
 | `cbm18a_free_bnd` | same deck, free | `BC_style` 2: −4.5046e−2; `BC_style` 4: −4.5130e−2 | 1e−3 each | free ≤ fixed; response Hermitian and positive semi-definite | 2 November |
 | `cbm18a_shear_HEL` | fixed deck | S against the direct formula | 1e−4 of max\|S\| | outboard-midplane S non-zero | 27 October |
 | `circ_eps005_free_bnd` | ε = 0.05, ψ_N 0.2 to 1.0, n = 10, 10 modes, 200 radial points | −4.2452e−1 | 1e−3 | fixed stable; MISHKA-1 within 2 %; 400-point value within 5e−4; response check | 2 November |
-| `circ_eps033_vmec_twin` | ε = 0.33 and its twin, n = 10; twin free at 64 lines | VMEC fixed +7.8431e−2; twin free −4.3914e−1 | 1e−3 | twins within 1e−4; twin free within 3 % of HELENA's −4.3679e−1 (−4.3380e−1 until 2 November) and below fixed | 31 October; HELENA reference 2 November |
+| `circ_eps033_vmec_twin` | ε = 0.33 and its twin, n = 10; twin free at 64 lines | VMEC fixed +7.8431e−2; twin free −4.3914e−1 | 1e−3 | twins within 1e−4; twin free within 3 % of HELENA's −4.3679e−1 (−4.3380e−1 until 2 November) and below fixed; `check_vmec_read.py` on the fixed VMEC run (section 4.19) | 31 October; HELENA reference 2 November; read check 17 November |
 | `cbm18a_fixed_bnd_np2`, `_np4` | fixed deck | one-process value | 1e−6 | | 30 October |
 
 The anchors reproduce to 1e−12 across three machines on one process. They are reproducibility checks. The cbm18a anchors are 0.5 % from their radial limit, because the cbm18a case converges only at first order in the radial grid. The radial limit of the fixed deck is about −4.3800e−2 by Richardson extrapolation from 200 to 3200 points:
@@ -1565,6 +1586,7 @@ From `git diff --stat master...HEAD`: 140 files, 17 668 lines added and 1255 rem
 | `tests/regression/check_vac_res.py` | new: response Hermitian and positive semi-definite |
 | `tests/regression/circ_eps005_free_bnd.sh`, `input_circ_eps005` | new: circular kink against MISHKA-1, 400-point order check |
 | `tests/regression/circ_eps033_vmec_twin.sh`, `input_circ_eps033` | new: HELENA against the VMEC twin, fixed and free |
+| `tests/regression/check_vmec_read.py` | new: what PB3D stored from a wout file against the file (#16, section 4.19) |
 | `tests/vendor/test-drive/testdrive.F90`, `LICENSE-MIT`, `README.md` | new: vendored test framework |
 
 ### A.3 Fixtures and references
