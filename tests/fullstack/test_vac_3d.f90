@@ -21,7 +21,7 @@
 !!
 !! For the assembled matrices, with dphi := norm . grad phi, the jump
 !! relations analogous to the style-2 ones are measured empirically; note
-!! that calc_GH_1 constructs the H diagonal through the constant-potential
+!! that calc_GH constructs the H diagonal through the constant-potential
 !! row-sum identity (H 1 = -4 pi 1 by construction).
 !------------------------------------------------------------------------------!
 module test_vac_3d
@@ -235,7 +235,7 @@ contains
             &trim(r2str(G_ref)))
         if (allocated(error)) return
 
-        ! the singular endpoint carries no H contribution: calc_GH_1 sets the
+        ! the singular endpoint carries no H contribution: calc_GH sets the
         ! diagonal of H afterwards
         call check(error, H(1), 0._dp, thr=1.e-300_dp, &
             &message='singular H not zero')
@@ -381,7 +381,7 @@ contains
     !!
     !! A point source on the magnetic axis, phi = 1/|x - x_src|, is harmonic
     !! outside the surface and decays, and its normal data norm . grad phi
-    !! are exact. solve_Phi_BEM (the row-sum diagonal of calc_GH_1 is the
+    !! are exact. solve_Phi_BEM (the row-sum diagonal of calc_GH is the
     !! vacuum-side corner term, so H phi = G dphi holds) must then return
     !! phi on the surface to discretization accuracy, and the error must fall
     !! with resolution. Run on the circular torus and on a rippled torus
@@ -1038,7 +1038,7 @@ contains
     
     !> The direct diagonal of H (solid angle plus cell integral,
     !! vac_utilities.calc_diag_direct) against the row-sum diagonal that
-    !! calc_GH_1 uses, on the circular torus at two resolutions: the
+    !! calc_GH uses, on the circular torus at two resolutions: the
     !! difference, which measures the quadrature error of the off-diagonal
     !! row, falls at first order.
     subroutine test_diag_direct_3d(error)

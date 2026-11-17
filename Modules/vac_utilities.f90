@@ -38,7 +38,7 @@ module vac_utilities
     public calc_GH_int_1, calc_GH_int_2, vec_dis2loc, mat_dis2loc, &
         &n_col1_loc, vec_glob2dis, dis_matvec, &
         &interlaced_vac_copy, vac_steps, solid_angle_node, H_sing_node, &
-        &calc_diag_direct, dis_diag, cross3
+        &calc_diag_direct, dis_diag, fit_diag, cross3
     
 contains
     !> Calculate  G_ij  and   H_ij  on  an  interval  for   field  line  aligned
@@ -96,9 +96,11 @@ contains
     !! against brute-force quadrature in the full-stack tests.)
     !!
     !! \note This routine does not calculate the contribution \f$2\beta\f$ nor
-    !! the  cell integral  of the  H kernel  at the  singular point:  calc_GH_1
-    !! sets the  diagonal of H  afterwards, from  the row-sum identity  or from
-    !! the direct value of calc_diag_direct.
+    !! the  cell integral of  the H kernel at  the singular point: vac_ops.calc_gh()
+    !! sets the  diagonals afterwards. By default  both come from  the identities
+    !! of vac_ops.diag_indirect(), which replace the half-cell value of G computed
+    !! here; with  \c vac_diag_style 2 the  diagonal of H comes  from
+    !! calc_diag_direct() and G keeps the half-cell value.
     !!
     !! \note With \c use_near false the near-field rule is not used. For
     !! points off the boundary (vac_ops.eval_pot_ext()) it pays only within
@@ -173,7 +175,7 @@ contains
                     &(-U_hc+s_no*V_hc+D_pm(2))))
                 G(kd) = -2._dp*F_int/(step_size(1)*step_size(2)*&
                     &sqrt(h_fac_in(1)*h_fac_in(3)))
-                H(kd) = 0._dp                                                   ! the diagonal of H is set by calc_GH_1
+                H(kd) = 0._dp                                                   ! the diagonal of H is set by calc_GH
             else if (near) then                                                 ! near endpoint: kernel integrated over its half-interval
                 do jd = 1,n_gl
                     s = i_int-1 + 0.25_dp*(2*kd-1+gl_x(jd))                     ! stencil parameter, nodes at 0, 1, 2, 3
@@ -1012,4 +1014,89 @@ contains
         call dgsum2d(vac%ctxt_HG,'all',' ',size(diag_glob),1,diag_glob,&
             &size(diag_glob),-1,-1)
     end function dis_diag
+
+    !> \public Fits diagonal entries of H and G to Green's identity for
+    !! potentials whose boundary values and normal data are known.
+    !!
+    !! For  a potential  \f$\phi_k\f$ with  normal data  \f$\phi'_k\f$, row
+    !! \f$i\f$ of the identity is
+    !! \f[ H_{ii}\phi_{k,i} - G_{ii}\phi'_{k,i} = c_k\phi_{k,i}
+    !!  - \sum_{j\ne i} H_{ij}\phi_{k,j} + \sum_{j\ne i} G_{ij}\phi'_{k,j} , \f]
+    !! where the free term \f$c_k\f$ is \f$-4\pi\f$ for a potential that is
+    !! harmonic inside the boundary and \f$0\f$ for one that is harmonic
+    !! outside it and decays. This routine solves these equations for each row,
+    !! in the least-squares sense over the potentials, for the entries that
+    !! \c fit_H and \c fit_G select. An entry that is not fitted keeps the
+    !! value that \c dH or \c dG holds on input, and the routine moves its term
+    !! to the right-hand side. The off-diagonal sums are the products with the
+    !! full matrices minus their current diagonals, so the matrices are not
+    !! changed.
+    integer function fit_diag(vac,phi,dphi,c_free,fit_H,fit_G,dH,dG) &
+        &result(ierr)
+        use vac_vars, only: in_context
+
+        character(*), parameter :: rout_name = 'fit_diag'
+
+        ! input / output
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(in) :: phi(:,:)                                        !< potentials at the boundary points, one column per potential
+        real(dp), intent(in) :: dphi(:,:)                                       !< their normal data
+        real(dp), intent(in) :: c_free(:)                                       !< free term of the identity of each potential
+        logical, intent(in) :: fit_H                                            !< fit the diagonal of H
+        logical, intent(in) :: fit_G                                            !< fit the diagonal of G
+        real(dp), intent(inout) :: dH(:)                                        !< diagonal of H (global): known on input, or fitted on output
+        real(dp), intent(inout) :: dG(:)                                        !< diagonal of G (global): known on input, or fitted on output
+
+        ! local variables
+        integer :: kd, rd                                                       ! counters
+        real(dp) :: rr                                                          ! right-hand side of an identity at a point
+        real(dp) :: det_loc                                                     ! determinant of the normal equations
+        real(dp), allocatable :: yH(:), yG(:)                                   ! products with the full H and G
+        real(dp), allocatable :: dH0(:), dG0(:)                                 ! current diagonals of the matrices
+        real(dp), allocatable :: a11(:), a12(:), a22(:), b1(:), b2(:)           ! normal equations per row
+
+        ierr = 0
+        if (.not.in_context(vac%ctxt_HG)) return
+        allocate(yH(vac%n_bnd),yG(vac%n_bnd),dH0(vac%n_bnd),dG0(vac%n_bnd))
+        allocate(a11(vac%n_bnd),a12(vac%n_bnd),a22(vac%n_bnd),b1(vac%n_bnd),&
+            &b2(vac%n_bnd))
+        ierr = dis_diag(vac,vac%H,dH0)
+        CHCKERR('')
+        ierr = dis_diag(vac,vac%G,dG0)
+        CHCKERR('')
+        a11 = 0._dp
+        a12 = 0._dp
+        a22 = 0._dp
+        b1 = 0._dp
+        b2 = 0._dp
+        do kd = 1,size(phi,2)
+            ierr = dis_matvec(vac,vac%H,vac%desc_H,phi(:,kd),yH)
+            CHCKERR('')
+            ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi(:,kd),yG)
+            CHCKERR('')
+            do rd = 1,vac%n_bnd
+                ! h phi - g dphi = rr for the diagonal entries h and g
+                rr = c_free(kd)*phi(rd,kd) - (yH(rd)-dH0(rd)*phi(rd,kd)) + &
+                    &(yG(rd)-dG0(rd)*dphi(rd,kd))
+                if (.not.fit_H) rr = rr - dH(rd)*phi(rd,kd)
+                if (.not.fit_G) rr = rr + dG(rd)*dphi(rd,kd)
+                a11(rd) = a11(rd) + phi(rd,kd)**2
+                a12(rd) = a12(rd) - phi(rd,kd)*dphi(rd,kd)
+                a22(rd) = a22(rd) + dphi(rd,kd)**2
+                b1(rd) = b1(rd) + phi(rd,kd)*rr
+                b2(rd) = b2(rd) - dphi(rd,kd)*rr
+            end do
+        end do
+        if (fit_H .and. fit_G) then
+            do rd = 1,vac%n_bnd
+                det_loc = a11(rd)*a22(rd) - a12(rd)**2
+                dH(rd) = (a22(rd)*b1(rd) - a12(rd)*b2(rd))/det_loc
+                dG(rd) = (a11(rd)*b2(rd) - a12(rd)*b1(rd))/det_loc
+            end do
+        else if (fit_H) then
+            dH = b1/a11
+        else if (fit_G) then
+            dG = b2/a22
+        end if
+    end function fit_diag
 end module vac_utilities
