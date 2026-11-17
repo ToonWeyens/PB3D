@@ -1272,10 +1272,6 @@ contains
         integer :: prim_X                                                       ! primary mode number
         integer :: n_ang(2)                                                     ! number of angles (1) and number of field lines (2)
         real(dp) :: jq                                                          ! iota or q
-        real(dp) :: par_lims(2)                                                 ! limits of the parallel angle of the field-line style, in units of pi
-        real(dp) :: dpar                                                        ! step in the parallel angle
-        integer :: id                                                           ! counter
-        logical :: par_lims_found                                               ! whether the output holds par_lims
 
         ! initialize ierr
         ierr = 0
@@ -1294,8 +1290,6 @@ contains
         prim_X = nint(dum_1D(3))
         n_ang = nint(dum_1D(4:5))
         jq = dum_1D(6)
-        par_lims_found = size(dum_1D).ge.8                                      ! absent from files of earlier versions
-        if (par_lims_found) par_lims = dum_1D(7:8)
         call dealloc_var_flat(var_flat)
 
         ! create vac
@@ -1327,6 +1321,14 @@ contains
         vac%x_vec = dum_2D
         call dealloc_var_flat(var_flat)
         
+        ! ang
+        ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
+            &'ang',rich_lvl=rich_lvl_loc)
+        CHCKERR('')
+        call conv_flat2ND(var_flat,dum_2D)
+        vac%ang = dum_2D
+        call dealloc_var_flat(var_flat)
+        
         ! copy variables specific to style
         select case (vac%style)
             case (1)                                                            ! field-line 3-D
@@ -1337,24 +1339,7 @@ contains
                 call conv_flat2ND(var_flat,dum_2D)
                 vac%h_fac = dum_2D
                 call dealloc_var_flat(var_flat)
-
-                ! parallel angle, as store_vac_VMEC and calc_vac_res set it
-                ! up (zero if the output predates the limits in misc_vac)
-                if (par_lims_found) then
-                    dpar = (par_lims(2)-par_lims(1))/(n_ang(1)-1)*pi
-                    do id = 1,n_ang(1)
-                        vac%ang(id,:) = pi*par_lims(1) + (id-1)*dpar
-                    end do
-                end if
             case (2)                                                            ! axisymmetric
-                ! ang
-                ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
-                    &'ang',rich_lvl=rich_lvl_loc)
-                CHCKERR('')
-                call conv_flat2ND(var_flat,dum_2D)
-                vac%ang = dum_2D
-                call dealloc_var_flat(var_flat)
-                
                 ! dnorm
                 ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),&
                     &'dnorm',rich_lvl=rich_lvl_loc)

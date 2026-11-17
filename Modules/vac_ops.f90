@@ -399,8 +399,7 @@ contains
                 end if
 
                 ! the parallel angle of every point, as calc_vac_res sets it
-                ! up for the normal data (written to the output through the
-                ! limits in misc_vac, from which POST rebuilds it)
+                ! up for the normal data
                 call vac_steps(dpar_X,dalpha)
                 do id = 1,n_par_X
                     vac%ang(id,:) = pi*min_par_X + (id-1)*dpar_X
@@ -3033,11 +3032,6 @@ logical, allocatable :: in_ext(:)                                       ! points
         ! field-line style: the grid variables that vac_steps reads, here and
         ! in calc_GH_1, from the parallel angle of the vacuum output
         if (vac%style.eq.1) then
-            if (maxval(abs(vac%ang)).le.0._dp) then
-                ierr = 1
-                err_msg = 'No parallel angle in the vacuum output: rerun PB3D'
-                CHCKERR(err_msg)
-            end if
             min_par_X = vac%ang(1,1)/pi
             max_par_X = vac%ang(vac%n_ang(1),1)/pi
             n_par_X = vac%n_ang(1)
@@ -3619,6 +3613,7 @@ logical, allocatable :: in_ext(:)                                       ! points
     !!      - \c misc_vac
     !!      - \c norm
     !!      - \c x_vec
+    !!      - \c ang
     !!      - \c vac_res
     !!
     !! If \c  rich_lvl is provided, \c  "_R_[rich_lvl]" is appended to  the data
@@ -3642,7 +3637,6 @@ logical, allocatable :: in_ext(:)                                       ! points
     integer function print_output_vac(vac,data_name,rich_lvl) result(ierr)
         use X_vars, only: n_mod_X
         use num_vars, only: PB3D_name
-        use grid_vars, only: min_par_X, max_par_X
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
             &max_dim_var_flat
@@ -3672,21 +3666,18 @@ logical, allocatable :: in_ext(:)                                       ! points
         ! set up variables vac_1D
         id = 1
         
-        ! misc_vac (the last two, the limits of the parallel angle in units of
-        ! pi, let POST rebuild the parallel angle of the field-line style,
-        ! which the vacuum potential plot needs; reconstruct_PB3D_vac reads
-        ! them only when present)
+        ! misc_vac
         vac_1D_loc => vac_1D(id); id = id+1
         vac_1D_loc%var_name = 'misc_vac'
         allocate(vac_1D_loc%tot_i_min(1),vac_1D_loc%tot_i_max(1))
         allocate(vac_1D_loc%loc_i_min(1),vac_1D_loc%loc_i_max(1))
         vac_1D_loc%loc_i_min = [1]
-        vac_1D_loc%loc_i_max = [8]
+        vac_1D_loc%loc_i_max = [6]
         vac_1D_loc%tot_i_min = vac_1D_loc%loc_i_min
         vac_1D_loc%tot_i_max = vac_1D_loc%loc_i_max
-        allocate(vac_1D_loc%p(8))
+        allocate(vac_1D_loc%p(6))
         vac_1D_loc%p = [vac%style*1._dp,vac%n_bnd*1._dp,vac%prim_X*1._dp,&
-            &vac%n_ang*1._dp,vac%jq,min_par_X,max_par_X]
+            &vac%n_ang*1._dp,vac%jq]
         
         ! sec_X
         vac_1D_loc => vac_1D(id); id = id+1
@@ -3723,6 +3714,18 @@ logical, allocatable :: in_ext(:)                                       ! points
         vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
         allocate(vac_1D_loc%p(size(vac%x_vec)))
         vac_1D_loc%p = reshape(vac%x_vec,[size(vac%x_vec)])
+        
+        ! ang
+        vac_1D_loc => vac_1D(id); id = id+1
+        vac_1D_loc%var_name = 'ang'
+        allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
+        allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
+        vac_1D_loc%tot_i_min = [1,1]
+        vac_1D_loc%tot_i_max = shape(vac%ang)
+        vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
+        vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
+        allocate(vac_1D_loc%p(size(vac%ang)))
+        vac_1D_loc%p = reshape(vac%ang,[size(vac%ang)])
         
         ! RE_res
         vac_1D_loc => vac_1D(id); id = id+1
@@ -3763,18 +3766,6 @@ logical, allocatable :: in_ext(:)                                       ! points
                 allocate(vac_1D_loc%p(size(vac%h_fac)))
                 vac_1D_loc%p = reshape(vac%h_fac,[size(vac%h_fac)])
             case (2)                                                            ! axisymmetric
-                ! ang
-                vac_1D_loc => vac_1D(id); id = id+1
-                vac_1D_loc%var_name = 'ang'
-                allocate(vac_1D_loc%tot_i_min(2),vac_1D_loc%tot_i_max(2))
-                allocate(vac_1D_loc%loc_i_min(2),vac_1D_loc%loc_i_max(2))
-                vac_1D_loc%tot_i_min = [1,1]
-                vac_1D_loc%tot_i_max = shape(vac%ang)
-                vac_1D_loc%loc_i_min = vac_1D_loc%tot_i_min
-                vac_1D_loc%loc_i_max = vac_1D_loc%tot_i_max
-                allocate(vac_1D_loc%p(size(vac%ang)))
-                vac_1D_loc%p = reshape(vac%ang,[size(vac%ang)])
-                
                 ! dnorm
                 vac_1D_loc => vac_1D(id); id = id+1
                 vac_1D_loc%var_name = 'dnorm'
