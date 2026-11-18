@@ -74,8 +74,10 @@ ln -s "$WOUT_FILE" wout_eq.nc
 
 run_deck() {   # run_deck <deck> <equilibrium>
     rm -f PB3D_out*
-    if ! "$PB3D_EXE" "$1" "$2" > run.log 2>&1; then
-        echo "FAIL: PB3D exited with status $? on $2; log tail:"
+    "$PB3D_EXE" "$1" "$2" > run.log 2>&1
+    STATUS=$?
+    if [ "$STATUS" -ne 0 ]; then
+        echo "FAIL: PB3D exited with status $STATUS on $2; log tail:"
         tail -20 run.log
         exit 1
     fi

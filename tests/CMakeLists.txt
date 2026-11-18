@@ -96,9 +96,11 @@ if(OMPI_INFO_EXECUTABLE)
     endif()
 endif()
 
-# Invoking without arguments has to print the usage message. The exit code is
-# deliberately not relied upon (PASS_REGULAR_EXPRESSION takes precedence), as
-# the error path aborts through MPI.
+# Invoking without arguments has to print the usage message. The programs
+# then stop through stop_MPI (error code 66 of sudden_stop) and return exit
+# status 0. The tests do not check this: with PASS_REGULAR_EXPRESSION ctest
+# ignores the exit status. Whether a call without arguments should count as
+# an error is an open question of issue #40.
 if(TARGET PB3D)
     add_test(NAME smoke_PB3D_usage COMMAND PB3D)
     set_tests_properties(smoke_PB3D_usage PROPERTIES
@@ -337,6 +339,37 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 FAIL_REGULAR_EXPRESSION "FAIL"
                 ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
                 TIMEOUT 600)
+        endif()
+        # PB3D has to stop on an input value that it does not accept, with its
+        # message and an exit status that is not zero (issue #40). The deck is
+        # the free-boundary one with BC_style = 1 4. PB3D stops in the input
+        # check, before any linear algebra, so the row under mpirun needs no
+        # distributed LU; it checks that the launcher returns the status.
+        add_test(NAME regression_reject_BC_style
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/reject_BC_style.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_free_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_reject_BC_style PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 120)
+        if(MPIEXEC_EXECUTABLE)
+            add_test(NAME regression_reject_BC_style_np2
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/reject_BC_style.sh
+                    $<TARGET_FILE:PB3D>
+                    ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_free_bnd
+                    ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
+                    "${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${_mpiexec_flags}")
+            set_tests_properties(regression_reject_BC_style_np2 PROPERTIES
+                LABELS "regression;mpi"
+                PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
+                ENVIRONMENT "${_mpi_test_env}"
+                PROCESSORS 2
+                TIMEOUT 120)
         endif()
         # multi-process consistency of the eigenvalue (issue #4: the 2e-5 shift of
         # redistribute_var sat inside the 1e-3 anchor tolerance); opt-in because

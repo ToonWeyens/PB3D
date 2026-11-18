@@ -47,8 +47,10 @@ cd "$WORKDIR"
 run_deck() {
     local deck=$1
     rm -f PB3D_out*
-    if ! "$PB3D_EXE" "$deck" "$EQ_FILE" > run.log 2>&1; then
-        echo "FAIL: PB3D exited with status $?; log tail:"
+    "$PB3D_EXE" "$deck" "$EQ_FILE" > run.log 2>&1
+    STATUS=$?
+    if [ "$STATUS" -ne 0 ]; then
+        echo "FAIL: PB3D exited with status $STATUS; log tail:"
         tail -20 run.log
         exit 1
     fi

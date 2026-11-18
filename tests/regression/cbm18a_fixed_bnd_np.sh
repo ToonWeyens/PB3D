@@ -39,8 +39,10 @@ run_one() {   # run_one <subdir> [launcher words...]; leaves the eigenvalue in <
     mkdir -p "$sub"
     cp input_deck "$sub/"
     cd "$sub"
-    if ! "$@" "$PB3D_EXE" input_deck "$EQ_FILE" > run.log 2>&1; then
-        echo "FAIL: PB3D ($sub) exited with status $?; log tail:"
+    "$@" "$PB3D_EXE" input_deck "$EQ_FILE" > run.log 2>&1
+    STATUS=$?
+    if [ "$STATUS" -ne 0 ]; then
+        echo "FAIL: PB3D ($sub) exited with status $STATUS; log tail:"
         tail -20 run.log
         exit 1
     fi

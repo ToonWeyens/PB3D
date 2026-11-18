@@ -289,6 +289,20 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   `read_VMEC` used before 17 November 2026 it fails by 5.4e-6 in λ and 1.1e-6
   in the Jacobian. It needs scipy as well as h5py, and is skipped with a note
   without it.
+- `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
+  `BC_style = 1 4`, a value that the input check refuses (issue #40). The
+  test requires an exit status that is not zero, the message of the input
+  check in the output, which is redirected to a file, and no eigenvalue
+  file. `reject_BC_style_np2` runs the same under `mpirun -n 2` and checks
+  that the launcher returns the status. PB3D stops before any linear
+  algebra, so this row needs no distributed LU.
+
+**Exit status.** `PB3D` and `POST` return exit status 0 after a complete
+run, after the usage message and after `--help`. After an error they return
+the error code that they print ("ERROR CODE ...") if it lies between 1 and
+125, and 1 for every other code, such as the negative codes of HDF5 and
+NetCDF (`get_exit_status` in `MPI_ops`). The regression runners test this
+status first and look for the output files second.
 
 **The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
 failed `H5Fcreate` on about every other launch) were a heap overrun in
