@@ -430,12 +430,6 @@ contains
         ierr = read_HDF5_arr(var_flat,PB3D_name,trim(data_name),'misc_sol')
         CHCKERR('')
         call conv_flat2ND(var_flat,dum_1D)
-        if (size(dum_1D).ne.7) then
-            ierr = 1
-            err_msg = 'misc_sol has '//trim(i2str(size(dum_1D)))//&
-                &' entries where 7 are expected: output of another PB3D version'
-            CHCKERR(err_msg)
-        end if
         min_r_sol = dum_1D(1)
         max_r_sol = dum_1D(2)
         norm_disc_prec_sol = nint(dum_1D(3))
