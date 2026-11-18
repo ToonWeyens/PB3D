@@ -191,6 +191,9 @@ without `mpirun`.
 | | 2 | -4.2348778559244016E-02 | |
 | | 4 | -4.2344214857731988E-02 | |
 
+The free-boundary deck had `BC_style = 1 4` at that date. Style 4 was removed
+on 18 November 2026 (issue #36), and the deck now sets `BC_style = 1 2`.
+
 The singleton and 1-process values agree with the Mac to every printed
 digit. With 2 and 4 processes the eigenvalues move by 1.9e-5 and 1.2e-5
 (fixed), 3.3e-8 and 1.1e-4 (free, style 4), 3.3e-9 and 1.1e-4 (free,

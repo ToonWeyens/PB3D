@@ -575,10 +575,12 @@ contains
             end select
             
             ! set up i_max
-            ! Note: for a fixed edge  (BC_style(2) = 1) one could argue for
-            ! n_r-ndps. But the  blocks of the last rows would  then not be
-            ! written in the main bulk assembly, so that petsc thinks there are
-            ! no nonzeros there. This is avoided by using n_r.
+            ! Note: the last point stays in the bulk also for a fixed edge
+            ! (BC_style(2) = 1), although the right BC overwrites its row:
+            !   - Its finite difference contains the ndps points to its left,
+            !   so its V_2 term couples these points, which are unknowns.
+            !   - Its blocks would otherwise not be written in the main bulk
+            !   assembly, so that petsc thinks there are no nonzeros there.
             select case (BC_style(2))
                 case (1)
                     i_lim(2) = min(grid_sol%i_max,n_r)                          ! the last row is overwritten by the right BC
@@ -669,7 +671,9 @@ contains
             ! which the sum over the points of the finite difference of X
             ! still gives X at the edge, as the integral of X' does. The last
             ! row is then the natural boundary condition, written with the
-            ! left finite difference, and the error of the eigenvalue falls as
+            ! left finite difference, plus the contribution of the last point
+            ! to the Euler equation, which is smaller by a factor of the order
+            ! of the step size. The error of the eigenvalue falls as
             ! 1/n_r_sol^ndps for orders 2 and 3.
             !
             ! For order 1 the weights that do this are all 1, which does not
@@ -934,7 +938,9 @@ contains
     !!      For  orders 2  and 3  the  last points  get the  weights of
     !!      num_utilities::calc_end_weights  in the  normal integral.  The last
     !!      row  is then  the natural  boundary condition,  written with  the
-    !!      left finite difference (see Documentation/testing.md).
+    !!      left finite difference, plus the contribution of the last point to
+    !!      the Euler equation, which is smaller by a factor of the order of the
+    !!      step size (see Documentation/testing.md).
     !!
     !! The inner end takes style 1 only.
     !!
@@ -1157,8 +1163,8 @@ contains
 
             ! user output
             call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Minimization of surface energy through asymmetric finite &
-                & differences',persistent=.true.)
+                &': Free boundary, vacuum energy added to the edge block',&
+                &persistent=.true.)
 
             ! -------------!
             ! BLOCKS ~ vac !
