@@ -33,8 +33,10 @@ cd "$WORKDIR"
 # One launch, no retries: a crash is a failure. (The intermittent macOS
 # crashes of 2026-07 were a heap overrun in PSPLINE's r8genxpkg for 3-point
 # splines, fixed by Libraries/pspline-r8genxpkg-nx3.patch; issue #4.)
-if ! "$PB3D_EXE" input_deck "$EQ_FILE" > run.log 2>&1; then
-    echo "FAIL: PB3D exited with status $?; log tail:"
+"$PB3D_EXE" input_deck "$EQ_FILE" > run.log 2>&1
+STATUS=$?
+if [ "$STATUS" -ne 0 ]; then
+    echo "FAIL: PB3D exited with status $STATUS; log tail:"
     tail -20 run.log
     exit 1
 fi
