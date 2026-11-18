@@ -2,7 +2,7 @@
 
 Branch `dev/vacuum-fixes`, draft PR #5 to `master`, tracking issue #4. Seventy-three commits in two stretches: the modernisation of July 2026 and the vacuum work of 27 October to 1 November 2026. The detailed log is `Documentation/plan_vacuum_bugfix.md`; this page is the outcome only.
 
-Two different "styles" appear below. `vac%style` is the vacuum method, set by the equilibrium code: `vac%style` 1 is the 3-D boundary-element method on field lines (VMEC), `vac%style` 2 the axisymmetric one with toroidal harmonics (HELENA). `BC_style` is the input for the boundary conditions; its second value is the condition at the plasma edge: 1 fixed boundary, 2 the free boundary through the variational (Hermitian) surface energy, 4 the free boundary through an explicit natural-boundary-condition row.
+Two different "styles" appear below. `vac%style` is the vacuum method, set by the equilibrium code: `vac%style` 1 is the 3-D boundary-element method on field lines (VMEC), `vac%style` 2 the axisymmetric one with toroidal harmonics (HELENA). `BC_style` is the input for the boundary conditions; its second value is the condition at the plasma edge: 1 fixed boundary, 2 the free boundary through the variational (Hermitian) surface energy. A third value, 4, the free boundary through an explicit natural-boundary-condition row, was removed on 18 November 2026 (issue #36).
 
 ## 1. Where we started, where we are
 
@@ -53,7 +53,7 @@ Fixed means the code was wrong and now does what it was meant to do; new means t
 |---|---|
 | Tests, unit | `dtorh` against 30-digit references up to degree 80, string and numerical utilities, mode-index and Richardson arithmetic |
 | Tests, full-stack | vacuum kernels, Green identities, 3-D vacuum (`vac%style` 1) on an analytic torus against the axisymmetric one (`vac%style` 2) (`response_1_vs_2`, recorded ratios), `GH_int_1_near`, `exact_exterior_2d` (exact toroidal harmonics through `vac%style` 2), `point_source_3d`, splines, volume integral, HELENA golden file |
-| Tests, regression | cbm18a fixed (one, two and four processes), free with `BC_style` 2 and 4 and the response check, HELENA shear, circular ε = 0.05 kink against MISHKA, circular ε = 0.33 HELENA against its VMEC twin fixed and free through the 3-D vacuum; anchors reproducible to 1e−12 on macOS, Ubuntu and Snellius |
+| Tests, regression | cbm18a fixed (one, two and four processes), free with `BC_style` 2 and the response check, HELENA shear, circular ε = 0.05 kink against MISHKA, circular ε = 0.33 HELENA against its VMEC twin fixed and free through the 3-D vacuum; anchors reproducible to 1e−12 on macOS, Ubuntu and Snellius |
 | CI | eight GitHub Actions jobs: lint, unit Debug and Release, full stack, full stack Debug, sanitiser, docs, coverage; compiler-warning and Doxygen ratchets |
 | Fixtures | cbm18a (xz), circular ε = 0.05 and 0.33 HELENA cases with their inputs, the VMEC twin with its recipe (`make_vmec_twin.sh`, `vmec_twin.py`), MISHKA and cylinder references |
 | Equilibria made here | the circular ε = 0.33 and 0.05 HELENA cases, their VMEC twins at 159 to 1279 surfaces, the rippled twins, the cbm18a plasma cut at the pedestal foot with HELENA (`tests/reference/cbm18a_cut/`, scaled from the extended input without fitting) and its VMEC twin |
@@ -93,7 +93,6 @@ Pass:
 
 Do not pass, or are not validated:
 
-- `BC_style` 4 is 7 % off `BC_style` 2 on the circular kink and first order in the radial grid; kept as a change detector only.
 - The axisymmetric vacuum's limit on the circular kink, near −0.4379, sits 0.13 % from TERPSICHORE and from the 3-D vacuum on the twin; the cause of that 0.13 % is not known. HELENA mappings above 513 poloidal points, where the direct diagonal's sequence stopped being monotone (2049 points), have not been run with the indirect diagonal (#28).
 - cbm18a converges only at first order in the radial grid (its 22 rational surfaces); the 200-point anchors are 0.5 % from the limit, and the cut case moves 1 % between 200 and 400 points at n = 20.
 - The α-spacing mutation (2π/(n_alpha − 1) instead of 2π/n_alpha) has not been rerun since `response_1_vs_2` got its five recorded ratios, with a 0.5 % tolerance against the 1.25 % change the mutation makes; the 3-D full-stack tests alone did not catch it.

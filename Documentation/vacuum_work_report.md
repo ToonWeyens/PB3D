@@ -1679,7 +1679,7 @@ Seventy-three commits. Dates from `git log`.
 | Input | Meaning |
 |---|---|
 | `vac%style` | Not an input: the vacuum method, set from `eq_style`. 1: 3-D boundary elements on the field-line grid (VMEC, `calc_GH_1`). 2: axisymmetric boundary elements with toroidal harmonics for one n (HELENA, `calc_GH_2`). |
-| `BC_style` | Two integers, left and right boundary. 1 is a fixed boundary. 2 is the variational free boundary, the default since step 4. 4 is the explicit natural-boundary-condition row, not validated. 3 was removed in July. |
+| `BC_style` | Two integers, left and right boundary. 1 is a fixed boundary. 2 is the variational free boundary, the default since step 4. 4 was the explicit natural-boundary-condition row, not validated; it was removed on 18 November 2026 (issue #36). 3 was removed in July. |
 | `X_style` | 1: prescribed mode window from `min_sec_X` to `max_sec_X`. 2, the default: a fast window of `n_mod_X` modes that follows nq radially; not a nested trial space (section 11.5). |
 | `prim_X` | The primary mode number: n with the poloidal flux label, m with the toroidal one. |
 | `n_mod_X` | Number of secondary modes, m with the poloidal flux label. |
@@ -1699,7 +1699,7 @@ Seventy-three commits. Dates from `git log`.
 | `tol_SLEPC` | Solver tolerance; 1e−6 in the decks. |
 | `max_it_rich` | Number of Richardson levels; 1 means no extrapolation. |
 | `magn_int_style` | Parallel integration rule: 1 trapezoidal, 2 Simpson 3/8; the decks use 2. |
-| `norm_disc_style_sol` | Radial discretisation: 1 central, 2 left differences, the default. |
+| `norm_disc_style_sol` | Radial discretisation: 1 central, 2 left differences, the default. Removed on 18 November 2026 (issue #36): the radial derivative is always a left difference. |
 | `norm_style` | 1: MISHKA normalisation, used throughout. 2: a modified B_0 and ψ_0, with EV_COBRA = EV_PB3D · β/2. |
 | `K_style` | 1: perpendicular kinetic energy only. |
 | `X_grid_style` | Normal grid of the perturbation: 1 equilibrium, 2 solution, 3 enriched. |

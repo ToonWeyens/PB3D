@@ -205,8 +205,10 @@ contains
     contains
         !> /private Set up local block, possibly translated for fast PB3D.
         !!
-        !! \note The index into the modes variables is limited to their size by
-        !! the 'min(..,size(nm_X,1))'.
+        !! \note The 'min(..,size(nm_X,1))' does not change the index as long as
+        !! the modes variables are tabulated in the grid of the matrix, because
+        !! insert_block_mat() calls this routine only for blocks inside the
+        !! matrix.
         subroutine setup_local_block(nm_X,r_id,ind,block,block_loc)
             use X_vars, only: n_mod_X
             
