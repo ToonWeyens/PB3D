@@ -241,10 +241,14 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   \(-0.43266\), \(-0.43531\), \(-0.43661\), \(-0.43725\) at 200, 400, 800
   and 1600 radial points, against \(-0.437883\) for style 2 from 400 points
   on; on this deck \(-4.5088\times10^{-2}\) at 200 points, 0.08 % from style
-  2. This is independent evidence that the last row of style 2 is the natural
-  boundary condition. With half a weight at the last point instead, style 4
-  went to \(-0.469\) on the circular case, 7 % off. The code of style 4 is
-  in the history up to commit cba0762.
+  2. This is independent evidence that the last row of style 2 tends to the
+  natural boundary condition as the step size goes to zero. At a finite step
+  size that row also holds the contribution of the last point to the Euler
+  equation, which is smaller by a factor of the order of the step size; as
+  equations, the last rows of the two styles differed by this term only. With
+  half a weight at the last point instead, style 4 went to \(-0.469\) on the
+  circular case, 7 % off. The code of style 4 was removed in pull request #38
+  (issue #36).
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition

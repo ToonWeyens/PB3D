@@ -62,11 +62,13 @@ author does:
 
 ## Versioning convention
 
-`prog_version` in `num_vars.f90` (currently `2.47`) is the single source of truth for the
-program's version and is checked against `min_PB3D_version` when POST reads a PB3D output file
-compatibility check. When bumping the version:
-1. Update `prog_version` in `num_vars.f90`.
-2. Update the CMake `project(PB3D VERSION ...)` line in `CMakeLists.txt`.
+`prog_version` in `num_vars.f90` (currently `2.50`) is the single source of truth for the
+program's version. PB3D writes it to its output, and it is compared with `min_PB3D_version` when
+POST reads a PB3D output file and when PB3D continues from one. When bumping the version:
+1. Update `prog_version` in `num_vars.f90`, and `min_PB3D_version` too when the layout of the
+   output changes.
+2. Update the CMake `project(PB3D VERSION ...)` line in `CMakeLists.txt` and `PROJECT_NUMBER` in
+   `Doxyfile`.
 3. Add a new `## X.YY:` entry at the top of `README.md`'s changelog describing the change — this
    is the project's de facto release-notes mechanism and is treated as required practice (every
    historical commit touches `README.md`).
