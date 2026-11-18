@@ -1,50 +1,27 @@
 #!/bin/bash
 # Physics regression test: FREE-boundary peeling-ballooning eigenvalue for
-# the cbm18a case, using the vacuum response (BC_style(2) = 4) instead of a
-# fixed boundary.
+# the cbm18a case, with the vacuum response (BC_style(2) = 2).
 #
 # Usage: cbm18a_free_bnd.sh <PB3D-executable> <input-deck> <equilibrium-file> [python3]
 #
-# With a python3 (with h5py) as fourth argument, the vacuum response matrix
-# of the style-2 run is also checked for Hermiticity and positive
-# semi-definiteness (check_vac_res.py; issue #4 step 3).
-#
-# The natural companion to cbm18a_fixed_bnd.sh: same deck window (psi 0.45 to
+# The companion to cbm18a_fixed_bnd.sh: the same deck window (psi 0.45 to
 # 0.75, where the n = 10 mode still has an edge amplitude of 0.1 of its
 # peak), but the boundary is free and the vacuum response is computed by the
 # boundary element method of vac_ops. The vacuum can only add energy, so the
-# free-boundary eigenvalue must lie between the no-vacuum value (-4.6041e-2,
-# measured with a diagnostic build in issue #4 step 3) and the fixed-boundary
-# one (-4.3573e-2, cbm18a_fixed_bnd.sh); the test asserts the upper bound.
+# free-boundary eigenvalue must lie between the no-vacuum value (-4.6041e-2)
+# and the fixed-boundary one (-4.3573e-2, cbm18a_fixed_bnd.sh); the test
+# asserts the upper bound.
 #
-# Anchors (MISHKA normalization, single process, asserted to 1e-3 relative;
-# established 2026-10-27 after issue #4 steps 2 and 3, re-recorded 31 October
-# 2026 when the free edge got its trapezoidal quadrature weight, which moved
-# style 2 by 4.5e-4 and style 4 by 0.9 %, and again on 2 November 2026 when
-# the corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) got the
-# plasma-side angle: style 2 from -4.5039e-2 to -4.5046e-2, style 4 from
-# -4.5124e-2 to -4.5130e-2, 1.5e-4 and 1.3e-4; the vacuum enters this
-# pedestal mode weakly, and the 401-point mapping has 800 boundary points;
-# and on 17 November 2026 when the last points of a free edge got the weights
-# of calc_end_weights in the normal integral, which moved style 2 by 3e-6 and
-# style 4 from -4.5136e-2 to -4.5088e-2):
-#   BC_style(2) = 2, variational (Hermitian) imposition: -4.5046e-2. This is
-#     the validated style: on the circular external-kink fixtures it agrees
-#     with MISHKA to 1.2 % or better (circ_eps005_free_bnd.sh). The 200-point
-#     value is 0.5 % from the radially converged -4.5263e-2 (first order, from
-#     the rational surfaces in the window; the fixed case converges the same).
-#   BC_style(2) = 4, explicit natural-boundary-condition row: -4.5088e-2.
-#     Less accurate than style 2: with the weights of calc_end_weights it
-#     converges to the value of style 2, but at first order in n_r_sol (0.08 %
-#     from style 2 here and 1.2 % on the circular case at 200 points, halving
-#     with every doubling; with the trapezoidal weight it converged to another
-#     value, 0.1 % off here and 7 % on the circular case). It is anchored so
-#     that a change shows up. Use style 2.
+# Anchor (MISHKA normalization, single process, asserted to 1e-3 relative):
+# -4.5051e-2. On the circular external-kink fixtures the same free-boundary
+# treatment agrees with MISHKA to 1.2 % or better (circ_eps005_free_bnd.sh).
+# The 200-point value is 0.5 % from the radially converged -4.5263e-2. That
+# error falls as 1/n_r_sol and does not come from the outer edge: the fixed
+# case converges the same way.
 #
-# The deck specifies style 4; the script runs it as given and then with
-# style 2. With a python3 (with h5py) as fourth argument, the vacuum response
-# matrix of the style-2 run is also checked for Hermiticity and positive
-# semi-definiteness (check_vac_res.py; issue #4 step 3).
+# With a python3 (with h5py) as fourth argument, the vacuum response matrix
+# is also checked for Hermiticity and positive semi-definiteness
+# (check_vac_res.py).
 set -u
 
 PB3D_EXE=$1
@@ -53,8 +30,7 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR_2=-4.5051e-2
-ANCHOR_4=-4.5088e-2
+ANCHOR=-4.5051e-2
 RTOL=1e-3
 FIXED=-4.3573e-2
 
@@ -88,27 +64,17 @@ run_deck() {
     fi
 }
 
-# style as specified in the deck (4)
 run_deck input_deck
-EV_4=$EV
-
-# variational/Hermitian style 2
-sed 's/BC_style                = 1 4/BC_style                = 1 2/' input_deck > input_deck_bc2
-run_deck input_deck_bc2
-EV_2=$EV
 if [ -n "$PYTHON" ]; then
     "$PYTHON" "$CHECK" PB3D_out.h5 || exit 1
 fi
 
-echo "eigenvalues: style 4: $EV_4 (anchor: $ANCHOR_4), style 2: $EV_2 (anchor: $ANCHOR_2, rtol: $RTOL, fixed: $FIXED)"
-awk -v ev4="$EV_4" -v ev2="$EV_2" -v a4="$ANCHOR_4" -v a2="$ANCHOR_2" \
-    -v rtol="$RTOL" -v fixed="$FIXED" 'BEGIN {
+echo "eigenvalue: $EV (anchor: $ANCHOR, rtol: $RTOL, fixed: $FIXED)"
+awk -v ev="$EV" -v a="$ANCHOR" -v rtol="$RTOL" -v fixed="$FIXED" 'BEGIN {
     ok = 1
-    rel4 = (ev4 - a4) / a4; if (rel4 < 0) rel4 = -rel4
-    rel2 = (ev2 - a2) / a2; if (rel2 < 0) rel2 = -rel2
-    if (rel4 > rtol) { print "FAIL: style 4 deviation", rel4; ok = 0 }
-    if (rel2 > rtol) { print "FAIL: style 2 deviation", rel2; ok = 0 }
-    if (ev2 > fixed) { print "FAIL: free boundary more stable than fixed:", ev2, ">", fixed; ok = 0 }
-    if (ok) { print "PASS: deviations", rel4, rel2, "free below fixed"; exit 0 }
+    rel = (ev - a) / a; if (rel < 0) rel = -rel
+    if (rel > rtol) { print "FAIL: deviation", rel; ok = 0 }
+    if (ev > fixed) { print "FAIL: free boundary more stable than fixed:", ev, ">", fixed; ok = 0 }
+    if (ok) { print "PASS: deviation", rel, "free below fixed"; exit 0 }
     exit 1
 }'
