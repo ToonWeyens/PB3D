@@ -27,7 +27,7 @@ contains
             &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, norm_disc_style_sol, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, &
             &BC_style, tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, min_theta_plot, &
@@ -66,7 +66,7 @@ contains
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
-            &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
+            &BC_style, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot, alpha_style, max_nr_backtracks_HH, &
@@ -317,7 +317,6 @@ contains
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
-            norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
@@ -454,6 +453,18 @@ contains
             if (norm_disc_prec_sol.lt.1 .or. norm_disc_prec_sol.gt.3) then
                 ierr = 1
                 err_msg = 'norm_disc_prec_sol has to be between 1 and 3'
+                CHCKERR(err_msg)
+            end if
+            if (BC_style(1).ne.1) then
+                ierr = 1
+                err_msg = 'BC_style(1) has to be 1: the perturbation is set &
+                    &to zero at the inner end'
+                CHCKERR(err_msg)
+            end if
+            if (BC_style(2).lt.1 .or. BC_style(2).gt.2) then
+                ierr = 1
+                err_msg = 'BC_style(2) has to be 1 (fixed boundary) or 2 &
+                    &(free boundary with vacuum)'
                 CHCKERR(err_msg)
             end if
         end function adapt_run_PB3D
@@ -1171,7 +1182,7 @@ contains
     !!  -  \c misc_in:  \c  prog_version,  \c eq_style,  \c  rho_style, \c  R_0,
     !!  \c  pres_0,   \c  B_0,  \c  psi_0   \c  rho_0,  \c  T_0,   \c  vac_perm,
     !!  \c   use_pol_flux_F,  \c   use_pol_flux_E,   \c  use_normalization,   \c
-    !!  norm_disc_prec_eq, \c norm_disc_style_sol, \c n_r_in, \c n_r_eq, \c
+    !!  norm_disc_prec_eq, \c n_r_in, \c n_r_eq, \c
     !!  n_r_sol, \c debug_version
     !!  -  \c misc_in_V: \c is_asym_V,  \c is_freeb_V, \c mnmax_V,  \c mpol_V, \c
     !!  ntor_V, \c nfp_V, \c gam_V, \c mnmax_nyq_V, \c mpol_tf, \c ntor_tf
@@ -1205,7 +1216,7 @@ contains
     !!  \c  norm_disc_prec_X,   \c  norm_style,  \c  U_style,   \c  X_style,  \c
     !!  matrix_SLEPC_style, \c K_style, \c alpha_style
     !!  - \c  misc_sol: \c  min_r_sol, \c  max_r_sol, \c  norm_disc_prec_sol, \c
-    !!  BC_style, \c EV_BC, \c EV_BC
+    !!  BC_style, \c EV_style, \c EV_BC
     !!
     !! \return ierr
     integer function print_output_in(data_name,remove_previous_arrs) &
@@ -1216,7 +1227,7 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol, X_grid_style, max_njq_change
+            &X_grid_style, max_njq_change
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, only: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
@@ -1683,13 +1694,12 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [8]
+        in_1D_loc%loc_i_max = [7]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(8))
+        allocate(in_1D_loc%p(7))
         in_1D_loc%p = [min_r_sol,max_r_sol,norm_disc_prec_sol*1._dp,&
-            &norm_disc_style_sol*1._dp,BC_style(1)*1._dp,BC_style(2)*1._dp,&
-            &EV_style*1._dp,EV_BC]
+            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name),&
