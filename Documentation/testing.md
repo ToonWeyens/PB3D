@@ -227,15 +227,24 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   not; the 1e-3 anchor rows cannot see a decomposition-dependent shift.
 - `cbm18a_free_bnd`: the same deck **free-boundary** with the vacuum
   response, exercising the whole vacuum chain `store_vac_HEL` → `calc_GH` →
-  `calc_vac_res` (exterior BEM solve) → `set_BC`. Style 2 (variational,
-  Hermitian imposition) \(-4.5039\times10^{-2}\) is the validated value;
-  style 4 (explicit natural-boundary-condition row) \(-4.5124\times10^{-2}\)
-  is anchored only so that a change shows, it is not a cross-check of style 2
-  (both re-recorded on 31 October 2026, when the free end point got its
-  trapezoidal weight h/2 in the normal integral; before, style 2 was
-  \(-4.5019\times10^{-2}\) and style 4 \(-4.4712\times10^{-2}\)).
+  `calc_vac_res` (exterior BEM solve) → `set_BC`. The free boundary is
+  `BC_style(2) = 2`: the vacuum energy is added to the edge block and the
+  matrices stay Hermitian. Anchor \(-4.5051\times10^{-2}\).
   The test also asserts free ≤ fixed and that the stored response matrix is
   Hermitian and positive semi-definite (`check_vac_res.py`).
+- A cross-check that is no longer in the code. Until November 2026 PB3D had
+  a second free-boundary treatment, `BC_style(2) = 4`: it replaced the last
+  row of the matrices by the natural boundary condition, written with a left
+  finite difference, which made the matrices non-Hermitian. With the weights
+  of `calc_end_weights` it converged to the value of style 2, with an error
+  proportional to 1/`n_r_sol`: on the circular \(\epsilon = 0.33\) case
+  \(-0.43266\), \(-0.43531\), \(-0.43661\), \(-0.43725\) at 200, 400, 800
+  and 1600 radial points, against \(-0.437883\) for style 2 from 400 points
+  on; on this deck \(-4.5088\times10^{-2}\) at 200 points, 0.08 % from style
+  2. This is independent evidence that the last row of style 2 is the natural
+  boundary condition. With half a weight at the last point instead, style 4
+  went to \(-0.469\) on the circular case, 7 % off. The code of style 4 is
+  in the history up to commit cba0762.
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition
@@ -246,10 +255,13 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   \(-4.2168\times10^{-1}\) against MISHKA's 0.42679 within 2 % (measured
   1.2 %; at n = 15 and 20 the gap is 0.55 and 0.26 %, falling as 1/n²;
   `tests/reference/mishka_circular.txt`), and the same deck at 400 radial
-  points within 5e-4 of the 200-point value: the second-order convergence of
-  the free edge since its trapezoidal weight (31 October 2026; the first-order
-  convergence before it gave 1.2e-2, and the anchor was
-  \(-4.3034\times10^{-1}\), 2.3 % from the converged value).
+  points within 5e-5 of the 200-point value. This guards the weights of the
+  last points of the free edge in the normal integral
+  (`num_utilities::calc_end_weights`, 17 November 2026): the move is 1.3e-5
+  with them, 1.4e-4 with the trapezoidal weight h/2 of 31 October 2026 and
+  1.2e-2 with the full weight before that (when the anchor was
+  \(-4.3034\times10^{-1}\), 2.3 % from the converged value). The anchor is
+  \(-4.2551\times10^{-1}\) now.
 - `circ_eps033_vmec_twin`: the circular ε = 0.33 HELENA fixture and its VMEC
   twin `wout_circ_eps033_q104.nc` (made from the HELENA file by
   `tests/reference/make_vmec_twin.sh`: PB3D `--export_HEL`, then VMEC++) give
@@ -325,7 +337,7 @@ uv run fortitude check --select=OB Modules/ tests/unit tests/fullstack PB3D.f90 
   `calc_vac_res` on the circular boundary against the analytical
   large-aspect-ratio (cylinder) vacuum response, validating sign and
   magnitude of `vac%res` as it enters the SLEPc boundary condition
-  (`set_BC_4`).
+  (`set_BC_2`).
 - Full-stack tests for grid and equilibrium quantities.
 - Multi-process *end-to-end* regression runs in CI: the full-stack suites
   run at 2 and 4 processes everywhere, the regression decks are

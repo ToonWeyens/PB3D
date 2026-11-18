@@ -19,7 +19,7 @@ module num_vars
         &plot_sol_Q, plot_E_rec, plot_vac_pot, check_vac, vac_diag_style, ltest, use_pol_flux_E, &
         &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
         &norm_disc_prec_eq, K_style, EV_guess, norm_disc_prec_X, &
-        &norm_disc_prec_sol, norm_disc_style_sol, interp_V_ord, &
+        &norm_disc_prec_sol, interp_V_ord, &
         &size_ghost_interp_V, &
         &POST_style, alpha_style, magn_int_style, solver_SLEPC_style, &
         &max_njq_change, &
@@ -92,7 +92,7 @@ module num_vars
     integer :: U_style                                                          !< style for calculation of U (1: ord.2, 2: ord.1, 1: ord.0)
     integer :: norm_style                                                       !< style for normalization
     integer :: K_style                                                          !< style for kinetic energy
-    integer :: BC_style(2)                                                      !< style for BC left and right
+    integer :: BC_style(2)                                                      !< style for BC left and right (1: set to zero, 2: free boundary with vacuum, right only)
     integer :: X_style                                                          !< style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: matrix_SLEPC_style                                               !< style for matrix storage (1: sparse, 2: shell)
     integer :: solver_SLEPC_style                                               !< style for solver (1: Krylov-Schur, 2: GD)
@@ -123,7 +123,6 @@ module num_vars
     integer :: norm_disc_prec_eq                                                !< precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 !< precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               !< precision for normal discretization for solution
-    integer :: norm_disc_style_sol                                              !< style for normal discretization for solution (1: central fin. diff., 2: left fin. diff.)
     
     ! Radial interpolation of interp_V_spline(): its order and the number of
     ! points redistribute_output_grid() adds on each side of a process' range,

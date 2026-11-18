@@ -205,9 +205,8 @@ contains
     contains
         !> /private Set up local block, possibly translated for fast PB3D.
         !!
-        !! \note   For  BC_style   3,  there   is  a   grid  extension   of  n_r
-        !! beyond  the  tabulated modes  variables,  which  is  why there  is  a
-        !! 'min(..,size(nm_X,1))' here.
+        !! \note The index into the modes variables is limited to their size by
+        !! the 'min(..,size(nm_X,1))'.
         subroutine setup_local_block(nm_X,r_id,ind,block,block_loc)
             use X_vars, only: n_mod_X
             

@@ -17,11 +17,14 @@
 # corner term of the axisymmetric vacuum (vac%style 2, calc_GH_2) got the
 # plasma-side angle, -4.2452e-1, 0.53 % below MISHKA; at n = 15 and 20 the gap
 # is 0.24 and 0.13 % (0.55 and 0.26 % before), falling as 1/n^2 like the
-# finite-n terms the high-n ordering drops. The MISHKA value must hold to 2 %.
+# finite-n terms the high-n ordering drops; and since 17 November 2026, when
+# the last points of the free edge got the weights of calc_end_weights in the
+# normal integral, -4.2551e-1, 0.30 % below MISHKA. The MISHKA value must hold
+# to 2 %.
 # The deck is also run with 400 radial points: the eigenvalue must move by
-# less than 5e-4 relative, which holds for the second-order convergence the
-# edge weight gives (1.5e-4) and fails for the first-order one it replaced
-# (1.2e-2).
+# less than 5e-5 relative. It moves by 1.3e-5 with the weights of
+# calc_end_weights, by 1.4e-4 with the trapezoidal weight h/2 at the edge
+# point and by 1.2e-2 with the full weight h.
 set -u
 
 PB3D_EXE=$1
@@ -30,11 +33,11 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.2562e-1
+ANCHOR=-4.2551e-1
 RTOL=1e-3
 MISHKA=-0.42679
 MISHKA_RTOL=0.02
-ORDER_RTOL=5e-4
+ORDER_RTOL=5e-5
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -84,7 +87,7 @@ awk -v evf="$EV_FIXED" -v ev="$EV_FREE" -v anchor="$ANCHOR" -v rtol="$RTOL" \
     -v mishka="$MISHKA" -v mrtol="$MISHKA_RTOL" -v ev4="$EV_FREE_400" -v ortol="$ORDER_RTOL" 'BEGIN {
     ok = 1
     relo = (ev4 - ev) / ev; if (relo < 0) relo = -relo
-    if (relo > ortol) { print "FAIL: 200- and 400-point eigenvalues differ by", relo, "(first-order edge quadrature?)"; ok = 0 }
+    if (relo > ortol) { print "FAIL: 200- and 400-point eigenvalues differ by", relo, "(weights of the last points of the free edge?)"; ok = 0 }
     if (evf <= 0) { print "FAIL: fixed boundary not stable:", evf; ok = 0 }
     rel = (ev - anchor) / anchor; if (rel < 0) rel = -rel
     relm = (ev - mishka) / mishka; if (relm < 0) relm = -relm

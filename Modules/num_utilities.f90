@@ -13,8 +13,8 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, LCM, &
-        &order_per_fun, shift_F, solve_vand
+        &calc_coeff_fin_diff, calc_end_weights, fac, d, m, f, bubble_sort, &
+        &GCD, LCM, order_per_fun, shift_F, solve_vand
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff, calc_D2_smooth
 #endif
@@ -2117,6 +2117,94 @@ contains
         call solve_vand(nr,mat_loc,rhs_loc,coeff,transp=.true.)
         coeff = coeff*fac(deriv)
     end function calc_coeff_fin_diff
+    
+    !> Calculate the  weights of the  last points of  a sum over  an equidistant
+    !! grid that belong to left finite differences of order \c ord.
+    !!
+    !! An integral  over a grid of  points \f$i = 0 \ldots  N\f$ with step  size
+    !! \f$h\f$ is approximated by a sum over the points,
+    !!  \f[\int f \, dx \approx h \sum_i w_i f_i \ , \f]
+    !! and the  derivatives in \f$f\f$  are left  finite differences over  \c ord
+    !! + 1 points,
+    !!  \f[\left(D X\right)_i = \frac{1}{h} \sum_{m=0}^{p} c_m X_{i-m} \ , \f]
+    !! with \f$p\f$ = \c ord and \f$c_m\f$ from calc_coeff_fin_diff().
+    !!
+    !! The weights returned  here are the ones  for which the sum  of the finite
+    !! difference of any grid function gives back its value at the last point,
+    !!  \f[h \sum_i w_i \left(D X\right)_i = X_N \ , \f]
+    !! if \f$X\f$  vanishes at the first  \f$p\f$ points. This  is the discrete
+    !! form  of \f$\int  X'  dx =  X(x_N) -  X(x_0)\f$,  which the  integration
+    !! by  parts  of  an  energy   integral  uses.  With  trapezoidal  weights,
+    !! \f$w_N =  1/2\f$ and the  others 1, it  does not hold: the  left stencils
+    !! of  the points  beyond \f$N\f$  do  not exist,  so the  last \f$p\f$  +
+    !! 1  values of  \f$X\f$ appear  in fewer  stencils than  the others.
+    !!
+    !! Collecting the terms in \f$X_{N-k}\f$ gives the weights from the last
+    !! point inwards:
+    !!  \f[c_0 w_N = 1 \ , \quad
+    !!      \sum_{m=0}^{\min(p,k)} c_m w_{N-k+m} = 0 \ \text{for} \ k \ge 1 \ .\f]
+    !! They tend to 1; for \c ord = 3 they are 6/11, 108/121, 1.0143, 1.0286,
+    !! 1.0156, \f$\ldots\f$ and the difference from 1 falls by a factor 0.43 per
+    !! point. Their sum  differs from that of  unit weights by -1/2, as for the
+    !! trapezoidal rule.
+    !!
+    !! \c w(1) is the  weight of the last point, \c w(2)  that of the point before
+    !! it, and so on. The points before those have weight 1 to within 1E-12.
+    !!
+    !! \note For \c ord = 1 all weights are 1.
+    !!
+    !! \return ierr
+    integer function calc_end_weights(ord,w) result(ierr)
+        character(*), parameter :: rout_name = 'calc_end_weights'
+        
+        ! input / output
+        integer, intent(in) :: ord                                              !< order of the left finite differences
+        real(dp), intent(inout), allocatable :: w(:)                            !< weights, starting from the last point
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, parameter :: n_max = 500                                       ! maximum number of weights
+        real(dp), parameter :: tol = 1.E-12_dp                                  ! tolerance for a weight to be 1 (the coefficients are not exact)
+        real(dp), allocatable :: coeff(:)                                       ! coefficients of left finite differences
+        real(dp) :: w_loc(n_max)                                                ! local weights
+        integer :: kd, md                                                       ! counters
+        integer :: n_w                                                          ! number of weights that differ from 1
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! left finite differences: coeff(ord+1-m) multiplies the point i-m
+        ierr = calc_coeff_fin_diff(1,ord+1,ord+1,coeff)
+        CHCKERR('')
+        
+        ! from the last point inwards, until ord successive weights are 1
+        n_w = 0
+        w_loc(1) = 1._dp/coeff(ord+1)
+        do kd = 2,n_max
+            w_loc(kd) = 0._dp
+            do md = 1,min(ord,kd-1)
+                w_loc(kd) = w_loc(kd) - coeff(ord+1-md)*w_loc(kd-md)
+            end do
+            w_loc(kd) = w_loc(kd)/coeff(ord+1)
+            if (kd.gt.ord) then
+                if (maxval(abs(w_loc(kd-ord+1:kd)-1._dp)).lt.tol) then
+                    n_w = kd-ord
+                    exit
+                end if
+            end if
+        end do
+        if (n_w.eq.0) then
+            ierr = 1
+            err_msg = 'The end weights for left finite differences of order '&
+                &//trim(i2str(ord))//' do not tend to 1'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up output
+        if (allocated(w)) deallocate(w)
+        allocate(w(n_w))
+        w = w_loc(1:n_w)
+    end function calc_end_weights
     
     !> Convert 2-D coordinates (i,j) to the storage convention used in matrices.
     !!

@@ -409,7 +409,7 @@ contains
     !! \return ierr
     integer function setup_mats(mds,grid_sol,X,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
-            &rank, sol_n_procs, BC_style, norm_disc_style_sol
+            &rank, sol_n_procs, BC_style
         use grid_utilities, only: trim_grid
         use SLEPC_utilities, only: insert_block_mat
         use X_vars, only: n_mod_X
@@ -445,21 +445,9 @@ contains
         ierr = 0
         
         ! user output
-        select case (norm_disc_style_sol)
-            case (1)                                                            ! central finite differences
-                call writo('Normal discretization with central finite &
-                    &differences of order '//trim(i2str(ndps))//&
-                    &', stencil width '//trim(i2str(2*ndps+1)))                 ! ndps left and ndps right
-            case (2)                                                            ! left finite differences
-                call writo('Normal discretization with left finite &
-                    &differences of order '//trim(i2str(ndps))//&
-                    &', stencil width '//trim(i2str(ndps+1)))                   ! only ndps left
-            case default
-                err_msg = 'No solution normal discretization style associated &
-                    &with '//trim(i2str(norm_disc_style_sol))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
+        call writo('Normal discretization with left finite &
+            &differences of order '//trim(i2str(ndps))//&
+            &', stencil width '//trim(i2str(ndps+1)))                           ! the point itself and ndps to its left
         
 #if ldebug
         if (ltest) then
@@ -574,7 +562,7 @@ contains
             select case (BC_style(1))
                 case (1)
                     i_lim(1) = max(grid_sol%i_min,ndps+1)                       ! first ndps rows write left BC's
-                case (2:4)
+                case (2)
                     err_msg = 'Left BC''s cannot have BC type '//&
                         &trim(i2str(BC_style(1)))
                     ierr = 1
@@ -587,15 +575,14 @@ contains
             end select
             
             ! set up i_max
-            ! Note:   for   BC_style(2)  =   1,   one   could  argue   that   we
-            ! should  use  n_r-ndps.  This,  however,  generates  an  error  for
-            ! norm_disc_style_sol =  2 where these  elements are not  written in
-            ! the main bulk assembly, so that petsc thinks there are no nonzeros
-            ! there. This is avoided by using n_r.
+            ! Note: for a fixed edge  (BC_style(2) = 1) one could argue for
+            ! n_r-ndps. But the  blocks of the last rows would  then not be
+            ! written in the main bulk assembly, so that petsc thinks there are
+            ! no nonzeros there. This is avoided by using n_r.
             select case (BC_style(2))
                 case (1)
-                    i_lim(2) = min(grid_sol%i_max,n_r)                          ! last ndps rows write right BC's, will be overwritten
-                case (2:4)
+                    i_lim(2) = min(grid_sol%i_max,n_r)                          ! the last row is overwritten by the right BC
+                case (2)
                     i_lim(2) = min(grid_sol%i_max,n_r)                          ! right BC is added later
                 case default
                     err_msg = 'No BC style associated with '//&
@@ -614,7 +601,7 @@ contains
         ! Makes use of mds, n_r and  grid_sol_trim
         !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
-            use num_utilities, only: con, calc_coeff_fin_diff
+            use num_utilities, only: con, calc_coeff_fin_diff, calc_end_weights
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -635,6 +622,7 @@ contains
             PetscInt :: ndc_ind                                                 ! index for finite differences
             PetscInt :: st_size                                                 ! stencil size
             PetscReal :: w_q                                                    ! quadrature weight of this point in the normal integral
+            PetscReal, allocatable :: w_end(:)                                  ! quadrature weights of the last points, starting from the last
 #if ldebug
             PetscScalar, allocatable :: loc_block_0_backup(:,:)                 ! backed up V_0 local block
 #endif
@@ -669,37 +657,56 @@ contains
             ! allocate local block
             allocate(loc_block(n_mod_X,n_mod_X))
             
+            ! Quadrature weights of the last points in the normal integral, in
+            ! units of the step size; all other points have weight 1.
+            !
+            ! At a free edge the last  points count less than the others, so
+            ! that the sum over the points is the integral up to the edge. How
+            ! this is spread over the last points follows from the finite
+            ! differences. The differences of the points beyond the edge do
+            ! not exist, so the last unknowns appear in fewer differences than
+            ! the others. The weights of calc_end_weights are the ones for
+            ! which the sum over the points of the finite difference of X
+            ! still gives X at the edge, as the integral of X' does. The last
+            ! row is then the natural boundary condition, written with the
+            ! left finite difference, and the error of the eigenvalue falls as
+            ! 1/n_r_sol^ndps for orders 2 and 3.
+            !
+            ! For order 1 the weights that do this are all 1, which does not
+            ! give the integral. The edge point then gets half a weight (the
+            ! trapezoidal rule), and a part of the error of the eigenvalue
+            ! falls only as 1/n_r_sol.
+            !
+            ! At a fixed edge all points have weight 1.
+            if (BC_style(2).eq.2) then
+                if (ndps.ge.2) then
+                    ierr = calc_end_weights(ndps,w_end)
+                    CHCKERR('')
+                else
+                    allocate(w_end(1))
+                    w_end = 0.5_dp
+                end if
+            else
+                allocate(w_end(1))
+                w_end = 1._dp
+            end if
+            
+            ! Coefficients of the left finite difference: the point itself and
+            ! the ndps points to its left. They are the same for every point.
+            st_size = ndps
+            ndc_ind = 1+ndps
+            ierr = calc_coeff_fin_diff(1,st_size+1,ndc_ind,ndc)
+            CHCKERR('')
+            ndc = ndc/step_size                                                 ! scale by step size
+            
             ! iterate over all rows of this rank
             do kd = bulk_i_lim(1)-1,bulk_i_lim(2)-1                             ! (indices start with 0 here)
                 ! set up local kd
                 kd_loc = kd+2-grid_sol_trim%i_min
                 
-                ! set up ndc
-                select case (norm_disc_style_sol)
-                    case (1)                                                    ! central differences
-                        if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) &
-                            &.and. kd.gt.n_r-1-ndps) then                       ! asymmetric finite differences: shifted indices
-                            ndc_ind = 1+2*ndps - (n_r-1-kd)
-                        else
-                            ndc_ind = 1+ndps
-                        end if
-                        st_size = 2*ndps
-                    case (2)                                                    ! left differences
-                        ndc_ind = 1+ndps
-                        st_size = ndps
-                end select
-                ierr = calc_coeff_fin_diff(1,st_size+1,ndc_ind,ndc)
-                CHCKERR('')
-                ndc = ndc/step_size                                             ! scale by step size
-                
-                ! quadrature weight of this point in the normal integral: the
-                ! trapezoidal rule gives the free edge half the interior weight.
-                ! With a full weight there the discrete surface term differs
-                ! from the continuous one at O(h), and the free-boundary
-                ! eigenvalue converges only at first order in n_r_sol.
+                ! quadrature weight of this point in the normal integral
                 w_q = 1._dp
-                if ((BC_style(2).eq.2 .or. BC_style(2).eq.4) .and. &
-                    &kd.eq.n_r-1) w_q = 0.5_dp
+                if (n_r-kd.le.size(w_end)) w_q = w_end(n_r-kd)                  ! kd = n_r-1 is the last point
                 
                 ! fill the blocks
                 
@@ -868,13 +875,9 @@ contains
             allocate(col_lims(loc_n_r,2)); col_lims = 0
             
             if (rank.lt.sol_n_procs) then
-                ! set (half) stencil size
-                select case (norm_disc_style_sol)
-                    case (1)                                                    ! central finite differences
-                        st_size = [ndps,ndps]
-                    case (2)                                                    ! left finite differences
-                        st_size = [ndps,0]
-                end select
+                ! set (half) stencil size: ndps points to the left, none to the
+                ! right
+                st_size = [ndps,0]
                 
                 ! Set column limits of nonzero columns per row
                 !   At row  i the largest nonzero  column is the one  due to the
@@ -916,44 +919,32 @@ contains
     
     !> Sets the boundary conditions deep in the plasma (1) and at the edge (2).
     !!
-    !! Through  \c  norm_disc_style_sol it  can  be  chosen whether  the  finite
-    !! differences are:
-    !!  1. central finite differences
-    !!  2. left finite differences
+    !! The radial derivative is a left finite difference: the point itself and
+    !! the \c norm_disc_prec_sol points to its left.
     !!
     !! Possibilities for \c BC_style:
     !!  -# Set to zero (fixed boundary):
     !!      - An  artificial Eigenvalue  \c EV_BC is  introduced by  setting the
     !!      diagonal  components  of  A  to  EV_BC  and  of  B  to  1,  and  the
     !!      off-diagonal elements to zero.
-    !!  -# Minimization of surface energy through asymmetric fin. differences:
-    !!      -  The natural  boundary condition  is imposed  variationally: the
-    !!      edge row  is assembled like  any bulk row  (with one-sided
-    !!      stencils; natively for left differences, through the \c ndc_ind
-    !!      shifting for central ones)  and the vacuum term  is added to the
-    !!      edge diagonal  block. In contrast to  style 4 this keeps  A and B
-    !!      Hermitian. Agrees  with style 4 to  8 significant digits  on the
-    !!      cbm18a free-boundary benchmark, with much  cleaner numerics (see
-    !!      Documentation/testing.md).
-    !!  -# REMOVED (was: minimization of surface energy through extension of
-    !!      grid - never implemented beyond a stub; use style 4).
-    !!  -# Explicit introduction of the surface energy minimization:
-    !!      -  The equation  due  to  the minimization  of  the  vacuum term  is
-    !!      introduced explicitely  as an asymmetric finite  difference equation
-    !!      in the  last row, using  left finite differences:  V1^T X +  V2 X' +
-    !!      vac X =  0 (and the kinetic  analogue in B). This  breaks the
-    !!      Hermiticity of A  and B but is verified  end-to-end (see
-    !!      Documentation/testing.md).
+    !!  -# Free boundary, through the energy:
+    !!      - The  natural boundary condition  is not written into  the matrix.
+    !!      The edge  row is assembled like  any other row, and  the vacuum term
+    !!      is added to the edge diagonal block. This keeps A and B Hermitian.
+    !!      For  orders 2  and 3  the  last points  get the  weights of
+    !!      num_utilities::calc_end_weights  in the  normal integral.  The last
+    !!      row  is then  the natural  boundary condition,  written with  the
+    !!      left finite difference (see Documentation/testing.md).
+    !!
+    !! The inner end takes style 1 only.
     !!
     !! Makes use of n_r.
     !!
     !! \return ierr
     integer function set_BC(mds,grid_sol,X,vac,A,B) result(ierr)
-        use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC, &
-            &norm_disc_style_sol
+        use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC
         use X_vars, only: n_mod_X
         use MPI_utilities, only: get_ser_var, wait_MPI
-        use num_utilities, only: con, c
         use SLEPC_utilities, only: insert_block_mat
         
         character(*), parameter :: rout_name = 'set_BC'
@@ -968,7 +959,7 @@ contains
         
         ! local variables
         PetscInt :: kd                                                          ! counter
-        PetscInt :: n_min, n_max                                                ! absolute limits excluding the BC's
+        PetscInt :: n_min                                                       ! number of points at the inner end that carry the BC
         character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
@@ -990,31 +981,11 @@ contains
         select case (BC_style(1))
             case (1)
                 n_min = ndps                                                    ! dirichlet BC requires stencil
-            case (2:4)
+            case (2)
                 err_msg = 'Left BC''s cannot have BC type '//&
                     &trim(i2str(BC_style(1)))
                 ierr = 1
                 CHCKERR(err_msg)
-            case default
-                err_msg = 'No BC style associated with '//&
-                    &trim(i2str(BC_style(1)))
-                ierr = 1
-                CHCKERR(err_msg)
-        end select
-        
-        ! set up n_max, depending on BC style
-        select case (BC_style(2))
-            case (1)
-                select case (norm_disc_style_sol)
-                    case (1)                                                    ! central differences
-                        n_max = ndps                                            ! dirichlet BC requires stencil
-                    case (2)                                                    ! left differences
-                        n_max = 1                                               ! dirichlet BC only on last point
-                end select
-            case (2)
-                n_max = 1                                                       ! only 1 element carries vacuum contribution
-            case (4)
-                n_max = 1                                                       ! only last element carries BC
             case default
                 err_msg = 'No BC style associated with '//&
                     &trim(i2str(BC_style(1)))
@@ -1033,7 +1004,7 @@ contains
                     case (1)
                         ierr = set_BC_1(kd-1,A,B,.false.)                       ! indices start at 0
                         CHCKERR('')
-                    case (2:4)
+                    case (2)
                         err_msg = 'Left BC''s cannot have BC type '//&
                             &trim(i2str(BC_style(1)))
                         ierr = 1
@@ -1066,28 +1037,23 @@ contains
         call writo('Setting BC at plasma edge')
         call lvl_ud(1)
         
-        ! iterate over all positions where to set right BC
-        do kd = grid_sol%n(3),grid_sol%n(3)-n_max+1,-1
-            if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
-                select case (BC_style(2))
-                    case (1)
-                        ierr = set_BC_1(kd-1,A,B,.true.)                        ! indices start at 0
-                        CHCKERR('')
-                    case (2)
-                        ierr = set_BC_2(kd-1,A)                                 ! indices start at 0
-                        CHCKERR('')
-                    case (4)
-                        ierr = set_BC_4(kd-1,kd-grid_sol%i_min+1,X,A,B,&
-                            &grid_sol%n(3))                                     ! indices start at 0
-                        CHCKERR('')
-                    case default
-                        err_msg = 'No BC style associated with '//&
-                            &trim(i2str(BC_style(2)))
-                        ierr = 1
-                        CHCKERR(err_msg)
-                end select
-            end if
-        end do
+        ! the right BC is set at the last point only
+        kd = grid_sol%n(3)
+        if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then               ! decide which process does the setting
+            select case (BC_style(2))
+                case (1)
+                    ierr = set_BC_1(kd-1,A,B,.true.)                            ! indices start at 0
+                    CHCKERR('')
+                case (2)
+                    ierr = set_BC_2(kd-1,A)                                     ! indices start at 0
+                    CHCKERR('')
+                case default
+                    err_msg = 'No BC style associated with '//&
+                        &trim(i2str(BC_style(2)))
+                    ierr = 1
+                    CHCKERR(err_msg)
+            end select
+        end if
         
         ! assemble the matrices
         call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr)
@@ -1119,7 +1085,6 @@ contains
             integer :: kd                                                       ! counter
             PetscScalar, allocatable :: loc_block(:,:)                          ! [n_mod_X:n_mod_X] block matrix for 1 normal point
             PetscInt :: pmone                                                   ! plus or minus one
-            PetscInt :: st_size                                                 ! stencil size
             
             ! initialize ierr
             ierr = 0
@@ -1142,14 +1107,6 @@ contains
                 pmone = -1
             end if
             
-            ! set up stencil size
-            select case (norm_disc_style_sol)
-                case (1)                                                        ! central differences
-                    st_size = 2*ndps
-                case (2)                                                        ! left differences
-                    st_size = ndps
-            end select
-            
             ! set block r_id + (0,0)
             ierr = insert_block_mat(mds,EV_BC*loc_block,A,r_id,[0,0],n_r,&
                 &overwrite=.true.,ind_insert=.true.)
@@ -1158,8 +1115,8 @@ contains
                 &overwrite=.true.,ind_insert=.true.)
             CHCKERR('')
             
-            ! iterate over range 2
-            do kd = 1,st_size
+            ! iterate over the points that share a finite difference with this one
+            do kd = 1,ndps
                 ! set block r_id +/- (0,kd) and Hermitian conjugate
                 ierr = insert_block_mat(mds,0*loc_block,A,r_id,[0,-pmone*kd],&
                     &n_r,overwrite=.true.,transp=.true.,ind_insert=.true.)
@@ -1174,22 +1131,19 @@ contains
         end function set_BC_1
         
         ! set BC style 2:
-        ! Minimization of surface energy through asymmetric fin. differences
+        ! Free boundary through the energy
         !
-        ! The  bulk assembly  (fill_mat  through set_bulk_lims)  already
-        ! includes  the  edge  row  as a  variational  row:  its  stencils
-        ! are  one-sided  (either  natively,  for  left differences,  or
-        ! through  the ndc_ind  shifting for  central differences),  and
-        ! V_1 blocks  carry their Hermitian-conjugate  mirrors. The  only
-        ! boundary term  of the  energy functional  is the  vacuum term
-        ! X_edge^dagger vac X_edge, whose  Hessian is added  here to  the
-        ! edge diagonal block of A (a  pure surface term: no  integration
-        ! step size). The natural boundary condition
+        ! The bulk assembly (fill_mat) already includes the edge row: the left
+        ! finite difference of the edge point needs no point beyond the edge,
+        ! and the V_1 blocks carry their Hermitian-conjugate mirrors. The only
+        ! boundary term of the energy functional is the vacuum term
+        ! X_edge^dagger vac X_edge, whose Hessian is added here to the edge
+        ! diagonal block of A (a pure surface term: no integration step size).
+        ! The natural boundary condition
         !   (V_1^dagger X + V_2 X' + vac X)|_edge = 0
-        ! then  emerges  from the  discrete  stationarity  of  the  energy
-        ! instead  of  being imposed  as  an  explicit equation  (style
-        ! 4),  which  keeps  A  and  B  Hermitian  up  to  the  (small)
-        ! non-Hermiticity of the discretized vac%res itself.
+        ! then follows from the stationarity of the discrete energy and is not
+        ! written into the matrix. This keeps A and B Hermitian up to the
+        ! (small) non-Hermiticity of the discretized vac%res itself.
         !> \private
         integer function set_BC_2(r_id,A) result(ierr)
             character(*), parameter :: rout_name = 'set_BC_2'
@@ -1214,115 +1168,6 @@ contains
                 &ind_insert=.true.)
             CHCKERR('')
         end function set_BC_2
-
-        ! set  BC style 4:
-        ! Explicit introduction of the surface energy minimization
-        !   V1^T X + V2 X' + delta_vac X = 0 at surface
-        !
-        ! Not validated: it differs from the variational style 2 by 0.19 % on
-        ! cbm18a at psi = 0.75 and by far more on the circular external kink,
-        ! with no dependence on the radial resolution, while style 2 agrees
-        ! with MISHKA-1 to 1 %. Use style 2.
-        !
-        ! Makes use of mds.
-        !> \private
-        integer function set_BC_4(r_id,r_id_loc,X,A,B,n_r) result(ierr)
-            use num_vars, only: norm_disc_style_sol
-            use num_utilities, only: calc_coeff_fin_diff
-            
-            character(*), parameter :: rout_name = 'set_BC_4'
-            
-            ! input / output
-            integer, intent(in) :: r_id                                         ! global position at which to set BC (starting at 0)
-            integer, intent(in) :: r_id_loc                                     ! local index in perturbation tables
-            type(X_2_type), intent(in) :: X                                     ! field-averaged perturbation variables (so only first index)
-            Mat, intent(inout) :: A, B                                          ! Matrices A and B from A X = lambda B X
-            integer, intent(in) :: n_r                                          ! number of grid points of solution grid
-            
-            ! local variables
-            PetscInt :: jd                                                      ! counter
-            PetscInt :: k, m                                                    ! counters
-            PetscInt :: st_size                                                 ! stencil size
-            PetscReal, allocatable :: ndc(:)                                    ! normal discretization coefficients
-            PetscScalar, allocatable :: loc_block(:,:,:)                        ! [n_mod_X:n_mod_X] block matrix for 1 normal point
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Explicit introduction of surface energy minimization',&
-                &persistent=.true.)
-            
-            ! initialize local blocks (1,2: V1^T and vac for A, B; 3,4: V_2)
-            allocate(loc_block(n_mod_X,n_mod_X,4))
-            
-            ! set up ndc
-            select case (norm_disc_style_sol)
-                case (1)                                                        ! central differences
-                    st_size = 2*ndps
-                case (2)                                                        ! left differences
-                    st_size = ndps
-            end select
-            ierr = calc_coeff_fin_diff(1,st_size+1,st_size+1,ndc)
-            CHCKERR('')
-            ndc = ndc/step_size                                                 ! scale by step size
-            
-            ! ----------------------!
-            ! BLOCKS ~ V1^T and vac !
-            ! ----------------------!
-            ! fill local blocks for A and B
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    loc_block(k,m,1) = conjg(sum(&
-                        &X%PV_1(1,:,r_id_loc,c([m,k],.false.,n_mod_X))))        ! asymetric matrices don't need con()
-                    loc_block(k,m,2) = conjg(sum(&
-                        &X%KV_1(1,:,r_id_loc,c([m,k],.false.,n_mod_X))))        ! asymetric matrices don't need con()
-                end do
-            end do
-            loc_block(:,:,1) = loc_block(:,:,1) + vac%res
-            
-            ! -------------!
-            ! BLOCKS ~ V_2 !
-            ! -------------!
-            ! fill local blocks for A and B
-            do m = 1,n_mod_X
-                do k = 1,n_mod_X
-                    loc_block(k,m,3) = &
-                        &con(sum(X%PV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
-                        &[k,m],.true.)                                          ! symmetric matrices need con()
-                    loc_block(k,m,4) = &
-                        &con(sum(X%KV_2(1,:,r_id_loc,c([k,m],.true.,n_mod_X))),&
-                        &[k,m],.true.)                                          ! symmetric matrices need con()
-                end do
-            end do
-            
-            ! set block r_id + (0,0): V1^T and vac together with the jd = 0 part
-            ! of V_2, inserted once (the blocks overwrite the row, so a second
-            ! insertion at (0,0) would drop the first)
-            ierr = insert_block_mat(mds,(loc_block(:,:,1)+&
-                &loc_block(:,:,3)*ndc(1+st_size))*ndc(1+st_size),A,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            ierr = insert_block_mat(mds,(loc_block(:,:,2)+&
-                &loc_block(:,:,4)*ndc(1+st_size))*ndc(1+st_size),B,r_id,&
-                &[0,0],n_r,overwrite=.true.,ind_insert=.true.)
-            CHCKERR('')
-            
-            ! set block r_id + (0,-st_size:-1)
-            do jd = -st_size,-1
-                ierr = insert_block_mat(mds,loc_block(:,:,3)*&
-                    &ndc(jd+st_size+1)*ndc(1+st_size),A,&
-                    &r_id,[0,jd],n_r,overwrite=.true.,&
-                    &ind_insert=.true.)
-                CHCKERR('')
-                ierr = insert_block_mat(mds,loc_block(:,:,4)*&
-                    &ndc(jd+st_size+1)*ndc(1+st_size),B,&
-                    &r_id,[0,jd],n_r,overwrite=.true.,&
-                    &ind_insert=.true.)
-                CHCKERR('')
-            end do
-        end function set_BC_4
     end function set_BC
     
     !> Sets up EV solver.

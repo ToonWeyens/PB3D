@@ -42,7 +42,7 @@ contains
             &use_pol_flux_F, use_normalization, norm_disc_prec_eq, PB3D_name, &
             &norm_disc_prec_X, norm_style, U_style, X_style, prog_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
-            &norm_disc_style_sol, EV_BC, magn_int_style, K_style, &
+            &EV_BC, magn_int_style, K_style, &
             &alpha_style, X_grid_style, debug_version, max_njq_change
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_flat2ND
@@ -433,11 +433,10 @@ contains
         min_r_sol = dum_1D(1)
         max_r_sol = dum_1D(2)
         norm_disc_prec_sol = nint(dum_1D(3))
-        norm_disc_style_sol = nint(dum_1D(4))
-        BC_style(1) = nint(dum_1D(5))
-        BC_style(2) = nint(dum_1D(6))
-        EV_style = nint(dum_1D(7))
-        EV_BC = dum_1D(8)
+        BC_style(1) = nint(dum_1D(4))
+        BC_style(2) = nint(dum_1D(5))
+        EV_style = nint(dum_1D(6))
+        EV_BC = dum_1D(7)
         call dealloc_var_flat(var_flat)
         
         ! user output
