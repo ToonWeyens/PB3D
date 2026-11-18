@@ -114,6 +114,16 @@ contains
         if (dum_1D(20).gt.0) debug_version_PB3D = .true.
         call dealloc_var_flat(var_flat)
         
+        ! The layout of the output differs between versions. This matters to
+        ! POST, and to PB3D when it continues from the output of an earlier run.
+        if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
+            ierr = 1
+            err_msg = 'The output is from PB3D version '//&
+                &trim(r2strt(PB3D_version))//': need at least version '//&
+                &trim(r2strt(min_PB3D_version))
+            CHCKERR(err_msg)
+        end if
+        
         ! tests
         select case (prog_style)
             case (1)                                                            ! PB3D
@@ -123,12 +133,6 @@ contains
                 call lvl_ud(1)
                 
                 call writo('PB3D version '//trim(r2strt(PB3D_version)))
-                if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
-                    ierr = 1
-                    err_msg = 'Need at least PB3D version '//&
-                        &trim(r2strt(min_PB3D_version))
-                    CHCKERR(err_msg)
-                end if
                 
                 if (debug_version_PB3D) call writo('debug version')
                 

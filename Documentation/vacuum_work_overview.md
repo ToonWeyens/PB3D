@@ -6,7 +6,7 @@ Two different "styles" appear below. `vac%style` is the vacuum method, set by th
 
 ## 1. Where we started, where we are
 
-| | Before (PB3D 2.47, 2018 to 2020 code) | Now (2.49, this branch) |
+| | Before (PB3D 2.47, 2018 to 2020 code) | Now (2.49 and 2.50, this branch) |
 |---|---|---|
 | Build | PETSc 3.9 API, no longer buildable on a current machine | PETSc/SLEPc 3.25 on macOS arm64, Snellius and GitHub Actions |
 | Tests | none that ran | unit, full-stack and regression layers under CTest; eight CI jobs, all green |
