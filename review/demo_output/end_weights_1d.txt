@@ -1,0 +1,32 @@
+part 1: end weights of calc_end_weights, last point first
+  p = 1: all weights are 1 (PB3D does not use them: it keeps 1/2 at the edge point)
+         sum of (w - 1) = +0.000000   (the trapezoidal rule: -0.5)
+         h/2 weights: h sum w (DX) - X_N = +2.85e-01
+         end weights: h sum w (DX) - X_N = +0.00e+00
+  p = 2: 25 weights differ from 1 by more than 1e-12: 0.6667, 0.8889, 0.9630, 0.9877, 0.9959, 0.9986 ...
+         sum of (w - 1) = -0.500000   (the trapezoidal rule: -0.5)
+         h/2 weights: h sum w (DX) - X_N = -6.24e-01
+         end weights: h sum w (DX) - X_N = -7.32e-13
+  p = 3: 32 weights differ from 1 by more than 1e-12: 0.5455, 0.8926, 1.0143, 1.0286, 1.0156, 1.0047 ...
+         sum of (w - 1) = -0.500000   (the trapezoidal rule: -0.5)
+         h/2 weights: h sum w (DX) - X_N = -6.49e-01
+         end weights: h sum w (DX) - X_N = +6.12e-13
+  (p = 3: 6/11 = 0.5455, 108/121 = 0.8926)
+
+part 2: model eigenvalue, reference 12.489191982 (Chebyshev, 200 points)
+  error of the lowest eigenvalue; error*N constant means first order
+  p = 3, weights   h: error -1.80e-01 -9.02e-02 -4.51e-02 -2.26e-02 -1.13e-02 -5.65e-03   order from the last three: 1.0
+                         error*N   -17.979   -18.035   -18.059   -18.070   -18.076   -18.079
+  p = 3, weights h/2: error +1.04e-03 +1.14e-04 -3.73e-05 -4.16e-05 -2.65e-05 -1.47e-05   order from the last three: 0.8
+                         error*N    +0.104    +0.023    -0.015    -0.033    -0.042    -0.047
+  p = 3, weights end: error +5.36e-04 +6.29e-05 +7.60e-06 +9.34e-07 +1.14e-07 +1.76e-08   order from the last three: 2.9
+                         error*N    +0.054    +0.013    +0.003    +0.001    +0.000    +0.000
+  p = 2, weights h/2: error +1.09e-02 +2.23e-03 +2.98e-04 -5.65e-05 -7.99e-05 -5.28e-05   order from the last three: 0.0
+                         error*N    +1.088    +0.446    +0.119    -0.045    -0.128    -0.169
+  p = 2, weights end: error +1.55e-02 +3.98e-03 +1.01e-03 +2.53e-04 +6.35e-05 +1.59e-05   order from the last three: 2.0
+                         error*N    +1.550    +0.796    +0.403    +0.203    +0.102    +0.051
+
+part 3: V = 0, reference 4.115858366: the mode reaches the inner end
+  p = 3, weights end: error +1.78e-01 +8.76e-02 +4.34e-02 +2.16e-02 +1.08e-02 +5.39e-03
+                         error*N   +17.825   +17.514   +17.363   +17.288   +17.251   +17.233
+figure: review/figures/end_weights_1d.png

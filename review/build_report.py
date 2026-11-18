@@ -34,7 +34,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REV_A = "2.47"
-REV_B = "59c6e90"                     # origin/dev/vacuum-fixes on 17 November 2026 (after 59c6e90, ang for both styles): the code from stage 5 on
+REV_B = "b41fd8a"                     # origin/dev/vacuum-fixes on 18 November 2026 (after #37 and #38: end weights, #36): the code from stage 5 on
 REV_R = "9e9aba5"                     # the code that stages 0 to 4 were reviewed at
 GUIDE_R = "df519a4"                   # the commit of this guide whose page holds stages 0 to 4 as reviewed
 FROZEN_A = "<!-- ================================================================== STAGE 0 -->"
@@ -703,6 +703,7 @@ def _full_text(path, text, lmap, when):
 DEMOS = {
     "shear_odd_spline": ("shear_odd_spline.py", "shear_odd_spline.png"),
     "edge_weight_1d": ("edge_weight_1d.py", "edge_weight_1d.png"),
+    "end_weights_1d": ("end_weights_1d.py", "end_weights_1d.png"),
     "redistribute_owner": ("redistribute_owner.py", "redistribute_owner.png"),
     "nyquist_modes": ("nyquist_modes.py", None),
     "implicit_save": ("implicit_save.f90", None),
