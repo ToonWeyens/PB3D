@@ -27,6 +27,7 @@ jobs:
 
       - name: Install toolchain
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y gfortran cmake ninja-build liblapack-dev
 
@@ -57,6 +58,7 @@ jobs:
 
       - name: Install toolchain
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y gfortran cmake ninja-build liblapack-dev
 
@@ -88,6 +90,7 @@ jobs:
 
       - name: Install dependency stack
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y \
             gfortran g++ cmake ninja-build pkg-config xz-utils \
@@ -193,6 +196,7 @@ jobs:
 
       - name: Install dependency stack
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y \
             gfortran g++ cmake ninja-build pkg-config xz-utils \
@@ -261,6 +265,7 @@ jobs:
 
       - name: Install dependency stack
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y \
             gfortran g++ cmake ninja-build pkg-config xz-utils \
@@ -387,6 +392,7 @@ jobs:
 
       - name: Install doxygen
         run: |
+          bash .github/apt-mirror.sh
           sudo apt-get update
           sudo apt-get install -y doxygen
 
