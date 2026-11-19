@@ -40,10 +40,14 @@ in the chat before this report.
 
 ## 2. What was run
 
-All runs have a fixed boundary (`BC_style = 1 1`), so that no vacuum enters. They use the toroidal
-mode number n = 10, one process, `tol_SLEPC = 1e-12` and `max_it_rich = 1`: one run per number of
-points, without extrapolation. The number that is compared is always the lowest eigenvalue λ = ω²
-in PB3D's normalisation.
+All runs for question 1 have a fixed boundary (`BC_style = 1 1`), so that no vacuum enters the
+measurement of the exponent. The radial scans for question 2 have a fixed boundary too, except one
+scan of 18 runs on the circular HELENA case, which has a free boundary (`BC_style = 1 2`). Its
+vacuum is the axisymmetric one, which does not depend on the number of points along the field line.
+
+All runs use the toroidal mode number n = 10, one process, `tol_SLEPC = 1e-12` and
+`max_it_rich = 1`: one run per number of points, without extrapolation. The number that is compared
+is always the lowest eigenvalue λ = ω² in PB3D's normalisation.
 
 | label | equilibrium file | what it is | radial range, radial points, poloidal modes |
 |---|---|---|---|
@@ -466,7 +470,7 @@ Independent of A to C:
 
 ## 8. What this report does not cover
 
-- **Free boundary.** With the 3-D vacuum the points along the field line are also the points of the
+- **The exponent with a free boundary.** With the 3-D vacuum the points along the field line are also the points of the
   boundary elements, and the vacuum has its own error in N (issue #11). The axisymmetric vacuum does
   not depend on N.
 - **Other modes.** Only the lowest eigenvalue and n = 10 were measured.
