@@ -504,7 +504,7 @@ contains
             ierr = 0
             
             ! find maximum levl
-            ierr = find_max_rich_lvl(PB3D_rich_lvl,max_PB3D_rich_lvl)
+            ierr = find_max_rich_lvl(max_PB3D_rich_lvl)
             CHCKERR('')
             if (max_PB3D_rich_lvl.le.0) then
                 call writo('No suitable Richardson level found, so only &
@@ -518,6 +518,14 @@ contains
                     PB3D_rich_lvl = max_PB3D_rich_lvl
                     call writo('Treating maximum Richardson level found: '//&
                         &trim(i2str(max_PB3D_rich_lvl)))
+                else if (PB3D_rich_lvl.lt.1) then
+                    call writo('Richardson level requested '//&
+                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
+                        &output will be done.',alert=.true.)
+                    plot_sol_xi = .false.
+                    plot_sol_Q = .false.
+                    plot_E_rec = .false.
+                    PB3D_rich_lvl = 1
                 else if (PB3D_rich_lvl.le.max_PB3D_rich_lvl) then
                     call writo('Treating Richardson level requested: '//&
                         &trim(i2str(PB3D_rich_lvl)))
@@ -527,19 +535,11 @@ contains
                             &trim(i2str(max_PB3D_rich_lvl)),warning=.true.)
                         call lvl_ud(-1)
                     end if
-                else if (PB3D_rich_lvl.gt.max_PB3D_rich_lvl) then
+                else
                     ierr = 1
                     err_msg = 'PB3D_rich_lvl cannot be higher than '//&
                         &trim(i2str(max_PB3D_rich_lvl))
                     CHCKERR(err_msg)
-                else if (PB3D_rich_lvl.lt.1) then
-                    call writo('Richardson level requested '//&
-                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
-                        &output will be done.',alert=.true.)
-                    plot_sol_xi = .false.
-                    plot_sol_Q = .false.
-                    plot_E_rec = .false.
-                    PB3D_rich_lvl = 1
                 end if
             end if
             max_it_rich = PB3D_rich_lvl
@@ -582,7 +582,7 @@ contains
                 CHCKERR(err_msg)
             end if
             if (rich_restart_lvl.gt.1) then
-                ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_rich_lvl)
+                ierr = find_max_rich_lvl(PB3D_rich_lvl)
                 CHCKERR('')
                 if (rich_restart_lvl.gt.PB3D_rich_lvl+1) then
                     ierr = 1
@@ -734,16 +734,16 @@ contains
             end if
             
             ! set X_style
-            if (min_sec_X.ne.huge(1) .and. min_sec_X.ne.huge(1)) then           ! min_sec_X and max_sec_X prescribed
+            if (min_sec_X.ne.huge(1) .or. max_sec_X.ne.huge(1)) then            ! min_sec_X or max_sec_X prescribed (both are checked for X style 1 below)
                 if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed
                     X_style = 1                                                 ! prescribed style
                 else                                                            ! n_mod_X also prescribed
                     ierr = 1
-                    err_msg = 'Cannot prescribe both min and max of secondary &
-                        &X and nr. of modes.'
+                    err_msg = 'Cannot prescribe min_sec_X or max_sec_X &
+                        &together with n_mod_X'
                     CHCKERR(err_msg)
                 end if
-            else                                                                ! min_sec_X and max_sec_X not prescribed
+            else                                                                ! neither min_sec_X nor max_sec_X prescribed
                 if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed either: default
                     X_style = 2                                                 ! X style 2: fast
                     n_mod_X = 10                                                ! 10 resonating modes at every place
@@ -773,13 +773,8 @@ contains
             ! checks for each X style
             select case (X_style)
                 case (1)                                                        ! prescribed
-                    ! check min_sec_X, max_sec_X
-                    if (abs(max_sec_X).lt.abs(min_sec_X)) then
-                        ierr = 1
-                        err_msg = 'max_sec_X has to be larger or equal to &
-                            &min_sec_X in absolute value'
-                        CHCKERR(err_msg)
-                    end if
+                    ! check min_sec_X, max_sec_X (first whether both are set,
+                    ! as an unset one holds huge(1))
                     if (max_sec_X.ge.huge(1)) then
                         ierr = 1
                         err_msg = 'max_sec_X not set'
@@ -788,6 +783,12 @@ contains
                     if (min_sec_X.ge.huge(1)) then
                         ierr = 1
                         err_msg = 'min_sec_X not set'
+                        CHCKERR(err_msg)
+                    end if
+                    if (abs(max_sec_X).lt.abs(min_sec_X)) then
+                        ierr = 1
+                        err_msg = 'max_sec_X has to be larger or equal to &
+                            &min_sec_X in absolute value'
                         CHCKERR(err_msg)
                     end if
                     if (X_grid_style.eq.3) then

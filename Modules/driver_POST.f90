@@ -544,7 +544,8 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, eq_jobs_lims, &
             &eq_job_nr, plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa, &
-            &POST_output_sol, POST_style, compare_tor_pos, plot_E_rec
+            &POST_output_sol, POST_style, compare_tor_pos, plot_E_rec, &
+            &decomp_i, rank
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use eq_ops, only: calc_eq, calc_T_HF, B_plot, J_plot, &
@@ -788,9 +789,12 @@ contains
             end do
             
             ! plot  difference between  Eigenvalue and  energy fraction  if last
-            ! parallel job
+            ! parallel job, and close the energy decomposition log, which
+            ! open_decomp_log opened at the first equilibrium job and which
+            ! write_decomp_log has written for every eigenvalue
             if (last_eq_job) then
                 call plot_sol_val_comp(sol_val_comp)
+                if (plot_E_rec .and. rank.eq.0) close(decomp_i)
             end if
             
             ! user output
@@ -1009,10 +1013,8 @@ contains
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
                 &trim(temp_output_str)
             CHCKERR('Failed to write')
-            
-            close(decomp_i)
         end if
-        
+
         call lvl_ud(-1)
     end function write_decomp_log
     

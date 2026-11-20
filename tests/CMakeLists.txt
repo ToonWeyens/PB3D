@@ -371,6 +371,24 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 PROCESSORS 2
                 TIMEOUT 120)
         endif()
+        # PB3D refuses incomplete or conflicting mode inputs (max_sec_X without
+        # min_sec_X, max_sec_X with n_mod_X), and POST on a fixed-boundary run
+        # with three solutions writes the energy decomposition of all three to
+        # one file and treats PB3D_rich_lvl = 0 and 5 as documented
+        if(TARGET POST)
+            add_test(NAME regression_post_checks
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/post_checks.sh
+                    $<TARGET_FILE:PB3D>
+                    $<TARGET_FILE:POST>
+                    ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                    ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+            set_tests_properties(regression_post_checks PROPERTIES
+                LABELS "regression"
+                PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+                TIMEOUT 300)
+        endif()
         # multi-process consistency of the eigenvalue (issue #4: the 2e-5 shift of
         # redistribute_var sat inside the 1e-3 anchor tolerance); opt-in because
         # more than one process needs a distributed LU inside PETSc
