@@ -4,6 +4,14 @@
 #
 # Usage: build_deps.sh [petsc|slepc|pspline|libstell|all]   (default: all)
 #
+# PETSC_VER and SLEPC_VER choose the releases (default 3.25.3 and 3.25.1;
+# SLEPc's minor version must equal PETSc's). To try a newer release without
+# touching the working stack, install it into other prefixes:
+#   PETSC_VER=3.26.1 SLEPC_VER=3.26.1 \
+#   PB3D_PETSC_DIR=~/pb3d/deps/petsc-3.26 PB3D_SLEPC_DIR=~/pb3d/deps/slepc-3.26 \
+#   build_deps.sh petsc && ... build_deps.sh slepc
+# and set the same two PB3D_*_DIR variables for build_pb3d.sh.
+#
 # Runs on the login node with nice and at most 16 parallel jobs. Tarballs and
 # build trees are removed after a successful install; only the install
 # prefixes stay. Downloads are anonymous (generic User-Agent, no identity).
@@ -18,8 +26,8 @@ NP=16
 NICE="nice -n 10"
 UA="Mozilla/5.0"
 
-PETSC_VER=3.25.3
-SLEPC_VER=3.25.1
+PETSC_VER=${PETSC_VER:-3.25.3}
+SLEPC_VER=${SLEPC_VER:-3.25.1}
 PETSC_URL=https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-$PETSC_VER.tar.gz
 SLEPC_URL=https://slepc.upv.es/download/distrib/slepc-$SLEPC_VER.tar.gz
 PSPLINE_URL=https://github.com/ilonster/pspline.git

@@ -12,10 +12,13 @@ module load netCDF-Fortran/4.6.2-gompi-2025a
 module load CMake/3.31.3-GCCcore-14.2.0
 module load pkgconf/2.3.0-GCCcore-14.2.0
 
-# prefix installs (no PETSC_ARCH); the build trees are deleted after install
-export PETSC_DIR=$PB3D_ROOT/deps/petsc
+# prefix installs (no PETSC_ARCH); the build trees are deleted after install.
+# PB3D_PETSC_DIR and PB3D_SLEPC_DIR, when set before this file is sourced,
+# select another pair of prefixes, for example a newer release built next to
+# the working one (see build_deps.sh).
+export PETSC_DIR=${PB3D_PETSC_DIR:-$PB3D_ROOT/deps/petsc}
 unset PETSC_ARCH
-export SLEPC_DIR=$PB3D_ROOT/deps/slepc
+export SLEPC_DIR=${PB3D_SLEPC_DIR:-$PB3D_ROOT/deps/slepc}
 export PSPLINE_DIR=$PB3D_ROOT/deps/pspline/install
 export LIBSTELL_DIR=$PB3D_ROOT/deps/libstell-min
 export PB3D_FIXTURE_DIR=$PB3D_ROOT/fixtures

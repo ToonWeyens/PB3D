@@ -1,6 +1,25 @@
-# PB3D Spack Environment
+# Installing PB3D
 
-This guide walks you through creating a reproducible Spack environment for PB3D on macOS or Linux. It supplies the PETSc/SLEPc/HDF5 toolchain PB3D expects, while keeping all binaries isolated from your host system.
+This guide installs PB3D on macOS or Linux: the libraries from a Spack
+environment (`spack.yaml` in the project root), PSPLINE and LIBSTELL with
+the scripts in `Libraries/`, then PB3D itself with CMake. For the Snellius
+supercomputer, which uses its own modules and a PETSc built from source, see
+`snellius-setup.md`; for the tests, `testing.md`.
+
+What PB3D needs, and what CMake checks at configure time:
+
+| Library | Needed for | Checked |
+|---|---|---|
+| MPI (Fortran, C, C++) | everything; PB3D is an MPI program | found by `find_package(MPI)` |
+| PETSc, complex scalars, double precision, 3.19 or newer | the eigenvalue problem | stops if real, single precision or older than 3.19; warns if newer than 3.25, the newest tested |
+| a distributed LU in PETSc (MUMPS or SuperLU_DIST) | runs on two or more processes | warns if absent: PB3D then runs on one process only |
+| SLEPc of the same minor version as PETSc | the eigensolver | stops if the versions differ |
+| HDF5 with Fortran, built with MPI | the output | stops if serial |
+| NetCDF-Fortran | VMEC equilibria, through LIBSTELL | found by pkg-config |
+| ScaLAPACK with BLACS | the vacuum | stops if absent |
+| PSPLINE | splines | `cmake/FindPSPLINE.cmake` |
+| LIBSTELL (`read_wout_mod`) | VMEC equilibria | `cmake/FindLIBSTELL.cmake` |
+| STRUMPACK-Dense 1.1.1 | optional vacuum solver | used when found, see section 6 |
 
 ## 1. Install Spack
 
@@ -39,19 +58,16 @@ spack compilers  # Should show gcc with Fortran support
 spack external find cmake openmpi gmake perl python
 
 cd /path/to/PB3D
-spack env create pb3d-env spack.yaml
-spack env activate pb3d-env
+spack env create pb3d spack.yaml
+spack env activate pb3d
 ```
 
-The `spack.yaml` in the project root contains the dependency list (PETSc
-3.25 with complex scalars, SLEPc 3.25, parallel HDF5, NetCDF-Fortran,
-ScaLAPACK). You can edit it before `concretize` if your cluster needs
-different MPI or math libs.
-
-> Known issue (macOS, Homebrew OpenMPI 5): `mpirun` itself can crash in
-> prte/hwloc topology detection. Single-process runs work by invoking the
-> executables directly (MPI singleton mode). See also the flakiness note in
-> `testing.md`.
+The `spack.yaml` in the project root lists the libraries: PETSc 3.19 to
+3.25 with complex scalars and MUMPS, the SLEPc that belongs to it, parallel
+HDF5, NetCDF-Fortran and ScaLAPACK. Spack takes the newest PETSc in that
+range that it knows. MUMPS gives PETSc the distributed LU that PB3D needs
+on two or more processes. OpenMPI is preferred, not required: on a cluster,
+`spack external find` the site MPI first and Spack uses it.
 
 Now concretize and install:
 
@@ -61,6 +77,27 @@ spack install
 ```
 
 The first build can take some time because PETSc/SLEPc compile a large stack. Spack caches results, so later rebuilds are much faster.
+An environment made from an older `spack.yaml` (PETSc without MUMPS) keeps
+working on one process; `spack concretize -f && spack install` in it after
+updating its `spack.yaml` adds MUMPS and rebuilds PETSc and SLEPc only.
+
+### macOS: `mpirun` of Homebrew's OpenMPI 5
+
+On Apple silicon, `mpirun` of OpenMPI 5 can segfault before any program
+starts, in `prte_hwloc_base_get_topo_signature` (seen with OpenMPI 5.0.9 and
+hwloc 2.13 on an M3 Pro under macOS 27, whose six efficiency and five
+performance cores sit under two L2 caches of different sizes, with no L3).
+A synthetic hwloc topology with the same number of cores avoids it. macOS
+cannot bind processes to cores anyway, so nothing is lost. Put this in
+`~/.zshrc`:
+
+```bash
+export HWLOC_SYNTHETIC="package:1 core:$(sysctl -n hw.physicalcpu) pu:1"
+```
+
+The CMake configuration of the tests checks whether `mpiexec` needs the
+variable and sets it for the tests itself. A run without `mpirun`
+(`./PB3D input eq`, MPI singleton mode) never needed it.
 
 ## 4. Build PSPLINE (not in Spack)
 
@@ -200,32 +237,34 @@ ln -sf ../src/strumpackdensepackage.mod inc/strumpackdensepackage.mod
 export STRUMPACK_DIR=$PWD
 ```
 
+CMake looks for STRUMPACK-Dense only under `STRUMPACK_DIR` (CMake variable,
+else environment variable, else `~/Code/STRUMPACK-Dense-1.1.1`) and uses it
+when it finds it. `-DPB3D_USE_STRUMPACK=OFF` builds without it although it
+is there; that build is reproducible from run to run, which the build with
+STRUMPACK is not on macOS (its compressed solve differs slightly per run and
+sometimes falls back to ScaLAPACK).
+
 ## 7. Building PB3D with CMake
 
-With the Spack environment active and PSPLINE/LIBSTELL built (plus optionally STRUMPACK-Dense; omit `-DSTRUMPACK_DIR` to use the ScaLAPACK solver for the vacuum):
+With the Spack environment active and PSPLINE/LIBSTELL built (plus optionally STRUMPACK-Dense, see section 6):
 
 ```bash
-spack env activate pb3d-env
+spack env activate pb3d
 
-# Set paths to external dependencies
-export PSPLINE_DIR=$HOME/Code/pspline/install
-export LIBSTELL_DIR=$HOME/Code/stellopt/install
-export STRUMPACK_DIR=$HOME/Code/STRUMPACK-Dense-1.1.1
-
-# Create build directory
-mkdir build && cd build
-
-# Configure with CMake
-cmake .. \
-    -DPSPLINE_DIR=$PSPLINE_DIR \
-    -DLIBSTELL_DIR=$LIBSTELL_DIR \
-    -DSTRUMPACK_DIR=$STRUMPACK_DIR
-
-# Build
-make -j4
+cmake -S . -B build \
+    -DPSPLINE_DIR=$HOME/Code/pspline/install \
+    -DLIBSTELL_DIR=$PWD/Libraries/libstell-min \
+    -DPB3D_FIXTURE_DIR=$HOME/Code/PB3D-fixtures    # optional, see testing.md
+cmake --build build -j
+ctest --test-dir build --output-on-failure
 ```
 
-The executables `PB3D` and `POST` are created in the build directory.
+The executables `PB3D` and `POST` are created in the build directory. The
+summary at the end of the configure step names the PETSc it found, its
+distributed LU, whether HDF5 is parallel and whether STRUMPACK is used;
+read it once. `cmake --install build --prefix <dir>` copies the two
+executables to `<dir>/bin`; they keep the paths of the Spack libraries, so
+they run without `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH`.
 
 ### CMake Options
 
@@ -238,7 +277,21 @@ The executables `PB3D` and `POST` are created in the build directory.
 | `CMAKE_BUILD_TYPE` | Release | Build type (Debug, Release, RelWithDebInfo) |
 | `PSPLINE_DIR` | - | Path to PSPLINE installation |
 | `LIBSTELL_DIR` | - | Path to LIBSTELL installation |
-| `STRUMPACK_DIR` | ~/Code/STRUMPACK-Dense-1.1.1 | Path to STRUMPACK-Dense 1.1.1 installation |
+| `STRUMPACK_DIR` | ~/Code/STRUMPACK-Dense-1.1.1 | Path to STRUMPACK-Dense 1.1.1 installation (also read from the environment) |
+| `PB3D_USE_STRUMPACK` | ON | Use STRUMPACK-Dense when it is found; OFF: always ScaLAPACK's LU |
+| `SCALAPACK_DIR`, `SCALAPACK_LIBRARIES` | - | Where ScaLAPACK is, when pkg-config does not know it; or the libraries themselves (MKL) |
+| `PB3D_FIXTURE_DIR` | build/fixtures | Equilibrium files of the regression tests (`testing.md`) |
+| `PB3D_TEST_MPI_REGRESSION` | ON when PETSc has a distributed LU | The 2- and 4-process regression rows |
+| `Python3_EXECUTABLE` | `.venv/bin/python` if it exists | Python with h5py, numpy and scipy for the HDF5 checks (`uv sync` makes `.venv`) |
+
+### CMake versions
+
+CMake 3.18 or newer is enough. The Makefile generator of CMake 3.31 used to
+hang in its dependency scan of PETSc 3.25's Fortran headers, which include
+each other; `CMakeLists.txt` now limits that scan to PB3D's own files
+(`CMAKE_DEPENDS_IN_PROJECT_ONLY`), and CMake 3.31 builds normally. After
+reinstalling PETSc in place, clean the build directory, because a change in
+an external header no longer triggers a rebuild by itself.
 
 ### Testing without the full stack
 
@@ -264,19 +317,22 @@ make -j4
 
 ## 8. HPC Cluster with Module System
 
-On HPC systems with module-based environments:
+On a cluster, the site modules usually give MPI, HDF5, NetCDF-Fortran and
+ScaLAPACK. The site PETSc is often built with real scalars, which PB3D
+cannot use (CMake stops with a message saying so); then build PETSc with
+complex scalars and MUMPS yourself, as `snellius-setup.md` and
+`scripts/snellius/build_deps.sh` do on Snellius, or use Spack with the site
+MPI registered as external.
 
 ```bash
-# Load required modules (example)
-module load gcc openmpi petsc slepc hdf5 netcdf-fortran scalapack
+# Load the modules (names differ per site)
+module load gcc openmpi hdf5 netcdf-fortran scalapack pkgconf
+export PKG_CONFIG_PATH=<petsc-prefix>/lib/pkgconfig:<slepc-prefix>/lib/pkgconfig:$PKG_CONFIG_PATH
 
-# Configure and build
-mkdir build && cd build
-cmake .. \
+cmake -S . -B build \
     -DPSPLINE_DIR=/path/to/pspline \
-    -DLIBSTELL_DIR=/path/to/libstell \
-    -DSTRUMPACK_DIR=/path/to/STRUMPACK-Dense-1.1.1
-make -j4
+    -DLIBSTELL_DIR=/path/to/libstell
+cmake --build build -j
 ```
 
 ## 9. Legacy Makefile
@@ -291,15 +347,13 @@ The CMake-based build is recommended for new installations.
 
 ## 10. Sharing the setup
 
-You can freeze the environment spec for collaborators:
+`spack concretize` writes `spack.lock` next to the environment's
+`spack.yaml` (`spack env location`). It pins every version, variant and
+hash; someone else reproduces the same stack with
 
 ```bash
-spack env activate pb3d-env
-spack concretize --fresh
-spack env export > spack-lock.yaml
+spack env create pb3d /path/to/spack.lock
 ```
-
-The `spack-lock.yaml` pins exact versions and hashes so other users reproduce the same build precisely.
 
 ## 11. Useful Spack commands
 

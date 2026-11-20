@@ -1,20 +1,33 @@
-# Spack environment for the full PB3D dependency stack
-# (see Documentation/spack-setup.md for the complete build walkthrough;
-# PSPLINE, LIBSTELL and STRUMPACK-Dense 1.1.1 are built outside Spack).
+# Spack environment for the libraries of PB3D that Spack packages: PETSc and
+# SLEPc with complex scalars, parallel HDF5, NetCDF-Fortran, ScaLAPACK and
+# pkg-config. PSPLINE, the minimal LIBSTELL and, optionally, STRUMPACK-Dense
+# 1.1.1 are built outside Spack (Documentation/spack-setup.md).
 #
-# PB3D requires PETSc with COMPLEX scalars. As of version 2.48 the code
-# targets the modern PETSc/SLEPc API (ported from the original 3.9-era API,
-# which is no longer buildable on current platforms and no longer carried by
-# Spack). Validated with petsc 3.25.3 / slepc 3.25.1, gcc 16, OpenMPI 5 on
-# macOS (Apple Silicon).
+#   spack env create pb3d spack.yaml
+#   spack env activate pb3d
+#   spack concretize
+#   spack install
 #
-# MPI note: on machines with an MPI already installed (e.g. Homebrew
-# open-mpi), register it first with 'spack external find openmpi' to avoid
-# rebuilding it.
+# Versions. PB3D builds and passes its tests with PETSc and SLEPc 3.19 (CI,
+# Ubuntu 24.04) and 3.25 (macOS with gcc 16, Snellius with gcc 14);
+# Modules/SLEPC_ops.f90 has the version guards in between. Spack takes the
+# newest release in the range that it knows.
+#
+# +mumps. PB3D's eigensolve is shift-and-invert: SLEPc factorises the shifted
+# matrix with LU. PETSc's own LU works on one process only, so without a
+# distributed LU every PB3D run on two or more MPI processes stops in
+# EPSSolve ("Could not locate a solver type for factorization type LU and
+# matrix type mpibaij", PB3D error 92). MUMPS is that distributed LU; PETSc
+# picks it by itself. CMake warns when the PETSc it finds has none.
+#
+# MPI. OpenMPI is preferred, not required: on a cluster, register the site
+# MPI first (spack external find openmpi, or mpich) and Spack uses it. On
+# macOS, Homebrew's OpenMPI 5 needs HWLOC_SYNTHETIC set before mpirun
+# starts (Documentation/spack-setup.md).
 spack:
   specs:
-    - petsc@3.25 +complex ~hypre ~superlu-dist ~metis ~hdf5 ~fftw
-    - slepc@3.25 ~arpack
+    - petsc@3.19:3.25 +complex +mumps ~hypre ~superlu-dist ~metis ~hdf5 ~fftw
+    - slepc ~arpack
     - hdf5 +fortran +hl +mpi
     - netcdf-fortran
     - netlib-scalapack
@@ -23,7 +36,7 @@ spack:
     all:
       prefer: ["%gcc"]
     mpi:
-      require: ["openmpi"]
+      prefer: [openmpi]
   concretizer:
     unify: true
   view: true

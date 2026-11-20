@@ -66,6 +66,14 @@ foreach(suite IN LISTS PB3D_UNIT_SUITES)
     set_tests_properties(unit_${suite} PROPERTIES LABELS "unit")
 endforeach()
 
+# Python for the reference checks: when no interpreter is given with
+# -DPython3_EXECUTABLE, the project's own venv (made by `uv sync`, see
+# pyproject.toml) if it exists, because it has the h5py, numpy and scipy that
+# the HDF5 checks of the regression layer import
+if(NOT Python3_EXECUTABLE AND EXISTS ${PROJECT_SOURCE_DIR}/.venv/bin/python)
+    set(Python3_EXECUTABLE ${PROJECT_SOURCE_DIR}/.venv/bin/python)
+endif()
+
 # index logic of setup_modes (X_ops) replayed in python on the mode-window
 # sequences that broke the slot bookkeeping (issue #4, step 5)
 find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -93,6 +101,42 @@ if(OMPI_INFO_EXECUTABLE)
         OUTPUT_VARIABLE _ompi_info_out ERROR_QUIET)
     if(_ompi_info_out MATCHES "mca:osc:pt2pt")
         set(PB3D_TEST_MPI_ENV "OMPI_MCA_osc=pt2pt")
+    endif()
+endif()
+
+# macOS: mpirun of Homebrew's OpenMPI 5 (its PRRTE launcher) can segfault in
+# prte_hwloc_base_get_topo_signature while it reads the hwloc topology,
+# before any program starts. Seen with OpenMPI 5.0.9 and hwloc 2.13 on an
+# M3 Pro (macOS 27): its six efficiency and five performance cores sit under
+# two L2 caches of different sizes, with no L3. A synthetic topology with the
+# same number of cores avoids the crash, and costs nothing because macOS
+# cannot bind processes to cores anyway. The probe below starts one process;
+# only when that fails without the variable and works with it do the tests
+# that use mpirun get HWLOC_SYNTHETIC. For runs by hand, export the same
+# variable (Documentation/spack-setup.md).
+if(APPLE AND MPIEXEC_EXECUTABLE AND NOT DEFINED ENV{HWLOC_SYNTHETIC})
+    execute_process(
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 true
+        RESULT_VARIABLE _mpiexec_plain
+        OUTPUT_QUIET ERROR_QUIET TIMEOUT 60)
+    if(NOT _mpiexec_plain EQUAL 0)
+        cmake_host_system_information(RESULT _n_cores
+            QUERY NUMBER_OF_PHYSICAL_CORES)
+        set(_hwloc_synthetic "package:1 core:${_n_cores} pu:1")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} -E env "HWLOC_SYNTHETIC=${_hwloc_synthetic}"
+                ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 true
+            RESULT_VARIABLE _mpiexec_synthetic
+            OUTPUT_QUIET ERROR_QUIET TIMEOUT 60)
+        if(_mpiexec_synthetic EQUAL 0)
+            list(APPEND PB3D_TEST_MPI_ENV "HWLOC_SYNTHETIC=${_hwloc_synthetic}")
+            message(STATUS "mpiexec needs HWLOC_SYNTHETIC=\"${_hwloc_synthetic}\" "
+                "on this Mac; the tests set it (export it for runs by hand)")
+        else()
+            message(WARNING "${MPIEXEC_EXECUTABLE} fails to start even one "
+                "process, also with HWLOC_SYNTHETIC; the tests labelled mpi "
+                "will fail (run ctest -LE mpi)")
+        endif()
     endif()
 endif()
 
@@ -146,36 +190,9 @@ if(PB3D_BUILD_EXECUTABLES)
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_BINARY_DIR}/mod/full
     )
+    # the same external libraries as PB3D and POST (pb3d_deps, top level)
     target_link_libraries(pb3d_fullstack_tests PRIVATE
-        testdrive
-        dfftpack
-        foul
-        ${PSPLINE_LIBRARIES}
-        ${LIBSTELL_LIBRARIES}
-        MPI::MPI_Fortran
-        MPI::MPI_CXX
-        PkgConfig::PETSC
-        PkgConfig::SLEPC
-        ${HDF5_Fortran_LIBRARIES}
-        PkgConfig::NETCDF_FORTRAN
-    )
-    if(SCALAPACK_FOUND)
-        if(TARGET PkgConfig::SCALAPACK)
-            target_link_libraries(pb3d_fullstack_tests PRIVATE PkgConfig::SCALAPACK)
-        else()
-            target_link_libraries(pb3d_fullstack_tests PRIVATE ${SCALAPACK_LIBRARIES})
-        endif()
-    endif()
-    if(STRUMPACK_FOUND)
-        target_link_libraries(pb3d_fullstack_tests PRIVATE ${STRUMPACK_LIBRARIES})
-    endif()
-    if(LAPACK_FOUND)
-        target_link_libraries(pb3d_fullstack_tests PRIVATE ${LAPACK_LIBRARIES})
-    endif()
-    if(BLAS_FOUND)
-        target_link_libraries(pb3d_fullstack_tests PRIVATE ${BLAS_LIBRARIES})
-    endif()
-    target_link_libraries(pb3d_fullstack_tests PRIVATE m stdc++)
+        testdrive dfftpack foul pb3d_deps)
 
     set(PB3D_FULLSTACK_SUITES
         vac_kernels
@@ -223,9 +240,16 @@ if(PB3D_BUILD_EXECUTABLES)
     endif()
 endif()
 
+# on by default when PETSc has a distributed LU (cmake/PB3DCheckPETSc.cmake),
+# because only then can PB3D solve on more than one process
+if(PB3D_PETSC_DIST_LU STREQUAL "MUMPS" OR PB3D_PETSC_DIST_LU STREQUAL "SuperLU_DIST")
+    set(_pb3d_mpi_regression_default ON)
+else()
+    set(_pb3d_mpi_regression_default OFF)
+endif()
 option(PB3D_TEST_MPI_REGRESSION
-    "Also run the cbm18a fixed-boundary regression deck under mpirun -n 2 and 4 and require the eigenvalue to agree with the one-process run to 1e-6 (needs a distributed LU in PETSc, e.g. MUMPS)"
-    OFF)
+    "Also run the cbm18a fixed-boundary regression deck under mpirun -n 2 and 4 and require the eigenvalue to agree with the one-process run to 1e-6 (needs a distributed LU in PETSc, e.g. MUMPS; ON by default when PETSc has one)"
+    ${_pb3d_mpi_regression_default})
 
 #------------------------------------------------------------------------------
 # Physics regression tests

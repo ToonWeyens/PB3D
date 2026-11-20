@@ -14,6 +14,17 @@ endif()
 # Add cmake modules path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
+# The Makefile generator finds the dependencies of a Fortran source with
+# CMake's own preprocessor, which follows #include into external headers too.
+# CMake 3.31 never finishes on PETSc 3.25's Fortran headers, where
+# petscsys.h and petscmath.h include each other under #if guards: on
+# Snellius, `cmake --build` scanned for a quarter of an hour at 13 GB without
+# compiling anything. With the scan limited to the files of this project,
+# CMake 3.31 builds normally. The price: a change in an external header does
+# not by itself rebuild PB3D, so clean the build directory after reinstalling
+# PETSc in place. The Ninja generator ignores this variable.
+set(CMAKE_DEPENDS_IN_PROJECT_ONLY ON)
+
 # Options
 option(PB3D_ENABLE_DEBUG "Enable debug mode (ldebug preprocessor flag)" OFF)
 option(PB3D_ENABLE_INFINIBAND "Enable InfiniBand support (lIB preprocessor flag)" OFF)
@@ -118,76 +129,91 @@ endif()
 
 if(PB3D_BUILD_EXECUTABLES)
 
-# PETSc (uses its own CMake config)
+# PETSc and SLEPc, through pkg-config: PETSc.pc and SLEPc.pc in
+# <prefix>/lib/pkgconfig must be on PKG_CONFIG_PATH (a Spack environment and
+# scripts/snellius/env.sh put them there). cmake/PB3DCheckPETSc.cmake then
+# checks complex scalars, the versions and the distributed LU.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET PETSc)
-message(STATUS "Found PETSc: ${PETSC_LINK_LIBRARIES}")
-
-# SLEPc (uses its own CMake config)
 pkg_check_modules(SLEPC REQUIRED IMPORTED_TARGET SLEPc)
-message(STATUS "Found SLEPc: ${SLEPC_LINK_LIBRARIES}")
+message(STATUS "Found PETSc ${PETSC_VERSION}: ${PETSC_PREFIX}")
+message(STATUS "Found SLEPc ${SLEPC_VERSION}: ${SLEPC_PREFIX}")
+include(PB3DCheckPETSc)
 
-# HDF5
+# HDF5 with the Fortran interface, built for MPI: PB3D writes its output
+# collectively from all processes (H5Pset_fapl_mpio_f in HDF5_ops.f90)
 find_package(HDF5 REQUIRED COMPONENTS Fortran)
-message(STATUS "Found HDF5: ${HDF5_Fortran_LIBRARIES}")
+message(STATUS "Found HDF5 ${HDF5_VERSION}: ${HDF5_Fortran_LIBRARIES}")
+if(DEFINED HDF5_IS_PARALLEL AND NOT HDF5_IS_PARALLEL)
+    message(FATAL_ERROR "The HDF5 found is serial. PB3D needs HDF5 built \
+with MPI (Spack: hdf5 +mpi +fortran, Ubuntu: libhdf5-openmpi-dev with \
+-DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi).")
+endif()
 
-# NetCDF-Fortran
+# NetCDF-Fortran: LIBSTELL reads the wout files of VMEC with it
 pkg_check_modules(NETCDF_FORTRAN REQUIRED IMPORTED_TARGET netcdf-fortran)
-message(STATUS "Found NetCDF-Fortran: ${NETCDF_FORTRAN_LINK_LIBRARIES}")
+message(STATUS "Found NetCDF-Fortran ${NETCDF_FORTRAN_VERSION}: ${NETCDF_FORTRAN_PREFIX}")
 
-# ScaLAPACK
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SCALAPACK IMPORTED_TARGET scalapack)
-if(NOT SCALAPACK_FOUND)
-    # Try to find ScaLAPACK library directly
-    find_library(SCALAPACK_LIBRARY NAMES scalapack scalapack-openmpi)
-    if(SCALAPACK_LIBRARY)
-        set(SCALAPACK_FOUND TRUE)
-        set(SCALAPACK_LIBRARIES ${SCALAPACK_LIBRARY})
-        message(STATUS "Found ScaLAPACK: ${SCALAPACK_LIBRARY}")
-    else()
-        message(WARNING "ScaLAPACK not found. Some features may not work.")
-    endif()
+# ScaLAPACK with BLACS, required (cmake/FindSCALAPACK.cmake)
+find_package(SCALAPACK REQUIRED)
+
+# STRUMPACK-Dense 1.1.1, optional (cmake/FindSTRUMPACKDense.cmake)
+option(PB3D_USE_STRUMPACK
+    "Solve the vacuum boundary-element system with STRUMPACK-Dense 1.1.1 when it is found under STRUMPACK_DIR; OFF: always with ScaLAPACK's LU"
+    ON)
+set(STRUMPACK_FOUND FALSE)
+if(PB3D_USE_STRUMPACK)
+    find_package(STRUMPACKDense)
+    set(STRUMPACK_FOUND ${STRUMPACKDense_FOUND})
+endif()
+if(NOT STRUMPACK_FOUND)
+    message(STATUS "Vacuum boundary-element system: ScaLAPACK LU (pdgesv), \
+STRUMPACK-Dense 1.1.1 not used")
 endif()
 
-# STRUMPACK-Dense 1.1.1 (required for vacuum module)
-# This is the old dense-only version with Fortran interface
-# Set STRUMPACK_DIR to the STRUMPACK-Dense-1.1.1 directory
-if(NOT STRUMPACK_DIR)
-    set(STRUMPACK_DIR "$ENV{HOME}/Code/STRUMPACK-Dense-1.1.1")
-endif()
-# Use NO_DEFAULT_PATH to avoid finding the newer STRUMPACK from Spack
-find_library(STRUMPACK_LIBRARY NAMES strumpack
-    PATHS ${STRUMPACK_DIR}/lib ${STRUMPACK_DIR}/src
-    NO_DEFAULT_PATH)
-find_path(STRUMPACK_INCLUDE_DIR NAMES strumpackdensepackage.mod
-    PATHS ${STRUMPACK_DIR}/inc ${STRUMPACK_DIR}/examples
-    NO_DEFAULT_PATH)
-if(STRUMPACK_LIBRARY AND STRUMPACK_INCLUDE_DIR)
-    set(STRUMPACK_FOUND TRUE)
-    set(STRUMPACK_LIBRARIES ${STRUMPACK_LIBRARY})
-    set(STRUMPACK_INCLUDE_DIRS ${STRUMPACK_INCLUDE_DIR})
-    message(STATUS "Found STRUMPACK-Dense: ${STRUMPACK_LIBRARY}")
-    message(STATUS "  Include dir: ${STRUMPACK_INCLUDE_DIR}")
-else()
-    set(STRUMPACK_FOUND FALSE)
-    message(STATUS "STRUMPACK-Dense not found - the vacuum module will solve its \
-boundary-element system with ScaLAPACK (pdgesv) instead of STRUMPACK's \
-compressed solver. Set STRUMPACK_DIR to a STRUMPACK-Dense-1.1.1 build to \
-use the latter.")
-endif()
-
-# PSPLINE (custom find module)
+# PSPLINE and LIBSTELL, built outside any package manager
+# (cmake/FindPSPLINE.cmake, cmake/FindLIBSTELL.cmake)
 find_package(PSPLINE REQUIRED)
-message(STATUS "Found PSPLINE: ${PSPLINE_LIBRARIES}")
-
-# LIBSTELL (custom find module)
 find_package(LIBSTELL REQUIRED)
-message(STATUS "Found LIBSTELL: ${LIBSTELL_LIBRARIES}")
 
 # LAPACK and BLAS (usually pulled in by other dependencies, but ensure they're available)
 find_package(LAPACK)
 find_package(BLAS)
+
+#------------------------------------------------------------------------------
+# All external libraries of the full build in one interface target, so that
+# PB3D, POST and the full-stack tests (tests/CMakeLists.txt) link the same
+# list in the same order
+#------------------------------------------------------------------------------
+add_library(pb3d_deps INTERFACE)
+target_include_directories(pb3d_deps INTERFACE
+    ${CMAKE_SOURCE_DIR}/include
+    ${PSPLINE_INCLUDE_DIRS}
+    ${LIBSTELL_INCLUDE_DIRS}
+    ${HDF5_Fortran_INCLUDE_DIRS}
+)
+target_link_libraries(pb3d_deps INTERFACE
+    ${PSPLINE_LIBRARIES}
+    ${LIBSTELL_LIBRARIES}
+    MPI::MPI_Fortran
+    MPI::MPI_CXX
+    PkgConfig::PETSC
+    PkgConfig::SLEPC
+    ${HDF5_Fortran_LIBRARIES}
+    PkgConfig::NETCDF_FORTRAN
+    SCALAPACK::SCALAPACK
+)
+if(STRUMPACK_FOUND)
+    target_link_libraries(pb3d_deps INTERFACE STRUMPACK::Dense)
+endif()
+if(LAPACK_FOUND)
+    target_link_libraries(pb3d_deps INTERFACE ${LAPACK_LIBRARIES})
+endif()
+if(BLAS_FOUND)
+    target_link_libraries(pb3d_deps INTERFACE ${BLAS_LIBRARIES})
+endif()
+# the C++ runtime of STRUMPACK-Dense and of MPI's C++ part, and libm
+target_link_libraries(pb3d_deps INTERFACE m stdc++)
 
 endif() # PB3D_BUILD_EXECUTABLES
 
@@ -374,137 +400,40 @@ add_library(pb3d_modules OBJECT ${PB3D_MODULE_SOURCES})
 set_target_properties(pb3d_modules PROPERTIES
     Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod/full)
 
-# Include directories
+# include/ and the .mod files of the modules themselves come first; the
+# external libraries' include directories come with pb3d_deps
 target_include_directories(pb3d_modules PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}/mod/full
-    ${PSPLINE_INCLUDE_DIRS}
-    ${LIBSTELL_INCLUDE_DIRS}
-    ${HDF5_Fortran_INCLUDE_DIRS}
 )
-
-# Link dependencies (for module interface)
-target_link_libraries(pb3d_modules PUBLIC
-    foul
-    MPI::MPI_Fortran
-    PkgConfig::PETSC
-    PkgConfig::SLEPC
-    ${HDF5_Fortran_LIBRARIES}
-    PkgConfig::NETCDF_FORTRAN
-)
+target_link_libraries(pb3d_modules PUBLIC foul pb3d_deps)
 
 if(STRUMPACK_FOUND)
-    target_include_directories(pb3d_modules PUBLIC ${STRUMPACK_INCLUDE_DIRS})
     target_compile_definitions(pb3d_modules PRIVATE PB3D_WITH_STRUMPACK)
 endif()
 
 #------------------------------------------------------------------------------
-# PB3D executable
+# PB3D and POST executables: each is its main program plus the objects of
+# pb3d_modules
 #------------------------------------------------------------------------------
-add_executable(PB3D
-    PB3D.f90
-    $<TARGET_OBJECTS:pb3d_modules>
-)
-
-target_include_directories(PB3D PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/mod/full
-    ${PSPLINE_INCLUDE_DIRS}
-    ${LIBSTELL_INCLUDE_DIRS}
-    ${HDF5_Fortran_INCLUDE_DIRS}
-)
-
-target_link_libraries(PB3D PRIVATE
-    dfftpack
-    foul
-    ${PSPLINE_LIBRARIES}
-    ${LIBSTELL_LIBRARIES}
-    MPI::MPI_Fortran
-    MPI::MPI_CXX
-    PkgConfig::PETSC
-    PkgConfig::SLEPC
-    ${HDF5_Fortran_LIBRARIES}
-    PkgConfig::NETCDF_FORTRAN
-)
-
-if(SCALAPACK_FOUND)
-    if(TARGET PkgConfig::SCALAPACK)
-        target_link_libraries(PB3D PRIVATE PkgConfig::SCALAPACK)
-    else()
-        target_link_libraries(PB3D PRIVATE ${SCALAPACK_LIBRARIES})
-    endif()
-endif()
-
-if(STRUMPACK_FOUND)
-    target_include_directories(PB3D PRIVATE ${STRUMPACK_INCLUDE_DIRS})
-    target_link_libraries(PB3D PRIVATE ${STRUMPACK_LIBRARIES})
-endif()
-
-if(LAPACK_FOUND)
-    target_link_libraries(PB3D PRIVATE ${LAPACK_LIBRARIES})
-endif()
-if(BLAS_FOUND)
-    target_link_libraries(PB3D PRIVATE ${BLAS_LIBRARIES})
-endif()
-
-# Link standard C++ and math libraries
-target_link_libraries(PB3D PRIVATE m stdc++)
+foreach(prog IN ITEMS PB3D POST)
+    add_executable(${prog}
+        ${prog}.f90
+        $<TARGET_OBJECTS:pb3d_modules>
+    )
+    target_include_directories(${prog} PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/mod/full
+    )
+    target_link_libraries(${prog} PRIVATE dfftpack foul pb3d_deps)
+endforeach()
 
 #------------------------------------------------------------------------------
-# POST executable
+# Installation. The installed executables keep the paths of the shared
+# libraries they were linked with (PETSc, SLEPc, HDF5, ... from a Spack view
+# or a prefix outside the system paths), so they run without LD_LIBRARY_PATH.
 #------------------------------------------------------------------------------
-add_executable(POST
-    POST.f90
-    $<TARGET_OBJECTS:pb3d_modules>
-)
-
-target_include_directories(POST PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/mod/full
-    ${PSPLINE_INCLUDE_DIRS}
-    ${LIBSTELL_INCLUDE_DIRS}
-    ${HDF5_Fortran_INCLUDE_DIRS}
-)
-
-target_link_libraries(POST PRIVATE
-    dfftpack
-    foul
-    ${PSPLINE_LIBRARIES}
-    ${LIBSTELL_LIBRARIES}
-    MPI::MPI_Fortran
-    MPI::MPI_CXX
-    PkgConfig::PETSC
-    PkgConfig::SLEPC
-    ${HDF5_Fortran_LIBRARIES}
-    PkgConfig::NETCDF_FORTRAN
-)
-
-if(SCALAPACK_FOUND)
-    if(TARGET PkgConfig::SCALAPACK)
-        target_link_libraries(POST PRIVATE PkgConfig::SCALAPACK)
-    else()
-        target_link_libraries(POST PRIVATE ${SCALAPACK_LIBRARIES})
-    endif()
-endif()
-
-if(STRUMPACK_FOUND)
-    target_include_directories(POST PRIVATE ${STRUMPACK_INCLUDE_DIRS})
-    target_link_libraries(POST PRIVATE ${STRUMPACK_LIBRARIES})
-endif()
-
-if(LAPACK_FOUND)
-    target_link_libraries(POST PRIVATE ${LAPACK_LIBRARIES})
-endif()
-if(BLAS_FOUND)
-    target_link_libraries(POST PRIVATE ${BLAS_LIBRARIES})
-endif()
-
-# Link standard C++ and math libraries
-target_link_libraries(POST PRIVATE m stdc++)
-
-#------------------------------------------------------------------------------
-# Installation
-#------------------------------------------------------------------------------
+set_target_properties(PB3D POST PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 install(TARGETS PB3D POST
     RUNTIME DESTINATION bin
 )
@@ -536,13 +465,14 @@ message(STATUS "")
 if(PB3D_BUILD_EXECUTABLES)
     message(STATUS "Dependencies:")
     message(STATUS "  MPI:            ${MPI_Fortran_COMPILER}")
-    message(STATUS "  PETSc:          ${PETSC_VERSION}")
+    message(STATUS "  PETSc:          ${PETSC_VERSION} (${PETSC_PREFIX})")
+    message(STATUS "  distributed LU: ${PB3D_PETSC_DIST_LU}")
     message(STATUS "  SLEPc:          ${SLEPC_VERSION}")
-    message(STATUS "  HDF5:           ${HDF5_VERSION}")
+    message(STATUS "  HDF5:           ${HDF5_VERSION} (parallel: ${HDF5_IS_PARALLEL})")
     message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
     message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
     message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
-    message(STATUS "  PSPLINE:        ${PSPLINE_FOUND}")
-    message(STATUS "  LIBSTELL:       ${LIBSTELL_FOUND}")
+    message(STATUS "  PSPLINE:        ${PSPLINE_LIBRARIES}")
+    message(STATUS "  LIBSTELL:       ${LIBSTELL_LIBRARIES}")
     message(STATUS "")
 endif()
