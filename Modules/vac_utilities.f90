@@ -63,7 +63,10 @@ contains
     !! along them (0.06 \f$R_0\f$), the  kernel seen along the neighbouring line
     !! is a peak much narrower than the point spacing, and sampling it at the
     !! points  gives  errors  of order  one  whose  sign depends  on how  the
-    !! points of neighbouring lines happen to line up.
+    !! points of neighbouring lines happen to line up. The stencil and the
+    !! Gauss points lie on one field line, so this rule changes the integral
+    !! along the line only; across the field lines calc_GH_1 keeps the sum
+    !! with the weight \f$\Delta a\f$ per field line.
     !!
     !! For  subintegrals adjacent  to the  singularity (i.e.  with the  influence
     !! point as  one of  their endpoints), the  contribution of  the singular
