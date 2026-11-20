@@ -12,12 +12,14 @@ Symbols used throughout: $N$ is `n_r_sol`, the number of radial points; $\Delta$
 
 **What is proposed.** The radial derivative and the radial integral of the energy are no longer a left finite difference and a weighted sum over the points. The displacement of every Fourier mode becomes a continuous function that is a polynomial of degree $k$ on each element, where an element is a group of $k + 1$ neighbouring radial points and neighbouring elements share their end point. The energy of that function is integrated with $k + 1$ Gauss–Legendre points inside every element. The unknowns stay what they are now: the values of $X$ at $N$ equally spaced radial points.
 
-**What is certain: the error proportional to $1/N$ goes.** This is measured with PB3D on the cbm18a fixed-boundary deck (section 3.1). Its eigenvalue has an error $0.0554/N$ for $p = 3$, which is $6.3 \times 10^{-3}$ of the eigenvalue at 200 points and $1.6 \times 10^{-3}$ at 800 points. The error comes from the two ends of the radial range, 94 % from the inner end and 6 % from the fixed edge:
+**The present differences have an error proportional to $1/N$; the elements are built so that they do not have it.** With the present differences and $p = 3$, the eigenvalue of the cbm18a fixed-boundary deck is off by $0.0554/N$ (**measured** with PB3D, section 3.1), which is $6.3 \times 10^{-3}$ of the eigenvalue at 200 points and $1.6 \times 10^{-3}$ at 800 points. The cause is measured too: the differences displace the two ends of the plasma. 94 % of the error comes from the inner end and 6 % from the fixed edge:
 
 - PB3D holds the first $p$ points at zero, so the plasma it computes starts $(p - \tfrac{1}{2})$ steps outside `min_r_sol`;
 - at a fixed edge all integration weights are 1, which places the edge 0.28 steps inside `max_r_sol` for $p = 3$.
 
-These two displacements, multiplied by the measured dependence of the eigenvalue on the position of each end, give $0.0552/N$. The elements have neither displacement: one point is held at each end and the integral runs from `min_r_sol` to `max_r_sol`. In the model the elements keep their power of $1/N$ at a free edge, at a fixed edge and when the eigenfunction reaches the inner end with a slope (section 3.2).
+These two displacements, multiplied by the measured dependence of the eigenvalue on the position of each end, give $0.0552/N$.
+
+The elements do not displace the ends: one point is held at each end and the integral runs from `min_r_sol` to `max_r_sol`. In the model the error of the elements has no term proportional to $1/N$: it falls as $1/N^{2k}$ at a free edge, at a fixed edge and when the eigenfunction reaches the inner end with a slope (section 3.2). A PB3D run with elements has not been made; gate 3d is that test.
 
 **What depends on the case: the gain from the higher power.** Away from the ends the error of the elements falls as $1/N^{2k}$, once the eigenfunction is resolved. Call the length of change of an eigenfunction $\ell = \sqrt{\int |X|^2 \mathrm{d}\psi / \int |X'|^2 \mathrm{d}\psi}$. In the model (section 3.2), relative error of the lowest eigenvalue:
 
@@ -34,7 +36,7 @@ With 13 points per length, $k = 2$ is no better than the present differences and
 - The matrices keep their shape: one block of `n_mod_X` unknowns per radial point. For $k = 3$ a row has at most 7 blocks, as now, and 5 on average (section 3.5).
 - The coefficient matrices are needed at the Gauss points, which are $\tfrac{4}{3}$ times as many as the radial points for $k = 3$.
 - $N$ has to be $k \, n_\text{el} + 1$; a deck with 200 points gets 202 for $k = 3$.
-- Every regression value of an eigenvalue moves. POST has to build the same tables of Fourier modes as PB3D, so `min_PB3D_version` goes up.
+- Every regression value of an eigenvalue moves. POST has to build the same tables of Fourier modes as PB3D, so `min_PB3D_version` has to be raised.
 - Chapter 7 of the theory document describes the differences and would have to follow.
 
 **What the elements do not change.**
@@ -69,7 +71,7 @@ Three consequences for this plan.
 
 - A scheme whose unknowns are the values at the same points leaves the solution vector and the output file as they are. POST depends on the scheme in two places: it builds the table of modes itself, so PB3D and POST must use the same rule, and it takes spline orders and ghost widths from `norm_disc_prec_sol`.
 - `insert_block_mat` already places a block that belongs to one point at rows and columns of other points. An element needs the same operation.
-- The coefficient matrices exist only at the radial points. Gauss points lie between them, so the interpolation has to go to another set of positions.
+- The coefficient matrices exist only at the radial points. Gauss points lie between them, so the interpolation has to give the coefficient matrices at another set of positions.
 
 ## 3. Measurements
 
@@ -186,7 +188,7 @@ What the tables say.
 - The elements fall as $1/n^{2k}$ in all four problems, without any rule for the first or the last points.
 - The differences of PB3D fall as $1/n$ whenever the eigenfunction reaches a fixed edge or the inner end with a slope. They reach $1/n^3$ to $1/n^{3.7}$ only at a free edge with an eigenfunction that is small at the inner end.
 - With Gauss–Legendre integration every error of the elements is positive: the discrete eigenvalue lies above the true one. The differences have errors of both signs. With Gauss–Lobatto integration the sign is not fixed either (it is negative in the one-mode problem); its errors are 0.3 to 0.8 times those of Gauss–Legendre for the lowest eigenvalue and 1.6 times for the lowest ten (section 3.5).
-- The gain of $k = 3$ over the differences $p = 3$ at equal $n$ goes from a factor 2900 (six modes, 193 unknowns) over 14 (twenty modes, 193 unknowns) to a loss of a factor 2.1 (twenty modes, 49 unknowns). Between 3.2 and 6.5 points per length the elements become the better scheme.
+- At equal $n$, the error of $k = 3$ is 2900 times smaller than that of the differences $p = 3$ with six modes and 193 unknowns, 14 times smaller with twenty modes and 193 unknowns, and 2.1 times larger with twenty modes and 49 unknowns. Between 3.2 and 6.5 points per length the elements become the better scheme.
 
 ### 3.3 The sliding set of Fourier modes (model, **measured**)
 
@@ -344,7 +346,7 @@ Call an **energy point** a position where the energy density is evaluated. The p
 | $\mathbf{X}'$ at the energy point | $\sum_s c_s \mathbf{X}_{i-s} / \Delta$ | $\sum_a \ell_a'(\psi_g) \mathbf{X}_a$ |
 | coefficient matrices needed | at the radial points | at the Gauss points |
 
-`fill_mat` is a loop over energy points. For each it forms the three blocks from `V_0`, `V_1`, `V_2` and places multiples of them at the rows and columns of the unknowns involved. With elements the loop stays; the multiples change, and the `V_0` block also goes to pairs of different points. The model script is written this way and reproduces the numbers of chapter 7 for the differences.
+`fill_mat` is a loop over energy points. For each it forms the three blocks from `V_0`, `V_1`, `V_2` and places multiples of them at the rows and columns of the unknowns involved. With elements the loop stays; the multiples change, and the `V_0` block is also placed at pairs of different points. The model script is written this way and reproduces the numbers of chapter 7 for the differences.
 
 ### 4.4 The two ends and the vacuum
 
@@ -452,7 +454,7 @@ A stage is finished when its gate passes. Each stage is one or more commits on t
 
 **Stage 3. Elements.** One table of modes per element and its copies; the grid of Gauss points; `interp_V` to it; the table of the elements in `fill_mat`; one held point; the input checks; the degree as an argument of `setup_modes` at all four calls; `trim_modes`; the version; the two new checks; the anchors re-recorded with a table "before, after, reason" in `testing.md`. From this stage on the elements are the scheme of the branch. No switch keeps the differences, because no gate needs one: every comparison is with the separate build of f9713d7.
 
-*Gate 3a, the new parts with numbers that must not change.* With $k = 1$, a fixed set of modes and one energy point at the outer end of each element, the table of the elements is the table of the differences with $p = 1$ and all weights 1 (section 3.5). In that setting the matrices of cbm18a fixed, of the circular fixed case and of its VMEC twin equal those of f9713d7 with `norm_disc_prec_sol` = 1 to $10^{-12}$ per entry. This tests the grid of Gauss points, its table of modes, the interpolation to it, the loop and the preallocation in the real code. The outer-end rule exists in the code for this gate only and goes in stage 6. A fixed set is needed because rule A takes the set at the middle of an element, which is not the present table.
+*Gate 3a, the new parts with numbers that must not change.* With $k = 1$, a fixed set of modes and one energy point at the outer end of each element, the table of the elements is the table of the differences with $p = 1$ and all weights 1 (section 3.5). In that setting the matrices of cbm18a fixed, of the circular fixed case and of its VMEC twin equal those of f9713d7 with `norm_disc_prec_sol` = 1 to $10^{-12}$ per entry. This tests the grid of Gauss points, its table of modes, the interpolation to it, the loop and the preallocation in the real code. The outer-end rule exists in the code for this gate only and is deleted in stage 6. A fixed set is needed because rule A takes the set at the middle of an element, which is not the present table.
 
 *Gate 3b, the matrices for $k = 2, 3$.* For cbm18a fixed with about 50 points, once with a fixed set and once with the sliding set, $\mathsf{A}$ and $\mathsf{B}$ equal to $10^{-12}$ the matrices that the loop of `fe_model.assemble` builds from PB3D's own coefficient matrices at the Gauss points, which a debug switch writes to a file. This tests the polynomials, the weights, the placement and, with the sliding set, the dropped entries.
 
@@ -482,7 +484,7 @@ If a case does not follow its power, the gate asks for the reason (equilibrium p
 
 *Gate 5.* POST in the debug build, where `calc_XUQ_arr` checks the mode numbers (`sol_utilities.f90:346-351`), runs without a message on the outputs of stage 3 for cbm18a fixed with the sliding set and for the circular free case. The plotted $X$ at the radial points equals the stored eigenvector. Against POST of f9713d7 on its own output of the same case, the largest difference of $|X|$, both scaled to a largest value of 1, is below $10^{-2}$ and is reported. The ratio of the reconstructed energies against the eigenvalue is reported next to that of f9713d7 (issue #26; not a condition, because an energy consistent with the elements would need $X$ and $X'$ at the Gauss points, which is not part of this plan).
 
-**Stage 6. The differences go.** `calc_end_weights`, `calc_coeff_fin_diff`, their unit tests, the outer-end rule and the debug output of gate 3b, the comments that describe weights; each free-boundary deck gets the 200-against-400-points guard that `circ_eps005_free_bnd.sh` has; `testing.md`, `README.md`.
+**Stage 6. The finite-difference routines are deleted.** Deleted: `calc_end_weights`, `calc_coeff_fin_diff`, their unit tests, the outer-end rule and the debug output of gate 3b, the comments that describe weights. Added: each free-boundary deck gets the 200-against-400-points guard that `circ_eps005_free_bnd.sh` has. Updated: `testing.md`, `README.md`.
 
 *Gate 6.* CTest and CI green. No occurrence of `calc_end_weights`, `calc_coeff_fin_diff`, `w_end` or `ndc` left in `Modules/` and `tests/unit/`. The Doxygen warning count not above its baseline.
 
