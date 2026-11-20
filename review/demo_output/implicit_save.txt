@@ -1,0 +1,7 @@
+2.47: argument present = T, remove_next_loc = T
+2.47: argument present = F, remove_next_loc = T
+2.47: argument present = F, remove_next_loc = T
+
+now:  argument present = T, remove_next_loc = T
+now:  argument present = F, remove_next_loc = F
+now:  argument present = F, remove_next_loc = F

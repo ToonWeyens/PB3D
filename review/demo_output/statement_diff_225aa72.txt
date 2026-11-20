@@ -1,0 +1,53 @@
+== 225aa72 2026-11-05 Vacuum: calc_vac_res and store_vac_VMEC in named steps (#4)
+   statements removed 262, added 289, identical on both sides 247
+   removed and not added back:
+     - else
+     - end if   (x2)
+     - use grid_vars, only: min_par_X, max_par_X, min_alpha, max_alpha, n_alpha
+     - use rich_vars, only: rich_lvl, n_par_X
+     - use vac_utilities, only: mat_dis2loc
+     - if (vac%style.eq.1) then
+     - dpar_X = (max_par_X-min_par_X)/(n_par_X-1)*pi
+     - if (n_alpha.gt.1) then
+     - dalpha = (max_alpha-min_alpha)/n_alpha*pi
+     - dalpha = 0._dp
+     - use num_vars, only: rank, n_procs
+     - &' max|rowsum-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
+     - &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail))))//&
+     - &' max|rowsum-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&
+   added and not there before:
+     + ierr = restore_previous_level()
+     + CHCKERR('')   (x6)
+     + ierr = store_geometry()
+     + ierr = broadcast_geometry()
+     + integer function restore_previous_level() result(ierr)
+     + ierr = 0   (x3)
+     + end function restore_previous_level
+     + integer function store_geometry() result(ierr)
+     + end function store_geometry
+     + integer function broadcast_geometry() result(ierr)
+     + end function broadcast_geometry
+     + use grid_vars, only: min_par_X, min_alpha, n_alpha
+     + use rich_vars, only: rich_lvl
+     + use vac_utilities, only: mat_dis2loc, vac_steps
+     + if (vac%style.eq.1) call vac_steps(dpar_X,dalpha)
+     + call set_up_data()
+     + call solve_potential()
+     + call project_response()
+     + &persistent=rank_o)
+     + call finish_response()
+     + contains
+     + subroutine set_up_data()
+     + end subroutine set_up_data
+     + subroutine solve_potential()
+     + end subroutine solve_potential
+     + subroutine project_response()
+     + end subroutine project_response
+     + subroutine finish_response()
+     + end subroutine finish_response
+     + use num_vars, only: rank, n_procs, vac_diag_style
+     + &' vac_diag_style='//trim(i2str(vac_diag_style))//&
+     + &' max|assembled-direct|/4pi='//trim(r2strt(maxval(d_diag)))//&
+     + &' mean='//trim(r2strt(sum(d_diag)/max(1,count(avail)))),&
+     + call writo('CHECKVAC diagonal_parts n_bnd='//trim(i2str(n_bnd))//&
+     + &' max|assembled-faceted|/4pi='//trim(r2strt(maxval(d_fac)))//&

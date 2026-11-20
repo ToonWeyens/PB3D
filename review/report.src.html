@@ -1,0 +1,1084 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PB3D 2.49 Review Guide</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: sticky stage index on the left, one reading column on the right; diffs scroll inside their own boxes. */
+:root {
+  --bg: #f5f6f8; --panel: #ffffff; --fg: #1c232c; --muted: #5d6875; --line: #d9dee5;
+  --accent: #1d5c8a; --accent-soft: #e3edf6;
+  --add: #e5f3e8; --add-ink: #1d6b35; --del: #fbe9e9; --del-ink: #9b2a2a;
+  --read: #a8630b; --read-bg: #fbf0dc; --auto: #3d6b57; --auto-bg: #e4efe9; --demo: #1d5c8a; --demo-bg: #e3edf6;
+  --done: #2f8a4c; --doing: #c98a12; --question: #b03a62; --todo: #9aa4b0;
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121519; --panel: #1a1e24; --fg: #dde3ea; --muted: #97a2ae; --line: #2c333c;
+  --accent: #79b4e3; --accent-soft: #1d2c3a;
+  --add: #183022; --add-ink: #8fd3a3; --del: #3a1d20; --del-ink: #f0a3a3;
+  --read: #f0b35a; --read-bg: #3a2c15; --auto: #8fc7ab; --auto-bg: #1c3028; --demo: #79b4e3; --demo-bg: #1d2c3a;
+  --done: #5cc27c; --doing: #e6b04a; --question: #e07aa0; --todo: #6c7783; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121519; --panel: #1a1e24; --fg: #dde3ea; --muted: #97a2ae; --line: #2c333c;
+  --accent: #79b4e3; --accent-soft: #1d2c3a;
+  --add: #183022; --add-ink: #8fd3a3; --del: #3a1d20; --del-ink: #f0a3a3;
+  --read: #f0b35a; --read-bg: #3a2c15; --auto: #8fc7ab; --auto-bg: #1c3028; --demo: #79b4e3; --demo-bg: #1d2c3a;
+  --done: #5cc27c; --doing: #e6b04a; --question: #e07aa0; --todo: #6c7783; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--font); margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 36px; max-width: 1280px; margin: 0 auto; padding-block: 28px 80px }
+nav.index { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); align-self: start; max-height: calc(100vh - 24px); overflow-y: auto; font-size: 13px; padding-right: 6px }
+nav.index h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; font-weight: 600 }
+nav.index a { display: flex; align-items: center; gap: 8px; color: var(--fg); text-decoration: none; padding: 2px 4px; border-radius: 4px }
+nav.index a:hover { background: var(--accent-soft) }
+/* status marks: the shape tells the state without the color (empty, half, full with a check, full with a question mark) */
+.dot { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; flex: none; box-sizing: border-box;
+  border: 2px solid var(--todo); background: transparent; font: 700 9px/1 var(--font); color: var(--panel) }
+.dot.doing { border-color: var(--doing); background: linear-gradient(90deg, var(--doing) 50%, transparent 50%) }
+.dot.done { border-color: var(--done); background: var(--done) } .dot.done::after { content: "\2713" }
+.dot.question { border-color: var(--question); background: var(--question) } .dot.question::after { content: "?" }
+.dotlegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted) }
+.dotlegend span { display: inline-flex; align-items: center; gap: 5px }
+.rv button { display: inline-flex; align-items: center; gap: 6px }
+nav.index .tools { display: grid; gap: 6px; margin-top: 14px }
+main { min-width: 0 }
+header.top h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; font-weight: 600; text-wrap: balance; letter-spacing: -.01em }
+header.top .sub { color: var(--muted); margin: 0 0 18px }
+h2 { font-size: 22px; margin: 0; font-weight: 600; text-wrap: balance }
+h3 { font-size: 17px; margin: 26px 0 8px; font-weight: 600 }
+h4 { font-size: 14px; margin: 18px 0 6px; font-weight: 600 }
+p, li { max-width: 72ch }
+a { color: var(--accent) }
+code { font-family: var(--mono); font-size: .88em; background: var(--accent-soft); padding: 0 4px; border-radius: 3px }
+pre code { background: none; padding: 0 }
+.stage { margin-top: 56px; padding-top: 6px; border-top: 2px solid var(--fg) }
+.stage > .eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+.stage > h2.st { font-size: 26px; margin: 2px 0 6px }
+section.area { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px 20px; margin-top: 22px }
+.ahead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px }
+.ahead .aid { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 500 }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin: 6px 0 10px }
+.meta b { color: var(--fg); font-weight: 500 }
+.how { background: var(--accent-soft); border-radius: 6px; padding: 10px 16px; margin: 12px 0 }
+.how ol { margin: 6px 0; padding-left: 20px }
+.note { color: var(--muted); font-size: 14px }
+.eqn { margin: 8px 0 10px 24px; overflow-x: auto }
+.warnbox { border: 1px solid var(--read); background: var(--read-bg); border-radius: 8px; padding: 12px 18px; margin: 16px 0 }
+.okline { color: var(--done); font-weight: 500 } .missline { color: var(--question); font-weight: 600 }
+.decide { border-left: 3px solid var(--question); padding: 2px 0 2px 14px; margin: 14px 0 }
+.decide > b { color: var(--question) }
+.gap { border-left: 3px solid var(--read); padding: 2px 0 2px 14px; margin: 14px 0 }
+.gap > b { color: var(--read) }
+table { border-collapse: collapse; font-size: 13.5px; width: 100% }
+th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--line) }
+th { font-weight: 600; background: var(--bg) }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap }
+.tablewrap { overflow-x: auto; margin: 10px 0 }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 0 7px; border-radius: 10px; line-height: 18px; vertical-align: 1px }
+.badge.read { color: var(--read); background: var(--read-bg) } .badge.auto { color: var(--auto); background: var(--auto-bg) }
+.badge.demo { color: var(--demo); background: var(--demo-bg) }
+.tier { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor }
+.tier.skim { color: var(--auto) } .tier.read { color: var(--read) } .tier.study { color: var(--question) }
+details.fdiff, details.trail, .demo details { margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel) }
+details > summary { cursor: pointer; padding: 6px 10px; font-size: 13.5px; list-style-position: inside }
+details[open] > summary { border-bottom: 1px solid var(--line) }
+summary .pm { color: var(--muted); font-family: var(--mono); font-size: 12px }
+summary .hc { color: var(--muted); font-size: 12.5px }
+.commit { margin: 14px 0 }
+.commit .ch { font-size: 13.5px; margin-bottom: 4px }
+.commit .sha { font-weight: 600 } .commit .date { color: var(--muted); font-size: 12.5px; margin: 0 6px }
+.hunk { border-top: 1px solid var(--line) }
+.hunk:first-child { border-top: none }
+.hh { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 4px 10px; font-size: 12px; background: var(--bg) }
+.hh code { background: none; padding: 0; color: var(--muted) }
+.hctx { color: var(--muted); font-family: var(--mono); font-size: 11.5px }
+pre.diff, pre.src, pre.out { margin: 0; overflow-x: auto; font: 12px/1.45 var(--mono); padding: 6px 0 }
+pre.src, pre.out { padding: 10px 12px; white-space: pre }
+pre.out { background: var(--bg); border-radius: 6px; margin: 8px 0; max-height: 420px }
+.l { display: block; white-space: pre; padding-right: 12px; min-width: max-content }
+.l i { display: inline-block; width: 3.4em; text-align: right; padding-right: .7em; color: var(--muted); font-style: normal; user-select: none; opacity: .75 }
+.l.a { background: var(--add); color: var(--add-ink) } .l.d { background: var(--del); color: var(--del-ink) }
+body.hide-cm .l.cm { display: none }
+.demo { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 14px 0; background: var(--panel) }
+.demo .dh { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13.5px }
+figure { margin: 10px 0 } figure img { display: block; max-width: 100%; height: auto; border-radius: 4px; background: #fff }
+button { font: 500 12.5px var(--font); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 3px 10px; cursor: pointer }
+button:hover { border-color: var(--accent) } button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+.rv { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto }
+.rv button[aria-pressed="true"].todo { border-color: var(--todo); background: var(--bg) }
+.rv button[aria-pressed="true"].doing { border-color: var(--doing); color: var(--doing) }
+.rv button[aria-pressed="true"].done { border-color: var(--done); color: var(--done) }
+.rv button[aria-pressed="true"].question { border-color: var(--question); color: var(--question) }
+.notes { margin-top: 10px }
+.notes textarea { width: 100%; min-height: 70px; font: 13.5px/1.5 var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; resize: vertical }
+.secbtns { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; scroll-margin-top: 16px }
+button:disabled { opacity: .6; cursor: default } button:disabled:hover { border-color: var(--line) }
+.savestate { font-size: 12px; color: var(--muted) }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; margin: 10px 0 }
+ul.cov li.ok::marker { color: var(--done) } ul.cov li.miss { color: var(--question) }
+table.ledger ul { margin: 0; padding-left: 16px } table.ledger li.miss { color: var(--question); font-weight: 600 }
+.flow text { fill: var(--fg); font: 12.5px var(--font) } .flow .box { fill: var(--panel); stroke: var(--line) }
+.flow .core { stroke: var(--accent); stroke-width: 1.5 } .flow .side { stroke-dasharray: 4 3 } .flow .arr { stroke: var(--muted); fill: none; marker-end: url(#ah) }
+.flow .small { fill: var(--muted); font-size: 11.5px }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 20; padding: 20px }
+.modal .card { background: var(--panel); border-radius: 8px; padding: 16px; width: min(720px, 100%) }
+.modal textarea { width: 100%; height: 50vh; font: 12.5px var(--mono); background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 8px }
+mjx-container { overflow-x: auto; overflow-y: hidden; max-width: 100% }
+:not(pre) > code { overflow-wrap: anywhere }
+.ranges { font-size: 13px; color: var(--muted); margin: 6px 0 }
+details.fulltext { margin: 6px 0; border: 1px dashed var(--line); border-radius: 6px }
+details.fulltext pre.diff { max-height: 70vh; overflow-y: auto }
+body.hide-mech .hunk.mech, body.hide-mech details.fdiff.all-mech { display: none }
+details.gloss { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 0 14px; margin: 14px 0 }
+details.gloss dl { display: grid; grid-template-columns: minmax(0, 13em) minmax(0, 1fr); gap: 6px 18px; font-size: 14px; margin: 12px 0 }
+details.gloss dt { font-weight: 600 } details.gloss dd { margin: 0 }
+.tier.opt { color: var(--muted) }
+details.optional { border: 1px solid var(--line); border-radius: 8px; padding: 0 14px; margin: 12px 0 }
+details.optional > summary { cursor: pointer; padding: 8px 0; font-weight: 600; color: var(--accent) }
+table.fp { border-collapse: collapse; font-size: 12.5px; width: 100% }
+table.fp th, table.fp td { border-bottom: 1px solid var(--line); padding: 4px 6px; vertical-align: top; text-align: center }
+table.fp th { font-weight: 600; position: sticky; top: 0; background: var(--panel) }
+table.fp td.fpc { text-align: left; min-width: 15em; max-width: 24em }
+.fpb { display: inline-block; font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .03em }
+.fps { font-size: 11.5px; color: var(--muted); line-height: 1.35 }
+table.fp td.fpsame { color: var(--muted) }
+table.fp td.fpv { font-family: var(--mono); font-size: 11.5px; white-space: nowrap }
+table.fp td.fpmoved { background: var(--read-bg); color: var(--read) }
+table.fp td.fpnew { background: var(--accent-soft) }
+table.fp td.fpn { color: var(--muted); font-size: 11.5px }
+table.fp td.fplost { background: var(--del); color: var(--del-ink) }
+table.fp tr.fpfail td { color: var(--muted) }
+ul.fpmoves > li { margin-bottom: 6px } ul.fpmoves ul { font-family: var(--mono); font-size: 12px }
+table.fpdecks td, table.fpdecks th { text-align: left; padding: 3px 10px 3px 0; font-size: 13.5px; vertical-align: top }
+.l > a { display: inline-block; width: 3.4em; text-align: right; padding-right: .7em; color: var(--muted); text-decoration: none; user-select: none; opacity: .75 }
+.l > a:hover { color: var(--accent); text-decoration: underline; opacity: 1 }
+.hunk, .commit, details.fdiff { scroll-margin-top: 16px }
+.hunk:target, .commit:target { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px }
+body.hide-mech .hunk.mech.reveal, body.hide-mech details.fdiff.all-mech.reveal { display: block }
+.trailc { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-left: auto }
+a.cchip, a.bchip { text-decoration: none; border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; line-height: 18px; font-size: 11.5px; color: var(--fg); background: var(--panel); white-space: nowrap }
+a.cchip code { background: none; padding: 0; color: var(--accent); font-size: 11px }
+a.cchip:hover, a.bchip:hover { border-color: var(--accent) }
+a.cchip.here { border-color: var(--accent); background: var(--accent-soft) }
+a.also { font-size: 11.5px; white-space: nowrap }
+h4.codeh { margin-top: 16px }
+a.bchip.read { border-color: var(--read); color: var(--read); background: var(--read-bg) } a.bchip.auto { color: var(--auto) }
+.commit { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; background: var(--panel) }
+.commit .ch a.sha { text-decoration: none } .commit .ch a.sha code { color: var(--accent) }
+.cown { font-size: 12.5px; color: var(--muted) }
+.cblocks { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 6px 0 2px }
+details.cmsg { margin: 6px 0 0; border: 1px dashed var(--line); border-radius: 6px }
+details.cmsg pre.src { white-space: pre-wrap; font-size: 12px; max-height: 360px; overflow-y: auto }
+nav.index h3 a { color: inherit; text-decoration: none; display: block; padding: 0 }
+nav.index h3 a:hover { background: none; color: var(--accent) }
+nav.index h3.current { color: var(--accent) }
+nav.index a.current { background: var(--accent-soft); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); padding-left: 8px }
+@media (max-width: 640px) { details.gloss dl { grid-template-columns: minmax(0, 1fr) } details.gloss dd { margin-bottom: 8px } }
+@media (max-width: 1000px) { .wrap { grid-template-columns: minmax(0, 1fr) } nav.index { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: 12px } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto } }
+</style>
+
+<div class="wrap">
+<nav class="index" id="index" aria-label="Stages and sections">
+  <div class="tools">
+    <label><input type="checkbox" id="hidecm"> hide comment-only diff lines</label>
+    <label><input type="checkbox" id="hidemech"> hide mechanical hunks</label>
+    <button type="button" id="export">Copy my status and notes</button>
+    <span class="savestate" id="savestate">Status and notes: saved in this browser</span>
+    <div class="dotlegend" aria-label="Status marks"><span><span class="dot"></span>to do</span><span><span class="dot doing"></span>in progress</span><span><span class="dot done"></span>done</span><span><span class="dot question"></span>question</span></div>
+  </div>
+  <div id="navlist"></div>
+</nav>
+
+<main>
+<header class="top">
+  <h1>PB3D 2.49 review guide</h1>
+  <p class="sub">Everything that changed in the Fortran between tag <code>2.47</code> and <code>origin/dev/vacuum-fixes</code>, grouped by kind of change, ordered for reviewing, each with the method that checks it fastest. Stages 0 to 4 show <code>9e9aba5</code> (6 November 2026: 92 commits, 36 modules, 17 new test files) as you reviewed them; from stage 5 on the page shows <code>@@NAME_B@@</code> (18 November 2026), with your stage edits, the V0 decisions, the half-mesh fix of <code>read_VMEC</code>, your V1 commit that writes the parallel angle to the vacuum output for both styles, the end weights of the free edge, the removal of central differences and boundary style 4, and the fixes and comments of 18 to 20 November up to version 2.50. Built on 14 November 2026; updated on 16 November after stages 1 and 2, on 17 November after stage 4 and again after <code>59c6e90</code>, on 18 November after the pull requests #37 and #38, and for the last time on 20 November (@@NAME_B@@), before <code>dev/vacuum-fixes</code> goes into <code>master</code>.</p>
+</header>
+
+<div class="warnbox">
+  <b>Where to edit the code during the review:</b> on <code>dev/vacuum-fixes</code>, in your folder <code>~/Code/PB3D</code>; your commits there go into pull request ToonWeyens/PB3D#5 when you push them. Git lets a branch be checked out in one folder only, so no second worktree can hold <code>dev/vacuum-fixes</code> as well.
+  <p><b>State on 18 November:</b> <code>dev/vacuum-fixes</code> is at <code>@@NAME_B@@</code>. On top of <code>9e9aba5</code> it holds your two stage commits, <code>18f87e8</code> "Stage 1 verified by toon" and <code>1839ea0</code> "Stage 2 verified by toon", the pull requests of your V0 decisions, #31 (V0-a and V0-b), #33 (V0-e) and #32 (V0-f), and #34 (the half mesh and B<sub>s</sub> in <code>read_VMEC</code>, issue #16), which closes <a href="#R1">R1</a>. On top of those it holds your commit <code>59c6e90</code> from <a href="#V1">V1</a>, which writes the parallel angle <code>ang</code> to the vacuum output for both styles, and the two pull requests merged on 18 November: #37 (<code>cba0762</code>, the weights of the last points of a free edge) and #38 (<code>9b36fa6</code> and <code>35a40e8</code>, issue <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a>: central differences and boundary style 4 removed). Section <a href="#D">D</a> shows them.</p>
+  <p><b>State on 20 November, the last update of this page:</b> <code>dev/vacuum-fixes</code> is at <code>@@NAME_B@@</code>, the version that goes into <code>master</code>. After #37 and #38 it took in the pull requests #39 (version 2.50, comments after #38), #41 (exit status after an error, issue #40), #42 (the apt mirror of CI), #44 and #45 (vacuum comments, with your local edits as <code>330acfd</code>) and #47 (inputs, POST, PETSc options, comments), and six commits of yours: two comments in <code>calc_GH_2</code>, two fixes of <code>broadcast_var</code> and two for the configuration of the Fortran language server. Section <a href="#N">N</a> shows the Fortran changes outside the vacuum modules; the vacuum ones are comments and appear in the routine diffs of stage 5. When this page was built, <code>~/Code/PB3D</code> was at <code>@@NAME_B@@</code> and <code>~/Code/PB3D_toon_review</code> at <code>da3ecba</code>; this command brings the second one there as well:</p>
+  <pre class="out">git -C ~/Code/PB3D_toon_review merge --ff-only dev/vacuum-fixes</pre>
+  <p><b>Which code the page shows.</b> Stages 0 to 4 (S0 to V0) are inserted unchanged from the page on which you reviewed them (commit <code>df519a4</code> of this guide). They show <code>9e9aba5</code>, and their GitHub links point there. From stage 5 on every section shows <code>@@NAME_B@@</code>, so while your folders are at that commit, the line numbers there are the ones in your folders. These later commits changed code that only stages 0 to 4 show. Each file is listed with the sections of stages 0 to 4 that show it, and the commit links to its diff on GitHub:</p>
+  <div id="after"><!--@afterreview--></div>
+  <p>Commits made in other sessions reach a folder only when you pull:</p>
+  <pre class="out">git -C ~/Code/PB3D pull --ff-only --autostash</pre>
+  This page and its scripts are on the branch <code>claude/review-since-2.47</code> (pull request ToonWeyens/PB3D#6, never to be merged), which holds only the guide: <code>9e9aba5</code> plus the <code>review/</code> folder. <code>python3 review/build_report.py</code> rebuilds the page.
+</div>
+
+<h3>What happened since 2.47</h3>
+<p>Two stretches of work, three and a half months apart. Every one of the 92 commits carries a Claude co-author line: 22 have "Claude" as git author (a cloud session, 8 to 10 July), the other 70 are under your name.</p>
+<ul>
+<li><b>6 to 10 July 2026: modernisation.</b> PETSc/SLEPc 3.9 &rarr; 3.25, a test framework (CTest with test-drive) with unit, full-stack and regression layers, CI on GitHub Actions, warning and lint cleanup, the module splits for unit testing. The cloud session also repaired the vacuum for the first time: the axisymmetric style solved the interior problem, the field-line kernels had wrong weights, a wrong sign and a wrong exponent, BC style 2 was implemented. On 27 October every hunk of its two vacuum commits <code>429f003</code> and <code>d6d49e6</code> was reviewed and kept (message of <code>50c9511</code>).</li>
+<li><b>27 October to 6 November 2026: issue #4.</b> The bug fixes outside the vacuum (shear, setup_modes, MPI ownership, VMEC mode list and B<sub>0</sub>, free-edge weight, style 4), the factor and sign with which the vacuum enters the energy, the 3-D vacuum made to work on real VMEC equilibria (normal, near-field quadrature, G diagonal), benchmarks against MISHKA-1 and TERPSICHORE, the one sign convention, the diagonal options, check_vac, the POST vacuum plot, and the Fourier basis of the VMEC path.</li>
+<li><b>16 and 17 November 2026: your review.</b> Stages 1 and 2 as two commits of your own (<code>18f87e8</code>, <code>1839ea0</code>), then the V0 decisions as pull requests #31 to #33: one routine for the indirect diagonals, <code>vac_diag_style</code> documented as a diagnostic, comments without history, four stale comments. In stage 5, one commit straight on <code>dev/vacuum-fixes</code> from V1 (<code>59c6e90</code>): the vacuum output holds the parallel angle for both styles.</li>
+<li><b>17 and 18 November 2026: the free edge again.</b> The last points of a free edge got weights that fit the left differences (pull request #37, <code>cba0762</code>). Issue <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a> removed two options that are less accurate than the default of left differences with boundary style 2: central differences (<code>norm_disc_style_sol</code> = 1) and boundary style 4 (pull request #38, <code>9b36fa6</code> and <code>35a40e8</code>). Section <a href="#D">D</a> shows them.</li>
+<li><b>18 to 20 November 2026: after the review.</b> Version 2.50, so that older output with the old <code>misc_sol</code> is refused; a status that is not zero after an error; checks of the mode range and of <code>PB3D_rich_lvl</code>; the energy decomposition of POST for every solution; the PETSc option names; <code>broadcast_var</code> without the implicit SAVE; and comments, among them the rule across the field lines of the field-line vacuum. Section <a href="#N">N</a> shows them.</li>
+</ul>
+<!--@figure timeline.png-->
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>2.47</th><th>now</th></tr></thead>
+<tbody>
+<tr><td>build</td><td>PETSc 3.9 API, does not build on a current machine</td><td>PETSc/SLEPc 3.25 on macOS arm64, Snellius and GitHub Actions</td></tr>
+<tr><td>tests</td><td>none that ran</td><td>unit, full-stack and regression layers under CTest; CI</td></tr>
+<tr><td>fixed boundary</td><td>VMEC: ran, and computed an unused 3-D vacuum at every Richardson level. HELENA: every run stopped in <code>store_vac_HEL</code> with "Vacuum has not been implemented yet!", a stop added in 2.44 (53c1c58, November 2020). The HELENA runs before 2.44 were 6.5 % too stable on cbm18a (shear, since v2.36). All runs: 2e-5 dependent on the process count</td><td>HELENA and VMEC paths agree to 2e-6, process counts to 1.5e-8, TERPSICHORE to 0.1 % on the circular case</td></tr>
+<tr><td>axisymmetric vacuum (HELENA)</td><td>solved the interior problem; could not be reached (the stop above), and BC styles 2 and 3 stopped as well</td><td>exterior problem, enters A and POST; circular kink 0.1 % from TERPSICHORE at 257 poloidal points</td></tr>
+<tr><td>3-D vacuum (VMEC)</td><td>present, never gave a right answer</td><td>circular VMEC twin: TERPSICHORE's free-boundary eigenvalue to 2e-5 at 128 lines × 400 points; runs on a rippled torus and on W7-X</td></tr>
+</tbody></table></div>
+<p class="note">Sources: commit messages and <code>Documentation/vacuum_work_overview.md</code>. The vacuum numbers in the last two rows: commit <code>49e2441</code> (−0.43802 against TERPSICHORE −0.43848) and the overview, section 1 (−0.438488 against −0.438480).</p>
+
+<details class="gloss"><summary><b>Terms used in this page</b> (open once)</summary>
+<dl>
+<dt>field-line style, axisymmetric style</dt><dd>The two vacuum methods, <code>vac%style</code> 1 and 2. Style 1 (VMEC) is the 3-D boundary-element method on the points of the field lines; style 2 (HELENA) integrates over ζ analytically with toroidal functions and over θ numerically.</dd>
+<dt><code>BC_style</code></dt><dd>Boundary conditions. Its first value is the inner end and has to be 1; its second value is the plasma edge: 1 fixed, 2 free through the variational surface energy. Until <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a> (<a href="#D">D</a>) the edge could also be 4, free through an explicit natural-boundary-condition row.</dd>
+<dt><code>norm_disc_prec_sol</code>, p</dt><dd>The order p of the radial finite differences of the eigenvalue problem, 3 by default. The derivative at a radial point is a left difference: it uses that point and the p points on the axis side of it. Until <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a> (<a href="#D">D</a>) the input <code>norm_disc_style_sol</code> could choose central differences over 2p + 1 points instead.</dd>
+<dt>end weights</dt><dd>The weights, in units of the radial step h, of the last points of a free edge in the sum that replaces the radial integral of the energy: 6/11, 108/121, 1.0143, … for p = 3, and 1 further inside (<code>cba0762</code>, <a href="#D">D</a>). Your edge note calls them the consistent weights.</dd>
+<dt><code>vac_diag_style</code></dt><dd>How the diagonals of the vacuum matrices G and H are computed: 1 indirect (from identities), 2 direct (corner term and cell integral). New input.</dd>
+<dt>X, p</dt><dd>X = ξ·∇ψ, PB3D's normal displacement; p the parallel angle along a field line (θ for poloidal flux). A mode: X ∝ e<sup>i(nα + (nq−m)p)</sup>.</dd>
+<dt>EP, res</dt><dd>EP: the normal data of the vacuum potential for each mode at the boundary points (in <code>calc_vac_res</code>). res = <code>vac%res</code>, the n<sub>mod</sub> × n<sub>mod</sub> vacuum response that enters the edge block of A; res(m, m) its diagonal element for poloidal mode m.</dd>
+<dt>lines × points</dt><dd>A field-line vacuum grid: number of field lines × points per line, e.g. 128 × 121 on W7-X.</dd>
+<dt>the circular cases</dt><dd>HELENA circular-cross-section equilibria with q from 1.04 (fixtures <code>circ_eps005_q104</code>, <code>circ_eps033_q104</code>, inverse aspect ratio 0.05 and 0.33); the n = 10 external kink is the free-boundary benchmark.</dd>
+<dt>VMEC twin, rippled twin</dt><dd>The VMEC equilibrium made from the ε = 0.33 HELENA case (same plasma, VMEC++), and copies of it with a 5-fold ripple of amplitude δ (0.01 to 0.04): the 3-D tests of the field-line style.</dd>
+<dt>cbm18a, cut cbm18a</dt><dd>The HELENA pedestal equilibrium of the regression decks (n = 10, edge at ψ = 0.75 in the free-boundary deck), and a version of it cut at the pedestal foot for the comparison with TERPSICHORE.</dd>
+<dt>MISHKA-1, TERPSICHORE</dt><dd>The axisymmetric code you used in your PhD (rebuilt from <code>Simulations/MISHKA/Sources</code>), and the open-source 3-D stability code of EPFL (since 2025), run on Snellius.</dd>
+<dt>check_vac, CHECKVAC</dt><dd>New input that makes PB3D test its vacuum operators with exact potentials on the real boundary; the results are log lines starting with CHECKVAC.</dd>
+<dt>anchor, fixture</dt><dd>An eigenvalue recorded in a regression test, and an equilibrium file committed for the tests (<code>tests/fixtures</code>).</dd>
+<dt>eigenvalue</dt><dd>ω²/ω<sub>A</sub>² in PB3D's MISHKA normalisation (<code>norm_style</code> 1), negative when unstable.</dd>
+<dt>Snellius</dt><dd>The SURF cluster; the runs of 27 October on were made there.</dd>
+</dl>
+</details>
+
+<h3>How to use this page</h3>
+<ul>
+  <li>Each section has a status (to do, in progress, done, question) and a notes box. They are saved with the page, so they survive reloads and other devices, and Claude can read your notes back in a later session. When the HTML is opened as a local file they are kept in that browser only.</li>
+  <li>Every code change is in the page, in the section that explains it, and always as one diff from 2.47: to 9e9aba5 in stages 0 to 4, to <code>@@NAME_B@@</code> from stage 5 on. Each section lists its commits as cards (subject, message, what the commit's own diff holds), then shows each file those commits changed once, with only the blocks of changed lines (hunks) they touched. The vacuum modules are shown routine by routine in <a href="#stage5">stage 5</a>. The intermediate states are not shown; each commit's own diff is one click away on GitHub. Under each block are the commits that changed its lines; the ten blocks that commits of two sections changed appear in both.</li>
+  <li>Blocks of the non-vacuum modules carry a badge from a mechanical classifier: <span class="badge auto">use-list</span>, <span class="badge auto">ldebug-guard</span>, <span class="badge auto">moved</span> and the like mean the block only moves or renames lines and was checked by script; <span class="badge read">read</span> means it changes what the code does.</li>
+  <li>Line numbers are those of 2.47 (left) and of 9e9aba5 (right) in stages 0 to 4, and of 2.47 and <code>@@NAME_B@@</code> from stage 5 on. A click on a number opens that line on GitHub at that version. In VS Code, Cmd+P and <code>vac_ops.f90:1537</code> opens the line in your checkout.</li>
+  <li>Two switches in the index: "hide comment-only diff lines" (a quarter of the changed lines in <code>vac_ops</code> are comments) and "hide mechanical hunks", which leaves only what the classifier could not decide. Right above the code of each section, one button opens the files that have a block to read and jumps to the first of them; "close all files" closes them again. The index marks the section you are reading.</li>
+  <li>Numbers: a number without a named source comes from the commit message of the commit the section is about. Other sources are named. Numbers from the demos and tools are produced by this page. Where I derived something for this page, the text says so.</li>
+  <li><span class="badge demo">demo</span> blocks are small scripts in <code>review/demos/</code>. Each prints numbers and draws one figure; output and figure are in the page, so running them is optional.</li>
+  <li>Tiers: <span class="tier skim">skim</span> the change is checked by a tool or is trivial; <span class="tier read">read</span> read the diff with the explanation; <span class="tier study">study</span> work through the reasoning before reading the code.</li>
+  <li>Two appendices. <a href="#A">A</a>, optional: the first eigenvalue of nine decks at every commit, to look up which commit moved which number. <a href="#L">L</a>, the ledger: every commit that touched a Fortran module and where its change appears here; the build script stops with an error if any change is missing.</li>
+</ul>
+
+<h3>The plan</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>stage</th><th>what</th><th class="num">time</th><th>minimum path</th></tr></thead>
+<tbody>
+<tr><td>0</td><td><a href="#S0">Set up</a>: pull, build, run the tests on your machine</td><td class="num">45 min</td><td>all</td></tr>
+<tr><td>1</td><td><a href="#M1">Mechanical changes</a>: port, warnings, lint, module splits, version. Tools did the checking; you confirm. <b>Done 16 November</b> (<code>18f87e8</code>).</td><td class="num">1 h</td><td>section texts only</td></tr>
+<tr><td>2</td><td><a href="#fixes">Fixes outside the vacuum</a>: six bugs, each with a demo that shows why. <b>Done 16 November</b> (<code>1839ea0</code>).</td><td class="num">2.5 h</td><td>the summary table, F1, F5, F6</td></tr>
+<tr><td>3</td><td><a href="#R1">Restructure outside the vacuum</a>: the Fourier basis of the VMEC path</td><td class="num">45 min</td><td>none</td></tr>
+<tr><td>4</td><td><a href="#V0">Vacuum design review</a>: data flow, the sign convention, the routine map, the questions to decide <em>before</em> verifying lines</td><td class="num">2 h</td><td>all</td></tr>
+<tr><td>5</td><td><a href="#V1">Vacuum verification</a>, routine by routine in the order the data flows</td><td class="num">5 h</td><td>V3, V4, V6, V8</td></tr>
+<tr><td>6</td><td><a href="#D">The free edge again</a>: end weights, central differences and style 4 removed; <a href="#N">after the review</a>: version 2.50, exit status, inputs, POST, <code>broadcast_var</code>; then <a href="#I">inputs, defaults and output format</a></td><td class="num">1 h 45</td><td>all</td></tr>
+<tr><td>7</td><td><a href="#T">Tests</a>: what each one checks and which fix it guards; the gaps</td><td class="num">1.5 h</td><td>the guard table</td></tr>
+<tr><td>8</td><td><a href="#Q">Decisions</a>: the design questions in one list, with my recommendation for each</td><td class="num">1 h</td><td>all</td></tr>
+<tr><td>9</td><td><a href="#E">Afterwards: a cheaper vacuum</a>, a reading guide to the wave report</td><td class="num">1 to 2 h</td><td>later</td></tr>
+<tr><td>A</td><td><a href="#A">Eigenvalue at every commit</a> (optional): a lookup table, not a reading task</td><td class="num">&ndash;</td><td>none</td></tr>
+</tbody></table></div>
+<p class="note">About 16 hours in full, about 6 on the minimum path. With one hour only: <a href="#V0">V0</a> from "The convention" to the end, then <a href="#Q">Q</a>. Why this order: the mechanical changes go first because tools take about half of the non-vacuum blocks off your reading list. The small fixes come next because each one brings back a part of the code (equilibrium, eigenvalue problem, MPI layout) that the vacuum review needs. The vacuum design review comes before line-level verification: if you decide to change the convention or the structure, verifying the lines first would be wasted.</p>
+
+<!--@frozen-->
+
+<!-- ================================================================== STAGE 5 -->
+<div class="stage" id="stage5"><span class="eyebrow">Stage 5</span><h2 class="st">Vacuum verification</h2>
+<p>Routine by routine, in the order the data flows. From this stage on the page shows <code>dev/vacuum-fixes</code> at <code>@@NAME_B@@</code>, the code after the pull requests #31 to #33 of the V0 decisions, #34 of <code>read_VMEC</code>, your V1 commit <code>59c6e90</code>, the pull requests #37 and #38 of 18 November (section <a href="#D">D</a>) and the commits of 18 to 20 November (section <a href="#N">N</a>); its GitHub links point there. The vacuum commits of 18 to 20 November change comments only; the list at the end of <a href="#N">N</a> says which routines they touch. Each group shows the 2.47 routine against the routine at <code>@@NAME_B@@</code> as one diff, with the commits that touched those lines. Use "hide comment-only diff lines" in the index for a first pass over the code alone: a quarter of the changed lines in <code>vac_ops</code> are comments.</p></div>
+
+<section class="area" id="V1" data-title="Vacuum plumbing outside the vacuum modules">
+<div class="ahead"><span class="aid">V1</span><h2>Vacuum plumbing outside the vacuum modules</h2></div>
+<div class="meta"><span><b>files</b> driver_eq, driver_sol, driver_POST, sol_ops, input_ops, num_vars, MPI_ops, PB3D_ops</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<ul>
+<li><b>Fixed boundary skips the vacuum</b> (ad2313b): <code>store_vac</code> and <code>calc_vac_res</code> are not called for <code>BC_style(2)</code> = 1, and POST does not read a vacuum that is not in the output.</li>
+<li><b>The vacuum energy in POST</b> (212e3ec): the term E_pot(7) was switched off at 2.47 (<code>1.eq.2</code> and a "NO VACUUM" print); it is on whenever <code>vac%res</code> exists.</li>
+<li><b>Inputs</b>: <code>alpha_style</code> 1 with a free boundary and VMEC is refused (cc4c96d); a warning when <code>n_alpha</code> and the field period share a factor, because the average over the lines then aliases the field-period harmonic (50c9511); <code>check_vac</code> (6894199) and <code>vac_diag_style</code> (e027949, default 1 since 49e2441), both broadcast in <code>MPI_ops</code>. Since your decision V0-b (bba7922), the comment of <code>vac_diag_style</code> in <code>num_vars</code> calls style 2 a diagnostic, and a free-boundary run with <code>vac_diag_style</code> 2 prints the warning "vac_diag_style 2 is a diagnostic, less accurate than 1: not for production runs".</li>
+<li><b>Comments without history</b> (f0273a7, your decision V0-e): the comment of the <code>n_alpha</code> warning in <code>input_ops</code> no longer names issue #4 or a date. It also rewrote the comment on <code>par_lims_found</code> in <code>PB3D_ops</code>, but 59c6e90 removed that line, so nothing of the commit is left in <code>PB3D_ops</code>; its card still links the <code>reconstruct_PB3D_vac</code> block, because <code>git log -L</code> counts the removed line as part of that block.</li>
+<li><b>POST plot wiring</b> (a8804ac): the plot is called once for all plotted modes after the mode loop; the plot ranges default to 0, which means "from the boundary". The commit also had <code>reconstruct_PB3D_vac</code> rebuild the parallel angle of the field-line style from two entries it appended to <code>misc_vac</code>.</li>
+<li><b>The parallel angle in the output</b> (59c6e90, your V1 change): <code>print_output_vac</code> writes <code>vac%ang</code> for both styles, and <code>reconstruct_PB3D_vac</code> reads it for both, before the style branch, as it reads <code>norm</code> and <code>x_vec</code>. For the field-line style the stored angle has n_par_X × n_alpha entries, one per boundary point. The two limits in <code>misc_vac</code>, the four local variables that rebuilt the angle from them (<code>par_lims</code>, <code>dpar</code>, <code>id</code>, <code>par_lims_found</code>) and the case of an output without the limits are gone, so <code>misc_vac</code> has its six entries of 2.47 again. In <code>reconstruct_PB3D_vac</code> the 2.47 → <code>@@NAME_B@@</code> diff is now the rename of stage 1, the read of <code>ang</code> moved out of the axisymmetric case, and two blank lines that lost their trailing spaces (a8804ac had added lines after them, which 59c6e90 removed). On the VMEC twin (8 field lines, two Richardson levels) and the circular HELENA case the eigenvalues and every POST output file are bit-identical to those of 593020a (its commit message).</li>
+</ul>
+<div class="how"><b>How to check it</b><ol>
+<li>Read the driver blocks below the cards: the two calls are skipped for <code>BC_style(2)</code> = 1 in <code>driver_eq</code>, <code>driver_sol</code> and <code>driver_POST</code> alike.</li>
+<li>Read the <code>sol_ops</code> condition for E_pot(7) and the input guards in <code>input_ops</code>.</li>
+<li>Check that the two new inputs are broadcast (<code>MPI_ops</code>) and defaulted (<code>input_ops</code>), and that the warning for <code>vac_diag_style</code> 2 is printed only for a free boundary.</li>
+<li>Read <code>reconstruct_PB3D_vac</code> next to <code>print_output_vac</code> (<a href="#V11">V11</a>): the same six entries of <code>misc_vac</code> on both sides, and <code>ang</code> written and read for both styles under the same name.</li>
+</ol></div>
+<!--@commit ad2313b NONVAC-->
+<!--@commit 212e3ec NONVAC-->
+<!--@commit cc4c96d NONVAC-->
+<!--@commit 50c9511 NONVAC-->
+<!--@commit 6894199 NONVAC-->
+<!--@commit e027949 NONVAC-->
+<!--@commit 49e2441 NONVAC-->
+<!--@commit a8804ac NONVAC-->
+<!--@commit bba7922 NONVAC-->
+<!--@commit f0273a7 Modules/PB3D_ops.f90 Modules/input_ops.f90-->
+<!--@commit 59c6e90 NONVAC-->
+</section>
+
+<section class="area" id="V2" data-title="vac_vars and the distributed-matrix helpers">
+<div class="ahead"><span class="aid">V2</span><h2>vac_vars and the distributed-matrix helpers</h2></div>
+<div class="meta"><span><b>files</b> vac_vars, vac_utilities (helpers), headers of vac_ops and vac_utilities</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<ul>
+<li><b>STRUMPACK optional</b>: <code>#ifdef PB3D_WITH_STRUMPACK</code>; without it <code>BLACSCTXTSIZE</code>, <code>numroc</code> and <code>indxl2g</code> are declared locally and the solve uses ScaLAPACK LU.</li>
+<li><code>ang</code>, <code>dnorm</code> and <code>h_fac</code> are now allocated for both styles (three style branches gone); <code>h_fac</code> lost its fourth column, which held the 2.47 field-line H diagonal factor.</li>
+<li><code>loc_idx</code> replaces about twenty copies of the local-index sum of the block-cyclic layout.</li>
+<li>New helpers in <code>vac_utilities</code>: <code>n_col1_loc</code>, <code>vec_glob2dis</code>, <code>dis_matvec</code> (a distributed matrix times a global vector, used by the identity diagonals and check_vac) and <code>dis_diag</code>. They were in the test utilities first and moved here (fe305fd).</li>
+<li>The plot commit a8804ac also fixed <code>interlaced_vac_copy</code>, which wrote past the end of <code>vac%ang</code>.</li>
+</ul>
+<p>The commit that introduced <code>loc_idx</code> and removed the style branches of the allocation (028735c, "four mechanical simplifications") claims no change of results. The tool below lists its statement changes without comments and whitespace: the 22 copies of the local-index sum become <code>loc_idx</code> calls, the H sign of <code>calc_GH_int_2</code> moves from a final <code>H = -H</code> into the three formulas, the style branches of the allocation go, and the field-line style stores its parallel angle. In appendix A the commit leaves all nine eigenvalues the same, bit for bit.</p>
+<!--@demo statement_diff_028735c-->
+<div class="how"><b>How to check it</b><ol>
+<li>Read <code>loc_idx</code> (six lines) against one of the 2.47 index sums in the tool's output.</li>
+<li>Read the <code>vac_vars</code> diff: the <code>#ifdef</code> around STRUMPACK, the allocation of <code>ang</code>, <code>dnorm</code>, <code>h_fac</code> for both styles.</li>
+<li>Read <code>dis_matvec</code> and <code>dis_diag</code> in the helper group; the identity diagonals (V6) and check_vac use them.</li>
+</ol></div>
+<!--@group vars-->
+<!--@group ops-header-->
+<!--@group u-header-->
+<!--@group dist-->
+</section>
+
+<section class="area" id="V3" data-title="store_vac: geometry and normal">
+<div class="ahead"><span class="aid">V3</span><h2>store_vac: geometry and normal</h2></div>
+<div class="meta"><span><b>routine</b> store_vac</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<p>The field-line branch (<code>store_vac_VMEC</code>) is split into three named steps: <code>restore_previous_level</code> (Richardson: keep, interlace or reconstruct the previous level), <code>store_geometry</code> (points, normal, metric factors of this equilibrium job, on the last process) and <code>broadcast_geometry</code>. The changes inside them:</p>
+<ul>
+<li>The normal is −J∇ψ (one minus sign, e3b4847). With +J∇ψ the off-diagonal H had the wrong sign, the row sum then set a wrong diagonal, and the response of the circular VMEC twin was 0.27 of the HELENA one. With −J∇ψ: 0.80 at 64 lines, and after the near-field rule (<a href="#V4">V4</a>) 0.98 to 0.99.</li>
+<li><code>h_fac</code> stores g<sub>αα</sub>, g<sub>αθ</sub>, g<sub>θθ</sub>; the 2.47 fourth column (a factor for the old H diagonal) is gone.</li>
+<li><code>vac%ang</code> now holds the parallel angle of every point, for the POST plot; since 59c6e90 the output holds it too (<a href="#V11">V11</a>).</li>
+<li>The axisymmetric branch (<code>store_vac_HEL</code>) is the 2.47 code; the July commit 3679ee7 only removed its stop.</li>
+</ul>
+<div class="how"><b>How to check it</b><ol>
+<li>Find the minus sign in <code>norm_com_C</code> in <code>store_geometry</code> and compare with the axisymmetric normal of <code>store_vac_HEL</code>, also −J∇ψ (its comment says "− R (Z_θ ∇R − R_θ ∇Z)").</li>
+<li>Read the three named steps against the 2.47 block: the split changed no statement except the step sizes, which now come from <code>vac_steps</code> (V8 has the tool output for that commit).</li>
+</ol></div>
+<!--@group store-->
+</section>
+
+<section class="area" id="V4" data-title="Field-line kernels and calc_GH_1">
+<div class="ahead"><span class="aid">V4</span><h2>Field-line kernels and calc_GH_1</h2></div>
+<div class="meta"><span><b>routines</b> calc_GH, calc_GH_1, calc_GH_int_1</span><span><b>time</b> 1.5 h</span><span class="tier study">study</span></div>
+<p><b>calc_GH.</b> G and H are set to zero before both styles accumulate into them. After a Richardson step the field-line arrays still held the interlaced copy of the previous level, so 2.47 counted those contributions twice. Since your decision V0-a (937d6a8), <code>calc_GH</code> also sets the diagonals of the boundary rows for both styles, after the assembly of the style; <a href="#V6">V6</a> explains that block.</p>
+<p><b>calc_GH_int_1</b>, the kernels on one interval of a field line, is rewritten:</p>
+<ul>
+<li><b>Far from the influence point</b>: the kernel values at the two ends (the trapezoidal rule along the line), with H = n·(x<sub>s</sub>−x)/r³. 2.47 had <code>(-G)**(-3)</code> = r³ instead of 1/r³.</li>
+<li><b>At the singular point</b>: the exact integral of 1/r over the half cell in the metric of the surface (the closed form F(U, V, s) in the comment and in the demo). The 2.47 expression had the same logarithm twice and diverged like 1/s² for perpendicular coordinates. H gets 0 there; <code>calc_GH</code> sets the diagonals afterwards (<a href="#V6">V6</a>).</li>
+<li><b>Near the influence point</b> (within <code>n_near</code> = 4 interval lengths, a parameter): 8-point Gauss–Legendre on each half interval, on the cubic interpolant through a four-point stencil. This is the fix of 31 October for W7-X: at the inboard bean tips neighbouring lines are 0.007 R₀ apart and the points along them 0.06 R₀, so the kernel along the neighbouring line is a peak much narrower than the point spacing. The point rule then gives order-one errors whose sign depends on how the points of neighbouring lines line up; the diagonal of <code>vac%res</code> on W7-X ranged from 44 to 126 depending on the grid (7 000 to 62 000 boundary points), sorted by the fractional part of q Δθ/Δα. With the near-field rule the five grids from 64 × 121 to 144 × 121 and 128 × 141 agree to 1.2 % on the whole diagonal, and the circular twin's free eigenvalue went from −0.5189 to −0.4491 against HELENA's −0.4438. The demo shows the same effect on a straight line.</li>
+<li>The interval that bridges two field lines is skipped before any evaluation (2.47 evaluated it and dropped it with <code>on_field_line</code>).</li>
+</ul>
+<p><b>calc_GH_1</b>: the contributions get the weight Δp Δα / 2 per half interval, so G and H are true surface operators (consistent with the absolute −4π of the row sum); the α step is 2π/n<sub>α</sub> (<code>vac_steps</code>; 2.47 used 2π/(n<sub>α</sub>−1), 50c9511); at least 2 lines and 4 points per line are required. Since V0-a it only assembles the rows: the diagonal block at its end and its contained <code>set_diag</code> are gone, and the diagonals are in <a href="#V6">V6</a>.</p>
+<div class="how"><b>How to check it</b><ol>
+<li>Half-cell demo: the closed form against brute-force quadrature for perpendicular, skewed and very anisotropic cells (agreement to 1e-14); then read the singular branch of <code>calc_GH_int_1</code> against the formula in its comment.</li>
+<li>Near-field demo: the point rule's error for the dipole kernel on a neighbouring line at d/h = 0.12 ranges from −89 % to +318 % with the offset of the points; the near-field rule stays below 3e-3. Then read the near branch: stencil parameter <code>s</code>, Lagrange weights <code>l</code>, the factor 0.5 for the half interval.</li>
+<li>Tests: <code>GH_int_1_singular</code> (brute force), <code>GH_int_1_near</code> (tolerance 3e-3, the error of the cubic interpolant), <code>GH_int_1_regular</code>, <code>greens_identity_3d</code>, <code>point_source_3d</code>, <code>response_1_vs_2</code> (field-line style on an axisymmetric torus against the axisymmetric style: ratios 1.006 to 0.996, recorded).</li>
+</ol></div>
+<!--@demo halfcell_integral-->
+<!--@demo near_field_lines-->
+<p class="note">The α step 2π/n<sub>α</sub> is guarded by <code>response_1_vs_2</code>: since commit 798fe50 (30 October) it compares the field-line to axisymmetric ratio of res(m, m) with recorded values to 0.5 %, and the old step 2π/(n<sub>α</sub>−1) moved them by 1.25 % (comment in the test). A mutation test on 30 October, before those recorded values, had not caught it.</p>
+<div class="decide"><b>Recorded decision (6 November).</b> <code>n_near</code> = 4 stays, with a note to re-evaluate it once you have digested the vacuum work. The comment in <code>calc_GH_int_1</code> points to issue <a href="https://github.com/ToonWeyens/PB3D/issues/9">#9</a> since V0-e.</div>
+<!--@group calcgh-->
+<!--@group gh1-->
+<!--@group int1-->
+</section>
+
+<section class="area" id="V5" data-title="Axisymmetric kernels and calc_GH_2">
+<div class="ahead"><span class="aid">V5</span><h2>Axisymmetric kernels and calc_GH_2</h2></div>
+<div class="meta"><span><b>routines</b> calc_GH_2, calc_GH_int_2</span><span><b>time</b> 40 min</span><span class="tier read">read</span></div>
+<p>This is the part closest to your 2.47 code.</p>
+<ul>
+<li><code>calc_GH_int_2</code>: the three H formulas change sign (normal derivative along the stored −J∇ψ). Since V0-f (ebd972c) the variables <code>n_loc</code> and <code>dn_loc</code>, which 2.47 computed and never used, are removed. Nothing else.</li>
+<li><code>calc_GH_2</code>: the corner term is −2β with β the vacuum's internal angle (as at 2.47); the toroidal functions use |n| (Q<sub>−ν−1</sub> = Q<sub>ν</sub> for the half-integer degrees), so negative n works; the tolerance on ρ is computed from the boundary points every process holds, without a gather, so that the BLACS processes alone can call it with external points; an external point within the tolerance of a boundary point gets the row 4π φ<sub>j</sub> of that point. Since V0-a its end no longer sets the indirect diagonals; <code>calc_GH</code> does (<a href="#V6">V6</a>).</li>
+</ul>
+<p>The plot commit a8804ac also fixed out-of-bounds reads for external points in <code>calc_GH_1</code> and <code>calc_GH_2</code>, and removed the gather of the tolerance in <code>calc_GH_2</code>, which is the same on every process.</p>
+<p>History, for orientation: 2 November (<code>f407afa</code>) changed the corner term to the plasma's angle 2π − β, because the kernels were then the plasma's; 5 November (<code>f3ebf11</code>) flipped the kernels to the vacuum's and returned to −2β. Net change against 2.47: only the H sign in <code>calc_GH_int_2</code>. In appendix A, <code>f407afa</code> moves the circular ε = 0.05 free eigenvalue by 0.67 % and cbm18a free by 1.4e-4, and <code>f3ebf11</code> then moves nothing by more than 1e-13: the result changed with the corner term of 2 November, and the flip of 5 November kept it.</p>
+<div class="how"><b>How to check it</b><ol>
+<li>In <code>calc_GH_int_2</code>, check that the three H expressions changed sign and nothing else (the classifier cannot say this for the vacuum groups; the diff is short).</li>
+<li>Read the corner-term block at the end of the row loop of <code>calc_GH_2</code> against eq. (146).</li>
+<li>Read the external-point branch (the 4π row) and the <code>n_abs</code> changes.</li>
+</ol></div>
+<p>Tests: <code>asymptote</code>, <code>G_regular</code>, <code>H_regular_numderiv</code> (H against a numerical derivative of G along the source normal), <code>GH_singular_quadrature</code>, <code>GH_edge_correction</code>, <code>greens_identity</code>, <code>exact_exterior_2d</code> (exact toroidal harmonics of the circular torus; on 2 November, with the direct diagonals of that time, 0.19 to 1.07 % at 301 points).</p>
+<!--@group gh2-->
+<!--@group int2-->
+</section>
+
+<section class="area" id="V6" data-title="Diagonals: indirect and direct">
+<div class="ahead"><span class="aid">V6</span><h2>Diagonals: indirect and direct</h2></div>
+<div class="meta"><span><b>routines</b> the diagonal block of calc_GH, diag_indirect, set_pot_2, set_diag_vac; fit_diag, vac_steps, solid_angle_node, H_sing_node, calc_diag_direct, dis_diag</span><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
+<p>Input <code>vac_diag_style</code>: 1 indirect (default), 2 direct.</p>
+<ul>
+<li><b>Field-line, indirect</b>: H<sub>ii</sub> from the row sum (as 2.47); G<sub>ii</sub> = the least-squares solution, one per row, of H x − G n<sub>x</sub> = −4π x for x, y, z. Until V0-a the code wrote it as the analytical half-cell value plus a correction in which the half-cell value cancelled (<a href="#V0">V0-a</a>); since then it computes the fit in one step. The identities (31 October) put the error of the one-point rule across neighbouring lines into the diagonal.</li>
+<li><b>Field-line, direct</b>: H<sub>ii</sub> = −2π + the integral of the H kernel over the cell (<code>calc_diag_direct</code>, with <code>H_sing_node</code> = the corrected eq. 69 of the manuscript, erratum E22), the row sum at the line ends; G<sub>ii</sub> from the half cells alone. <code>solid_angle_node</code> computes the faceted solid angle (eq. 45); on the field-aligned mesh it is 16 % of 4π away from 2π (mesh directions 14° apart, erratum E6), so it is printed by check_vac only.</li>
+<li><b>Axisymmetric, indirect</b>: per row, least squares for (H<sub>ii</sub>, G<sub>ii</sub>) over the identities of Rⁿ, RⁿZ (c = −4π) and the ring-source potential at the centroid (c = 0). It made the axisymmetric style converge like 1/N³ in the poloidal points instead of 1/N: exact harmonics k = 6/10/15 at 601 points 4.6e-5/2.2e-4/7.4e-4 against 2.1e-3/4.6e-3/7.7e-3 with the direct diagonals. The convergence like 1/N of style 2 in HELENA's poloidal points, found on 1 November, came from this diagonal.</li>
+</ul>
+<p><b>How the code does it since V0-a</b> (937d6a8, pull request #31). One routine does the fit for both styles, and one routine chooses the potentials:</p>
+<ul>
+<li><code>fit_diag</code> in <code>vac_utilities</code> solves, for each boundary row i and in the least-squares sense over a list of potentials k with known boundary values φ and normal data φ′, the identity
+\[ h\,\phi_{k,i} - g\,\phi'_{k,i} = c_k\phi_{k,i} - \sum_{j\ne i} H_{ij}\phi_{k,j} + \sum_{j\ne i} G_{ij}\phi'_{k,j} \]
+for h = H<sub>ii</sub>, for g = G<sub>ii</sub>, or for both. It takes the off-diagonal sums as the products with the full matrices minus their current diagonals, so the matrices are not changed. An entry that is not fitted is passed in as known, and its term moves to the right-hand side. For both entries it solves the 2 × 2 normal equations by Cramer's rule, as <code>diag_indirect_2</code> did; for one entry it divides once.</li>
+<li><code>diag_indirect</code> in <code>vac_ops</code> passes each style's potentials. For the field-line style it calls <code>fit_diag</code> twice: first for H<sub>ii</sub> from the constant, which gives the row sum, then for G<sub>ii</sub> from x, y and z with that H<sub>ii</sub>. For the axisymmetric style it calls it once, for both entries from the three potentials of <code>set_pot_2</code>, each scaled to unit maximum.</li>
+<li><code>calc_GH</code>, after the assembly, sets the indirect diagonals with <code>vac_diag_style</code> 1. With <code>vac_diag_style</code> 2 the axisymmetric style keeps the diagonals of its assembly (corner term and analytical integrals), and the field-line style gets the direct H<sub>ii</sub> where a node has a full cell, the row sum at the ends of the lines, and keeps the half-cell G<sub>ii</sub>.</li>
+<li>Both check_vac styles call <code>diag_indirect</code> to compare the assembled diagonals with the indirect ones (<a href="#V9">V9</a>).</li>
+</ul>
+<p>The numbers moved only at rounding level. On the Mac, with both trees built without STRUMPACK (whose solver gives eigenvalues up to 1e-7 apart from one run to the next), cbm18a free boundary with both values of <code>vac_diag_style</code> and the field-line style with <code>vac_diag_style</code> 2 are bit-identical, and the field-line style with the indirect diagonals moves the twin's eigenvalue by 1.05e-13 at 16 lines and 1.08e-13 at 64. Issue <a href="https://github.com/ToonWeyens/PB3D/issues/29">#29</a> (other test potentials for the axisymmetric style) would only change the list in <code>diag_indirect</code>.</p>
+<p>On the torus of the full-stack tests the field-line point-source solve gives 1.0e-2 &rarr; 3.1e-3 with the indirect diagonals and 1.9e-2 &rarr; 6.4e-3 with the direct ones, from 41 × 40 to 81 × 80 (commit e027949).</p>
+<p><b>Why the indirect ones won</b> (6 November, W7-X <code>check_vac</code> on nine grids, Snellius, commit 43a74ed): at 128 lines × 121 points the identity residual for x is 1.2e-3 indirect against 4.1e-2 direct, and the axis-ring solve 5.9e-3 against 5.2e-2. On the circular twin the direct diagonals moved the eigenvalue from −0.43914 to −0.48650. Report: <code>Documentation/w7x_check_vac_diag.md</code>.</p>
+<div class="how"><b>How to check it</b><ol>
+<li>The torus toy in <a href="#V0">V0</a>: in its figure the blue curve (row sum plus the identities of x, y, z) falls like 1/N³, the orange one (corner term −2π alone) like 1/N.</li>
+<li>Read the diagonal block of <code>calc_GH</code> (in its group in <a href="#V4">V4</a>), then <code>diag_indirect</code> and <code>fit_diag</code>: the right-hand side <code>rr</code>, how a known entry moves into it, and the normal equations (both entries: the 2 × 2 system; one entry: one division).</li>
+<li>Tests: <code>greens_identity_indirect</code>, <code>exact_exterior_2d_options</code>, <code>solid_angle_node</code>, <code>H_sing_node</code> (1e-5 against brute force), <code>diag_direct_3d</code>, <code>point_source_direct_3d</code>.</li>
+</ol></div>
+<div class="decide"><b>Recorded decisions (6 November).</b> Indirect diagonals are the default for both styles; the direct ones serve as the check_vac diagnostic. The work-bucket item on the quadrature of <code>H_sing_node</code> on very skewed cells is parked; after the W7-X result it would only sharpen the diagnostic. <b>Decided on 17 November</b> (<a href="#V0">V0</a>): V0-a, one routine for the indirect diagonals, is done (#31); V0-b keeps <code>vac_diag_style</code> as an input, documented as a diagnostic, with a warning for style 2 (#31, see <a href="#V1">V1</a>).</div>
+<!--@group diag2-->
+<!--@group direct-->
+<!--@group fit-->
+</section>
+
+<section class="area" id="V7" data-title="solve_Phi_BEM">
+<div class="ahead"><span class="aid">V7</span><h2>solve_Phi_BEM</h2></div>
+<div class="meta"><span><b>routine</b> solve_Phi_BEM</span><span><b>time</b> 20 min</span><span class="tier read">read</span></div>
+<ul>
+<li>Solves H Φ = G R for both styles (no shift; since <code>f3ebf11</code>).</li>
+<li>With STRUMPACK: the compressed (HSS) solve runs on a copy of H; the residual is then checked against the uncompressed H, and if it is above 1e-6 relative the solve falls back to ScaLAPACK LU. On W7-X the HSS solve failed every time (27 October) and the fallback took over; the sampling parameters are hard-coded (unchanged from 2.47).</li>
+<li>Without STRUMPACK: <code>pdgetrf</code> + <code>pdgetrs</code> on a copy of H. With <code>check_vac</code> the condition number in the 1-norm is estimated (<code>pdgecon</code>) and printed: 3.5 to 3.8 on every W7-X grid.</li>
+</ul>
+<div class="how"><b>How to check it</b><ol>
+<li>Read the STRUMPACK block only if you build with it (<code>PB3D_WITH_STRUMPACK</code>); the residual check after it and the fallback are the new parts.</li>
+<li>Read the ScaLAPACK branch: <code>pdgetrf</code>/<code>pdgetrs</code> on the copy <code>H_ext</code>, and <code>pdgecon</code> under <code>check_vac</code>.</li>
+<li>The two comments that said "(H + shift I)" say "solve H Phi = G R" since V0-f (ebd972c).</li>
+</ol></div>
+<p>Test: <code>solve_Phi_BEM_roundtrip</code>.</p>
+<!--@group solve-->
+</section>
+
+<section class="area" id="V8" data-title="calc_vac_res: data, projection, factor">
+<div class="ahead"><span class="aid">V8</span><h2>calc_vac_res: data, projection, factor</h2></div>
+<div class="meta"><span><b>routine</b> calc_vac_res (set_up_data, solve_potential, project_response, finish_response)</span><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
+<p>The routine is split into four named internal steps that share the host's variables (225aa72). That commit says no statement changed; the tool below lists what did change besides the structure. Two things: the step sizes now come from <code>vac_steps</code>, which gives the same Δp and Δα as the replaced lines for every case that runs (they differ only for n<sub>α</sub> = 1, which <code>calc_GH_1</code> refuses), and the CHECKVAC report of the diagonals names <code>vac_diag_style</code> and says "assembled" instead of "rowsum". So the split is a restructure; in appendix A it moves the nine eigenvalues by at most 1.4e-13. What changed inside the steps, against 2.47:</p>
+<!--@demo statement_diff_225aa72-->
+<ul>
+<li><b>set_up_data</b>: EP = −(nq − m) times cos and sin of the phase, the normal data along −J∇ψ (2.47: +). The phase is nα + (nq − m)p on the field lines and −mθ for the axisymmetric style.</li>
+<li><b>project_response</b>: for the field-line style the weight is Δp / n<sub>α</sub> (halved at the line ends): the projection averages over the lines, which matches the per-toroidal-mode normalisation of the axisymmetric style. 2.47 used Δp Δα.</li>
+<li><b>finish_response</b>: res = (2π/μ₀) times the complex combination of the four real blocks, then its Hermitian part. The 2π: A holds 2δW with the toroidal integral included, and res up to there is per unit toroidal angle. The Hermitian part: the discretisation leaves an asymmetry of about 1e-5, which made SLEPc reject converged eigenvalues as complex.</li>
+</ul>
+<p><b>How the factor was found.</b> Commit 212e3ec (27 October) measured it before writing it: on the circular ε = 0.05 external kink a factor of magnitude 2π reproduced MISHKA-1 without a wall to 0.3 to 0.8 % at n = 10, 15 and 20, while 1 and 4π were 60 to 80 % off; then it was derived (the comment in <code>finish_response</code>). The sign was −2π then, with the data sign of that time; since f3ebf11 the data are −(nq − m) and the factor is +2π, with the same response.</p>
+<p><b>Check of the factor</b>: in the large-aspect-ratio cylinder the vacuum energy of an edge displacement equals the field-line bending energy of a plasma layer of thickness a/|m| at the edge, 4π²(nq − m)²|X<sub>e</sub>|²/(μ₀R₀|m|) in A. The full-stack test <code>vac_response_cylinder</code> checks res(m, m) against it (1 to 2 % for m = 1 … 5). The external kink against MISHKA-1 and TERPSICHORE is the end-to-end check of the sign and the factor: circular ε = 0.33, n = 10, free boundary: PB3D's field-line style at 128 lines × 400 points −0.438488, TERPSICHORE −0.438480 (with its kinetic-energy parity error corrected), MISHKA-1 −0.43377 (1.1 % less unstable, probably its parallel inertia; not verified).</p>
+<div class="how"><b>How to check it</b><ol>
+<li>In <code>set_up_data</code>: the sign of EP, and the phase for each style.</li>
+<li>In <code>project_response</code>: the weight Δp/n<sub>α</sub> with the halved line ends, and the axisymmetric weight (θ<sub>i+1</sub> − θ<sub>i−1</sub>)/2.</li>
+<li>In <code>finish_response</code>: the combination of the four real blocks into the complex res (the sign comment for the lower rows is from 2.47), then /μ₀, ×2π, Hermitian part.</li>
+</ol></div>
+<!--@group res-->
+</section>
+
+<section class="area" id="V9" data-title="check_vac diagnostics">
+<div class="ahead"><span class="aid">V9</span><h2>check_vac diagnostics</h2></div>
+<div class="meta"><span><b>routines</b> check_vac_exact, check_vac_exact_1, check_vac_exact_2, write_points_vac</span><span><b>time</b> 30 min</span><span class="tier skim">skim</span></div>
+<p>Off by default (<code>check_vac = .false.</code>). With it, PB3D tests its own operators on the real equilibrium surface with potentials whose boundary data are exact, and prints lines that start with <code>CHECKVAC</code>. Field-line style: identity residuals for 1, x, y, z and x² − y² (interior) and for a point source on the axis and two rings of sources along the axis, with unit weights and with weights cos(nζ) (exterior), each for c = −4π, −2π, 0, 2π, 4π; exterior solves for the point source and the rings; per-point files of residuals and errors. Axisymmetric style: the potentials of <code>set_pot_2</code>, the ring solve, and the assembled diagonals against the alternative ones. Since V0-a the field-line style also compares the assembled diagonal of G with the indirect one (the line <code>CHECKVAC diagonal max|G_assembled-G_indirect|/max|G|</code> and the file <code>check_vac_diag_diff_G.dat</code>): on the twin at 16 lines × 100 points it reads 2.2e-13 with <code>vac_diag_style</code> 1, as it must, and 0.59 with <code>vac_diag_style</code> 2, where the half-cell G<sub>ii</sub> differs from the indirect one by up to 0.59 of the largest |G<sub>ii</sub>|. The CHECKVAC lines are split so that <code>writo</code>, which cuts lines at about 100 characters, prints them whole. <code>scripts/snellius/checkvac_table.py</code> and <code>diag_table.py</code> collect them.</p>
+<p>Reviewing these matters less than the core: they do not change the response. They do matter as evidence, since the W7-X conclusions rest on them.</p>
+<div class="how"><b>How to check it</b>: check that every call in check_vac is read-only for <code>vac</code> (it builds its own right-hand sides and solves into its own arrays), then read the free terms c of the identities (−4π for interior, 0 for exterior potentials) and how the exact normal data are formed.</div>
+<!--@group check-->
+</section>
+
+<section class="area" id="V10" data-title="POST vacuum potential plot">
+<div class="ahead"><span class="aid">V10</span><h2>POST vacuum potential plot</h2></div>
+<div class="meta"><span><b>routines</b> vac_pot_plot, eval_pot_ext, glob2dis_cols, sub_nearest, grad_bnd_1, check_vac_ext</span><span><b>commit</b> a8804ac (Opus side session, 6 November)</span><span><b>time</b> 30 min</span><span class="tier skim">skim</span></div>
+<p>At 2.47 the plot existed for the axisymmetric style only and was switched off. Now it works for both: the potential off the boundary from the Green representation (<code>eval_pot_ext</code>, which calls <code>calc_GH</code> with external points), with a correction for points close to the boundary (<code>sub_nearest</code>, <code>grad_bnd_1</code>), all plotted modes in one pass. <code>check_vac_ext</code> compares with exact exterior potentials: axisymmetric at the 1e-7 level from 4 spacings out; field lines on the twin at 64 × 100: 2e-8 to 2e-6 at 0.5a to 1a from the boundary, 1e-4 to 7e-4 within 0.2a, except the cos 10ζ ring (1e-2). Figure: <code>Documentation/figures/vacuum_plot/vac_pot_circular.png</code>.</p>
+<p>The same commit fixed three things in the core routines: out-of-bounds reads of external points in <code>calc_GH_1</code> and <code>calc_GH_2</code>, <code>interlaced_vac_copy</code> writing past <code>vac%ang</code>, and an unneeded gather of the tolerance in <code>calc_GH_2</code>. The stub that had switched the plot off dated from April 2018.</p>
+<p>For the field-line style the plot takes the grid of the parallel angle (<code>min_par_X</code>, <code>max_par_X</code>, <code>n_par_X</code>) from <code>vac%ang</code>. Since 59c6e90 that angle comes from the output as PB3D stored it, and the stop "No parallel angle in the vacuum output" is gone: POST refuses every output below version 2.49 (2.50 since <code>03baebe</code>, <a href="#N">N</a>), and every output from 2.49 on holds the angle.</p>
+<p>A comment of 20 November in <code>calc_GH_2</code> (<code>271a864</code>, <a href="#N">N</a>) names two cases in which the plot is not accurate. An external point within <code>tol_loc</code> of a boundary point gets a row that is the limit from outside only for potentials that are harmonic outside the boundary; for the R<sup>|n|</sup> that <code>vac_pot_plot</code> passes to <code>sub_nearest</code> that limit is 0, so the plot shows 0 at such a point. External points just outside <code>tol_loc</code> go through the regular quadrature, which is inaccurate that close to the boundary. The first case is in the comment of 20 November on issue <a href="https://github.com/ToonWeyens/PB3D/issues/7" target="_blank" rel="noopener">#7</a>.</p>
+<p>A finding of that work, recorded in <code>calc_GH_int_1</code>: for points off the boundary the near-field rule only helps within one interval length, because the edge of its zone leaves an error that falls like Δp², while the plain trapezoidal errors at the line ends cancel between interleaved lines. The on-boundary rows have the same zone edge; whether that limits the 3-D operators is not tested.</p>
+<div class="how"><b>How to check it</b>: skim <code>vac_pot_plot</code> for its flow (normal data as in <code>calc_vac_res</code>, one solve, external rows from <code>eval_pot_ext</code>), then read <code>eval_pot_ext</code> and <code>sub_nearest</code>, the two places with numerics of their own.</div>
+<!--@group plot-->
+</section>
+
+<section class="area" id="V11" data-title="print_output_vac">
+<div class="ahead"><span class="aid">V11</span><h2>print_output_vac</h2></div>
+<div class="meta"><span><b>routine</b> print_output_vac</span><span><b>time</b> 10 min</span><span class="tier skim">skim</span></div>
+<p>Two changes against 2.47. The parallel angle <code>ang</code> is written for both styles, after <code>x_vec</code> and before the style branch; at 2.47 only the axisymmetric style wrote it (your commit 59c6e90; before it, a8804ac had written the two limits of the angle as entries 7 and 8 of <code>misc_vac</code>, and POST rebuilt the angle from them). <code>h_fac</code> is written with 3 columns. <code>misc_vac</code> has its six entries of 2.47.</p>
+<div class="how"><b>How to check it</b>: compare the names written here with the names <code>reconstruct_PB3D_vac</code> in <code>PB3D_ops</code> reads (<a href="#V1">V1</a>, commit 59c6e90): <code>misc_vac</code> with six entries; <code>sec_X</code>, <code>norm</code>, <code>x_vec</code> and <code>ang</code> for both styles; <code>h_fac</code> or <code>dnorm</code> by style; <code>RE_res</code> and <code>IM_res</code>. The HDF5 reads go by name, so the order does not matter. The list of written variables in the doc comment above the routine names <code>ang</code> as well.</div>
+<!--@group print-->
+</section>
+
+<!-- ================================================================== STAGE 6 -->
+<div class="stage" id="stage6"><span class="eyebrow">Stage 6</span><h2 class="st">The free edge again; after the review; inputs, defaults and output format</h2></div>
+
+<section class="area" id="D" data-title="The free edge again: end weights, no central differences, no style 4">
+<div class="ahead"><span class="aid">D</span><h2>The free edge again: end weights, no central differences, no style 4</h2></div>
+<div class="meta"><span><b>files</b> SLEPC_ops, num_utilities, input_ops, PB3D_ops, num_vars, SLEPC_utilities</span><span><b>time</b> 45 min</span><span class="tier study">study</span></div>
+<p>Three commits of 17 and 18 November, merged on 18 November through the pull requests #37 and #38, change the code of <a href="#F5">F5</a> and <a href="#F6">F6</a>. Those two sections stay as you reviewed them, at <code>9e9aba5</code>; this one shows the result, 2.47 against <code>@@NAME_B@@</code>. With the default input (left differences of order p = 3, <code>BC_style</code> 1 2) only the first commit moves eigenvalues, and only those of a free boundary.</p>
+
+<h3>The weights of the last points (cba0762, #37)</h3>
+<p>F5 gave the edge point half a weight, as the trapezoidal rule does. With left differences that left a part of the error proportional to 1/N, where N is <code>n_r_sol</code>. The difference at point i uses the points i − p to i. The points beyond the edge do not exist, so X<sub>N</sub> enters one difference, X<sub>N−1</sub> two, and only X<sub>N−p</sub> and the points before it enter all p + 1. The rows of the last points are then not consistent equations. On the circular ε = 0.33 kink the steps between 200, 400, 800, 1600 and 3200 points shrank by 2.7, 2.5 and 2.3 per doubling, where a second-order method gives 4.</p>
+<p>The new function <code>calc_end_weights</code> in <code>num_utilities</code> gives the last points the weights w<sub>i</sub>, in units of the step h, for which the weighted sum of the left differences of any X that is zero at the first p points equals X at the edge:</p>
+<p class="eqn">h Σ<sub>i</sub> w<sub>i</sub> (DX)<sub>i</sub> = X<sub>N</sub>, &nbsp;&nbsp; with &nbsp;&nbsp; (DX)<sub>i</sub> = (1/h) Σ<sub>m = 0 … p</sub> c<sub>m</sub> X<sub>i−m</sub>.</p>
+<p>This is the discrete form of ∫ X′ dψ = X(edge), which the integration by parts of the energy uses. Collecting the terms in X<sub>N−k</sub> gives the weights from the edge inwards:</p>
+<p class="eqn">c<sub>0</sub> w<sub>N</sub> = 1, &nbsp;&nbsp; Σ<sub>m = 0 … min(p, k)</sub> c<sub>m</sub> w<sub>N−k+m</sub> = 0 &nbsp; for k ≥ 1.</p>
+<p>For p = 3 they are 6/11, 108/121, 1.0143, 1.0286, 1.0156 and so on, tending to 1. Their sum is half a step less than that of unit weights, as for the trapezoidal rule. <code>fill_mat</code> uses them for a free edge with p = 2 or 3. For p = 1 the weights that satisfy the equation are all 1, which would not take the half step off, so the edge point keeps half a weight. A fixed edge keeps weight 1 at every point: with the end weights the circular fixed-boundary eigenvalue converged more slowly, and cbm18a fixed barely moved.</p>
+<p>PB3D, n = 10, free edge, <code>BC_style</code> 1 2, p = 3, from the commit message:</p>
+<div class="tablewrap"><table>
+<thead><tr><th>case, weights of the last points</th><th class="num">200</th><th class="num">400</th><th class="num">800</th><th class="num">1600</th><th class="num">3200 points</th></tr></thead>
+<tbody>
+<tr><td>circular ε = 0.33, w<sub>N</sub> = 1/2 (F5)</td><td class="num">−0.438020</td><td class="num">−0.437937</td><td class="num">−0.437906</td><td class="num">−0.437893</td><td class="num">−0.437888</td></tr>
+<tr><td>circular ε = 0.33, end weights</td><td class="num">−0.437887</td><td class="num">−0.437883</td><td class="num">−0.437883</td><td class="num">−0.437883</td><td class="num">−0.437883</td></tr>
+<tr><td>circular ε = 0.05, w<sub>N</sub> = 1/2 (F5)</td><td class="num">−0.425616</td><td class="num">−0.425556</td><td class="num">−0.425526</td><td class="num">−0.425514</td><td class="num">−0.425509</td></tr>
+<tr><td>circular ε = 0.05, end weights</td><td class="num">−0.425513</td><td class="num">−0.425519</td><td class="num">−0.425508</td><td class="num">−0.425505</td><td class="num">−0.425505</td></tr>
+</tbody></table></div>
+<p>At 200 points the ε = 0.33 value is now 9e-6 from the limit (relative), against 3e-4 before. With p = 2 the steps fall by 4 per doubling instead of 2. cbm18a moves by 3e-6; according to the commit message its first-order convergence does not come from the edge (see "What nobody has checked yet" in <a href="#Q">Q</a>). Two anchors moved, ε = 0.05 free to −4.2551e-1 and the twin's free run to −4.3901e-1 (<a href="#T">T</a>), and <code>circ_eps005_free_bnd.sh</code> now requires its 200- and 400-point values to agree to 5e-5: they agree to 1.3e-5, against 1.4e-4 with w<sub>N</sub> = 1/2. The new unit test <code>end_weights</code> is in <code>test_num_utilities</code>.</p>
+<p>The demo below copies the assembly of <code>fill_mat</code>, <code>set_BC_1</code> and <code>set_BC_2</code> for one mode of a model problem whose mode lies against the edge. It computes the weights with the same recurrence and checks the first equation above to 1e-12. The error of its lowest eigenvalue is proportional to 1/N with w<sub>N</sub> = 1 (2.47) and with w<sub>N</sub> = 1/2 (F5, 370 times smaller), and to 1/N<sup>3</sup> with the end weights for p = 3. Its part 3 belongs to the list "What nobody has checked yet" in <a href="#Q">Q</a>.</p>
+<!--@demo end_weights_1d-->
+
+<h3>Central differences and boundary style 4 removed (9b36fa6, #38, issue #36)</h3>
+<p>Your decision of 18 November, for these reasons (from the issue):</p>
+<ul>
+<li><b>Central differences</b> (<code>norm_disc_style_sol</code> = 1). Every central first difference is exactly zero for a mode that changes sign from one radial point to the next, so the energy terms with the radial derivative (<code>PV_2</code>, <code>KV_2</code>) did not see such a mode. Near a free edge the stencils were shifted inwards, so the formula was not central there, and no end weights exist for it. No test or example used it; the default has been left differences since July 2017. The runs of the 2017 paper stay reproducible from the tag <code>Weyens2017PB3D</code>.</li>
+<li><b>Boundary style 4</b>. It replaced the last row of the matrices by the natural boundary condition, so A and B were not Hermitian. With the end weights it converges to the eigenvalue of style 2, but only at first order: −0.43266, −0.43531, −0.43661 and −0.43725 at 200 to 1600 points on the circular ε = 0.33 kink, against −0.437883 for style 2.</li>
+</ul>
+<p>What the code does now:</p>
+<ul>
+<li>The radial derivative is always a left difference over p + 1 points. <code>fill_mat</code> computes its coefficients once, before the loop over the rows; <code>set_nonzeros</code> uses the half stencil [p, 0]; <code>set_BC_1</code> zeroes the couplings to the p neighbours.</li>
+<li><code>set_BC_4</code> is gone, and <code>set_BC</code> sets the edge condition at the last point only; the loop over <code>n_max</code> points is gone with <code>n_max</code>.</li>
+<li><code>adapt_run_PB3D</code> stops with a message when <code>BC_style(1)</code> is not 1 or <code>BC_style(2)</code> is not 1 or 2. An input file that still sets <code>norm_disc_style_sol</code> stops at the namelist read: PB3D prints "Cannot read user-provided file" and the compiler's message, which for gfortran is "Cannot match namelist object name norm_disc_style_sol" (I checked this with a small program).</li>
+<li>The output array <code>misc_sol</code> has 7 entries instead of 8: <code>min_r_sol</code>, <code>max_r_sol</code>, <code>norm_disc_prec_sol</code>, <code>BC_style(1)</code>, <code>BC_style(2)</code>, <code>EV_style</code>, <code>EV_BC</code>. The header of <code>print_output_in</code> listed <code>EV_BC</code> twice and now names <code>EV_style</code>.</li>
+<li>The cbm18a free-boundary deck uses style 2, and its script checks that value only; the numbers of the earlier comparison with style 4 are kept in <code>Documentation/testing.md</code>. With left differences and style 1 or 2, the eight regression eigenvalues are identical in all 17 printed digits before and after the commit (macOS, one process).</li>
+</ul>
+
+<h3>No check on the length of misc_sol (35a40e8)</h3>
+<p>9b36fa6 made <code>reconstruct_PB3D_in</code> stop when <code>misc_sol</code> did not have 7 entries. 35a40e8 removed that check again: the minimum version check is the guard against older output, and output of an earlier 2.49 build has to be generated again.</p>
+<div class="gap"><b>Found while preparing this section.</b> Files from before and after 18 November both carry version 2.49, so the version check (<code>min_PB3D_version</code> = 2.49) lets an older file through. <code>reconstruct_PB3D_in</code> then reads its entries shifted by one: entry 4, the old <code>norm_disc_style_sol</code> = 2, becomes <code>BC_style(1)</code>, and entry 5, the old <code>BC_style(1)</code> = 1, becomes <code>BC_style(2)</code>. POST then handles a free-boundary run as a fixed-boundary one: <code>driver_POST</code> does not read the vacuum, the energy decomposition in <code>sol_ops</code> leaves out the vacuum term because <code>vac%res</code> is not allocated, and the vacuum plot is skipped. No message says so. A fixed-boundary file is read with the right <code>BC_style(2)</code> by chance. Raising <code>prog_version</code> and <code>min_PB3D_version</code> to 2.50 would make the version check refuse such files (a question in <a href="#Q">Q</a>). <b>Done</b> in <code>03baebe</code> (#39, <a href="#N">N</a>): both are 2.50, and PB3D and POST refuse a 2.49 file.</div>
+
+<div class="how"><b>How to check it</b><ol>
+<li>Read <code>calc_end_weights</code> against the recurrence above. <code>coeff(ord+1-m)</code> multiplies X<sub>i−m</sub>, so <code>coeff(ord+1)</code> is c<sub>0</sub> and <code>w_loc(1)</code> = 1/c<sub>0</sub>. The loop stops when <code>ord</code> successive weights are within 1e-12 of 1 and returns the ones before them. The function <code>end_weights</code> of the demo is the same loop in Python.</li>
+<li>In <code>fill_mat</code>, <code>w_end</code> is set before the row loop: from <code>calc_end_weights</code> for <code>BC_style(2)</code> = 2 and p ≥ 2, 1/2 for p = 1, and 1 for a fixed edge. <code>w_q = w_end(n_r-kd)</code> gives the last row (kd = n_r − 1, counted from 0) the weight <code>w_end(1)</code>.</li>
+<li>In <code>set_BC</code>, the edge condition is set at the last point only; the inner end still sets the first p points.</li>
+<li>Compare <code>print_output_in</code> with <code>reconstruct_PB3D_in</code>: the same seven entries of <code>misc_sol</code>, in the same order.</li>
+</ol></div>
+<!--@commit cba0762 NONVAC-->
+<!--@commit 9b36fa6 NONVAC-->
+<!--@commit 35a40e8 NONVAC-->
+</section>
+
+<section class="area" id="N" data-title="After the review: version 2.50, exit status, inputs, POST, broadcast_var">
+<div class="ahead"><span class="aid">N</span><h2>After the review: version 2.50, exit status, inputs, POST, broadcast_var</h2></div>
+<div class="meta"><span><b>files</b> PB3D_ops, num_vars, MPI_ops, input_ops, rich_ops, driver_POST, files_ops, MPI_utilities, SLEPC_ops, SLEPC_utilities, X_vars</span><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<p>The commits of 18 to 20 November that change a module outside the vacuum, shown as everything from stage 5 on, 2.47 against <code>@@NAME_B@@</code>. They came in through the pull requests #39, #41, #44 and #47, plus two commits of yours made straight on <code>dev/vacuum-fixes</code>. They change what PB3D and POST do after an error or with an incomplete input, the rank from which <code>broadcast_var</code> sends when the caller names none, and comments. The vacuum commits of the same days change comments only; they are listed at the end.</p>
+
+<h3>Version 2.50 (03baebe, #39)</h3>
+<p>Since #38 the output array <code>misc_sol</code> has 7 entries instead of 8 (<a href="#D">D</a>). <code>prog_version</code> and <code>min_PB3D_version</code> are now 2.50, so PB3D and POST refuse the output of an earlier 2.49 build instead of reading its entries shifted by one place. <code>reconstruct_PB3D_in</code> compared the versions for POST only. It now compares them for PB3D too, because PB3D reads the same record when it continues from earlier output (<code>rich_restart_lvl</code> above 1). The message names both versions, for example "The output is from PB3D version 2.49E+00: need at least version 2.50E+00". This settles the question on 2.49 output in <a href="#Q">Q</a> and the gap note in <a href="#D">D</a>.</p>
+
+<h3>Exit status after an error (ef513a3, #41, issue #40)</h3>
+<p><code>abort_MPI</code> passed the literal 0 to <code>MPI_Abort</code>, so PB3D and POST returned exit status 0 after an error. It now takes the status as an argument. The new function <code>get_exit_status</code> turns the error code into the status: a code from 1 to 125 is the status itself, and every other code gives 1. Error code 66, the stop after the usage message, keeps status 0. <code>sudden_stop</code> now writes out the buffered output of the screen and of the output file before the abort. Before, a log redirected to a file lost the error message, because <code>MPI_Abort</code> ends the process without writing that output. The new regression test <code>reject_BC_style</code> runs the cbm18a free-boundary deck with <code>BC_style</code> = 1 4, once with one process and once under <code>mpirun -n 2</code>. It requires a status that is not zero, the message of the input check, and no eigenvalue file. Issue <a href="https://github.com/ToonWeyens/PB3D/issues/40" target="_blank" rel="noopener">#40</a> is still open on GitHub, for its options A to C.</p>
+
+<h3>Inputs and POST (a6b3c3f, cd4dab4, 8980fbf, eb6d6b9, #47)</h3>
+<ul>
+<li><b>Mode range (a6b3c3f).</b> <code>adapt_X_modes</code> chose X style 1 only when <code>min_sec_X</code> was set, because its test named <code>min_sec_X</code> twice. A deck that set only <code>max_sec_X</code>, or <code>max_sec_X</code> together with <code>n_mod_X</code>, ran with X style 2 and ignored <code>max_sec_X</code> without a message. Now X style 1 is chosen when either limit is set. The run stops with a message when <code>n_mod_X</code> is set together with a limit, or when only one of the two limits is set.</li>
+<li><b>Energy decomposition of POST (cd4dab4).</b> <code>write_decomp_log</code> closed the file after every solution, while <code>open_decomp_log</code> opens it once. From the second solution on, gfortran wrote to a new file <code>fort.57</code>, which the next write replaced. So <code>POST_out_EN_R&lt;lvl&gt;.txt</code> held the first solution, <code>fort.57</code> the last one, and the solutions in between were lost. The file is now closed once, after the loop over the solutions.</li>
+<li><b><code>PB3D_rich_lvl</code> in POST (8980fbf).</b> POST tested the upper limit before the lower one, so it took a value below 1 as a level and then stopped with an HDF5 error. Now it does only the equilibrium output for such a value, as its message says. <code>find_max_rich_lvl</code> probes from level 1 and no longer takes the requested level, so the message for a level that is too high names the real highest level: a request of 5 on a file with level 1 only said "cannot be higher than 4" and now says 1.</li>
+<li><b>PETSc options (eb6d6b9).</b> The list of command-line options that PB3D passes on to SLEPc had <code>-st_pc_type</code> and <code>-st_pc_factor_mat_solver_package</code> twice each, and the solver-type option under its old name. PETSc calls it <code>-st_pc_factor_mat_solver_type</code>, so PB3D printed "Option ... invalid" while PETSc used it. The list now has the current name once and no duplicates.</li>
+</ul>
+<p>The new regression test <code>post_checks</code> (a478650, a shell script) checks the mode-range messages and the two POST fixes on the cbm18a fixed-boundary deck. It is the first test that runs POST.</p>
+
+<h3>broadcast_var (8936f06, a9c8bd3, your commits)</h3>
+<p>Each of the seven variants of <code>broadcast_var</code> declared <code>integer :: source_loc = 0</code>. An initialisation in a declaration gives the variable the SAVE attribute, the mistake that the port fixed in <code>remove_EV</code> (<a href="#M1">M1</a>). <code>store_vac</code> broadcasts <code>jq</code> from rank n_procs − 1, and after that call every later call of the same variant without a source broadcast from that rank instead of rank 0, for example the answers to <code>get_real</code> prompts. <code>source_loc</code> is now set to 0 at the start of every call. According to the commit message the error was found with fortitude's check C081 (issue #46) and the fix was read from the code, not run with more than one process. a9c8bd3 declares the broadcast variable <code>intent(inout)</code>, because <code>MPI_Bcast</code> writes it on every process except the source; nothing changes at run time.</p>
+
+<h3>Comments (33f4d6b, d4494f9, 330acfd)</h3>
+<p>33f4d6b (#39) corrects the comments on the last row of the free-boundary matrices after #38 (<code>fill_mat</code>, the header of <code>set_BC</code>). With the end weights that row is the natural boundary condition plus the contribution of the last point to the Euler equation, h w<sub>N</sub> (V<sub>0</sub> X<sub>N</sub> + V<sub>1</sub> (DX)<sub>N</sub>), where h is the radial step, w<sub>N</sub> the weight of the last point and (DX)<sub>N</sub> the left difference there. That term is smaller than the rest of the row by a factor of the order of h. The commit also changes one message: <code>set_BC_2</code> prints "Free boundary, vacuum energy added to the edge block", where it printed the name of a style from before #38. d4494f9 (#47) corrects the <code>--help</code> text (the equilibrium input is VMEC output in NetCDF or HELENA output, not ".txt format") and a comment in <code>X_vars</code>. In <code>PB3D.f90</code> and <code>POST.f90</code>, which this page does not show, it sets <code>\version</code> to 2.50. 330acfd (#44) holds your uncommitted edits from <code>~/Code/PB3D</code>: the wrapped <code>use</code> line in <code>MPI_ops</code> and a comment in <code>calc_GH_1</code>.</p>
+
+<h3>The vacuum commits of the same days</h3>
+<p>Seven commits change the vacuum modules, all of them comments only. The routine diffs of stage 5 show them, because from stage 5 on every section shows <code>@@NAME_B@@</code>, and each routine there names the commits that changed it.</p>
+<ul>
+<li>dc358c4 (#44): the rule across the field lines, documented in the header of <code>vac_ops</code> (<a href="#V2">V2</a>) and in <code>calc_GH_1</code> (<a href="#V4">V4</a>). The rule is trapezoidal along every line, refined near the influence point, with equal weights across the lines. With <code>alpha_style</code> 2 the lines cover one turn in p and one period of α, so the rectangle in (p, α) covers the surface once and the rule is a product rule on it. The header said that the 3-D integrals use Weyl's theorem.</li>
+<li>2419b02 (#45), in <a href="#V4">V4</a>: <code>calc_GH_int_1</code> compares <code>tol</code> with the squared distance; the header of <code>calc_GH</code> says what the code does for external points; for a coinciding external point <code>calc_GH_1</code> takes the metric factors of the left end of the interval.</li>
+<li>481a5df (#45): <code>calc_vac_res</code> no longer says that it works for the axisymmetric style only (<a href="#V8">V8</a>).</li>
+<li>330acfd: a comment in <code>calc_GH_1</code> on why the pair of the last point of one field line and the first point of the next is skipped (<a href="#V4">V4</a>).</li>
+<li>22345c2 and 271a864 (yours): the comment in <code>calc_GH_2</code> on an external point near a boundary point, and a warning in a comment on the two cases where external points are not treated accurately (<a href="#V5">V5</a>, <a href="#V10">V10</a>).</li>
+<li>d4494f9 (#47): the comment of <code>print_output_vac</code> on when G and H are computed again (<a href="#V11">V11</a>).</li>
+</ul>
+
+<div class="how"><b>How to check it</b><ol>
+<li>In <code>MPI_ops</code>, follow an error from <code>sudden_stop</code> to <code>abort_MPI</code>: the buffers are written out first, and the status passed to <code>MPI_Abort</code> comes from <code>get_exit_status</code>.</li>
+<li>In <code>input_ops</code>, read the new order of the checks in <code>adapt_X_modes</code> and in <code>adapt_inoutput_POST</code>.</li>
+<li>In <code>MPI_utilities</code>, check that every variant of <code>broadcast_var</code> sets <code>source_loc</code> in its body and has no initialisation in a declaration.</li>
+</ol></div>
+<!--@commit 33f4d6b NONVAC-->
+<!--@commit 03baebe NONVAC-->
+<!--@commit ef513a3 NONVAC-->
+<!--@commit a6b3c3f NONVAC-->
+<!--@commit cd4dab4 NONVAC-->
+<!--@commit 8980fbf NONVAC-->
+<!--@commit eb6d6b9 NONVAC-->
+<!--@commit d4494f9 NONVAC-->
+<!--@commit 330acfd NONVAC-->
+<!--@commit 8936f06 NONVAC-->
+<!--@commit a9c8bd3 NONVAC-->
+</section>
+
+
+<section class="area" id="I" data-title="Inputs, defaults and output format">
+<div class="ahead"><span class="aid">I</span><h2>Inputs, defaults and output format</h2></div>
+<div class="meta"><span><b>time</b> 30 min</span><span class="tier read">read</span></div>
+<p>What a user of PB3D sees change. The code is in the sections named in the last column; the whole <code>input_ops</code> change is below.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>item</th><th>2.47</th><th>now</th><th>section</th></tr></thead>
+<tbody>
+<tr><td><code>BC_style</code> default</td><td>[1, 2], but style 2 stopped</td><td>[1, 2], style 2 implemented (variational, Hermitian); styles 3 and 4 removed. An input with <code>BC_style(1)</code> other than 1, or <code>BC_style(2)</code> other than 1 or 2, stops with a message that names the allowed values</td><td><a href="#F6">F6</a>, <a href="#D">D</a></td></tr>
+<tr><td><code>norm_disc_style_sol</code></td><td>1 central, 2 left differences (default)</td><td>removed: always left differences. An input file that still sets it stops at the namelist read, with gfortran's message "Cannot match namelist object name norm_disc_style_sol"</td><td><a href="#D">D</a></td></tr>
+<tr><td>output <code>misc_sol</code></td><td>8 entries</td><td>7 (no difference style). <code>prog_version</code> and <code>min_PB3D_version</code> are 2.50, so PB3D and POST refuse output of an earlier version with a message that names both versions</td><td><a href="#D">D</a>, <a href="#N">N</a></td></tr>
+<tr><td>exit status after an error</td><td>0</td><td>the error code if it lies from 1 to 125, else 1; 0 after the usage message (error code 66). The log keeps the error message when the output is redirected to a file</td><td><a href="#N">N</a></td></tr>
+<tr><td><code>min_sec_X</code>, <code>max_sec_X</code>, <code>n_mod_X</code></td><td>only <code>max_sec_X</code> set, or <code>max_sec_X</code> with <code>n_mod_X</code>: X style 2, <code>max_sec_X</code> ignored without a message</td><td>X style 1 when either limit is set; a message and a stop when one limit is missing or <code>n_mod_X</code> is set with a limit</td><td><a href="#N">N</a></td></tr>
+<tr><td>POST, <code>PB3D_rich_lvl</code> below 1</td><td>taken as a level; POST stopped with an HDF5 error</td><td>equilibrium output only, as the message says; a level above the highest one is refused with the real highest level in the message</td><td><a href="#N">N</a></td></tr>
+<tr><td>POST energy decomposition <code>POST_out_EN_R&lt;lvl&gt;.txt</code></td><td>first solution in the file, last one in <code>fort.57</code>, the others lost</td><td>all solutions in the file</td><td><a href="#N">N</a></td></tr>
+<tr><td>command-line option <code>-st_pc_factor_mat_solver_type</code></td><td>passed on to PETSc under its old name only; PB3D printed "invalid" for the current name</td><td>the current name, once</td><td><a href="#N">N</a></td></tr>
+<tr><td><code>check_vac</code></td><td>(none)</td><td>new, default <code>.false.</code></td><td><a href="#V9">V9</a></td></tr>
+<tr><td><code>vac_diag_style</code></td><td>(none)</td><td>new, default 1 (indirect); 2 direct, a diagnostic: a free-boundary run with 2 prints a warning (V0-b)</td><td><a href="#V6">V6</a>, <a href="#V1">V1</a></td></tr>
+<tr><td><code>plot_vac_pot</code></td><td>switched off in the code</td><td>works for both styles; off automatically for a fixed boundary</td><td><a href="#V10">V10</a></td></tr>
+<tr><td><code>min/max_Rvac_plot</code>, <code>min/max_Zvac_plot</code></td><td>0.1 R₀ … 2 R₀, −R₀ … R₀ (with a "need to take normalisation into account" print)</td><td>0: range from the boundary; in metres when set</td><td><a href="#V10">V10</a></td></tr>
+<tr><td><code>n_vac_plot</code></td><td>[100, 100]</td><td>[101, 101] (odd: the midplane of a symmetric range is on the grid)</td><td><a href="#V10">V10</a></td></tr>
+<tr><td>free boundary, VMEC, <code>alpha_style</code> 1</td><td>ran (vacuum degenerate for one line)</td><td>refused at input</td><td><a href="#V1">V1</a></td></tr>
+<tr><td><code>n_alpha</code> sharing a factor with N<sub>fp</sub></td><td>silent</td><td>warning: the average over the lines aliases the harmonic LCM(n<sub>α</sub>, N<sub>fp</sub>)</td><td><a href="#V1">V1</a></td></tr>
+<tr><td>mode tables of <code>setup_modes</code></td><td>could disagree silently</td><td>run stops with "mode tables disagree"</td><td><a href="#F2">F2</a></td></tr>
+<tr><td>output <code>misc_in_V</code></td><td>7 entries</td><td>10 (adds <code>mnmax_nyq_V</code>, <code>mpol_tf</code>, <code>ntor_tf</code>) and a dataset <code>mn_V_nyq</code>; POST refuses older output</td><td><a href="#R1">R1</a></td></tr>
+<tr><td>output <code>ang</code> (vacuum)</td><td>axisymmetric style only</td><td>both styles; for the field-line style n_par_X × n_alpha entries, one per boundary point. <code>misc_vac</code> keeps its 6 entries</td><td><a href="#V11">V11</a></td></tr>
+<tr><td>vacuum for a fixed boundary</td><td>computed and unused (VMEC); the run stopped (HELENA, since 2.44)</td><td>not computed, not written</td><td><a href="#V1">V1</a></td></tr>
+</tbody></table></div>
+<p>The whole diff of <code>input_ops</code>, 2.47 against <code>@@NAME_B@@</code> (its blocks also appear in the sections of their commits; the blocks of stages 1 to 3 are there at 9e9aba5, as you reviewed them):</p>
+<!--@wholefile Modules/input_ops.f90-->
+</section>
+
+<!-- ================================================================== STAGE 7 -->
+<div class="stage" id="stage7"><span class="eyebrow">Stage 7</span><h2 class="st">Tests</h2></div>
+
+<section class="area" id="T" data-title="The test layers and what they guard">
+<div class="ahead"><span class="aid">T</span><h2>The test layers and what they guard</h2></div>
+<div class="meta"><span><b>files</b> tests/unit (8 files), tests/fullstack (8 files), tests/regression, tests/reference</span><span><b>time</b> 1.5 h</span><span class="tier read">read</span></div>
+<p>2.47 had no tests that ran. Now ctest has four layers: <b>unit</b> (no PSPLINE, HDF5 or PETSc; 7 suites), <b>full-stack</b> (links all of PB3D; 6 suites, the vacuum ones also with 2 and 4 MPI processes), <b>regression</b> (whole PB3D runs on committed fixtures, against recorded eigenvalues) and smoke tests. CI (GitHub Actions) also runs a sanitizer build of the unit layer, the fortitude lint gate and ratchets on the compiler- and Doxygen-warning counts.</p>
+<h3>Which test fails if a fix is undone</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>fix</th><th>guard</th><th>status</th></tr></thead>
+<tbody>
+<tr><td>HELENA shear, odd spline (F1)</td><td>regression_cbm18a_shear_HEL</td><td>caught (mutation test, 30 October)</td></tr>
+<tr><td>vacuum factor −2π and sign (V8)</td><td>vac_response_cylinder; the free-boundary anchors</td><td>caught</td></tr>
+<tr><td>normal −J∇ψ for VMEC (V3)</td><td>regression_circ_eps033_vmec_twin (free run at 64 lines); response_1_vs_2 uses the analytic torus, not store_vac</td><td>caught by the regression test</td></tr>
+<tr><td>α step 2π/n<sub>α</sub> (V4)</td><td>response_1_vs_2, recorded ratios to 0.5 % (the old step moves them 1.25 %)</td><td>caught since 798fe50</td></tr>
+<tr><td>style-4 edge block (F6)</td><td>none: style 4 is removed (<a href="#D">D</a>)</td><td>&ndash;</td></tr>
+<tr><td>free-edge weights (F5, D)</td><td>regression_circ_eps005_free_bnd, 200 vs 400 points, <code>ORDER_RTOL</code> 5e-5 (1.3e-5 with the end weights, 1.4e-4 with w<sub>N</sub> = 1/2); unit test <code>end_weights</code></td><td>caught by design</td></tr>
+<tr><td>setup_modes slot (F2)</td><td>unit_setup_modes_sim (Python copy); runtime table check</td><td>formulas only</td></tr>
+<tr><td>MPI ownership (F3)</td><td>regression_cbm18a_fixed_bnd_np2/_np4</td><td>opt-in, not in CI</td></tr>
+<tr><td>Nyquist list, B<sub>0</sub>, Nyquist path of the Fourier basis (F4, R1)</td><td>none with <code>ntor</code> &gt; 0</td><td>not guarded</td></tr>
+<tr><td>implicit SAVE (M1, and <code>broadcast_var</code> in N)</td><td>none</td><td>not guarded</td></tr>
+<tr><td>exit status after an error (N)</td><td>regression_reject_BC_style, and regression_reject_BC_style_np2 where CMake finds <code>mpiexec</code>: status not zero, the message of the input check, no eigenvalue file</td><td>caught by design</td></tr>
+<tr><td>mode range, <code>PB3D_rich_lvl</code> and energy decomposition in POST (N)</td><td>regression_post_checks (cbm18a fixed boundary, PB3D then POST); the first test that runs POST</td><td>caught by design (every check fails on the code before #47)</td></tr>
+<tr><td>near-field rule, G diagonal (V4, V6)</td><td>GH_int_1_near; response_1_vs_2 recorded ratios; twin anchor (FREE_RTOL 3 %)</td><td>caught</td></tr>
+<tr><td>one convention (V0)</td><td>greens_identity, exact_exterior_2d, greens_identity_3d, point_source_3d</td><td>caught</td></tr>
+<tr><td>regression scripts passing on any "PASS"</td><td><code>FAIL_REGULAR_EXPRESSION "FAIL"</code> added (2 November)</td><td>fixed</td></tr>
+</tbody></table></div>
+<div class="gap"><b>Gaps.</b> (1) No VMEC fixture with <code>ntor</code> &gt; 0 in the repository, so nothing in CI runs the 3-D vacuum on a non-axisymmetric surface or the Nyquist path. A small rippled twin (64 lines, <code>ntor</code> 6) would cover both; its wout would need to be committed. (2) The multi-process regression rows do not run in CI. (3) The implicit-SAVE fixes of M1 and of <code>broadcast_var</code> (<a href="#N">N</a>) have no test.</div>
+<h3>Regression anchors</h3>
+<div class="tablewrap"><table>
+<thead><tr><th>test</th><th>deck</th><th class="num">anchor</th><th class="num">tolerance</th></tr></thead>
+<tbody>
+<tr><td>regression_cbm18a_fixed_bnd</td><td>HELENA cbm18a, n = 10, ψ 0.45 to 0.75 (edge), 200 radial points, BC 1 1</td><td class="num">−4.3573e-2</td><td class="num">1e-3</td></tr>
+<tr><td>regression_cbm18a_free_bnd</td><td>same, BC 1 2 (until <a href="#D">D</a> also BC 1 4)</td><td class="num">−4.5051e-2</td><td class="num">1e-3</td></tr>
+<tr><td>regression_circ_eps005_free_bnd</td><td>circular ε = 0.05, n = 10, BC 1 2; also 400 points (to 5e-5); also against MISHKA-1 (2 %)</td><td class="num">−4.2551e-1</td><td class="num">1e-3</td></tr>
+<tr><td>regression_circ_eps033_vmec_twin</td><td>circular ε = 0.33, HELENA against VMEC fixed (1e-4); field-line free at 64 lines against its anchor and the HELENA style-2 run (3 %)</td><td class="num">7.8431e-2 / −4.3901e-1</td><td class="num">1e-3 / 3 %</td></tr>
+<tr><td>regression_cbm18a_shear_HEL</td><td>the HELENA shear profile</td><td class="num">(profile)</td><td class="num"></td></tr>
+</tbody></table></div>
+<p class="note">Eigenvalues are ω²/ω<sub>A</sub>² in PB3D's MISHKA normalisation (<code>norm_style</code> 1); the field-line anchors are reproducibility anchors at a fixed grid, not converged values.</p>
+<h3>Test sources</h3>
+<p>All new; the vendored test-drive framework (<code>tests/vendor/test-drive/testdrive.F90</code>) is left out. The sources are shown at <code>@@NAME_B@@</code>: since V0-e (f0273a7) and V0-f (ebd972c) their comments carry no dates or step numbers, and the measured values in the comment of <code>test_exact_exterior_2d</code> are said to be those of the direct diagonals. <code>test_num_utilities</code> holds the unit test <code>end_weights</code> of <a href="#D">D</a> (<code>cba0762</code>).</p>
+<h4>Full-stack</h4>
+<!--@testsrc tests/fullstack/test_vac_kernels.f90-->
+<!--@testsrc tests/fullstack/test_vac_greens.f90-->
+<!--@testsrc tests/fullstack/test_vac_3d.f90-->
+<!--@testsrc tests/fullstack/test_splines.f90-->
+<!--@testsrc tests/fullstack/test_calc_int_vol.f90-->
+<!--@testsrc tests/fullstack/test_read_HEL.f90-->
+<!--@testsrc tests/fullstack/fullstack_utils.f90-->
+<!--@testsrc tests/fullstack/main.f90-->
+<h4>Unit</h4>
+<!--@testsrc tests/unit/test_dtorh.f90-->
+<!--@testsrc tests/unit/test_num_utilities.f90-->
+<!--@testsrc tests/unit/test_X_utilities.f90-->
+<!--@testsrc tests/unit/test_PB3D_utilities.f90-->
+<!--@testsrc tests/unit/test_num_ops.f90-->
+<!--@testsrc tests/unit/test_str_utilities.f90-->
+<!--@testsrc tests/unit/test_files_utilities.f90-->
+<!--@testsrc tests/unit/main.f90-->
+<h4>Reference</h4>
+<!--@testsrc tests/reference/gfortran14_bounds_repro.f90-->
+</section>
+
+<!-- ================================================================== STAGE 8 -->
+<div class="stage" id="stage8"><span class="eyebrow">Stage 8</span><h2 class="st">Decisions</h2></div>
+
+<section class="area" id="Q" data-title="Design questions in one list">
+<div class="ahead"><span class="aid">Q</span><h2>Design questions in one list</h2></div>
+<div class="meta"><span><b>time</b> 1 h</span><span class="tier study">study</span></div>
+<p>For you to decide (write your answer in the notes), with what is done since. "Cleanup" means no number changes.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>question</th><th>recommendation</th><th>effort</th></tr></thead>
+<tbody>
+<tr><td><a href="#V0">V0-f</a> stale comments, unused variables</td><td><b>done</b> in #32 (<code>ebd972c</code>); the 0.7 % in <code>set_BC_4</code> is corrected in V0-e</td><td>&ndash;</td></tr>
+<tr><td><a href="#M5">M5</a> <code>prog_version</code> 2.48 &rarr; 2.49</td><td><b>done</b> in <code>18f87e8</code></td><td>&ndash;</td></tr>
+<tr><td><a href="#V0">V0-e</a> history in comments</td><td><b>done</b> in #33 (<code>f0273a7</code>): comments only, in 11 files</td><td>&ndash;</td></tr>
+<tr><td><a href="#V0">V0-a</a> one routine for the indirect diagonals</td><td><b>done</b> in #31 (<code>937d6a8</code>): <code>fit_diag</code> and <code>diag_indirect</code>, see <a href="#V6">V6</a>; the eigenvalues moved by 1e-13 or not at all</td><td>&ndash;</td></tr>
+<tr><td><a href="#V0">V0-b</a> <code>vac_diag_style</code> as input</td><td><b>done</b> in #31 (<code>bba7922</code>): kept, the comment says it is a diagnostic, and a free-boundary run with style 2 prints a warning</td><td>&ndash;</td></tr>
+<tr><td><a href="#D">D</a>, <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a>: remove central differences and boundary style 4</td><td><b>done</b> in #38 (<code>9b36fa6</code>, <code>35a40e8</code>), after the end weights of #37 (<code>cba0762</code>); the issue is closed</td><td>&ndash;</td></tr>
+<tr><td><a href="#T">T</a> rippled VMEC twin as a fixture</td><td>yes: the only way CI covers the 3-D vacuum on a non-axisymmetric surface and the Nyquist path</td><td>1 h plus a few MB of xz</td></tr>
+<tr><td><a href="#T">T</a> multi-process rows in CI</td><td>only if the CI PETSc gets MUMPS; otherwise leave them on Snellius</td><td>unknown</td></tr>
+<tr><td><a href="#D">D</a> 2.49 output written before 18 November</td><td><b>done</b> in #39 (<code>03baebe</code>, <a href="#N">N</a>): <code>prog_version</code> and <code>min_PB3D_version</code> are 2.50, so the version check you named in 35a40e8 refuses such files, for PB3D as well as POST</td><td>&ndash;</td></tr>
+</tbody></table></div>
+<p>Known limits, unchanged since 2.47: toroidal flux in <code>store_vac</code> is refused ("TOR. FLUX HAS NOT BEEN TESTED"); G and H are not written for restarts.</p>
+<h3>What nobody has checked yet</h3>
+<p>Collected from the gap notes of the sections, so that you can see in one place what your review cannot lean on. None of these is a known error.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>item</th><th>what exists</th><th>what is missing</th><th>section</th></tr></thead>
+<tbody>
+<tr><td>Nyquist matching and the Nyquist part of the Fourier basis</td><td>runs of the rippled twins and W7-X on Snellius (commit messages)</td><td>a test in CI; none of the nine decks of appendix A shows it (W7-X's two mode lists coincide, the twin has <code>ntor</code> 0)</td><td><a href="#F4">F4</a>, <a href="#R1">R1</a></td></tr>
+<tr><td>the port against 2.47</td><td>the build and the regression anchors at the tip</td><td>a before/after run: 2.47 does not build against PETSc 3.25</td><td><a href="#M1">M1</a></td></tr>
+<tr><td>effect of the implicit SAVE</td><td>the Fortran rule (demo)</td><td>a run in which PB3D discards eigenvalues, so the old behaviour would show</td><td><a href="#M1">M1</a></td></tr>
+<tr><td>the STRUMPACK path</td><td>the residual check and the fallback to ScaLAPACK</td><td>a case where the compressed solve is used: on W7-X it failed every time and the fallback took over</td><td><a href="#V7">V7</a></td></tr>
+<tr><td>the edge of the near-field zone for points on the boundary</td><td>the finding for points off the boundary (an error like Δp² from the zone edge)</td><td>a test of whether the same edge limits the on-boundary operators</td><td><a href="#V10">V10</a></td></tr>
+<tr><td>the first-order part of cbm18a's convergence</td><td>the end weights took the edge out of it: cbm18a moved by 3e-6 (<code>cba0762</code>)</td><td>where it comes from. In the one-mode model of the demo in <a href="#D">D</a>, a mode that reaches the inner end keeps an error of +17.2/N with the end weights; there <code>set_BC_1</code> holds the first p points at zero, not only the first one. Not checked in PB3D</td><td><a href="#D">D</a></td></tr>
+<tr><td>MISHKA-1 on the circular ε = 0.33 kink</td><td>PB3D and TERPSICHORE agree to 2e-5</td><td>an explanation of MISHKA-1's 1.1 % (probably its parallel inertia, not verified)</td><td><a href="#V8">V8</a></td></tr>
+<tr><td>2 and 4 processes</td><td>the np2/np4 rows passed on Snellius</td><td>a run in CI (needs MUMPS in the CI PETSc)</td><td><a href="#F3">F3</a></td></tr>
+<tr><td>the <code>broadcast_var</code> fix with more than one process</td><td>the code read, and fortitude's check C081 (commit message of <code>8936f06</code>)</td><td>a run with more than one process before and after the fix; which later broadcasts used the wrong rank in a real run</td><td><a href="#N">N</a></td></tr>
+</tbody></table></div>
+<p>Already decided by you (recorded, listed so you can see them in one place):</p>
+<ul>
+<li>BC style 4 stayed, marked not validated (6 November). On 18 November you removed it, together with central differences (<code>norm_disc_style_sol</code> = 1): issue <a href="https://github.com/ToonWeyens/PB3D/issues/36" target="_blank" rel="noopener">#36</a>, pull request #38.</li>
+<li>The last points of a free edge carry the end weights for p = 2 and 3; p = 1 and a fixed edge keep their weights (pull request #37, 18 November).</li>
+<li>Indirect diagonals are the default for both styles; the direct ones are the check_vac diagnostic (6 November).</li>
+<li><code>n_near</code> = 4 stays, to be re-evaluated after this review (6 November).</li>
+<li>The <code>H_sing_node</code> quadrature item is parked (6 November).</li>
+<li>Ideas for a cheaper vacuum are exploration only, nothing decided (2 November).</li>
+<li>V0-a, V0-b, V0-e and V0-f are done; V0-c (the rows for points off the boundary in their own routine) and V0-d (check_vac and the plot in files of their own) are dropped (17 November).</li>
+</ul>
+</section>
+
+<!-- ================================================================== STAGE 9 -->
+<div class="stage" id="stage9"><span class="eyebrow">Stage 9</span><h2 class="st">Afterwards: a cheaper vacuum</h2></div>
+
+<section class="area" id="E" data-title="Reading guide to the wave report">
+<div class="ahead"><span class="aid">E</span><h2>Reading guide to the wave report</h2></div>
+<div class="meta"><span><b>file</b> <code>Documentation/vacuum_wave_report/report.pdf</code> on branch <code>exp/vacuum-wave-prototype</code> (worktree <code>.claude/worktrees/vacuum-wave-prototype</code>), 7 pages, 4 November</span><span><b>time</b> 1 to 2 h</span><span class="tier study">study</span></div>
+<p><b>Where the cost is now.</b> The field-line vacuum solves for the potential at every boundary point, with two dense N × N matrices G and H and a dense LU (memory N², work N³). A Richardson level doubles the points per line, so N doubles and the matrices grow fourfold. At 128 lines × 400 points (N = 51 200, the grid that matches TERPSICHORE on the circular twin to 2e-5) one matrix takes 21 GB and the run was given 220 GB.</p>
+<p><b>What the report proposes</b> (your idea, prototyped in Python on 3 November): write the potential as a sum of M′ waves e<sup>i(nφ − m<sub>k</sub>θ)</sup> and require the error of the boundary equation to have no component along any of those waves (Galerkin). Then the unknowns are M′ amplitudes, the system is M′ × M′, and its entries are sums over pairs of points. Under Richardson those sums carry over: a pair of old points enters with ¼ of its previous value, and only pairs with a new point are computed. No N × N matrix is ever stored.</p>
+<p><b>Read in this order:</b></p>
+<ol>
+<li>Abstract and §I (1 page): the problem and the claim.</li>
+<li>§II, eqs. (1)–(5): the point-value form, which is what <code>calc_GH_1</code> does now. <b>Careful with signs:</b> the report was written on 3 and 4 November, before the one convention of 5 November. Its n points out of the plasma, its H<sub>ij</sub> = −w<sub>j</sub>K, and its self term H<sub>ii</sub> = 2π − c<sub>i</sub>. The code now takes the normal into the plasma (<a href="#V0">V0</a>), which flips the signs of H and of the data together. The method does not depend on the choice.</li>
+<li>Fig. 2 and §III.A: why waves in the geometric angle need sidebands. Each exact harmonic of the torus is spread over a band of m (3 to 10 for m = 6, 9 to 24 for m = 15), because the geometric and the toroidal-coordinate poloidal angles differ by up to 0.345 rad at aspect ratio 3.</li>
+<li>§III.B–C, eqs. (6)–(11), and Fig. 3: the wave form; A is nearly tridiagonal (first neighbours 0.17 of the diagonal, a/(2R₀) = 1/6).</li>
+<li>§IV, eqs. (12)–(15), and Fig. 4: the Richardson step. Compare with §VI of your 2019 manuscript: option B there (reuse of the LU of H) is wrong as written (erratum E12); the wave form is a fourth option, closest to option C.</li>
+<li>Table I and §V: the four criteria fixed before the runs, all met: carried-over sums equal sums from scratch to 9e-16; the energy error equals the point-value form's to 3 digits; 34 waves for a 10-mode window; 51 264 points in 1.9 GB.</li>
+<li>§VI: what is not tested. This list decides whether the method can enter PB3D: the near-field rule (near pairs change when points are added), a stellarator (waves n ± N<sub>fp</sub>, …), PB3D's own data (single waves, the case of Fig. 5(c)-like data: 3 to 4 sidebands would do), the straight-field-line angle, Fortran and MPI.</li>
+</ol>
+<p><b>Where it meets the code.</b> The rows are those of <code>calc_GH_1</code> without the near-field rule; the data b correspond to EP of <code>set_up_data</code>; the energy (eq. 11) to <code>project_response</code>. Your 2018 <code>\todo</code> in the header of <code>calc_GH</code> (reuse of the contributions of inherited points, scaled by ½) and <code>interlaced_vac_copy</code> are the point-value precursor of eq. (14).</p>
+<p><b>The other options</b>, all exploration only and nothing decided (overview, section 7): a doubly periodic (θ, ζ) vacuum grid separate from the field-line grid; locally corrected trapezoidal quadrature on such a grid (Wu–Martinsson, Alpert, Duan–Rokhlin, Malhotra); a Fourier-basis vacuum as in CAS3D/NESTOR; a fast solver (GMRES with FMM or H-matrix products, or a HODLR direct solve; the condition number is only 3.5 to 3.8). The gate for any of them: the check_vac exact potentials on the circular twin and on W7-X 128 × 121 must improve and the twin eigenvalue must stay within its regression tolerance. The parked next step for the wave form (issue #4 comment of 3 November): W7-X from <code>~/Code/desc-vs-vmec/overnight/inputs/w7x_2015/wout_w7x.03.00llfix_99.nc</code>, port the near-field rule, reproduce check_vac at 128 × 121, then compare wave form and point values, then the carry-over.</p>
+</section>
+
+<!-- ================================================================== APPENDIX -->
+<div class="stage" id="stageL"><span class="eyebrow">Appendices</span><h2 class="st">Optional table and ledger</h2></div>
+
+<section class="area" id="A" data-title="Eigenvalue at every commit (optional)">
+<div class="ahead"><span class="aid">A</span><h2>Eigenvalue at every commit</h2></div>
+<div class="meta"><span class="tier opt">optional</span><span><b>run</b> Snellius, 14 November 2026</span></div>
+<p>Not part of the review. For each commit that changed the compiled code, this shows whether any of nine eigenvalues changed. Use it to look up a commit, or to check a claim in the sections above that a commit "changed no number".</p>
+<details class="optional"><summary>Open the table</summary>
+<p><b>What was run.</b> Every commit from 2.47 to <code>9e9aba5</code> that changes a file compiled into PB3D (<code>Modules/</code>, <code>PB3D.f90</code>, <code>CMakeLists.txt</code>, <code>cmake/</code>, <code>include/</code>): 48 commits, plus tag 2.47 itself. Each was built in Release on Snellius (foss/2025a, PETSc 3.25.3, SLEPc 3.25.1) and run on the nine decks below, one process per deck, all nine at once in one 16-core job. The decks use only input variables that exist at every commit, so the same files ran unchanged on all of them. A default that changed between commits (the boundary-condition style, the diagonal style, the field-line spacing) is part of what the table shows. All decks use the poloidal flux and <code>prim_X = 10</code>, so the toroidal mode number is n = 10.</p>
+<p><b>The number</b> in each cell is line 1 of <code>PB3D_out_EV_R_1.txt</code>: the real part of the first eigenvalue, normalised to the squared Alfvén frequency, so a negative value is unstable. These are the regression decks, not converged runs. The W7-X deck has 16 field lines of 61 points each, far too coarse for a W7-X answer, but enough to show whether a commit changes the 3-D path.</p>
+<p><b>Rows that are not plain builds.</b> Tag 2.47 and <code>a8c07b6</code> do not compile against PETSc 3.25: they use the PETSc 3.9 Fortran interface. So the table starts at the port, <code>775219a</code>, and cannot say whether the port changed a number with respect to 2.47. Rows <code>775219a</code> to <code>1862df0</code> are built with STRUMPACK-Dense 1.1.1, because the vacuum module needed it to compile until <code>429f003</code> made it optional. <code>429f003</code> has two rows: with STRUMPACK, then without it, so the vacuum system is solved by ScaLAPACK LU (<code>pdgesv</code>), as in every later row. The two <code>429f003</code> rows differ only in that solver.</p>
+<p><b>What it shows.</b> Between consecutive builds there are 47 steps.</p>
+<ul>
+<li><b>30 steps change none of the nine eigenvalues, bit for bit.</b> These include every mechanical commit after the port (<code>d4812f7</code>, <code>1862df0</code>, the module splits <code>8ac37d7</code> and <code>17b712c</code>, the warning cleanup <code>6ce5029</code>, the lint <code>17716c4</code>), the <code>setup_modes</code> fix <code>e4e3fdd</code> (as <a href="#F2">F2</a> says, no fixture moves the mode window down), the consolidation <code>fe305fd</code>, the step-9 follow-up <code>329b7a4</code>, the direct diagonal and the input <code>vac_diag_style</code> (<code>e07f0fc</code>, <code>e027949</code>, whose default kept the old behaviour), the four simplifications <code>028735c</code>, and the switch from STRUMPACK to ScaLAPACK at <code>429f003</code>. That last one shows nothing about the two solvers: at <code>429f003</code> no deck had a working vacuum yet.</li>
+<li><b>4 steps change numbers at rounding level only</b>, by at most 4.5e-13 (relative): <code>3b99109</code> (step 9, the Fourier basis; the twin by 4.5e-13), <code>1a53f50</code> (the angle version of <code>fourier2real</code> delegates to the table version; W7-X by 4e-14), <code>f3ebf11</code> (one sign convention for both vacuum styles; the twin free by 1e-13) and <code>225aa72</code> (<code>calc_vac_res</code> in named steps; the twin free by 1.4e-13). Hover the &asymp; cells for the values.</li>
+<li><b>13 steps move a number</b>, listed below the deck table. Each is a commit that the sections above describe as a change of result, and the sizes agree with them: the shear fix (<a href="#F1">F1</a>), the factor −2π (<a href="#V8">V8</a>), the style-4 double insertion (<a href="#F6">F6</a>), the field-line spacing, the inward normal, B<sub>0</sub> (<a href="#F4">F4</a>), the near-field rule, the free-edge weight (<a href="#F5">F5</a>), the corner term and the indirect diagonals by default. The relative change in the table is |new − old| / |old|. On that scale the shear fix moved cbm18a fixed by 7.0 %; the 6.5 % in F1 is the same change relative to the corrected value. <code>0d49f19</code> changes the Nyquist modes and B<sub>0</sub> together. On W7-X only the B<sub>0</sub> part acts, because that file has the same main and Nyquist mode lists (288 each): its 6.4 % is the rescaling by 1.064 of <a href="#F4">F4</a>. On the twin (<code>ntor</code> 0) the old labelling was already right, so its 1.6 % is the B<sub>0</sub> change of F4 as well. None of the nine decks shows the Nyquist fix itself.</li>
+</ul>
+<p><b>The same numbers as a figure.</b> The figure below has one panel per deck, each with its own vertical scale, and one point per build in commit order. The horizontal axis is not to scale in time: 15 builds fall between 7 and 10 July and 33 between 27 October and 6 November. A grey band marks a build without an eigenvalue, because the build failed (2.47 and <code>a8c07b6</code>) or the run stopped with an error. A label marks each build where an eigenvalue first appears or moves by more than 1e-10 (relative); it gives the commit, the new value and, in brackets, |new − old| / |old|. The four rounding-level steps do not show at this scale. <code>review/tools/fingerprint_series.py</code> draws it from the same <code>results.txt</code> as the table.</p>
+<!--@figure fingerprint_series.png-->
+<p><b>What else the table tells you.</b></p>
+<ul>
+<li>At the port every HELENA run, fixed boundary included, stops in <code>store_vac_HEL</code> with "Vacuum has not been implemented yet!". The vacuum had been switched off this way since 2.44 (commit <code>53c1c58</code>, 18 November 2020; the message of <code>ad2313b</code> says the same). So the first HELENA eigenvalue in the table is at <code>ad2313b</code>, which skips the vacuum when the boundary is fixed.</li>
+<li>Between <code>1d74b8f</code> (style 2 implemented) and <code>212e3ec</code>, the circular deck with a free boundary gave the fixed-boundary value to 8e-8 (+7.76499e-2, a stable mode), with the factor that the vacuum response then had. <code>212e3ec</code> set the factor to −2π (its message gives the derivation and the MISHKA check), and the same deck went to −0.430.</li>
+<li>The VMEC twin with a free boundary changed at six commits: −0.630 at <code>1d74b8f</code>, −0.0660 after the factor (<code>212e3ec</code>), −0.0833 after the field-line spacing (<code>50c9511</code>), −0.527 after the inward normal (<code>e3b4847</code>), −0.519 after B<sub>0</sub> (<code>0d49f19</code>), −0.449 after the near-field rule and the G diagonal (<code>0bbda47</code>), and −0.439 after the edge weight (<code>4915d4b</code>). The axisymmetric (style 2) vacuum gives −0.43679 for the HELENA version of the same equilibrium (comment of the twin regression test).</li>
+</ul>
+<p><b>What the table cannot see.</b> (1) Whether the port changed a number, because 2.47 does not build against PETSc 3.25. (2) The MPI fix <code>798fe50</code> (<a href="#F3">F3</a>), because every run uses one process; F3's evidence is the comparison of 1, 2 and 4 processes. (3) The vacuum commits before style 2 worked (<code>429f003</code>, <code>d6d49e6</code>): no BC-2 deck gave an eigenvalue then, and the BC-4 deck uses only the axisymmetric vacuum. (4) Much of the 3-D vacuum on W7-X: at 16 field lines and n = 10, the W7-X mode hardly feels the vacuum. At the tip, free and fixed boundary differ by 1.8e-4, and no vacuum commit moves the free value by more than 1.2e-4. So the W7-X columns check the VMEC path with ntor &gt; 0 more than the vacuum, and not even the Nyquist matching, because this file's two mode lists coincide (the 6.4 % at <code>0d49f19</code> is B<sub>0</sub>). A rippled twin with <code>ntor</code> 6 would be the deck that shows the Nyquist fix.</p>
+<!--@fingerprint-->
+<p class="note"><b>To run it again</b> (from the worktree root on the Mac, with an SSH control connection open, which the scripts reuse: <code>ssh -M -S $TMPDIR/pb3d-ssh-ctl -o ControlPersist=6h -fN tweyens@snellius.surf.nl</code>): <code>bash review/fingerprint/make_decks.sh &lt;W7-X deck&gt;</code> writes the decks; <code>bash review/fingerprint/submit.sh</code> unpacks every commit on Snellius and submits <code>review/fingerprint/fp.sbatch</code> as one job array; <code>bash review/fingerprint/fetch.sh</code> copies the results back; <code>python3 review/build_report.py</code> rebuilds this table. The run of 14 November took 50 jobs of 16 cores for about 4 minutes each: 75 s to build, then up to 130 s for the slowest deck (the twin with 64 field lines). The binaries stay in <code>~/pb3d/fp/bin</code> on Snellius, one per row, so any row can be run on another deck; <code>rm -rf ~/pb3d/fp</code> removes all of it.</p>
+</details>
+</section>
+
+<section class="area" id="L" data-title="Ledger and coverage">
+<div class="ahead"><span class="aid">L</span><h2>Ledger and coverage</h2></div>
+<div class="meta"><span class="tier skim">skim</span></div>
+<p>Generated by <code>review/build_report.py</code>, which builds this page from <code>review/report.src.html</code> and git, and stops with an error if any Fortran change is not in the page.</p>
+<!--@ledger-->
+</section>
+
+</main>
+</div>
+
+<script>
+(() => {
+  const sections = [...document.querySelectorAll("section.area")];
+  const STAT = [["todo", "to do"], ["doing", "in progress"], ["done", "done"], ["question", "question"]];
+  const state = {};
+  const pending = {};
+  const lastSaved = {};
+  let db = null;
+  const lsKey = id => "pb3d-review:" + id;
+  const lsGet = id => { try { return JSON.parse(localStorage.getItem(lsKey(id)) || "null"); } catch (e) { return null; } };
+  const lsSet = (id, v) => { try { localStorage.setItem(lsKey(id), JSON.stringify(v)); } catch (e) {} };
+  const saveState = document.getElementById("savestate");
+
+  // index
+  const navlist = document.getElementById("navlist");
+  const spyItems = [];
+  let curGroup = null;
+  document.querySelectorAll(".stage, section.area").forEach(el => {
+    if (el.classList.contains("stage")) {
+      const h = document.createElement("h3");
+      const eb = el.querySelector(".eyebrow"), t = el.querySelector("h2");
+      const ha = document.createElement("a");
+      ha.textContent = (eb ? eb.textContent + ": " : "") + (t ? t.textContent : "");
+      if (el.id) ha.href = "#" + el.id;
+      h.appendChild(ha);
+      navlist.appendChild(h);
+      spyItems.push([el, h, "stage"]);
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = "#" + el.id;
+    spyItems.push([el, a, "section"]);
+    const dot = document.createElement("span"); dot.className = "dot"; dot.id = "dot-" + el.id;
+    const lab = document.createElement("span"); lab.textContent = el.id + "  " + (el.dataset.title || "");
+    a.append(dot, lab);
+    navlist.appendChild(a);
+  });
+
+  // controls per section
+  for (const sec of sections) {
+    const id = sec.id;
+    state[id] = { status: "todo", note: "" };
+    const head = sec.querySelector(".ahead");
+    const rv = document.createElement("div"); rv.className = "rv"; rv.setAttribute("role", "group");
+    rv.setAttribute("aria-label", "Review status of " + id);
+    for (const [k, lab] of STAT) {
+      const b = document.createElement("button"); b.type = "button"; b.className = k;
+      const bd = document.createElement("span"); bd.className = "dot " + k; b.append(bd, lab);
+      b.dataset.status = k; b.id = "st-" + id + "-" + k; b.setAttribute("aria-pressed", "false");
+      b.addEventListener("click", () => { if (state[id].status !== k) { state[id].status = k; render(id); save(id); } });
+      rv.appendChild(b);
+    }
+    head.appendChild(rv);
+    const nd = document.createElement("details"); nd.className = "notes";
+    const ns = document.createElement("summary"); ns.textContent = "notes"; ns.id = "ns-" + id;
+    const ta = document.createElement("textarea"); ta.id = "note-" + id; ta.placeholder = "Your notes or questions on " + id;
+    let t = null;
+    ta.addEventListener("input", () => { state[id].note = ta.value; clearTimeout(t); t = setTimeout(() => save(id), 1000); renderNoteLabel(id); });
+    nd.append(ns, ta);
+    const meta = sec.querySelector(".meta");
+    (meta || head).after(nd);
+    // file buttons, placed right above the section's first file diff
+    const firstDiff = sec.querySelector("details.fdiff");
+    if (firstDiff) {
+      const bb = document.createElement("div"); bb.className = "secbtns";
+      const classified = sec.querySelectorAll("details.fdiff.has-read, details.fdiff.all-mech").length > 0;
+      const targets = [...sec.querySelectorAll(classified ? "details.fdiff.has-read" : "details.fdiff")];
+      const o = document.createElement("button"); o.type = "button";
+      const c = document.createElement("button"); c.type = "button"; c.textContent = "close all files";
+      if (!targets.length) { o.disabled = true; o.textContent = "nothing to read here: every block is mechanical"; }
+      else o.textContent = (classified ? "open the " + targets.length + " file" + (targets.length > 1 ? "s" : "") + " with blocks to read"
+                                       : "open all " + targets.length + " file" + (targets.length > 1 ? "s" : ""));
+      o.addEventListener("click", () => { targets.forEach(d => d.open = true); if (targets[0]) targets[0].scrollIntoView({ block: "start" }); });
+      c.addEventListener("click", () => { sec.querySelectorAll("details.fdiff[open]").forEach(d => d.open = false); bb.scrollIntoView({ block: "nearest" }); });
+      bb.append(o, c); firstDiff.before(bb);
+    }
+    const v = lsGet(id);
+    if (v) { state[id].status = v.status || "todo"; state[id].note = v.note || ""; lastSaved[id] = JSON.stringify([state[id].status, state[id].note]); }
+    render(id);
+  }
+
+  function renderNoteLabel(id) {
+    const ns = document.getElementById("ns-" + id);
+    ns.textContent = state[id].note ? "notes (" + state[id].note.length + " characters)" : "notes";
+  }
+  function render(id) {
+    const s = state[id].status;
+    for (const [k] of STAT) document.getElementById("st-" + id + "-" + k).setAttribute("aria-pressed", String(k === s));
+    document.getElementById("dot-" + id).className = "dot " + s;
+    const ta = document.getElementById("note-" + id);
+    if (document.activeElement !== ta && ta.value !== state[id].note) ta.value = state[id].note;
+    renderNoteLabel(id);
+  }
+  function save(id) {
+    const key = JSON.stringify([state[id].status, state[id].note]);
+    if (key === lastSaved[id]) return;
+    lastSaved[id] = key;
+    const v = { status: state[id].status, note: state[id].note, updated: Date.now() };
+    lsSet(id, v);
+    if (!db) return;
+    const prev = pending[id] || Promise.resolve();
+    pending[id] = prev.then(() => db.doc("review/" + id).set(v)).then(
+      () => { saveState.textContent = "Status and notes: saved with the page"; },
+      e => { saveState.textContent = "Not saved with the page (" + (e && e.code || "error") + "); kept in this browser"; });
+  }
+
+  // db when the page runs as an artifact
+  (async () => {
+    try {
+      if (!window.claude || !window.claude.use) return;
+      db = await window.claude.use("db");
+      if (!db) return;
+      saveState.textContent = "Status and notes: loading saved state…";
+      const timer = setTimeout(() => { saveState.textContent = "Saved state not reachable yet; changes are kept in this browser"; }, 10000);
+      db.collection("review").onSnapshot(snap => {
+        if (!snap.metadata.fromCache) { clearTimeout(timer); saveState.textContent = "Status and notes: saved with the page"; }
+        for (const d of snap.docs) {
+          if (!state[d.id]) continue;
+          const v = d.data() || {};
+          state[d.id].status = v.status || "todo";
+          if (document.activeElement !== document.getElementById("note-" + d.id)) state[d.id].note = v.note || "";
+          lastSaved[d.id] = JSON.stringify([state[d.id].status, state[d.id].note]);
+          render(d.id);
+        }
+      }, e => { clearTimeout(timer); saveState.textContent = "Saved state unavailable (" + (e && e.code) + "); kept in this browser"; });
+    } catch (e) { /* stays on browser storage */ }
+  })();
+
+  // the index marks the section in view (and its stage)
+  const nav = document.getElementById("index");
+  let spyCur = null, spyTick = false;
+  function spy() {
+    spyTick = false;
+    const y = Math.min(160, window.innerHeight * 0.3);
+    let stage = null, cur = null;
+    for (const it of spyItems) {
+      if (it[0].getBoundingClientRect().top > y) break;
+      if (it[2] === "stage") { stage = it; cur = null; } else cur = it;
+    }
+    const key = (stage ? stage[0].id : "") + "|" + (cur ? cur[0].id : "");
+    if (key === spyCur) return;
+    spyCur = key;
+    for (const it of spyItems) it[1].classList.remove("current");
+    if (stage) stage[1].classList.add("current");
+    if (cur) {
+      cur[1].classList.add("current");
+      if (getComputedStyle(nav).position === "sticky") {
+        const rel = cur[1].getBoundingClientRect().top - nav.getBoundingClientRect().top;
+        if (rel < 40 || rel > nav.clientHeight - 60) nav.scrollTop = Math.max(0, nav.scrollTop + rel - nav.clientHeight / 3);
+      }
+    }
+  }
+  window.addEventListener("scroll", () => { if (!spyTick) { spyTick = true; setTimeout(spy, 40); } }, { passive: true });
+  window.addEventListener("resize", () => { spyCur = null; spy(); });
+  spy();
+
+  // links inside closed details: open them before the browser scrolls there
+  function reveal(id) {
+    const t = id && document.getElementById(id);
+    if (!t) return;
+    for (let d = t.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) {
+      d.open = true;
+      if (d.classList.contains("all-mech")) d.classList.add("reveal");
+    }
+    if (t.classList.contains("mech")) t.classList.add("reveal");
+  }
+  document.addEventListener("click", e => {
+    const a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (a) reveal(decodeURIComponent(a.getAttribute("href").slice(1)));
+  });
+  window.addEventListener("hashchange", () => {
+    const id = decodeURIComponent(location.hash.slice(1)); reveal(id);
+    const t = document.getElementById(id); if (t) t.scrollIntoView();
+  });
+  if (location.hash) { const id = decodeURIComponent(location.hash.slice(1)); reveal(id); const t = document.getElementById(id); if (t) setTimeout(() => t.scrollIntoView(), 0); }
+
+  // line numbers -> the line on GitHub (left: 2.47, right: @@NAME_B@@, or @@NAME_R@@ in stages 0 to 4);
+  // made into links when a diff is first touched
+  const GH = "https://github.com/ToonWeyens/PB3D/blob/";
+  const REV = { o: "@@SHA_A@@", n: "@@SHA_B@@" }, REVNAME = { o: "2.47", n: "@@NAME_B@@" };
+  function revOf(pre, side) {
+    const fz = side === "n" && pre.closest("[data-rev]");
+    return fz ? [fz.dataset.rev, fz.dataset.revname] : [REV[side], REVNAME[side]];
+  }
+  function linkPre(pre) {
+    if (!pre || pre.dataset.linked) return;
+    pre.dataset.linked = "1";
+    const f = pre.dataset.f, cols = pre.dataset.c || "";
+    for (const l of pre.children) {
+      let k = 0;
+      for (const i of [...l.children]) {
+        if (i.tagName !== "I") break;
+        const side = cols[k++], n = i.textContent;
+        if (!side || !n) continue;
+        const [rev, name] = revOf(pre, side);
+        const a = document.createElement("a");
+        a.href = GH + rev + "/" + f + "#L" + n; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = n; a.title = name + ", " + f + " line " + n;
+        i.replaceWith(a);
+      }
+    }
+  }
+  const touch = e => { const p = e.target.closest && e.target.closest("pre.diff[data-f]"); if (p) linkPre(p); };
+  document.addEventListener("pointerover", touch, { passive: true });
+  document.addEventListener("focusin", touch);
+  document.addEventListener("touchstart", touch, { passive: true });
+  document.addEventListener("click", e => {
+    const i = e.target.closest && e.target.closest("pre.diff[data-f] .l > i");
+    if (!i || !i.textContent) return;
+    const pre = i.closest("pre"), k = [...i.parentElement.children].indexOf(i), side = (pre.dataset.c || "")[k];
+    if (!side) return;
+    window.open(GH + revOf(pre, side)[0] + "/" + pre.dataset.f + "#L" + i.textContent, "_blank", "noopener");
+  });
+
+  // comment toggle
+  const hc = document.getElementById("hidecm");
+  try { hc.checked = localStorage.getItem("pb3d-review:hidecm") === "1"; } catch (e) {}
+  const applyHc = () => { document.body.classList.toggle("hide-cm", hc.checked); try { localStorage.setItem("pb3d-review:hidecm", hc.checked ? "1" : "0"); } catch (e) {} };
+  hc.addEventListener("change", applyHc); applyHc();
+  const hm = document.getElementById("hidemech");
+  try { hm.checked = localStorage.getItem("pb3d-review:hidemech") === "1"; } catch (e) {}
+  const applyHm = () => { document.body.classList.toggle("hide-mech", hm.checked); try { localStorage.setItem("pb3d-review:hidemech", hm.checked ? "1" : "0"); } catch (e) {} };
+  hm.addEventListener("change", applyHm); applyHm();
+
+  // copy buttons
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true, () => false);
+    }
+    return Promise.resolve(false);
+  }
+  function showText(text) {
+    const m = document.createElement("div"); m.className = "modal";
+    const c = document.createElement("div"); c.className = "card";
+    const p = document.createElement("p"); p.textContent = "Copying was refused here. Select the text and copy it:";
+    const ta = document.createElement("textarea"); ta.value = text; ta.id = "copy-fallback";
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "Close";
+    b.addEventListener("click", () => m.remove());
+    c.append(p, ta, b); m.appendChild(c); document.body.appendChild(m); ta.focus(); ta.select();
+  }
+  document.querySelectorAll("button.copy").forEach(b => b.addEventListener("click", () => {
+    copyText(b.dataset.copy).then(ok => { if (ok) { b.textContent = "copied"; setTimeout(() => b.textContent = "copy command", 1500); } else showText(b.dataset.copy); });
+  }));
+  document.getElementById("export").addEventListener("click", () => {
+    const lab = Object.fromEntries(STAT);
+    const lines = ["# PB3D 2.49 review: status and notes", ""];
+    for (const sec of sections) {
+      const s = state[sec.id];
+      lines.push("- **" + sec.id + "** " + (sec.dataset.title || "") + ": " + lab[s.status]);
+      if (s.note) lines.push("  " + s.note.replace(/\n/g, "\n  "));
+    }
+    const text = lines.join("\n");
+    const btn = document.getElementById("export");
+    copyText(text).then(ok => { if (ok) { btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy my status and notes", 1500); } else showText(text); });
+  });
+})();
+</script>
+<script>window.MathJax = { tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] }, svg: { fontCache: "global" } };</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js"></script>

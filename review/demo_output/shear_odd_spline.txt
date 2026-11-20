@@ -1,0 +1,9 @@
+  nchi    max err, even BC (2.47)    max err, odd BC (now)
+    33                  8.600e-01                7.454e-05
+    65                  8.600e-01                9.235e-06
+   129                  8.600e-01                1.152e-06
+   257                  8.600e-01                1.442e-07
+figure: review/figures/shear_odd_spline.png
+The wrong end condition forces the slope to 0 at chi = 0 and pi, where the
+odd function has its largest slope: an O(1) error that does not shrink with
+nchi at the ends and decays over a few intervals inward.

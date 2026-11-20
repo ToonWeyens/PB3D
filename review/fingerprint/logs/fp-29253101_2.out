@@ -1,0 +1,14 @@
+label=775219a sha=775219a strumpack=sdp node=tcn24.local.snellius.surf.nl start=2026-11-14 16:52:22
+-- Found STRUMPACK-Dense: /home/tweyens/pb3d/deps/strumpack-dense/lib/libstrumpack.a
+--   Include dir: /home/tweyens/pb3d/deps/strumpack-dense/inc
+build time 70 s
+FP 775219a c005_fixed rc=0 t=6s NO_EV  16:53:39:  ERROR in store_vac_HEL: Vacuum has not been implemented yet!  16:53:39:  >> calling routine: store_vac of rank 0  16:53:39:  >> calling routine: run_driver_eq of rank 0 
+FP 775219a c005_free2 rc=0 t=5s NO_EV  16:53:38:  ERROR in store_vac_HEL: Vacuum has not been implemented yet!  16:53:38:  >> calling routine: store_vac of rank 0  16:53:38:  >> calling routine: run_driver_eq of rank 0 
+FP 775219a hel_fixed rc=0 t=8s NO_EV  16:53:41:  ERROR in store_vac_HEL: Vacuum has not been implemented yet!  16:53:41:  >> calling routine: store_vac of rank 0  16:53:41:  >> calling routine: run_driver_eq of rank 0 
+FP 775219a hel_free2 rc=0 t=8s NO_EV  16:53:41:  ERROR in store_vac_HEL: Vacuum has not been implemented yet!  16:53:41:  >> calling routine: store_vac of rank 0  16:53:41:  >> calling routine: run_driver_eq of rank 0 
+FP 775219a hel_free4 rc=0 t=8s NO_EV  16:53:41:  ERROR in store_vac_HEL: Vacuum has not been implemented yet!  16:53:41:  >> calling routine: store_vac of rank 0  16:53:41:  >> calling routine: run_driver_eq of rank 0 
+FP 775219a twin_fixed rc=0 t=16s EV=7.9716389579472524E-02 IM=9.4591287525132477E-11 PREC=3.3890089491270092E-02
+FP 775219a twin_free2 rc=0 t=81s NO_EV  16:54:54:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:54:54:  >> calling routine: set_BC of rank 0  16:54:54:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+FP 775219a w7x_fixed rc=0 t=7s EV=6.2315676647487883E-02 IM=6.2238534082303276E-09 PREC=4.3302098079550033E-01
+FP 775219a w7x_free2 rc=0 t=7s NO_EV  16:53:40:  ERROR in set_BC_2: Vacuum has not been implemented yet!  16:53:40:  >> calling routine: set_BC of rank 0  16:53:40:  >> calling routine: solve_EV_system_SLEPC of rank 0 
+end=2026-11-14 16:54:54

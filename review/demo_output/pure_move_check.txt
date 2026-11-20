@@ -1,0 +1,53 @@
+== 8ac37d7: Modules/num_utilities.f90 -> Modules/spline_utilities.f90
+   340 non-blank lines removed from the old module, 357 lines in the new module, 339 identical
+   removed but not in the new module:
+      &order_per_fun, shift_F, spline, solve_vand
+   new lines (not moved):
+      !------------------------------------------------------------------------------!
+      !> Spline interpolation, wrapping the PSPLINE / EZspline library.
+      !!
+      !! Split out of num_utilities so that the (otherwise pure) numerical
+      !! utilities can be compiled and unit-tested without the PSPLINE external
+      !! dependency.
+      module spline_utilities
+      #include <PB3D_macros.h>
+      #include <wrappers.h>
+      use str_utilities
+      use messages
+      use num_vars, only: dp, iu, max_str_ln
+      implicit none
+      private
+      public spline
+      contains
+      end module spline_utilities
+   lines added to the old module:
+      &order_per_fun, shift_F, solve_vand
+== 17b712c: Modules/HDF5_vars.f90 -> Modules/var_1D_vars.f90
+   54 non-blank lines removed from the old module, 70 lines in the new module, 52 identical
+   removed but not in the new module:
+      public init_HDF5, dealloc_XML_str, dealloc_var_1D, &
+      !> \public Deallocates 1D variable.
+   new lines (not moved):
+      !------------------------------------------------------------------------------!
+      !> The 1-D flattened variable type used for internal HDF5 storage.
+      !!
+      !! This lives in its own dependency-light module (split off from HDF5_vars,
+      !! which re-exports it for compatibility) so that modules whose only HDF5
+      !! connection is this type - such as PB3D_utilities - can be compiled and
+      !! unit-tested without the HDF5 library.
+      module var_1D_vars
+      use num_vars, only: dp, max_str_ln
+      implicit none
+      private
+      public dealloc_var_1D, max_dim_var_1D
+      ! global variables
+      ! interfaces
+      !> \public Deallocates 1-D variables.
+      contains
+      end module var_1D_vars
+   lines added to the old module:
+      use var_1D_vars, only: var_1D_type, dealloc_var_1D, max_dim_var_1D
+      ! var_1D_type, dealloc_var_1D and max_dim_var_1D moved to the
+      ! dependency-light var_1D_vars and are re-exported here for
+      ! compatibility
+      public init_HDF5, dealloc_XML_str, dealloc_var_1D, var_1D_type, &
