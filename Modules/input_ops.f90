@@ -504,7 +504,7 @@ contains
             ierr = 0
             
             ! find maximum levl
-            ierr = find_max_rich_lvl(PB3D_rich_lvl,max_PB3D_rich_lvl)
+            ierr = find_max_rich_lvl(max_PB3D_rich_lvl)
             CHCKERR('')
             if (max_PB3D_rich_lvl.le.0) then
                 call writo('No suitable Richardson level found, so only &
@@ -518,6 +518,14 @@ contains
                     PB3D_rich_lvl = max_PB3D_rich_lvl
                     call writo('Treating maximum Richardson level found: '//&
                         &trim(i2str(max_PB3D_rich_lvl)))
+                else if (PB3D_rich_lvl.lt.1) then
+                    call writo('Richardson level requested '//&
+                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
+                        &output will be done.',alert=.true.)
+                    plot_sol_xi = .false.
+                    plot_sol_Q = .false.
+                    plot_E_rec = .false.
+                    PB3D_rich_lvl = 1
                 else if (PB3D_rich_lvl.le.max_PB3D_rich_lvl) then
                     call writo('Treating Richardson level requested: '//&
                         &trim(i2str(PB3D_rich_lvl)))
@@ -527,19 +535,11 @@ contains
                             &trim(i2str(max_PB3D_rich_lvl)),warning=.true.)
                         call lvl_ud(-1)
                     end if
-                else if (PB3D_rich_lvl.gt.max_PB3D_rich_lvl) then
+                else
                     ierr = 1
                     err_msg = 'PB3D_rich_lvl cannot be higher than '//&
                         &trim(i2str(max_PB3D_rich_lvl))
                     CHCKERR(err_msg)
-                else if (PB3D_rich_lvl.lt.1) then
-                    call writo('Richardson level requested '//&
-                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
-                        &output will be done.',alert=.true.)
-                    plot_sol_xi = .false.
-                    plot_sol_Q = .false.
-                    plot_E_rec = .false.
-                    PB3D_rich_lvl = 1
                 end if
             end if
             max_it_rich = PB3D_rich_lvl
@@ -582,7 +582,7 @@ contains
                 CHCKERR(err_msg)
             end if
             if (rich_restart_lvl.gt.1) then
-                ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_rich_lvl)
+                ierr = find_max_rich_lvl(PB3D_rich_lvl)
                 CHCKERR('')
                 if (rich_restart_lvl.gt.PB3D_rich_lvl+1) then
                     ierr = 1
