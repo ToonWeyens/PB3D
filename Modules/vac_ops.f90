@@ -6,9 +6,12 @@
 !!  -# 3-D field aligned:
 !!      - Makes  use of  the collocation  method for the  grid points  along the
 !!      magnetic field lines.
-!!      - The 3-D integrals are therefore integrated using Weyl's theorem
-!!      \cite Helander2014, p. 5.
-!!     - At least 2 fields lines are required, with alpha_style=2
+!!      - The surface integrals are taken in the parallel coordinate and the
+!!      field-line label, with the trapezoidal rule along every field line,
+!!      refined near the influence point, and a sum with equal weights
+!!      across the field lines, which together cover the surface once (see
+!!      calc_gh_1()).
+!!      - At least 2 field lines are required, with alpha_style=2.
 !!  -# axisymmetric:
 !!      - Makes use of an analytical  expression for the toroidal integration of
 !!      the Green's functions, as shown in \cite Cohl1999.
@@ -527,7 +530,8 @@ contains
     !! \note For style 1 the kernel  is integrated along the field line within
     !! four interval  lengths of the  influence point (vac_utilities.calc_gh_int_1),
     !! because  neighbouring field  lines can  lie much  closer together  than
-    !! the points along them.
+    !! the points along them. The rule along and across the field lines is
+    !! described in calc_gh_1().
     !!
     !! \todo For  3-D vacuums,  step sizes  are constant.  Subsequent Richardson
     !! levels should therefore make use of the fact that the contribution to the
@@ -706,6 +710,72 @@ contains
     end function calc_GH
 
     !> \public Calculates matrices \c G and \c H in 3-D configuration.
+    !!
+    !! The boundary points lie on \f$n_\alpha\f$ field lines with the labels
+    !! \f$\alpha_k = \alpha_\text{min} + (k-1)\Delta\alpha\f$,
+    !! \f$k = 1,\ldots,n_\alpha\f$. Every field line has \f$n_p\f$ points
+    !! \f$p_l = p_\text{min} + (l-1)\Delta p\f$, \f$l = 1,\ldots,n_p\f$, in
+    !! the parallel coordinate \f$p\f$. The steps are
+    !! \f$\Delta\alpha = (\alpha_\text{max}-\alpha_\text{min})/n_\alpha\f$ and
+    !! \f$\Delta p = (p_\text{max}-p_\text{min})/(n_p-1)\f$
+    !! (vac_utilities.vac_steps()): the grid in \f$\alpha\f$ leaves out
+    !! \f$\alpha_\text{max}\f$, which is the field line at
+    !! \f$\alpha_\text{min}\f$ again, while every field line includes both of
+    !! its end points. The points are stored line by line: point \f$l\f$ of
+    !! field line \f$k\f$ is column \f$j = (k-1)n_p + l\f$ of G and H.
+    !!
+    !! A row of G and H belongs to an influence point \f$\mathbf{r}_i\f$, the
+    !! point at which the potential is evaluated. A column belongs to a
+    !! boundary point \f$\mathbf{r}_j\f$, over which the surface integral
+    !! runs.
+    !!
+    !! The surface integrals are taken in the coordinates \f$(p,\alpha)\f$.
+    !! With alpha_style 2 the parallel range is one turn,
+    !! \f$p_\text{max}-p_\text{min} = 2\pi\f$, and the field lines have to
+    !! cover one period of the label,
+    !! \f$\alpha_\text{max}-\alpha_\text{min} = 2\pi\f$ (the default). The
+    !! rectangle in \f$(p,\alpha)\f$ then covers the surface once. The stored
+    !! normal \f$\mathbf{N} = -\mathcal{J}\nabla\psi\f$ (\c vac\%norm) has the
+    !! length of the surface element per unit \f$p\f$ and per unit
+    !! \f$\alpha\f$,
+    !! \f$|\mathbf{N}| = |\partial_\alpha\mathbf{r}\times\partial_p\mathbf{r}|\f$,
+    !! so the weights below contain no other Jacobian.
+    !!
+    !! Far from the influence point, the rule is
+    !! \f[ \iint f \, \text{d}p \, \text{d}\alpha \approx
+    !!  \sum_{k=1}^{n_\alpha} \Delta\alpha \sum_{l=1}^{n_p} c_l \, \Delta p \,
+    !!  f(p_l,\alpha_k), \qquad c_1 = c_{n_p} = \tfrac{1}{2}, \quad
+    !!  c_l = 1 \text{ otherwise}, \f]
+    !! where \f$f\f$ is the integrand of the G term or of the H term of row
+    !! \f$i\f$.
+    !!  - Along each field line this is the trapezoidal rule. The loop over
+    !!    the intervals \f$[p_l,p_{l+1}]\f$ multiplies the kernel at both end
+    !!    points of every interval by \f$\Delta p\,\Delta\alpha/2\f$ and adds
+    !!    it to their columns. A point inside a field line therefore collects
+    !!    the weight \f$\Delta p\,\Delta\alpha\f$, and the first and the last
+    !!    point of a field line collect \f$\Delta p\,\Delta\alpha/2\f$. The
+    !!    last point of one field line and the first point of the next are
+    !!    neighbours in the storage only, and the loop skips that pair.
+    !!  - Across the field lines it is a sum with the equal weight
+    !!    \f$\Delta\alpha\f$, which is the trapezoidal rule for a function
+    !!    that is periodic in \f$\alpha\f$. The kernel is evaluated on the
+    !!    field lines only; nothing is interpolated between them.
+    !!
+    !! Near the influence point, vac_utilities.calc_gh_int_1() changes the
+    !! rule along the field line and leaves the sum across the field lines as
+    !! it is. Within four interval lengths of the influence point it
+    !! integrates the kernel over each half-interval with Gauss-Legendre
+    !! points on the cubic through four points of the same field line; for
+    !! the first and the last interval of a field line these four points lie
+    !! on one side of the interval. For an influence point off the boundary
+    !! this is done only if the point lies closer to its nearest boundary
+    !! point than that boundary point lies to its neighbour on the same field
+    !! line. At the singular point it uses the analytical integral
+    !! over the half-cell, which reaches \f$\Delta\alpha/2\f$ to either side
+    !! of the field line. That integral and the cell integral of the direct
+    !! diagonal of H (vac_utilities.calc_diag_direct(), only with
+    !! \c vac_diag_style 2) are the only places where the kernel is integrated
+    !! across the field lines.
     !!
     !! \see calc_gh.
     integer function calc_GH_1(vac,n_r_in,lims_r_in,x_vec_in,G_in,H_in,ext_in) &
