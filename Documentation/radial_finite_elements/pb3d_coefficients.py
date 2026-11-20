@@ -14,9 +14,9 @@ number of radial points; that checks the reading, the interpolation and the
 table. The eigenvalue of the elements is then what an implementation in PB3D
 would give for this case.
 
-Only for runs with a fixed set of Fourier modes (X_style 1). The vacuum matrix
-of a free-boundary run is not in the output file. It is taken from the
-matrices that PB3D writes with the options
+Only for runs with a fixed set of Fourier modes (X_style 1); sliding_set.py
+handles both. The vacuum matrix is taken here from the matrices that PB3D
+writes with the options
 `-eps_view_mat0 binary:A.dat -eps_view_mat1 binary:B.dat`:
 
     python -B pb3d_coefficients.py <PB3D_out.h5> --compare=<A.dat>,<B.dat>,<N>,<p> [--vac=<file.npy to write>]

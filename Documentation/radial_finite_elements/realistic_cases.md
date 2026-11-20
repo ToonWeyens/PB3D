@@ -71,6 +71,10 @@ cbm18a, interior ballooning:
 - The model problems of `fe_model.py` give the powers of $1/N$ correctly, and the sign of the errors. They do not give the sizes: at 13 radial points per length of change the model has $3.5 \times 10^{-5}$ for the differences of order 3, and PB3D has $2.6 \times 10^{-3}$ on cbm18a.
 - "The sliding set of Fourier modes costs $4 \times 10^{-4}$" (plan, section 3.1): the fixed-set runs it was compared with used 100 points along the field line, which is too few for a fixed set of 43 modes (0.3 % error; 8 % for a set of 60 modes; none visible with 300 points).
 
+## The sliding set of Fourier modes
+
+Both cases above use a fixed set. The sliding set (`X_style` 2), with PB3D's coefficient matrices, is in `sliding_set.md`. One result from it concerns this note: the fixed set of the peeling-ballooning deck ($m = 12 \ldots 37$) is not complete. The set $m = 5 \ldots 48$ gives $-1.842558 \times 10^{-2}$, which is $2.45 \times 10^{-2}$ below the "eigenvalue for many points" of the table above. The radial series above stay valid as series for the deck's set.
+
 ## Reproducing
 
 ```bash
