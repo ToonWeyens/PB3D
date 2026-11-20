@@ -74,7 +74,7 @@ What the tables say.
 
 - **PB3D's present sliding set is rule A.** In every row its differences approach the number of rule A, not that of rule B; where they differ from it, the differences have not yet converged radially (peeling-ballooning, $W = 24$ and $28$).
 - **Rule B lies above the complete value in all nine rows and falls every time $W$ grows**, in both cases.
-- **Rule A has no fixed sign and does not always improve when $W$ grows.** In the peeling-ballooning case it is positive and a little closer than rule B for every $W$. In cbm18a it is $5 \times 10^{-5}$ or less at $W = 20$ and $-9.5 \times 10^{-4}$ at $W = 30$: with 30 modes the eigenvalue lies $10^{-3}$ below the complete value, at least twenty times farther than with 20 modes. PB3D as it is does the same (−4.71500e-2 at 3200 points with `n_mod_X` = 30, against −4.71021e-2 with 20). A likely reason, not checked: rule A leaves out the energy of a leaving mode beyond its last point, and with $W = 30$ the leaving modes are 15 away from resonance, where that energy is large and stabilizing.
+- **Rule A has no fixed sign and does not always improve when $W$ grows.** In the peeling-ballooning case it is positive and a little closer than rule B for every $W$. In cbm18a it is $5 \times 10^{-5}$ or less at $W = 20$ and $-9.5 \times 10^{-4}$ at $W = 30$: with 30 modes the eigenvalue lies $10^{-3}$ below the complete value, about twenty times farther than with 20 modes. PB3D as it is does the same (−4.71500e-2 at 3200 points with `n_mod_X` = 30, against −4.71021e-2 with 20). A likely reason, not checked: rule A leaves out the energy of a leaving mode beyond its last point, and with $W = 30$ the leaving modes are 15 away from resonance, where that energy is large and stabilizing.
 - **The sliding set needs many modes in the peeling-ballooning case.** An error below $10^{-3}$ needs $W = 24$. With $W = 12$ the eigenvalue is 20 % too high and with $W = 8$ the instability is almost lost; the default `n_mod_X` = 10 lies between these two and was not run. With $W = 20$ the sliding set ($1.5 \times 10^{-3}$) is already closer than the deck's fixed set of 26 modes ($2.45 \times 10^{-2}$), because it follows $nq$ from 10.7 at $\psi = 0.5$ to 30.4 at the edge.
 - **When the error of the set is large, the eigenvalue changes irregularly with $N$** by several percent, for every scheme (peeling-ballooning, $W = 12$: elements of degree 3, rule A, $+0.32$, $+0.29$, $+0.17$, $+0.21$ at 199, 399, 799, 1600 unknowns). The positions where a mode enters or leaves move with the points. Where the error of the set is below $10^{-3}$ these changes are below $10^{-4}$ (cbm18a, $W = 20$, rule A: between $-2 \times 10^{-5}$ and $+5.3 \times 10^{-5}$ from 799 unknowns on).
 
@@ -128,6 +128,8 @@ The same series with the coefficients of the sliding-set runs, which `interp_V` 
 Where the set is wide enough to be used, the extrapolation changes the eigenvalue by less than $10^{-5}$ from 400 unknowns on. The fallback of the plan (limit the set of an element to the modes that the perturbation grid has over the whole element) is not needed.
 
 ## What this changes in the plan
+
+Worked into `../plan_radial_finite_elements.md` on 20 November 2026 (sections 3.3, 4.5 to 4.7, 5, 7, 8 and 10).
 
 The method of section 4 of the plan is not changed by these results: one set per element taken at its middle, rule A with `insert_block_mat` as it is, the coefficient matrices interpolated by `interp_V` to the Gauss points. What changes is what the plan says about the sliding set and how it is tested.
 

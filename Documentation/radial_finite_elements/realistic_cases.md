@@ -1,6 +1,6 @@
 # Radial schemes on two realistic cases
 
-Measured on 20 November 2026 with PB3D at f9713d7 (one process, Mac) and with `pb3d_coefficients.py`. This note corrects the summary of `../plan_radial_finite_elements.md`: the error proportional to $1/N$ that the plan starts from belongs to the regression decks, whose radial range (0.45 to 0.75) cuts the eigenfunction at both ends. Runs whose range leaves the eigenfunction free do not have it.
+Measured on 20 November 2026 with PB3D at f9713d7 (one process, Mac) and with `pb3d_coefficients.py`. The plan `../plan_radial_finite_elements.md` was rewritten with these numbers on 20 November 2026. Its first version started from an error proportional to $1/N$ that belongs to the regression decks, whose radial range (0.45 to 0.75) cuts the eigenfunction at both ends. Runs whose range leaves the eigenfunction free do not have it.
 
 $N$ is the number of radial points (`n_r_sol`). "Order" is `norm_disc_prec_sol` of the present finite differences. All errors are relative errors of the lowest eigenvalue $\lambda = \omega^2/\omega_A^2$.
 
@@ -67,7 +67,7 @@ cbm18a, interior ballooning:
 
 ## What does not hold any more
 
-- The summary of the plan ("the elements remove an error of $6.3 \times 10^{-3}$ at 200 points"): that error exists only in a deck that cuts the eigenfunction.
+- The summary of the first version of the plan ("the elements remove an error of $6.3 \times 10^{-3}$ at 200 points"): that error exists only in a deck that cuts the eigenfunction.
 - The model problems of `fe_model.py` give the powers of $1/N$ correctly, and the sign of the errors. They do not give the sizes: at 13 radial points per length of change the model has $3.5 \times 10^{-5}$ for the differences of order 3, and PB3D has $2.6 \times 10^{-3}$ on cbm18a.
 - "The sliding set of Fourier modes costs $4 \times 10^{-4}$" (plan, section 3.1): the fixed-set runs it was compared with used 100 points along the field line, which is too few for a fixed set of 43 modes (0.3 % error; 8 % for a set of 60 modes; none visible with 300 points).
 
