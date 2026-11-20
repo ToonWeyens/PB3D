@@ -3701,11 +3701,9 @@ logical, allocatable :: in_ext(:)                                       ! points
     !!  contribution.
     !!  -# This routine  does not save the  \c H and \c G  matrices because they
     !!  are large and foreseen to be  saved directly as Hierarchical matrices in
-    !!  the future. They therefore need  to be regenerated if Richardson restart
-    !!  is done, or  when after a jump to solution,  another Richardson level is
-    !!  attempted. In calc_vac, it is  checked when copying the vacuum variables
-    !!  from previous  to current Richardson  level, whether the  \c G and  \c H
-    !!  matrices are allocated and if not, they are calculated.
+    !!  the future. calc_vac_res() computes them again with calc_gh() at every
+    !!  Richardson level, except at the restart level with \c jump_to_sol,
+    !!  where it reads the stored vacuum response back instead.
     !!
     !! \return ierr
     integer function print_output_vac(vac,data_name,rich_lvl) result(ierr)

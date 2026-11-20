@@ -104,8 +104,8 @@ contains
                 open_help(2) = ""
                 open_help(3) = "    USER_INPUT          input provided by the &
                     &user"
-                open_help(4) = "    EQUILIBRIUM_INPUT   output from VMEC or &
-                    &HELENA, in .txt format"
+                open_help(4) = "    EQUILIBRIUM_INPUT   output from VMEC &
+                    &(NetCDF, name ending in .nc) or HELENA"
                 open_help(5) = "    [OPTIONS]           (optional) &
                     &command-line options"
                 open_help(6) = ""
