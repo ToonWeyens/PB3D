@@ -537,7 +537,7 @@ contains
     !! Within a few grid spacings of the boundary the quadrature does not
     !! resolve the kernels (eval_pot_ext()).
     !!
-    !! \Note Multiple  field lines are  stored sequentially, which  implies that
+    !! \note Multiple  field lines are  stored sequentially, which  implies that
     !! the integral between the  last point on a field line  and the first point
     !! on the next field lines needs to be left out.
     !!
@@ -1551,13 +1551,13 @@ contains
     !! In practice, the complex matrix \f$\overline{\text{E}}\f$ is split in the
     !! two components of a real matrix twice the width.
     !!
-    !! For vacuum style  1, the poloidal grid points correspond  to the paralell
-    !! grid points and have to be provied by a \c grid variable.
+    !! For vacuum style 1, the parallel coordinate and the field-line label of
+    !! every boundary point follow from \c min_par_X, \c min_alpha and the
+    !! steps of vac_utilities.vac_steps(); for vacuum style 2, the poloidal
+    !! angles are those stored in \c vac\%ang.
     !!
     !! If \c  jump_to_sol is used for  the current Richardson level,  the vacuum
     !! quantities are not calculated, but just restored.
-    !!
-    !! Currently, this procedure only works for vacuum style 2 (axisymmetric).
     !!
     !! \return ierr
     integer function calc_vac_res(mds,vac) result(ierr)
