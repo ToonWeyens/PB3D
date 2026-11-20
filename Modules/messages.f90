@@ -272,11 +272,11 @@ contains
     !!
     !! Optionally, special formatting for error, warning or alert can be chosen.
     subroutine writo(input_str,persistent,error,warning,alert)
-        use num_vars, only: rank, output_i, no_output, max_tot_mem, max_X_mem
+        use num_vars, only: rank, output_i, no_output
 #if ldebug
         use MPI
         use num_vars, only: print_mem_usage, prog_name, mem_usage_name, &
-            &mem_usage_i, mem_usage_count, time_start
+            &mem_usage_i, mem_usage_count, time_start, max_tot_mem, max_X_mem
 #endif
         
         ! input / output

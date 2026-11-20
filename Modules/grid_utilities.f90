@@ -13,7 +13,7 @@ module grid_utilities
     implicit none
     private
     public coord_F2E, coord_E2F, calc_XYZ_grid, calc_eqd_grid, extend_grid_F, &
-        &calc_int_vol, copy_grid, trim_grid, untrim_grid, calc_n_par_X_rich, &
+        &calc_int_vol, copy_grid, trim_grid, calc_n_par_X_rich, &
         &calc_vec_comp, nufft, find_compr_range, calc_arc_angle, calc_tor_diff
 #if ldebug
     public debug_calc_int_vol, debug_calc_vec_comp
@@ -187,7 +187,7 @@ contains
             use num_vars, only: norm_disc_prec_eq, rank
             use num_ops, only: calc_zero_HH
             use VMEC_vars, only: mnmax_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_F2E_VMEC'
             
@@ -301,7 +301,7 @@ contains
     integer function coord_F2E_r(grid_eq,r_F,r_E,r_F_array,r_E_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_F2E_r'
         
@@ -416,7 +416,7 @@ contains
             use num_vars, only: norm_disc_prec_eq
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: mnmax_V, L_V_c, L_V_s, is_asym_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'coord_E2F_VMEC'
             
@@ -471,7 +471,7 @@ contains
     integer function coord_E2F_r(grid_eq,r_E,r_F,r_E_array,r_F_array) &
         &result(ierr)                                                           ! version with only r
         use num_vars, only: norm_disc_prec_eq
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'coord_E2F_r'
         
@@ -631,7 +631,8 @@ contains
     integer function calc_tor_diff_2D(v_com,theta,norm_disc_prec,absolute,r) &
         &result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, tol_zero
-        use num_utilities, only: spline, order_per_fun
+        use num_utilities, only: order_per_fun
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tor_diff_2D'
         
@@ -873,7 +874,7 @@ contains
             use VMEC_utilities, only: fourier2real
             use VMEC_vars, only: R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, &
                 &mnmax_V, is_asym_V
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_VMEC'
             
@@ -970,7 +971,7 @@ contains
             &result(ierr)
             use HELENA_vars, only: R_H, Z_H, chi_H, ias, nchi
             use num_vars, only: norm_disc_prec_eq
-            use num_utilities, only: spline
+            use spline_utilities, only: spline
             
             character(*), parameter :: rout_name = 'calc_XYZ_grid_HEL'
             
@@ -1743,81 +1744,12 @@ contains
             allocate(grid_out%trigon_factors(&
                 &size(grid_in%trigon_factors,1),&
                 &size(grid_in%trigon_factors,2),&
-                &size(grid_in%trigon_factors,3),&
-                &grid_out%loc_n_r,2))
+                &grid_out%loc_n_r,&
+                &size(grid_in%trigon_factors,4),2))
             grid_out%trigon_factors = &
-                &grid_in%trigon_factors(:,:,:,i_lim_out(1):i_lim_out(2),:)
+                &grid_in%trigon_factors(:,:,i_lim_out(1):i_lim_out(2),:,:)
         end if
     end function trim_grid
-    
-    !> Untrims a trimmed grid by  introducing an asymmetric ghost regions at the
-    !! right.
-    !!
-    !! The width of the ghost region has to be provided.
-    !!
-    !! \note
-    !!  -# the ghosted grid should be deallocated (with dealloc_grid()).
-    !!  -# the input grid has to be trimmed.
-    !!
-    !! \return ierr
-    integer function untrim_grid(grid_in,grid_out,size_ghost) result(ierr)
-        use num_vars, only: n_procs, rank
-        use mpi_utilities, only: get_ghost_arr, get_ser_var
-        
-        character(*), parameter :: rout_name = 'untrim_grid'
-        
-        ! input / output
-        type(grid_type), intent(in) :: grid_in                                  !< input grid
-        type(grid_type), intent(inout) :: grid_out                              !< ghosted grid
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: i_lim_in(2)                                                  ! limits of input grid
-        integer :: i_lim_out(2)                                                 ! limits of ghosted grid
-        integer, allocatable :: tot_loc_n_r(:)                                  ! loc_n_r of all processes
-        integer :: size_ghost_loc                                               ! local size_ghost
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! get array sizes of all processes
-        ierr = get_ser_var([grid_in%loc_n_r],tot_loc_n_r,scatter=.true.)
-        CHCKERR('')
-        
-        ! set local size_ghost
-        size_ghost_loc = min(size_ghost,minval(tot_loc_n_r)-1)
-        
-        ! set i_lim_in and i_lim_out
-        i_lim_in = [grid_in%i_min,grid_in%i_max]
-        i_lim_out = i_lim_in
-        if (rank.lt.n_procs-1) i_lim_out(2) = i_lim_out(2)+size_ghost_loc
-        
-        ! create grid
-        ierr = grid_out%init(grid_in%n,i_lim_out)
-        CHCKERR('')
-        
-        ! set ghosted variables
-        if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3d grid
-            grid_out%theta_e(:,:,1:grid_in%loc_n_r) = grid_in%theta_e
-            grid_out%zeta_e(:,:,1:grid_in%loc_n_r) = grid_in%zeta_e
-            grid_out%theta_f(:,:,1:grid_in%loc_n_r) = grid_in%theta_f
-            grid_out%zeta_f(:,:,1:grid_in%loc_n_r) = grid_in%zeta_f
-            ierr = get_ghost_arr(grid_out%theta_e,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_e,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%theta_f,size_ghost_loc)
-            CHCKERR('')
-            ierr = get_ghost_arr(grid_out%zeta_f,size_ghost_loc)
-            CHCKERR('')
-        end if
-        if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
-            grid_out%loc_r_e = grid_in%r_e(i_lim_out(1):i_lim_out(2))
-            grid_out%loc_r_f = grid_in%r_f(i_lim_out(1):i_lim_out(2))
-        end if
-        grid_out%r_e = grid_in%r_e
-        grid_out%r_f = grid_in%r_f
-    end function untrim_grid
     
     !> Calculates  contra- and  covariant  components of  a  vector in  multiple
     !! coordinate systems.
@@ -1862,7 +1794,8 @@ contains
         use num_vars, only: eq_jobs_lims, eq_job_nr, use_pol_flux_F, eq_style, &
             &use_normalization, rank, tol_zero, RZ_0, &
             &compare_tor_pos_glob => compare_tor_pos
-        use num_utilities, only: c, calc_int, order_per_fun, spline
+        use num_utilities, only: c, calc_int, order_per_fun
+        use spline_utilities, only: spline
         use eq_vars, only: R_0, B_0, psi_0
         use VMEC_utilities, only: calc_trigon_factors
         use mpi_utilities, only: get_ser_var
@@ -2898,7 +2831,8 @@ contains
     !!
     !! \return ierr
     integer function nufft(x,f,f_F,plot_name) result(ierr)
-        use num_utilities, only: order_per_fun, spline
+        use num_utilities, only: order_per_fun
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'nufft'
         

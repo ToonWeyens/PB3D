@@ -1,0 +1,29 @@
+# Spack environment for the full PB3D dependency stack
+# (see Documentation/spack-setup.md for the complete build walkthrough;
+# PSPLINE, LIBSTELL and STRUMPACK-Dense 1.1.1 are built outside Spack).
+#
+# PB3D requires PETSc with COMPLEX scalars. As of version 2.48 the code
+# targets the modern PETSc/SLEPc API (ported from the original 3.9-era API,
+# which is no longer buildable on current platforms and no longer carried by
+# Spack). Validated with petsc 3.25.3 / slepc 3.25.1, gcc 16, OpenMPI 5 on
+# macOS (Apple Silicon).
+#
+# MPI note: on machines with an MPI already installed (e.g. Homebrew
+# open-mpi), register it first with 'spack external find openmpi' to avoid
+# rebuilding it.
+spack:
+  specs:
+    - petsc@3.25 +complex ~hypre ~superlu-dist ~metis ~hdf5 ~fftw
+    - slepc@3.25 ~arpack
+    - hdf5 +fortran +hl +mpi
+    - netcdf-fortran
+    - netlib-scalapack
+    - pkgconf
+  packages:
+    all:
+      prefer: ["%gcc"]
+    mpi:
+      require: ["openmpi"]
+  concretizer:
+    unify: true
+  view: true

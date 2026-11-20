@@ -70,7 +70,7 @@ module grid_vars
         real(dp), pointer :: theta_F(:,:,:) => null()                           !< F(lux) coord. values of first angle at n points in 3-D
         real(dp), pointer :: zeta_E(:,:,:) => null()                            !< E(quilibrium) coord. values of second angle at n points in 3-D
         real(dp), pointer :: zeta_F(:,:,:) => null()                            !< F(lux) coord. values of second angle at n points in 3-D
-        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      !< trigonometric factor cosine for the inverse fourier transf.
+        real(dp), allocatable :: trigon_factors(:,:,:,:,:)                      !< trigonometric basis for the inverse Fourier transform: cos and sin of m theta and of n nfp zeta (see VMEC_utilities.calc_trigon_factors())
 #if ldebug
         real(dp) :: estim_mem_usage                                             !< estimated memory usage \ldebug
 #endif

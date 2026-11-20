@@ -16,10 +16,11 @@ module num_vars
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, X_grid_style, matrix_SLEPC_style, plot_resonance, &
         &plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, plot_sol_xi, &
-        &plot_sol_Q, plot_E_rec, plot_vac_pot, ltest, use_pol_flux_E, &
+        &plot_sol_Q, plot_E_rec, plot_vac_pot, check_vac, vac_diag_style, ltest, use_pol_flux_E, &
         &use_pol_flux_F, use_normalization, EV_BC, tol_SLEPC, max_it_slepc, &
         &norm_disc_prec_eq, K_style, EV_guess, norm_disc_prec_X, &
-        &norm_disc_prec_sol, norm_disc_style_sol, &
+        &norm_disc_prec_sol, interp_V_ord, &
+        &size_ghost_interp_V, &
         &POST_style, alpha_style, magn_int_style, solver_SLEPC_style, &
         &max_njq_change, &
         &max_it_rich, tol_rich, max_it_zero, max_nr_backtracks_HH, &
@@ -56,8 +57,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.47_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.43_dp                           !< minimum PB3D version for POST
+    real(dp), parameter :: prog_version = 2.50_dp                               !< version number
+    real(dp), parameter :: min_PB3D_version = 2.50_dp                           !< minimum version of the PB3D output that POST and a PB3D restart read
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else
@@ -80,7 +81,7 @@ module num_vars
     real(dp), parameter :: mem_scale_fac = 6.0                                  !< empirical scale factor of memory to calculate eq compared to just storing it 
 
     ! physical and mathematical variables
-    real(dp), parameter :: pi=4_dp*datan(1.0_dp)                                !< \f$\pi\f$
+    real(dp), parameter :: pi=4_dp*atan(1.0_dp)                                 !< \f$\pi\f$
     real(dp), parameter :: mu_0_original = 4E-7_dp*pi                           !< permeability of free space
     complex(dp), parameter :: iu = (0,1)                                        !< complex unit
 
@@ -91,7 +92,7 @@ module num_vars
     integer :: U_style                                                          !< style for calculation of U (1: ord.2, 2: ord.1, 1: ord.0)
     integer :: norm_style                                                       !< style for normalization
     integer :: K_style                                                          !< style for kinetic energy
-    integer :: BC_style(2)                                                      !< style for BC left and right
+    integer :: BC_style(2)                                                      !< style for BC left and right (1: set to zero, 2: free boundary with vacuum, right only)
     integer :: X_style                                                          !< style for secondary mode numbers (1: prescribed, 2: fast)
     integer :: matrix_SLEPC_style                                               !< style for matrix storage (1: sparse, 2: shell)
     integer :: solver_SLEPC_style                                               !< style for solver (1: Krylov-Schur, 2: GD)
@@ -108,6 +109,8 @@ module num_vars
     logical :: plot_sol_xi                                                      !< whether to plot plasma perturbation of solution in POST
     logical :: plot_sol_Q                                                       !< whether to plot magnetic perturbation of solution in POST
     logical :: plot_vac_pot                                                     !< whether to plot vacuum potential in POST
+    logical :: check_vac                                                        !< whether to check the 3-D vacuum operators with exact potentials on the equilibrium surface
+    integer :: vac_diag_style = 1                                               !< diagonal of the vacuum operators: 1 indirect (from identities, the default), 2 direct (corner term and cell integral; a diagnostic to compare with 1, not for production runs)
     logical :: plot_E_rec                                                       !< whether to plot energy reconstruction in POST
     logical :: ltest                                                            !< whether or not to call the testing routines
     logical :: use_pol_flux_E                                                   !< whether poloidal flux is used in E coords.
@@ -120,7 +123,20 @@ module num_vars
     integer :: norm_disc_prec_eq                                                !< precision for normal discretization for equilibrium
     integer :: norm_disc_prec_X                                                 !< precision for normal discretization for perturbation
     integer :: norm_disc_prec_sol                                               !< precision for normal discretization for solution
-    integer :: norm_disc_style_sol                                              !< style for normal discretization for solution (1: central fin. diff., 2: left fin. diff.)
+    
+    ! Radial interpolation of interp_V_spline(): its order and the number of
+    ! points redistribute_output_grid() adds on each side of a process' range,
+    ! so that the end effect of the interpolation is below the rounding error
+    ! eps = epsilon(1._dp) where interp_V() reads it. A linear piece depends
+    ! only on its own two points: 0 points. An Akima slope depends on the two
+    ! intervals on either side: 2 points. The end condition of a cubic spline
+    ! decays by 2-sqrt(3) per equal interval (the decaying root of
+    ! M(i-1) + 4 M(i) + M(i+1) = 0 with M(i) = r^i): ceiling(ln(eps) /
+    ! ln(2-sqrt(3))) = 28 points.
+    integer, parameter :: interp_V_ord = 3                                      !< order of interp_V_spline(): 1 linear, 2 Akima, 3 cubic spline
+    integer, parameter :: size_ghost_interp_V = merge(&
+        &ceiling(log(epsilon(1._dp))/log(2._dp-sqrt(3._dp))),&
+        &merge(2,0,interp_V_ord.eq.2),interp_V_ord.eq.3)                        !< points added on each side of a process' range for interp_V()
     integer :: magn_int_style                                                   !< style for magnetic integrals (1: trapezoidal, 2: Simpson 3/8)
     
     ! concerning Richardson extrapolation

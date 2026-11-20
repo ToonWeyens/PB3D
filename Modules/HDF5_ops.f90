@@ -1138,7 +1138,7 @@ contains
         character(*), parameter :: rout_name = 'print_HDF5_arrs'
         
         ! input / output
-        type(var_1D_type), intent(in) :: vars(:)                                !< variables to write
+        type(var_flat_type), intent(in) :: vars(:)                              !< variables to write
         character(len=*), intent(in) :: PB3D_name                               !< name of PB3D file
         character(len=*), intent(in) :: head_name                               !< head name of variables
         integer, intent(in), optional :: rich_lvl                               !< Richardson level to append to file name
@@ -1537,7 +1537,7 @@ contains
         character(*), parameter :: rout_name = 'read_HDF5_arr_ind'
         
         ! input / output
-        type(var_1D_type), intent(inout) :: var                                 !< variable to read
+        type(var_flat_type), intent(inout) :: var                               !< variable to read
         character(len=*), intent(in) :: PB3D_name                               !< name of PB3D file
         character(len=*), intent(in) :: head_name                               !< head name of variables
         character(len=*), intent(in) :: var_name                                !< name of variable
@@ -1563,7 +1563,9 @@ contains
         integer :: max_corder                                                   ! current maximum creation order value for group
         integer, allocatable :: lim_tot(:,:)                                    ! total limits
         integer, allocatable :: lim_loc_loc(:,:)                                ! local lim_loc
+#if ldebug
         character(len=max_str_ln) :: name_len_loc                               ! local copy of name_len
+#endif
         character(len=max_str_ln) :: group_name                                 ! name of group
         character(len=max_str_ln) :: head_name_loc                              ! local head_name
         logical :: disp_info_loc                                                ! local disp_info

@@ -27,7 +27,7 @@ contains
             &plot_flux_q, plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, &
             &use_normalization, n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &EV_BC, rho_style, retain_all_sol, prog_style, norm_disc_prec_X, &
-            &norm_disc_prec_eq, norm_disc_prec_sol, norm_disc_style_sol, &
+            &norm_disc_prec_eq, norm_disc_prec_sol, &
             &BC_style, tol_norm, tol_SLEPC_loc => tol_SLEPC, max_it_SLEPC, &
             &plot_size, U_style, norm_style, X_style, matrix_SLEPC_style, &
             &input_name, rich_restart_lvl, eq_style, min_theta_plot, &
@@ -35,7 +35,7 @@ contains
             &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
             &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST, &
             &sol_n_procs, n_procs, POST_output_full, POST_output_sol, &
-            &EV_guess, solver_SLEPC_style, plot_vac_pot, min_Rvac_plot, &
+            &EV_guess, solver_SLEPC_style, plot_vac_pot, check_vac, vac_diag_style, min_Rvac_plot, &
             &max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, n_vac_plot, &
             &alpha_style, X_grid_style, max_njq_change
         use eq_vars, only: rho_0, R_0, pres_0, B_0, psi_0, T_0
@@ -66,12 +66,12 @@ contains
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
             &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
-            &BC_style, max_it_slepc, norm_disc_prec_sol, norm_disc_style_sol, &
+            &BC_style, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
             &rich_restart_lvl, min_n_par_X, min_theta_plot, max_theta_plot, &
             &min_zeta_plot, max_zeta_plot, alpha_style, max_nr_backtracks_HH, &
             &magn_int_style, ex_plot_style, n_alpha, solver_SLEPC_style, &
-            &X_grid_style, max_njq_change
+            &X_grid_style, max_njq_change, check_vac, vac_diag_style
         namelist /inputdata_POST/ n_sol_plotted, n_theta_plot, n_zeta_plot, &
             &plot_resonance, plot_flux_q, plot_kappa, plot_magn_grid, plot_B, &
             &plot_J, plot_sol_xi, plot_sol_Q, plot_E_rec, plot_size, &
@@ -303,6 +303,8 @@ contains
             plot_B = .false.                                                    ! do not plot the magnetic field
             plot_J = .false.                                                    ! do not plot the current
             plot_flux_q = .false.                                               ! do not plot the flux quantities
+            check_vac = .false.                                                 ! do not check the 3-D vacuum operators with exact potentials
+            vac_diag_style = 1                                                  ! diagonals of the vacuum operators from the identities
             
             ! concerning Richardson extrapolation
             max_it_rich = 1                                                     ! by default no Richardson extrapolation
@@ -315,7 +317,6 @@ contains
             
             ! runtime variables
             use_normalization = .true.                                          ! use normalization for the variables
-            norm_disc_style_sol = 2                                             ! left finite differences
             magn_int_style = 1                                                  ! trapezoidal rule
             max_it_SLEPC = 1000                                                 ! max. nr. of iterations for SLEPC
             EV_BC = 1._dp                                                       ! use 1 as artificial EV for the Boundary Conditions
@@ -325,7 +326,7 @@ contains
             U_style = 3                                                         ! full expression for U, up to order 3
             K_style = 1                                                         ! perpendicular kinetic energy normalized
             norm_style = 1                                                      ! MISHKA normalization
-            BC_style = [1,2]                                                    ! left BC zeroed and right BC through minimization of energy
+            BC_style = [1,2]                                                    ! left BC zeroed and right BC through variational (Hermitian) minimization of surface energy
             X_style = 2                                                         ! fast style: mode numbers optimized in normal coordinate
             solver_SLEPC_style = 1                                              ! Krylov-Schur
             matrix_SLEPC_style = 1                                              ! sparse matrix storage
@@ -352,12 +353,11 @@ contains
             plot_E_rec = .true.                                                 ! plot energy reconstruction
             plot_vac_pot = .true.                                               ! plot vacuum potential
             POST_style = 1                                                      ! process on extended plot grid
-            write(*,*) '!!!!!! min and max need to take into account normalization'
-            min_Rvac_plot = 0.1*R_0                                             ! minimum R of vacuum plot
-            max_Rvac_plot = 2*R_0                                               ! maximum R of vacuum plot
-            min_Zvac_plot = -R_0                                                ! minimum R of vacuum plot
-            max_Zvac_plot = R_0                                                 ! maximum R of vacuum plot
-            n_vac_plot = [100,100]                                              ! number of points in R and Z of vacuum plot
+            min_Rvac_plot = 0._dp                                               ! minimum R of vacuum plot [m]
+            max_Rvac_plot = 0._dp                                               ! maximum R of vacuum plot [m] (not above the minimum: from the boundary, see vac_pot_plot)
+            min_Zvac_plot = 0._dp                                               ! minimum Z of vacuum plot [m]
+            max_Zvac_plot = 0._dp                                               ! maximum Z of vacuum plot [m] (not above the minimum: from the boundary)
+            n_vac_plot = [101,101]                                              ! number of points in R and Z of vacuum plot (odd: the midplane of a symmetric range is on the grid)
             
             ! variables concerning input / output
             pert_mult_factor_POST = 0._dp                                       ! factor by which to XYZ is perturbed in POST
@@ -455,6 +455,18 @@ contains
                 err_msg = 'norm_disc_prec_sol has to be between 1 and 3'
                 CHCKERR(err_msg)
             end if
+            if (BC_style(1).ne.1) then
+                ierr = 1
+                err_msg = 'BC_style(1) has to be 1: the perturbation is set &
+                    &to zero at the inner end'
+                CHCKERR(err_msg)
+            end if
+            if (BC_style(2).lt.1 .or. BC_style(2).gt.2) then
+                ierr = 1
+                err_msg = 'BC_style(2) has to be 1 (fixed boundary) or 2 &
+                    &(free boundary with vacuum)'
+                CHCKERR(err_msg)
+            end if
         end function adapt_run_PB3D
         
         ! Checks whether the variables concerning run-time are chosen correctly:
@@ -492,7 +504,7 @@ contains
             ierr = 0
             
             ! find maximum levl
-            ierr = find_max_rich_lvl(PB3D_rich_lvl,max_PB3D_rich_lvl)
+            ierr = find_max_rich_lvl(max_PB3D_rich_lvl)
             CHCKERR('')
             if (max_PB3D_rich_lvl.le.0) then
                 call writo('No suitable Richardson level found, so only &
@@ -506,6 +518,14 @@ contains
                     PB3D_rich_lvl = max_PB3D_rich_lvl
                     call writo('Treating maximum Richardson level found: '//&
                         &trim(i2str(max_PB3D_rich_lvl)))
+                else if (PB3D_rich_lvl.lt.1) then
+                    call writo('Richardson level requested '//&
+                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
+                        &output will be done.',alert=.true.)
+                    plot_sol_xi = .false.
+                    plot_sol_Q = .false.
+                    plot_E_rec = .false.
+                    PB3D_rich_lvl = 1
                 else if (PB3D_rich_lvl.le.max_PB3D_rich_lvl) then
                     call writo('Treating Richardson level requested: '//&
                         &trim(i2str(PB3D_rich_lvl)))
@@ -515,28 +535,21 @@ contains
                             &trim(i2str(max_PB3D_rich_lvl)),warning=.true.)
                         call lvl_ud(-1)
                     end if
-                else if (PB3D_rich_lvl.gt.max_PB3D_rich_lvl) then
+                else
                     ierr = 1
                     err_msg = 'PB3D_rich_lvl cannot be higher than '//&
                         &trim(i2str(max_PB3D_rich_lvl))
                     CHCKERR(err_msg)
-                else if (PB3D_rich_lvl.lt.1) then
-                    call writo('Richardson level requested '//&
-                        &trim(i2str(PB3D_rich_lvl))//', so only equilibrium &
-                        &output will be done.',alert=.true.)
-                    plot_sol_xi = .false.
-                    plot_sol_Q = .false.
-                    plot_E_rec = .false.
-                    PB3D_rich_lvl = 1
                 end if
             end if
             max_it_rich = PB3D_rich_lvl
             rich_lvl = PB3D_rich_lvl
             
             ! set POST_output_full and POST_output_sol
-            POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec
+            POST_output_sol = plot_sol_xi .or. plot_sol_Q .or. plot_E_rec .or. &
+                &plot_vac_pot
             POST_output_full = POST_output_sol .or. plot_B .or. plot_J .or. &
-                &plot_kappa .or. plot_vac_pot .or. compare_tor_pos
+                &plot_kappa .or. compare_tor_pos
         end function adapt_inoutput_POST
         
         ! Checks whether the variables concerning output are chosen correctly:
@@ -569,7 +582,7 @@ contains
                 CHCKERR(err_msg)
             end if
             if (rich_restart_lvl.gt.1) then
-                ierr = find_max_rich_lvl(PB3D_rich_lvl,PB3D_rich_lvl)
+                ierr = find_max_rich_lvl(PB3D_rich_lvl)
                 CHCKERR('')
                 if (rich_restart_lvl.gt.PB3D_rich_lvl+1) then
                     ierr = 1
@@ -672,25 +685,21 @@ contains
                         CHCKERR(err_msg)
                     end if
                 end if
-                if (min_Rvac_plot.lt.0) then
-                    call writo('The minimum value for Rvac_plot has to be &
-                        &greater than zero',warning=.true.)
-                    call lvl_ud(1)
-                        min_Rvac_plot = 0.1*R_0
-                        call writo('It has been set to '//&
-                            &trim(r2str(min_Rvac_plot)))
-                    call lvl_ud(-1)
-                end if
-                if (max_Rvac_plot.lt.min_Rvac_plot) then
+                if (max_Rvac_plot.gt.min_Rvac_plot .and. &
+                    &min_Rvac_plot.le.0._dp) then
                     ierr = 1
-                    err_msg = 'The maximum value for Rvac_plot has to be &
-                        &greater than the minimum value'
+                    err_msg = 'min_Rvac_plot has to be positive'
                     CHCKERR(err_msg)
                 end if
-                if (eq_style.eq.1 .and. plot_vac_pot) then
+                if (minval(n_vac_plot).lt.2) then
+                    ierr = 1
+                    err_msg = 'n_vac_plot needs at least 2 points in R and Z'
+                    CHCKERR(err_msg)
+                end if
+                if (plot_vac_pot .and. BC_style(2).eq.1) then
                     plot_vac_pot = .false.
-                    call writo('Not plotting vacuum for VMEC yet',&
-                        &warning=.true.)
+                    call writo('No vacuum potential plot for a fixed &
+                        &boundary')
                 end if
             end if
         end function adapt_plot
@@ -725,16 +734,16 @@ contains
             end if
             
             ! set X_style
-            if (min_sec_X.ne.huge(1) .and. min_sec_X.ne.huge(1)) then           ! min_sec_X and max_sec_X prescribed
+            if (min_sec_X.ne.huge(1) .or. max_sec_X.ne.huge(1)) then            ! min_sec_X or max_sec_X prescribed (both are checked for X style 1 below)
                 if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed
                     X_style = 1                                                 ! prescribed style
                 else                                                            ! n_mod_X also prescribed
                     ierr = 1
-                    err_msg = 'Cannot prescribe both min and max of secondary &
-                        &X and nr. of modes.'
+                    err_msg = 'Cannot prescribe min_sec_X or max_sec_X &
+                        &together with n_mod_X'
                     CHCKERR(err_msg)
                 end if
-            else                                                                ! min_sec_X and max_sec_X not prescribed
+            else                                                                ! neither min_sec_X nor max_sec_X prescribed
                 if (n_mod_X.eq.huge(1)) then                                    ! n_mod_X not prescribed either: default
                     X_style = 2                                                 ! X style 2: fast
                     n_mod_X = 10                                                ! 10 resonating modes at every place
@@ -764,13 +773,8 @@ contains
             ! checks for each X style
             select case (X_style)
                 case (1)                                                        ! prescribed
-                    ! check min_sec_X, max_sec_X
-                    if (abs(max_sec_X).lt.abs(min_sec_X)) then
-                        ierr = 1
-                        err_msg = 'max_sec_X has to be larger or equal to &
-                            &min_sec_X in absolute value'
-                        CHCKERR(err_msg)
-                    end if
+                    ! check min_sec_X, max_sec_X (first whether both are set,
+                    ! as an unset one holds huge(1))
                     if (max_sec_X.ge.huge(1)) then
                         ierr = 1
                         err_msg = 'max_sec_X not set'
@@ -779,6 +783,12 @@ contains
                     if (min_sec_X.ge.huge(1)) then
                         ierr = 1
                         err_msg = 'min_sec_X not set'
+                        CHCKERR(err_msg)
+                    end if
+                    if (abs(max_sec_X).lt.abs(min_sec_X)) then
+                        ierr = 1
+                        err_msg = 'max_sec_X has to be larger or equal to &
+                            &min_sec_X in absolute value'
                         CHCKERR(err_msg)
                     end if
                     if (X_grid_style.eq.3) then
@@ -884,6 +894,30 @@ contains
                     end if
             end select
             
+            ! free-boundary  VMEC  runs  use  the  field-line  3-D  vacuum,
+            ! whose  boundary element  method needs  multiple field  lines:
+            ! the transverse  cell size  is degenerate  for a  single line
+            ! (see vac_ops). Fail early with a clear message instead of in
+            ! the equilibrium driver.
+            if (alpha_style.eq.1 .and. eq_style.eq.1 .and. &
+                &BC_style(2).ne.1) then
+                ierr = 1
+                err_msg = 'Free-boundary 3-D runs need alpha_style 2 &
+                    &(multiple field lines): the vacuum BEM requires &
+                    &n_alpha > 1'
+                CHCKERR(err_msg)
+            end if
+            if (vac_diag_style.lt.1 .or. vac_diag_style.gt.2) then
+                ierr = 1
+                err_msg = 'vac_diag_style has to be 1 (indirect, from the &
+                    &identities) or 2 (direct, corner term and cell integral)'
+                CHCKERR(err_msg)
+            end if
+            if (vac_diag_style.eq.2 .and. BC_style(2).ne.1) then
+                call writo('vac_diag_style 2 is a diagnostic, less accurate &
+                    &than 1: not for production runs',warning=.true.)
+            end if
+
             ! for HELENA, warn about axisymmetry
             if (eq_style.eq.2) then
                 if (abs(max_par_X - min_par_X - 2) .gt. tol_zero) then
@@ -1101,10 +1135,12 @@ contains
     !!
     !! \return ierr
     integer function read_input_eq() result(ierr)
-        use num_vars, only: eq_style, use_pol_flux_E, eq_i
+        use num_vars, only: eq_style, use_pol_flux_E, eq_i, alpha_style
         use VMEC_ops, only: read_VMEC
+        use VMEC_vars, only: nfp_V
         use HELENA_ops, only: read_HEL
-        use grid_vars, only: n_r_in
+        use grid_vars, only: n_r_in, n_alpha
+        use num_utilities, only: LCM
         
         character(*), parameter :: rout_name = 'read_input_eq'
         
@@ -1119,6 +1155,19 @@ contains
             case (1)                                                            ! VMEC
                 ierr = read_VMEC(n_r_in,use_pol_flux_E)
                 CHCKERR('')
+                
+                ! The sum over n_alpha  field lines aliases every toroidal
+                ! harmonic that  is a multiple of  n_alpha into the  average,
+                ! so  if n_alpha  and the  field period  share a  factor, the
+                ! field-period harmonic  LCM(n_alpha, N_fp)  puts a  spurious
+                ! linear 3-D term into the averaged coefficients.
+                if (alpha_style.eq.2 .and. n_alpha.gt.1 .and. &
+                    &LCM(n_alpha,nfp_V).lt.n_alpha*nfp_V) call writo(&
+                    &'n_alpha = '//trim(i2str(n_alpha))//' and the field &
+                    &period '//trim(i2str(nfp_V))//' share a factor: the &
+                    &toroidal average aliases the harmonic '//&
+                    &trim(i2str(LCM(n_alpha,nfp_V)))//'; choose n_alpha &
+                    &coprime to the field period',warning=.true.)
             case (2)                                                            ! HELENA
                 ierr = read_HEL(n_r_in,use_pol_flux_E)
                 CHCKERR('')
@@ -1134,16 +1183,17 @@ contains
     !!  -  \c misc_in:  \c  prog_version,  \c eq_style,  \c  rho_style, \c  R_0,
     !!  \c  pres_0,   \c  B_0,  \c  psi_0   \c  rho_0,  \c  T_0,   \c  vac_perm,
     !!  \c   use_pol_flux_F,  \c   use_pol_flux_E,   \c  use_normalization,   \c
-    !!  norm_disc_prec_eq, \c norm_disc_style_sol, \c n_r_in, \c n_r_eq, \c
+    !!  norm_disc_prec_eq, \c n_r_in, \c n_r_eq, \c
     !!  n_r_sol, \c debug_version
     !!  -  \c misc_in_V: \c is_asym_V,  \c is_freeb_V, \c mnmax_V,  \c mpol_V, \c
-    !!  ntor_V, \c gam_V
+    !!  ntor_V, \c nfp_V, \c gam_V, \c mnmax_nyq_V, \c mpol_tf, \c ntor_tf
     !!  - \c flux_t_V
     !!  - \c flux_p_V
     !!  - \c pres_V
     !!  - \c rot_t_V
     !!  - \c q_saf_V
     !!  - \c mn_V
+    !!  - \c mn_V_nyq
     !!  - \c R_V_c
     !!  - \c R_V_s
     !!  - \c Z_V_c
@@ -1167,7 +1217,7 @@ contains
     !!  \c  norm_disc_prec_X,   \c  norm_style,  \c  U_style,   \c  X_style,  \c
     !!  matrix_SLEPC_style, \c K_style, \c alpha_style
     !!  - \c  misc_sol: \c  min_r_sol, \c  max_r_sol, \c  norm_disc_prec_sol, \c
-    !!  BC_style, \c EV_BC, \c EV_BC
+    !!  BC_style, \c EV_style, \c EV_BC
     !!
     !! \return ierr
     integer function print_output_in(data_name,remove_previous_arrs) &
@@ -1178,7 +1228,7 @@ contains
             &norm_disc_prec_X, norm_style, U_style, X_style, alpha_style, &
             &matrix_SLEPC_style, BC_style, EV_style, norm_disc_prec_sol, &
             &EV_BC, magn_int_style, K_style, debug_version, plot_VMEC_modes, &
-            &norm_disc_style_sol, X_grid_style, max_njq_change
+            &X_grid_style, max_njq_change
         use eq_vars, only: R_0, pres_0, B_0, psi_0, rho_0, T_0, vac_perm, &
             &max_flux_E, max_flux_F
         use grid_vars, only: n_r_in, n_r_eq, n_r_sol, n_alpha, min_alpha, &
@@ -1187,14 +1237,15 @@ contains
         use X_vars, only: min_r_sol, max_r_sol, min_sec_X, max_sec_X, prim_X, &
             &n_mod_X
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: dealloc_var_1D, var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
+            &max_dim_var_flat
         use HELENA_vars, only: chi_H, flux_p_H, flux_t_H, R_H, Z_H, nchi, ias, &
             &q_saf_H, rot_t_H, pres_H, RBphi_H
         use VMEC_vars, only: is_freeb_V, mnmax_V, mpol_V, ntor_V, is_asym_V, &
             &gam_V, R_V_c, R_V_s, Z_V_c, Z_V_s, L_V_c, L_V_s, jac_V_c, &
-            &jac_V_s, mnmax_V, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
-            &flux_p_V, nfp_V, B_V_sub_c, B_V_sub_s
+            &jac_V_s, mn_V, rot_t_V, q_saf_V, pres_V, flux_t_V, &
+            &flux_p_V, nfp_V, B_V_sub_c, B_V_sub_s, mnmax_nyq_V, mn_V_nyq, &
+            &mpol_tf, ntor_tf
         use HELENA_vars, only: h_H_11, h_H_12, h_H_33
 #if ldebug
         use VMEC_vars, only: B_V_c, B_V_s, J_V_sup_int
@@ -1207,8 +1258,8 @@ contains
         logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
-        type(var_1D_type), allocatable, target :: in_1D(:)                      ! 1D equivalent of input variables
-        type(var_1D_type), pointer :: in_1D_loc => null()                       ! local element in in_1D
+        type(var_flat_type), allocatable, target :: in_1D(:)                    ! 1D equivalent of input variables
+        type(var_flat_type), pointer :: in_1D_loc => null()                     ! local element in in_1D
         integer :: id                                                           ! counter
         integer :: in_limits(2)                                                 ! min. and max. index of input variable grid of this process
         integer :: loc_size                                                     ! local size
@@ -1272,7 +1323,7 @@ contains
             &trim(r2strt(min_r_sol))//'..'//trim(r2strt(max_r_sol))//')')
         
         ! set up 1D equivalents of input variables
-        allocate(in_1D(max_dim_var_1D))
+        allocate(in_1D(max_dim_var_flat))
         
         ! Set up common variables in_1D
         id = 1
@@ -1307,12 +1358,13 @@ contains
                 allocate(in_1D_loc%loc_i_min(1),&
                     &in_1D_loc%loc_i_max(1))
                 in_1D_loc%loc_i_min = [1]
-                in_1D_loc%loc_i_max = [7]
+                in_1D_loc%loc_i_max = [10]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(7))
+                allocate(in_1D_loc%p(10))
                 in_1D_loc%p = [-1._dp,-1._dp,mnmax_V*1._dp,mpol_V*1._dp,&
-                    &ntor_V*1._dp,nfp_V*1._dp,gam_V]
+                    &ntor_V*1._dp,nfp_V*1._dp,gam_V,mnmax_nyq_V*1._dp,&
+                    &mpol_tf*1._dp,ntor_tf*1._dp]
                 if (is_asym_V) in_1D_loc%p(1) = 1._dp
                 if (is_freeb_V) in_1D_loc%p(2) = 1._dp
                 
@@ -1397,6 +1449,18 @@ contains
                 allocate(in_1D_loc%p(size(mn_V)))
                 in_1D_loc%p = reshape(mn_V,[size(mn_V)])
                 
+                ! mn_V_nyq
+                in_1D_loc => in_1D(id); id = id+1
+                in_1D_loc%var_name = 'mn_V_nyq'
+                allocate(in_1D_loc%tot_i_min(2),in_1D_loc%tot_i_max(2))
+                allocate(in_1D_loc%loc_i_min(2),in_1D_loc%loc_i_max(2))
+                in_1D_loc%loc_i_min = [1,1]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,2]
+                in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
+                in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
+                allocate(in_1D_loc%p(size(mn_V_nyq)))
+                in_1D_loc%p = reshape(mn_V_nyq,[size(mn_V_nyq)])
+                
                 ! RZL_V
                 in_1D_loc => in_1D(id); id = id+1
                 in_1D_loc%var_name = 'RZL_V'
@@ -1421,13 +1485,13 @@ contains
                 allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
                 allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
                 in_1D_loc%loc_i_min = [1,1,0,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,size(jac_V_c,3)-1,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,size(jac_V_c,3)-1,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*size(jac_V_c,3)))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq*size(jac_V_c,3)))
                 in_1D_loc%p = reshape([jac_V_c(:,in_limits(1):in_limits(2),:),&
                     &jac_V_s(:,in_limits(1):in_limits(2),:)],&
-                    &[2*mnmax_V*n_r_eq*size(jac_V_c,3)])
+                    &[2*mnmax_nyq_V*n_r_eq*size(jac_V_c,3)])
                 
                 ! B_V_sub
                 in_1D_loc => in_1D(id); id = id+1
@@ -1435,14 +1499,14 @@ contains
                 allocate(in_1D_loc%tot_i_min(4),in_1D_loc%tot_i_max(4))
                 allocate(in_1D_loc%loc_i_min(4),in_1D_loc%loc_i_max(4))
                 in_1D_loc%loc_i_min = [1,1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,3,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,3,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq*3))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq*3))
                 in_1D_loc%p = reshape([&
                     &B_V_sub_c(:,in_limits(1):in_limits(2),:),&
                     &B_V_sub_s(:,in_limits(1):in_limits(2),:)],&
-                    &[2*mnmax_V*n_r_eq*3])
+                    &[2*mnmax_nyq_V*n_r_eq*3])
                 
 #if ldebug
                 ! B_V
@@ -1451,12 +1515,12 @@ contains
                 allocate(in_1D_loc%tot_i_min(3),in_1D_loc%tot_i_max(3))
                 allocate(in_1D_loc%loc_i_min(3),in_1D_loc%loc_i_max(3))
                 in_1D_loc%loc_i_min = [1,1,1]
-                in_1D_loc%loc_i_max = [mnmax_V,n_r_eq,2]
+                in_1D_loc%loc_i_max = [mnmax_nyq_V,n_r_eq,2]
                 in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
                 in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-                allocate(in_1D_loc%p(2*mnmax_V*n_r_eq))
+                allocate(in_1D_loc%p(2*mnmax_nyq_V*n_r_eq))
                 in_1D_loc%p = reshape([B_V_c(:,in_limits(1):in_limits(2)),&
-                    &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_V*n_r_eq])
+                    &B_V_s(:,in_limits(1):in_limits(2))],[2*mnmax_nyq_V*n_r_eq])
                 
                 ! J_V_sup_int
                 in_1D_loc => in_1D(id); id = id+1
@@ -1631,13 +1695,12 @@ contains
         allocate(in_1D_loc%tot_i_min(1),in_1D_loc%tot_i_max(1))
         allocate(in_1D_loc%loc_i_min(1),in_1D_loc%loc_i_max(1))
         in_1D_loc%loc_i_min = [1]
-        in_1D_loc%loc_i_max = [8]
+        in_1D_loc%loc_i_max = [7]
         in_1D_loc%tot_i_min = in_1D_loc%loc_i_min
         in_1D_loc%tot_i_max = in_1D_loc%loc_i_max
-        allocate(in_1D_loc%p(8))
+        allocate(in_1D_loc%p(7))
         in_1D_loc%p = [min_r_sol,max_r_sol,norm_disc_prec_sol*1._dp,&
-            &norm_disc_style_sol*1._dp,BC_style(1)*1._dp,BC_style(2)*1._dp,&
-            &EV_style*1._dp,EV_BC]
+            &BC_style(1)*1._dp,BC_style(2)*1._dp,EV_style*1._dp,EV_BC]
         
         ! write
         ierr = print_HDF5_arrs(in_1D(1:id-1),PB3D_name,trim(data_name),&
@@ -1645,7 +1708,7 @@ contains
         CHCKERR('')
         
         ! clean up
-        call dealloc_var_1D(in_1D)
+        call dealloc_var_flat(in_1D)
         nullify(in_1D_loc)
         
         ! user output

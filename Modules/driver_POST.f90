@@ -80,7 +80,7 @@ contains
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
-            &X_grid_style, n_procs
+            &X_grid_style, n_procs, BC_style
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -109,11 +109,12 @@ contains
         integer :: n_div_max                                                    ! maximum divisions of equilibrium jobs
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
+        logical, allocatable :: plot_mode(:)                                    ! eigenmodes in one of the three ranges
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+
         ! initialize ierr
         ierr = 0
-        
+
         ! user output
         select case (POST_style)
             case (1)                                                            ! extended grid
@@ -263,10 +264,12 @@ contains
             ierr = reconstruct_PB3D_sol(mds_sol,grid_sol,sol,'sol',&
                 &rich_lvl=rich_lvl)
             CHCKERR('')
-            ierr = 2
-            CHCKERR('Vacuum has not been implemented yet!')
-            ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
-            CHCKERR('')
+            ! the vacuum response is only present in the output for
+            ! free-boundary runs (see the equilibrium and solution drivers)
+            if (BC_style(2).ne.1) then
+                ierr = reconstruct_PB3D_vac(vac,'vac',rich_lvl=rich_lvl_name)
+                CHCKERR('')
+            end if
         end if
         
         ! user output
@@ -364,23 +367,6 @@ contains
                     call lvl_ud(-1)
                     call writo('Mode '//trim(i2str(id))//'/'//&
                         &trim(i2str(size(sol%val)))//' finished')
-                    
-                    ! vacuum plots if requested
-                    write(*,*) '¡¡¡¡¡ NO VACUUM !!!!!'
-                    plot_vac_pot = .false.
-                    if (plot_vac_pot) then
-                        ! user output
-                        call writo('Start vacuum plot for this solution')
-                        call lvl_ud(1)
-                        
-                        ! plot vacuum potential
-                        ierr = vac_pot_plot(grid_sol,vac,sol,id)
-                        CHCKERR('')
-                        
-                        ! user output
-                        call lvl_ud(-1)
-                        call writo('Done with vacuum plot')
-                    end if
                 end do
                 
                 call lvl_ud(-1)
@@ -388,6 +374,23 @@ contains
                     &writo('RANGE '//trim(i2str(jd))//' plotted')
             end do
             call lvl_ud(-1)
+            
+            ! vacuum potential of the same modes, in one go: the boundary
+            ! operators and the rows for the plot points are the same for all
+            ! (adapt_plot switches it off for a fixed boundary, which has no
+            ! vacuum in the output)
+            if (plot_vac_pot .and. BC_style(2).ne.1) then
+                allocate(plot_mode(size(sol%val)))
+                plot_mode = .false.
+                do jd = 1,3
+                    if (min_id(jd).le.max_id(jd)) &
+                        &plot_mode(min_id(jd):max_id(jd)) = .true.
+                end do
+                ierr = vac_pot_plot(grid_sol,vac,sol,&
+                    &pack([(id,id=1,size(sol%val))],plot_mode))
+                CHCKERR('')
+                deallocate(plot_mode)
+            end if
         end if
         
         ! Divide  the  equilibrium  jobs (see  subroutine  "calc_memory"  inside
@@ -541,7 +544,8 @@ contains
     integer function run_driver_POST() result(ierr)
         use num_vars, only: no_output, no_plots, eq_style, eq_jobs_lims, &
             &eq_job_nr, plot_B, plot_J, plot_sol_xi, plot_sol_Q, plot_kappa, &
-            &POST_output_sol, POST_style, compare_tor_pos, plot_E_rec
+            &POST_output_sol, POST_style, compare_tor_pos, plot_E_rec, &
+            &decomp_i, rank
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_eq_2, &
             &reconstruct_PB3D_X_1
         use eq_ops, only: calc_eq, calc_T_HF, B_plot, J_plot, &
@@ -785,9 +789,12 @@ contains
             end do
             
             ! plot  difference between  Eigenvalue and  energy fraction  if last
-            ! parallel job
+            ! parallel job, and close the energy decomposition log, which
+            ! open_decomp_log opened at the first equilibrium job and which
+            ! write_decomp_log has written for every eigenvalue
             if (last_eq_job) then
                 call plot_sol_val_comp(sol_val_comp)
+                if (plot_E_rec .and. rank.eq.0) close(decomp_i)
             end if
             
             ! user output
@@ -1006,10 +1013,8 @@ contains
             write(UNIT=decomp_i,FMT='(A)',IOSTAT=ierr) &
                 &trim(temp_output_str)
             CHCKERR('Failed to write')
-            
-            close(decomp_i)
         end if
-        
+
         call lvl_ud(-1)
     end function write_decomp_log
     
@@ -1185,11 +1190,11 @@ contains
     integer function setup_out_grids(grids_out,XYZ_eq,XYZ_sol) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
             &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         use grid_utilities, only: extend_grid_F
         use PB3D_ops, only: reconstruct_PB3D_grid
-        use num_vars, only: rank, n_procs
 #if ldebug
+        use num_vars, only: rank, n_procs
         use grid_utilities, only: nufft
 #endif
         
@@ -1207,10 +1212,12 @@ contains
         integer :: id, jd, ld                                                   ! counters
         integer :: lim_loc(3,2,3)                                               ! grid ranges for local equilibrium job (last index: eq, X, sol)
         real(dp) :: lim_theta(2)                                                ! theta limits
+#if ldebug
         real(dp), allocatable :: r_geo(:,:,:)                                   ! geometrical radius
         real(dp), allocatable :: xy(:,:,:)                                      ! x and y
         real(dp), allocatable :: f(:,:,:)                                       ! Fourier components
         real(dp), allocatable :: f_loc(:,:)                                     ! local f
+#endif
         real(dp), allocatable :: XYZ_X(:,:,:,:)                                 ! X, Y and Z on output perturbation grid
         
         ! initialize ierr

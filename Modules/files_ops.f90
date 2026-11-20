@@ -27,7 +27,7 @@ contains
         ! select according to program style
         select case (prog_style)
             case(1)                                                             ! PB3D
-                allocate(opt_args(25), inc_args(25))
+                allocate(opt_args(23), inc_args(23))
                 opt_args = ''
                 inc_args = 0
                 opt_args(7) = '--no_guess'
@@ -37,7 +37,7 @@ contains
                 opt_args(11) = '--invert_top_bottom_H'
                 opt_args(12) = '-st_pc_factor_shift_type'
                 opt_args(13) = '-st_pc_type'
-                opt_args(14) = '-st_pc_factor_mat_solver_package'
+                opt_args(14) = '-st_pc_factor_mat_solver_type'
                 opt_args(15) = '-eps_type'
                 opt_args(16) = '-eps_monitor'
                 opt_args(17) = '-eps_tol'
@@ -45,11 +45,9 @@ contains
                 opt_args(19) = '-eps_mpd'
                 opt_args(20) = '-eps_view'
                 opt_args(21) = '-st_type'
-                opt_args(22) = '-st_pc_type'
-                opt_args(23) = '-st_pc_factor_mat_solver_package'
-                opt_args(24) = '-log_view'
-                opt_args(25) = '-st_ksp_type'
-                inc_args(7:25) = [0,0,0,0,0,1,1,1,1,0,1,1,1,0,1,1,1,0,1]
+                opt_args(22) = '-log_view'
+                opt_args(23) = '-st_ksp_type'
+                inc_args(7:23) = [0,0,0,0,0,1,1,1,1,0,1,1,1,0,1,0,1]
             case(2)                                                             ! POST
                 allocate(opt_args(8), inc_args(8))
                 opt_args = ''
@@ -106,8 +104,8 @@ contains
                 open_help(2) = ""
                 open_help(3) = "    USER_INPUT          input provided by the &
                     &user"
-                open_help(4) = "    EQUILIBRIUM_INPUT   output from VMEC or &
-                    &HELENA, in .txt format"
+                open_help(4) = "    EQUILIBRIUM_INPUT   output from VMEC &
+                    &(NetCDF, name ending in .nc) or HELENA"
                 open_help(5) = "    [OPTIONS]           (optional) &
                     &command-line options"
                 open_help(6) = ""
@@ -177,12 +175,12 @@ contains
     integer function open_input() result(ierr)
         use num_vars, only: eq_i, input_i, rank, prog_style, no_plots, &
             &eq_style, eq_name, no_output, PB3D_i, PB3D_name, input_name, &
-            &do_execute_command_line, output_name, prog_name, print_mem_usage, &
+            &do_execute_command_line, output_name, prog_name, &
             &swap_angles, jump_to_sol, export_HEL, plot_VMEC_modes, &
             &compare_tor_pos, invert_top_bottom_H
         use rich_vars, only: no_guess
 #if ldebug
-        use num_vars, only: ltest
+        use num_vars, only: ltest, print_mem_usage
 #endif
         
         character(*), parameter :: rout_name = 'open_input'
@@ -450,7 +448,7 @@ contains
                         &debug mode',warning=.true.)
                     invert_top_bottom_H = .false.
 #endif
-                case (12:25)
+                case (12:23)
                     opt_str = ''
                     do id = 1,inc_args(opt_nr)
                         opt_str = trim(opt_str)//' '//&

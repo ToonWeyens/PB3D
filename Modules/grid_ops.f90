@@ -136,7 +136,8 @@ contains
             &result(ierr)                                                       ! PB3D version for equilibrium grid
             use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
                 &norm_disc_prec_eq
-            use num_utilities, only: con2dis, dis2con, round_with_tol, spline
+            use num_utilities, only: con2dis, dis2con, round_with_tol
+            use spline_utilities, only: spline
             use VMEC_vars, only: flux_p_V, flux_t_V
             use HELENA_vars, only: flux_p_H, flux_t_H
             use X_vars, only: min_r_sol, max_r_sol
@@ -654,7 +655,7 @@ contains
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
         use num_vars, only: norm_disc_prec_X, X_grid_style
         use grid_utilities, only: coord_F2E
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'setup_grid_X'
         
@@ -995,7 +996,7 @@ contains
         use grid_utilities, only: find_compr_range
         use MPI_utilities, only: redistribute_var, get_ser_var
         use grid_vars, only: n_r_sol
-        use num_vars, only: n_procs
+        use num_vars, only: n_procs, size_ghost_interp_V
         
         character(*), parameter :: rout_name = 'redistribute_output_grid'
         
@@ -1028,6 +1029,10 @@ contains
         
         ! determine eq_limits: smallest eq range comprising X range
         call find_compr_range(grid%r_F,r_F_sol(sol_limits),eq_limits)
+        
+        ! widen the range by the ghost region of the interpolation in interp_V()
+        eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,1)
+        eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,grid%n(3))
         
         ! get lowest equilibrium limits to be  able to setup an output grid that
         ! starts at index 1
@@ -1488,8 +1493,8 @@ contains
         &par_div,remove_previous_arrs) result(ierr)
         use num_vars, only: PB3D_name, eq_jobs_lims, eq_job_nr
         use HDF5_ops, only: print_HDF5_arrs
-        use HDF5_vars, only: var_1D_type, &
-            &max_dim_var_1D
+        use HDF5_vars, only: var_flat_type, &
+            &max_dim_var_flat
         use grid_utilities, only: trim_grid
         
         character(*), parameter :: rout_name = 'print_output_grid'
@@ -1506,8 +1511,8 @@ contains
         integer :: n_tot(3)                                                     ! total n
         integer :: par_id(2)                                                    ! local parallel interval
         type(grid_type) :: grid_trim                                            ! trimmed grid
-        type(var_1D_type), allocatable, target :: grid_1D(:)                    ! 1D equivalent of grid variables
-        type(var_1D_type), pointer :: grid_1D_loc => null()                     ! local element in grid_1D
+        type(var_flat_type), allocatable, target :: grid_1D(:)                  ! 1D equivalent of grid variables
+        type(var_flat_type), pointer :: grid_1D_loc => null()                   ! local element in grid_1D
         integer :: id                                                           ! counter
         logical :: par_div_loc                                                  ! local par_div
         
@@ -1536,7 +1541,7 @@ contains
         end if
         
         ! Set up the 1D equivalents of the perturbation variables
-        allocate(grid_1D(max_dim_var_1D))
+        allocate(grid_1D(max_dim_var_flat))
         
         ! set up variables grid_1D
         id = 1

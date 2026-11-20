@@ -14,9 +14,9 @@
 !!  Toon Weyens,
 !!  Contact: weyenst@gmail.com
 !------------------------------------------------------------------------------!
-!>  \version    2.41
-!!  \date       2012-2020
-!!  Copyright (C) 2020Toon Weyens
+!>  \version    2.50
+!!  \date       2012-2026
+!!  Copyright (C) 2020 Toon Weyens
 !!
 !!  This program is free software: you can redistribute it and/or modify
 !!  it under the terms of the GNU General Public License as published by

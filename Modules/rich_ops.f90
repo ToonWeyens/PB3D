@@ -533,30 +533,31 @@ contains
     
     !> Probe to find out which Richardson levels are available.
     !!
+    !! The solution groups \c sol_R_1, \c sol_R_2, ... are probed from level 1
+    !! upward; the highest level is the last one found before the first missing
+    !! one, and 0 if there is no solution at all.
+    !!
     !! \return ierr
-    integer function find_max_rich_lvl(lvl_rich_req,max_lvl_rich_file) &
-        &result(ierr)
+    integer function find_max_rich_lvl(max_lvl_rich_file) result(ierr)
         use num_vars, only: PB3D_name
         use HDF5_utilities, only: probe_HDF5_group
-        
+
         character(*), parameter :: rout_name = 'find_max_rich_lvl'
-        
+
         ! input / output
-        integer, intent(inout) :: lvl_rich_req                                  !< requested Richardson level
-        integer, intent(inout) :: max_lvl_rich_file                             !< max. Richardson level found in file
-        
+        integer, intent(out) :: max_lvl_rich_file                               !< max. Richardson level found in file
+
         ! local variables
         integer :: ir                                                           ! counter
         character(len=max_str_ln) :: group_name                                 ! name of group to probe for
         logical :: group_exists                                                 ! whether probed group exists
-        
+
         ! initialize ierr
         ierr = 0
-        
+
         ! try openining solution for different Richardson extrapolation levels
         group_exists = .true.                                                   ! group_exists becomes stopping criterion
         ir = 1                                                                  ! initialize counter
-        if (lvl_rich_req.gt.0 .and. lvl_rich_req.lt.huge(1)) ir = lvl_rich_req  ! move to requested
         do while (group_exists)
             group_name = 'sol_R_'//trim(i2str(ir))
             ierr = probe_HDF5_group(PB3D_name,group_name,group_exists)

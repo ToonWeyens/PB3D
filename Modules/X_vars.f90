@@ -111,8 +111,8 @@ module X_vars
     !! optionally different  limits for the  secondary mode numbers (\c  m_X for
     !! poloidal flux or \c n_X for toroidal flux).
     !!
-    !! \note \c n_X and \c m_X need to  have been set up with the same limits as
-    !! the grid used here. This is done in setup_nm_X().
+    !! \note The limits \c min_n_X, \c max_n_X, \c min_m_X and \c max_m_X have
+    !! to be set up first, for the grid used here; X_ops.init_modes() does this.
     interface set_nm_X
         !> \public
         module procedure set_nm_X_1

@@ -13,8 +13,8 @@ module num_utilities
     public calc_ext_var, calc_det, calc_int, add_arr_mult, c, &
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
-        &calc_coeff_fin_diff, fac, d, m, f, bubble_sort, GCD, LCM, &
-        &order_per_fun, shift_F, spline, solve_vand
+        &calc_coeff_fin_diff, calc_end_weights, fac, d, m, f, bubble_sort, &
+        &GCD, LCM, order_per_fun, shift_F, solve_vand
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff, calc_D2_smooth
 #endif
@@ -273,12 +273,6 @@ module num_utilities
     !! Finally, extrapolation can be performed as well.
     !!
     !! \return ierr
-    interface spline
-        !> \public
-        module procedure spline_real
-        !> \public
-        module procedure spline_complex
-    end interface
     
 contains
     !> \private regular version
@@ -981,8 +975,6 @@ contains
     end function calc_mult_3D_complex
     !> \private real constant version
     integer function calc_mult_0D_real(A,B,AB,n,transp) result(ierr)
-        character(*), parameter :: rout_name = 'calc_mult_0D_real'
-        
         ! input / output
         real(dp), intent(in) :: A(:)                                            !< input A
         real(dp), intent(in) :: B(:)                                            !< input B
@@ -1669,386 +1661,6 @@ contains
         xy_out(:,1) = x_out
         xy_out(:,2) = y_out
     end function order_per_fun_2
-    
-    !> \private real version
-    integer function spline_real(x,y,xnew,ynew,ord,deriv,bcs,bcs_val,extrap) &
-        &result(ierr)
-        
-        use EZspline_obj
-        use EZspline
-        
-        character(*), parameter :: rout_name = 'spline_real'
-        
-        ! input / output
-        real(dp), intent(in), target :: x(:)                                    !< coordinates
-        real(dp), intent(in) :: y(:)                                            !< function value
-        real(dp), intent(in), target :: xnew(:)                                 !< new coordinates
-        real(dp), intent(out) :: ynew(:)                                        !< new function values
-        integer, intent(in), optional :: ord                                    !< order [def 3]
-        integer, intent(in), optional :: deriv                                  !< derivative [def 0]
-        integer, intent(in), optional :: bcs(2)                                 !< boundary conditions [def 0]
-        real(dp), intent(in), optional :: bcs_val(2)                            !< boundary conditions [no def]
-        logical, intent(in), optional :: extrap                                 !< whether extrapolation is allowed [def .false.]
-        
-        ! local variables
-        type(EZspline1_r8) :: f_spl                                             ! spline object
-        integer :: ord_loc                                                      ! local order
-        integer :: deriv_loc                                                    ! local deriv
-        integer :: bcs_loc(2)                                                   ! local bcs
-        integer :: kd                                                           ! counter
-        integer :: n                                                            ! size of x, y
-        integer :: nnew                                                         ! size of output x, y
-        integer :: nnew_interp                                                  ! size of interpolated x, y, rest is extrapolated
-        integer :: il(2)                                                        ! limits of interp., what falls outside is extrapolated
-        real(dp), pointer :: x_loc(:)                                           ! x or -x
-        real(dp), pointer :: xnew_loc(:)                                        ! xnew or -xnew
-        real(dp) :: bcs_val_loc(2)                                              ! local bcs_val
-        real(dp) :: lim_vals(0:3)                                               ! limit values at boundaries for extrapolation
-        real(dp), allocatable :: xnew_EZ(:)                                     ! xnew in EZ spline doubles
-        real(dp), allocatable :: ynew_EZ(:)                                     ! ynew in EZ spline doubles
-        character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: flip_x                                                       ! whether x axis is flipped
-        logical :: extrap_loc                                                   ! local extrap
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! set local variables
-        ord_loc = 3
-        if (present(ord)) ord_loc = ord
-        deriv_loc = 0
-        if (present(deriv)) deriv_loc = deriv
-        bcs_loc = [0,0]
-        if (present(bcs)) bcs_loc = bcs
-        if (present(bcs_val)) bcs_val_loc = bcs_val
-        extrap_loc = .false.
-        if (present(extrap)) extrap_loc = extrap
-        
-        ! set other variables
-        n = size(x)
-        nnew = size(xnew)
-        
-        ! set local x and xnew, possibly flipped if negative
-        flip_x = (x(2) .lt. x(1))
-        if (flip_x) then
-            allocate(x_loc(n))
-            allocate(xnew_loc(nnew))
-            x_loc = -x
-            xnew_loc = -xnew
-        else
-            x_loc => x
-            xnew_loc => xnew
-        end if
-        
-#if ldebug
-        ! check monotony
-        do kd = 2,n
-            if (x_loc(kd).le.x_loc(kd-1)) then
-                ierr = 1
-                err_msg = '|x| is not monotonously increasing'
-                CHCKERR(err_msg)
-            end if
-        end do
-        
-        ! check array sizes
-        if (size(y).ne.n) then
-            ierr = 1
-            err_msg = 'x and y need to have the same size'
-            CHCKERR(err_msg)
-        end if
-        if (size(ynew).ne.nnew) then
-            ierr = 1
-            err_msg = 'xnew and ynew need to have the same size'
-            CHCKERR(err_msg)
-        end if
-        
-        ! check order
-        if (ord_loc.lt.1 .or. ord_loc.gt.3) then
-            ierr = 1
-            err_msg = 'Only order 1 (linear), 2 (akima hermite) or 3 (cubic) &
-                &possible'
-            CHCKERR(err_msg)
-        end if
-        
-        ! check derviative
-        select case (deriv_loc)
-            case (:-1)
-                ierr = 1
-                err_msg = 'only nonnegative degrees of derivative are possible'
-                CHCKERR(err_msg)
-            case (0:1)
-                ! do nothing
-            case (2:3)
-                if (ord_loc.eq.1 .or. ord_loc.eq.2) then
-                    ierr = 1
-                    err_msg = 'Derivative of degree '//trim(i2str(deriv_loc))//&
-                        &' not possible for order '//trim(i2str(ord_loc))
-                    CHCKERR(err_msg)
-                end if
-            case (4:)
-                ierr = 1
-                err_msg = 'maximum degree of derivative is 2 for order 4'
-                CHCKERR(err_msg)
-        end select
-        
-        ! check boundary conditions
-        select case (ord_loc)
-            case (1)
-                if (present(bcs) .or. present(bcs_val)) then
-                    call writo('for order 1, no boundary conditions can be &
-                        &prescribed',alert=.true.)
-                end if
-            case (2:3)
-                ! check possibility
-                do kd = 1,2
-                    if (bcs_loc(kd).lt.-1 .or. bcs_loc(kd).gt.ord_loc-1) then
-                        ierr = 1
-                        err_msg = 'For order '//trim(i2str(ord_loc))//&
-                            &' bcs has to be -1..'//trim(i2str(ord_loc-1))
-                        CHCKERR(err_msg)
-                    end if
-                end do
-                
-                ! check whether derivatives are provided
-                if ((any(bcs_loc.eq.1) .or. any(bcs_loc.eq.2)) &
-                    &.and. .not.present(bcs_val)) then
-                    ierr = 1
-                    err_msg = 'When prescribing first or second derviatives, &
-                        &need to provide bcs_val'
-                    CHCKERR(err_msg)
-                end if
-        end select
-#endif
-        
-        ! set up interpolation limits
-        do kd = 1,nnew
-            if (xnew_loc(kd).ge.x_loc(1)) exit
-        end do
-        il(1) = kd
-        do kd = nnew,1,-1
-            if (xnew_loc(kd).le.x_loc(n)) exit
-        end do
-        il(2) = kd
-        nnew_interp = il(2)-il(1)+1
-        
-        ! check for extrapolation
-        if ((il(1).ne.1 .or. il(2).ne.nnew) .and. &
-            &.not.extrap_loc) then
-            ierr = 1
-            call writo('xnew = ['//trim(r2str(minval(xnew)))//'..'//&
-                &trim(r2str(maxval(xnew)))//']')
-            call writo('but x = ['//trim(r2str(minval(x)))//'..'//&
-                &trim(r2str(maxval(x)))//']')
-            err_msg = 'Extrapolation needed, but not allowed'
-            CHCKERR(err_msg)
-        end if
-        
-        ! initialize
-        if (ord_loc.eq.1) then
-            call EZlinear_init(f_spl,n,ierr)
-            call EZspline_error(ierr)
-            CHCKERR('')
-        else
-            call EZspline_init(f_spl,n,bcs_loc,ierr)
-            call EZspline_error(ierr)
-            CHCKERR('')
-            if (ord_loc.eq.2) f_spl%isHermite = 1
-        end if
-        
-        ! set grid
-        f_spl%x1 = x_loc
-        
-        ! set boundary condition
-        if (present(bcs_val)) then
-            f_spl%bcval1min = bcs_val_loc(1)
-            f_spl%bcval1max = bcs_val_loc(2)
-            if (flip_x) then                                                    ! if x-axis flipped, also first derivative flipped
-                if (bcs_loc(1) .eq. 1) f_spl%bcval1min = -f_spl%bcval1min
-                if (bcs_loc(2) .eq. 1) f_spl%bcval1max = -f_spl%bcval1max
-            end if
-        end if
-        
-        ! set up 
-        call EZspline_setup(f_spl,y,ierr,exact_dim=.true.)                      ! match exact dimensions
-        call EZspline_error(ierr)
-        CHCKERR('')
-        ! interpolated part
-        if (il(1).le.il(2)) then
-            allocate(xnew_EZ(nnew_interp))
-            allocate(ynew_EZ(nnew_interp))
-            xnew_EZ = xnew_loc(il(1):il(2))
-            
-            if (deriv_loc.eq.0) then
-                ! interpolate
-                call EZspline_interp(f_spl,nnew_interp,xnew_EZ,ynew_EZ,ierr)
-                call EZspline_error(ierr)
-                CHCKERR('')
-            else
-                call EZspline_derivative(f_spl,deriv_loc,nnew_interp,xnew_EZ,&
-                    &ynew_EZ,ierr) 
-                call EZspline_error(ierr)
-                CHCKERR('')
-            end if
-            
-            ynew(il(1):il(2)) = ynew_EZ
-            deallocate(xnew_EZ,ynew_EZ)
-        end if
-        
-        ! extrapolated part
-        if (extrap_loc) then
-            ! extrapolate left
-            if (il(1).gt.1) then
-                ! set up limit values at first point
-                ierr = setup_lim_vals(x_loc(1),lim_vals)
-                CHCKERR('')
-                
-                ! calculate extrapolation
-                call calc_extrap(xnew_loc(1:il(1)-1),x_loc(1),lim_vals,&
-                    &ynew(1:il(1)-1))
-            end if
-            
-            ! extrapolate right
-            if (il(2).lt.nnew) then
-                ! set up limit values at last point
-                ierr = setup_lim_vals(x_loc(n),lim_vals)
-                CHCKERR('')
-                
-                ! calculate extrapolation
-                call calc_extrap(xnew_loc(il(2)+1:nnew),x_loc(n),lim_vals,&
-                    &ynew(il(2)+1:nnew))
-            end if
-        end if
-        
-        ! free
-        call EZspline_free(f_spl,ierr)
-        CHCKERR('')
-        call EZspline_error(ierr)
-        CHCKERR('')
-        if (flip_x) then
-            deallocate(x_loc)
-            deallocate(xnew_loc)
-        end if
-        nullify(x_loc)
-        nullify(xnew_loc)
-    contains
-        !> /private set up limit values
-        !!
-        !! Makes use of f_spl
-        integer function setup_lim_vals(xb,lim_vals) result(ierr)
-            character(*), parameter :: rout_name = 'setup_lim_vals'
-            
-            ! input / output
-            real(dp), intent(in) :: xb                                          ! x of boundary
-            real(dp), intent(out) :: lim_vals(0:3)                              ! limit values
-            
-            ! local variables
-            integer :: kd                                                       ! counter
-            integer :: max_deriv                                                ! maximum degree of derivative
-            
-            ! initialize ierr
-            ierr = 0
-            
-            ! initialize
-            lim_vals = 0._dp
-            select case(ord_loc)
-                case (1:2)
-                    max_deriv = 1
-                case (3)
-                    max_deriv = 3
-            end select
-            
-            ! interpolation
-            call EZspline_interp(f_spl,xb,lim_vals(0),ierr)
-            call EZspline_error(ierr)
-            CHCKERR('')
-            
-            ! derivatives
-            do kd = 1,max_deriv
-                call EZspline_derivative(f_spl,kd,xb,lim_vals(kd),ierr)
-                call EZspline_error(ierr)
-                CHCKERR('')
-            end do
-        end function setup_lim_vals
-        
-        !> /private calculate extrapolation
-        subroutine calc_extrap(xnew,xb,lim_vals,ynew)
-            ! input / output
-            real(dp), intent(in) :: xnew(:)                                     ! xnew where to extrapolate
-            real(dp), intent(in) :: xb                                          ! x of boundary
-            real(dp), intent(in) :: lim_vals(0:2)                               ! limit values
-            real(dp), intent(out) :: ynew(:)                                    ! y at xnew
-            
-            ! local variables
-            real(dp), allocatable :: xdel(:)                                    ! delta x for extrapolation
-            
-            allocate(xdel(size(xnew)))
-            xdel = xnew-xb
-            
-            select case (deriv_loc)
-                case (0)
-                    ynew = lim_vals(0) + &
-                        &lim_vals(1)*xdel + &
-                        &lim_vals(2)*xdel**2*0.5_dp
-                case (1)
-                    ynew = lim_vals(1) + &
-                        &lim_vals(2)*xdel
-                case (2)
-                    ynew = lim_vals(2)
-            end select
-        end subroutine calc_extrap
-    end function spline_real
-    !> \private complex version
-    integer function spline_complex(x,y,xnew,ynew,ord,deriv,bcs,bcs_val,&
-        &extrap) result(ierr)
-        
-        use EZspline_obj
-        use EZspline
-        
-        character(*), parameter :: rout_name = 'spline_complex'
-        
-        ! input / output
-        real(dp), intent(in) :: x(:)                                            !< coordinates
-        complex(dp), intent(in) :: y(:)                                         !< function value
-        real(dp), intent(in) :: xnew(:)                                         !< new coordinates
-        complex(dp), intent(out) :: ynew(:)                                     !< new function values
-        integer, intent(in), optional :: ord                                    !< order [def 3]
-        integer, intent(in), optional :: deriv                                  !< derivative [def 0]
-        integer, intent(in), optional :: bcs(2)                                 !< boundary conditions [def 0]
-        complex(dp), intent(in), optional :: bcs_val(2)                         !< boundary conditions [no def]
-        logical, intent(in), optional :: extrap                                 !< whether extrapolation is allowed [def .false.]
-        
-        ! local variables
-        real(dp), allocatable :: ynew_loc(:,:)                                  ! local ynew
-        
-        ! set up local variables
-        allocate(ynew_loc(size(ynew),2))
-        
-        ! call real version for real part
-        if (present(bcs_val)) then
-            ierr = spline_real(x,rp(y),xnew,ynew_loc(:,1),ord,deriv,bcs,&
-                &bcs_val=rp(bcs_val),extrap=extrap)
-            CHCKERR('')
-        else
-            ierr = spline_real(x,rp(y),xnew,ynew_loc(:,1),ord,deriv,bcs,&
-                &extrap=extrap)
-            CHCKERR('')
-        end if
-        
-        ! call real version for complex part
-        if (present(bcs_val)) then
-            ierr = spline_real(x,ip(y),xnew,ynew_loc(:,2),ord,deriv,bcs,&
-                &bcs_val=ip(bcs_val),extrap=extrap)
-            CHCKERR('')
-        else
-            ierr = spline_real(x,ip(y),xnew,ynew_loc(:,2),ord,deriv,bcs,&
-                &extrap=extrap)
-            CHCKERR('')
-        end if
-        
-        ! save
-        ynew = ynew_loc(:,1) + iu*ynew_loc(:,2)
-    end function spline_complex
-    
     !> \public  Initialize utilities  for  fast future  reference, depending  on
     !! program style.
     !!
@@ -2505,6 +2117,94 @@ contains
         call solve_vand(nr,mat_loc,rhs_loc,coeff,transp=.true.)
         coeff = coeff*fac(deriv)
     end function calc_coeff_fin_diff
+    
+    !> Calculate the  weights of the  last points of  a sum over  an equidistant
+    !! grid that belong to left finite differences of order \c ord.
+    !!
+    !! An integral  over a grid of  points \f$i = 0 \ldots  N\f$ with step  size
+    !! \f$h\f$ is approximated by a sum over the points,
+    !!  \f[\int f \, dx \approx h \sum_i w_i f_i \ , \f]
+    !! and the  derivatives in \f$f\f$  are left  finite differences over  \c ord
+    !! + 1 points,
+    !!  \f[\left(D X\right)_i = \frac{1}{h} \sum_{m=0}^{p} c_m X_{i-m} \ , \f]
+    !! with \f$p\f$ = \c ord and \f$c_m\f$ from calc_coeff_fin_diff().
+    !!
+    !! The weights returned  here are the ones  for which the sum  of the finite
+    !! difference of any grid function gives back its value at the last point,
+    !!  \f[h \sum_i w_i \left(D X\right)_i = X_N \ , \f]
+    !! if \f$X\f$  vanishes at the first  \f$p\f$ points. This  is the discrete
+    !! form  of \f$\int  X'  dx =  X(x_N) -  X(x_0)\f$,  which the  integration
+    !! by  parts  of  an  energy   integral  uses.  With  trapezoidal  weights,
+    !! \f$w_N =  1/2\f$ and the  others 1, it  does not hold: the  left stencils
+    !! of  the points  beyond \f$N\f$  do  not exist,  so the  last \f$p\f$  +
+    !! 1  values of  \f$X\f$ appear  in fewer  stencils than  the others.
+    !!
+    !! Collecting the terms in \f$X_{N-k}\f$ gives the weights from the last
+    !! point inwards:
+    !!  \f[c_0 w_N = 1 \ , \quad
+    !!      \sum_{m=0}^{\min(p,k)} c_m w_{N-k+m} = 0 \ \text{for} \ k \ge 1 \ .\f]
+    !! They tend to 1; for \c ord = 3 they are 6/11, 108/121, 1.0143, 1.0286,
+    !! 1.0156, \f$\ldots\f$ and the difference from 1 falls by a factor 0.43 per
+    !! point. Their sum  differs from that of  unit weights by -1/2, as for the
+    !! trapezoidal rule.
+    !!
+    !! \c w(1) is the  weight of the last point, \c w(2)  that of the point before
+    !! it, and so on. The points before those have weight 1 to within 1E-12.
+    !!
+    !! \note For \c ord = 1 all weights are 1.
+    !!
+    !! \return ierr
+    integer function calc_end_weights(ord,w) result(ierr)
+        character(*), parameter :: rout_name = 'calc_end_weights'
+        
+        ! input / output
+        integer, intent(in) :: ord                                              !< order of the left finite differences
+        real(dp), intent(inout), allocatable :: w(:)                            !< weights, starting from the last point
+        
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        integer, parameter :: n_max = 500                                       ! maximum number of weights
+        real(dp), parameter :: tol = 1.E-12_dp                                  ! tolerance for a weight to be 1 (the coefficients are not exact)
+        real(dp), allocatable :: coeff(:)                                       ! coefficients of left finite differences
+        real(dp) :: w_loc(n_max)                                                ! local weights
+        integer :: kd, md                                                       ! counters
+        integer :: n_w                                                          ! number of weights that differ from 1
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! left finite differences: coeff(ord+1-m) multiplies the point i-m
+        ierr = calc_coeff_fin_diff(1,ord+1,ord+1,coeff)
+        CHCKERR('')
+        
+        ! from the last point inwards, until ord successive weights are 1
+        n_w = 0
+        w_loc(1) = 1._dp/coeff(ord+1)
+        do kd = 2,n_max
+            w_loc(kd) = 0._dp
+            do md = 1,min(ord,kd-1)
+                w_loc(kd) = w_loc(kd) - coeff(ord+1-md)*w_loc(kd-md)
+            end do
+            w_loc(kd) = w_loc(kd)/coeff(ord+1)
+            if (kd.gt.ord) then
+                if (maxval(abs(w_loc(kd-ord+1:kd)-1._dp)).lt.tol) then
+                    n_w = kd-ord
+                    exit
+                end if
+            end if
+        end do
+        if (n_w.eq.0) then
+            ierr = 1
+            err_msg = 'The end weights for left finite differences of order '&
+                &//trim(i2str(ord))//' do not tend to 1'
+            CHCKERR(err_msg)
+        end if
+        
+        ! set up output
+        if (allocated(w)) deallocate(w)
+        allocate(w(n_w))
+        w = w_loc(1:n_w)
+    end function calc_end_weights
     
     !> Convert 2-D coordinates (i,j) to the storage convention used in matrices.
     !!

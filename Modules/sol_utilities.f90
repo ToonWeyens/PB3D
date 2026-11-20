@@ -66,7 +66,8 @@ contains
         &eq_2,X,sol,X_id,XUQ_style,time,XUQ,deriv) result(ierr)
         
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
-        use num_utilities, only: con2dis, spline
+        use num_utilities, only: con2dis
+        use spline_utilities, only: spline
         use X_utilities, only: trim_modes
 #if ldebug
         use eq_vars, only: max_flux_F
@@ -580,7 +581,7 @@ contains
         &deriv) result(ierr)
         use num_vars, only: X_style, norm_disc_prec_sol
         use X_vars, only: n_mod_X
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
         
@@ -793,13 +794,19 @@ contains
     
     !> Interpolation for a quantity V using splines.
     !!
+    !! The order is the lower of the setting interp_V_ord and the highest order
+    !! the points allow: 0 for one point (a copy), 1 for two or three (a straight
+    !! line; PSPLINE's splines of order 2 and 3 need at least four points) and 3
+    !! for four or more.
+    !!
     !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
     !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
-    !! spline interpolation (3).
+    !! spline interpolation (3), Akima or cubic.
     integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,ivs_stat) &
         &result(ierr)
         
-        use num_utilities, only: spline
+        use spline_utilities, only: spline
+        use num_vars, only: interp_V_ord
         
         character(*), parameter :: rout_name = 'interp_V_spline'
         
@@ -813,11 +820,14 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
+        integer :: ord                                                          ! order of the interpolation
+#if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
-        
+#endif
+
         ! initialize ierr
         ierr = 0
-        
+
 #if ldebug
         ! test sizes
         if (size(r_i).ne.size(V_i,3)) then
@@ -837,44 +847,38 @@ contains
         end if
 #endif
         
-        ! interpolate depending on normal size
-        select case (size(r_i))
-            case (1)                                                            ! copy directly
+        ! the order is the lower of the setting interp_V_ord and the highest
+        ! order the points allow
+        ord = min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
+        
+        select case (ord)
+            case (0)                                                            ! copy directly
                 do kd = 1,size(V_o,3)
                     V_o(:,:,kd) = V_i(:,:,1)
                 end do
-                if (present(ivs_stat)) ivs_stat = 1
-            case (2)                                                            ! manual linear (EZspline needs >= 3 pts)
-                do kd = 1,size(V_o,3)
-                    V_o(:,:,kd) = V_i(:,:,1) + &
-                        &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &
-                        &(r_o(kd) - r_i(1))
-                end do
-                if (present(ivs_stat)) ivs_stat = 2
-            case (3)                                                            ! linear via EZspline
-                do jd = 1,size(V_i,2)
-                    do id = 1,size(V_i,1)
-                        ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                            &ord=1,extrap=extrap)
-                        CHCKERR('')
+            case (1:)
+                if (size(r_i).eq.2) then                                        ! straight line by hand: PSPLINE needs at least 3 points
+                    do kd = 1,size(V_o,3)
+                        V_o(:,:,kd) = V_i(:,:,1) + &
+                            &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &
+                            &(r_o(kd) - r_i(1))
                     end do
-                end do
-                if (present(ivs_stat)) ivs_stat = 2
-            case (4:)                                                           ! spline
-                do jd = 1,size(V_i,2)
-                    do id = 1,size(V_i,1)
-                        ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                            &ord=3,extrap=extrap)
-                        CHCKERR('')
+                else                                                            ! PSPLINE of order ord
+                    do jd = 1,size(V_i,2)
+                        do id = 1,size(V_i,1)
+                            ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                                &ord=ord,extrap=extrap)
+                            CHCKERR('')
+                        end do
                     end do
-                end do
-                if (present(ivs_stat)) ivs_stat = 3
+                end if
 #if ldebug
             case default
                 ierr = 1
                 CHCKERR('Need more than 0 points')
 #endif
         end select
+        if (present(ivs_stat) .and. ord.ge.0) ivs_stat = min(ord,2) + 1         ! 1: copy, 2: linear, 3: spline
         
 #if ldebug
         ! visualize

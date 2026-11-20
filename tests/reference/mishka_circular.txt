@@ -1,0 +1,19 @@
+# MISHKA-1 reference values for the circular external-kink fixtures (step 0 of issue #4, 27 October 2026).
+# Values are -omega^2/omega_A^2 (MISHKA's gamma^2, positive = unstable), free boundary, conformal wall at RWALL*a.
+# MISHKA built from the November 2017 source (Simulations/MISHKA/Sources in Toon's archive) with
+#   gfortran -std=legacy -w -O2 -fdefault-integer-8 -fdefault-real-8  + an ILP64 BLAS/LAPACK,
+# input: the archived TEST_VAC/OLD/2.25/MISHKA/10/fort.10 with NTOR = -n and RWALL changed, read from stdin;
+# fort.12 = the HELENA mapping of the fixture; the result is the "INSTABILITY FOUND" line of fort.20.
+# RWALL = 1 (fixed boundary) does not converge in MISHKA's inverse vector iteration; use PB3D's own fixed-boundary runs.
+# case                 n   RWALL=1.05   1.1       1.2       1.5       10 (= no wall)
+circ_eps033_q104      10   0.10405    0.33363   0.41715   0.43343   0.43378
+circ_eps033_q104      15   0.35788    0.42539   0.44123   0.44281   0.44283
+circ_eps033_q104      20   0.30787    0.32065   0.32253   0.32262   0.32262
+circ_eps005_q104      10   0.05473    0.32609   0.41342   0.42667   0.42679
+circ_eps005_q104      15   0.35606    0.43109   0.44739   0.44843   0.44844
+circ_eps005_q104      20   0.32160    0.33586   0.33786   0.33792   0.33792
+# flat-q variant of eps = 0.05 (q0 = qa = 1.0378, not committed: PB3D rejects a flat q), against which the
+# cylinder formula of cyl_kink.py agrees to 1e-4..7e-4 without a wall and to 1e-3 with a wall:
+# flat_eps005          10   0.06443    0.33592   0.42327   0.43652   0.43663
+# flat_eps005          15   0.36337    0.43842   0.45472   0.45576   0.45577
+# flat_eps005          20   0.32596    0.34023   0.34223   0.34229   0.34229

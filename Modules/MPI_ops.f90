@@ -222,16 +222,61 @@ contains
     
     !> Abort MPI suddenly.
     !!
+    !! \c MPI_Abort ends all the processes of the run. It hands \c status to
+    !! the launcher (\c mpirun, \c srun, ...), which returns it to the shell as
+    !! its exit status. A process that was started without a launcher returns
+    !! \c status itself.
+    !!
+    !! \see get_exit_status() for the value to pass.
+    !!
     !! \return ierr
-    integer function abort_MPI() result(ierr)
+    integer function abort_MPI(status) result(ierr)
         character(*), parameter :: rout_name = 'abort_MPI'
+        
+        ! input / output
+        integer, intent(in) :: status                                           !< exit status with which the run ends
         
         ! initialize ierr
         ierr = 0
         
-        call MPI_Abort(MPI_Comm_world,0,ierr)
+        call MPI_Abort(MPI_Comm_world,status,ierr)
         CHCKERR('MPI abort failed')
     end function abort_MPI
+    
+    !> Exit status with which the program ends after error code \c ierr.
+    !!
+    !! The exit status is the number that the shell receives when the program
+    !! ends, for example in <tt>$?</tt>. Zero means that the program succeeded.
+    !! The operating system keeps only the lowest eight bits, so that the exit
+    !! status lies between 0 and 255.
+    !!
+    !! The error codes of PB3D are integers of any size and sign: most errors set
+    !! 1, HDF5 and NetCDF return negative numbers, and a failed \c open or
+    !! \c allocate returns the number of the compiler's run-time library. They
+    !! are mapped as follows:
+    !!  - A code from 1 to 125 is the exit status itself.
+    !!  - Every other code gives the exit status 1.
+    !!
+    !! The second rule is there for three reasons. A negative code or a code
+    !! above 255 does not fit and would arrive as another number: -1 as 255,
+    !! and 256 as 0, which means success. A shell uses 126 and 127 for a
+    !! command that it could not start. A shell and \c mpirun use 128 +
+    !! <em>s</em> for a process that was ended by signal <em>s</em>, for example
+    !! 139 for a segmentation fault. With this mapping an exit status above 125
+    !! never comes from the error handling of PB3D.
+    !!
+    !! The exit status is therefore never zero. The error code itself is
+    !! printed by sudden_stop().
+    integer function get_exit_status(ierr) result(status)
+        ! input / output
+        integer, intent(in) :: ierr                                             !< error code
+        
+        if (ierr.ge.1 .and. ierr.le.125) then
+            status = ierr
+        else
+            status = 1
+        end if
+    end function get_exit_status
     
     !> Broadcasts options (e.g. user-prescribed) that are not passed through the
     !! HDF5 output file (i.e. \c ltest, \c no_plots, ...).
@@ -244,7 +289,8 @@ contains
     !!
     !! \return ierr
     integer function broadcast_input_opts() result(ierr)
-        use num_vars, only: max_str_ln, ltest, max_it_zero, rank, &
+        use num_vars, only: max_str_ln, ltest, check_vac, vac_diag_style, &
+            &max_it_zero, rank, &
             &max_it_rich, tol_zero, n_procs, n_sol_requested, tol_rich, &
             &max_nr_backtracks_HH, sol_n_procs, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
@@ -284,6 +330,10 @@ contains
             
             ! variables that are sent for every program style:
             call MPI_Bcast(ltest,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(check_vac,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
+            CHCKERR(err_msg)
+            call MPI_Bcast(vac_diag_style,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(no_plots,1,MPI_LOGICAL,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
@@ -476,17 +526,31 @@ contains
     
     !> Suddenly stops the computations, aborting MPI, etc.
     !!
-    !! As a special case, if \c ierr = 66, no error message is printed.
+    !! The error code \c ierr is printed and MPI is aborted with abort_MPI().
+    !! The program then ends with the exit status of get_exit_status(), which
+    !! is not zero, so that a shell script, a batch system or a test sees that
+    !! the run failed.
     !!
-    !! \return ierr
+    !! Before the abort, the buffered output on the screen and in the output
+    !! file is written out: \c MPI_Abort ends the process without doing this,
+    !! and the error message would be lost when the output goes to a file or to
+    !! a pipe.
+    !!
+    !! As a special case, if \c ierr = 66, no error message is printed, MPI is
+    !! stopped with stop_MPI() and the exit status is zero. This is the stop
+    !! after the usage or help message.
     subroutine sudden_stop(ierr)
-        use num_vars, only: rank
+        use, intrinsic :: iso_fortran_env, only: output_unit
+        use num_vars, only: rank, output_i
         
         ! input / output
-        integer, intent(in) :: ierr                                             ! error to output
+        integer, intent(in) :: ierr                                             !< error to output
         
         ! local variables
-        integer :: ierr_abort                                                   ! error to output
+        integer :: ierr_abort                                                   ! error of the abort or the stop
+        integer :: status                                                       ! exit status
+        integer :: istat                                                        ! status of flush
+        logical :: output_open                                                  ! whether the output file is open
         
         if (ierr.ne.66) then
             call writo('>> calling routine: PB3D (main) of rank '//&
@@ -495,15 +559,26 @@ contains
                 &'. Aborting MPI rank '//trim(i2str(rank)),&
                 &persistent=.true.)
             call lvl_ud(1)
-            ierr_abort = abort_MPI()
+            status = get_exit_status(ierr)
+            
+            ! write out the buffered output, as MPI_Abort does not do this
+            flush(output_unit,iostat=istat)
+            inquire(unit=output_i,opened=output_open)
+            if (output_open) flush(output_i,iostat=istat)
+            
+            ! does not return, unless MPI cannot abort
+            ierr_abort = abort_MPI(status)
         else
+            status = 0
             ierr_abort = stop_MPI()
+            if (ierr_abort.ne.0) status = get_exit_status(ierr_abort)
         end if
         if (ierr_abort.ne.0) then
             call writo('MPI cannot abort...',persistent=.true.)
             call writo('Shutting down',persistent=.true.)
         end if
         call lvl_ud(-1)
+        if (status.ne.0) error stop status
         stop
     end subroutine
 end module MPI_ops

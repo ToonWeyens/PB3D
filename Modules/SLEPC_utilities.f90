@@ -96,18 +96,18 @@ contains
         PetscInt, intent(in) :: r_id                                            !< normal position of corresponding \f$\widetilde{V}^0\f$ (starting at 0)
         PetscInt, intent(in) :: ind(2)                                          !< 2D index in matrix, relative to \cr_id
         PetscInt, intent(in) :: n_r                                             !< number of grid points of solution grid
-        PetscBool, intent(in), optional :: transp                               !< also set Hermitian transpose
-        PetscBool, intent(in), optional :: overwrite                            !< overwrite
-        PetscBool, intent(in), optional :: ind_insert                           !< individual insert, only important for debugging
-        
+        logical, intent(in), optional :: transp                                 !< also set Hermitian transpose
+        logical, intent(in), optional :: overwrite                              !< overwrite
+        logical, intent(in), optional :: ind_insert                             !< individual insert, only important for debugging
+
         ! local variables
         PetscInt, pointer :: nm_X(:,:)                                          ! m (pol. flux) or n (tor. flux)
-        PetscBool :: transp_loc                                                 ! local copy of transp
-        PetscBool :: overwrite_loc                                              ! local copy of overwrite
+        logical :: transp_loc                                                   ! local copy of transp
+        logical :: overwrite_loc                                                ! local copy of overwrite
         character(len=max_str_ln) :: err_msg                                    ! error message
-        PetscInt :: operation                                                   ! either ADD_VALUES or INSERT_VALUES
+        InsertMode :: operation                                                 ! either ADD_VALUES or INSERT_VALUES
         PetscScalar, allocatable :: block_loc(:,:)                              ! local block, possibly shifted from block
-        PetscBool :: ind_insert_loc                                             ! local ind_insert
+        logical :: ind_insert_loc                                               ! local ind_insert
         
         ! initialize ierr
         ierr = 0
@@ -158,8 +158,11 @@ contains
             call setup_local_block(nm_X,r_id,ind(1:2),block,block_loc)
             
             ! set values
-            call MatSetValuesBlocked(mat,1,r_id+ind(1),1,r_id+ind(2),&
-                &transpose(block_loc),operation,ierr)
+            ! (values flattened to 1-D in row-major order: the 2-D form is
+            ! only accepted by the Fortran interface from PETSc >= 3.20)
+            call MatSetValuesBlocked(mat,1,[r_id+ind(1)],1,[r_id+ind(2)],&
+                &reshape(transpose(block_loc),[size(block_loc)]),operation,&
+                &ierr)
             CHCKERR(err_msg)
             
             ! untransposed block
@@ -174,8 +177,9 @@ contains
                 call setup_local_block(nm_X,r_id,ind(2:1:-1),&
                     &transpose(conjg(block)),block_loc)
                 
-                call MatSetValuesBlocked(mat,1,r_id+ind(2),1,r_id+ind(1),&
-                    &transpose(block_loc),operation,ierr)
+                call MatSetValuesBlocked(mat,1,[r_id+ind(2)],1,[r_id+ind(1)],&
+                    &reshape(transpose(block_loc),[size(block_loc)]),&
+                    &operation,ierr)
                 CHCKERR(err_msg)
             end if
             
@@ -201,9 +205,10 @@ contains
     contains
         !> /private Set up local block, possibly translated for fast PB3D.
         !!
-        !! \note   For  BC_style   3,  there   is  a   grid  extension   of  n_r
-        !! beyond  the  tabulated modes  variables,  which  is  why there  is  a
-        !! 'min(..,size(nm_X,1))' here.
+        !! \note The 'min(..,size(nm_X,1))' does not change the index as long as
+        !! the modes variables are tabulated in the grid of the matrix, because
+        !! insert_block_mat() calls this routine only for blocks inside the
+        !! matrix.
         subroutine setup_local_block(nm_X,r_id,ind,block,block_loc)
             use X_vars, only: n_mod_X
             

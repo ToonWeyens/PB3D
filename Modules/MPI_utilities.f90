@@ -27,7 +27,7 @@ module MPI_utilities
     
     implicit none
     private
-    public get_ser_var, redistribute_var, get_ghost_arr, broadcast_var, &
+    public get_ser_var, redistribute_var, broadcast_var, &
         &wait_MPI, lock_req_acc, lock_return_acc
 #if ldebug
     public lock_header, lock_wl_change, &
@@ -59,26 +59,6 @@ module MPI_utilities
         module procedure get_ser_var_real
         !> \public
         module procedure get_ser_var_int
-    end interface
-    
-    !> \public Fill the ghost regions in an array.
-    !!
-    !! This is done by  sending the first normal point of a  process to the left
-    !! process.
-    !!
-    !! Every MPI message is identified by  its sending process. The array should
-    !! have the extended size, including ghost regions.
-    !!
-    !! \return ierr
-    interface get_ghost_arr
-        !> \public
-        module procedure get_ghost_arr_3D_complex
-        !> \public
-        module procedure get_ghost_arr_3D_real
-        !> \public
-        module procedure get_ghost_arr_2D_complex
-        !> \public
-        module procedure get_ghost_arr_1D_real
     end interface
     
     !> \public Wrapper function to broadcast a single variable using MPI.
@@ -341,13 +321,14 @@ contains
         integer :: id, jd                                                       ! counters
         integer, allocatable :: lims_tot(:,:)                                   ! limits of all processes
         integer, allocatable :: lims_dis_tot(:,:)                               ! redistributed limits of all processes
+        integer, allocatable :: lims_eff_tot(:,:)                               ! owned (non-overlapping) limits of all processes
+        integer, allocatable :: id_start(:,:)                                   ! first global index destination jd takes from source id
         integer, allocatable :: temp_lim(:)                                     ! temporary variable
         integer, allocatable :: n_vars(:,:)                                     ! number of values to be received and sent from each process (row: to, column: from)
         integer, allocatable :: nr_sen(:)                                       ! number of values to be sent to each process from this process
         integer, allocatable :: nr_rec(:)                                       ! number of values to be received from each process to this process
         integer, allocatable :: id_rec(:)                                       ! starting position of variable to be received in local memory (starting at 0)
         integer, allocatable :: id_sen(:)                                       ! starting position of variable to be sent in local memory (starting at 0)
-        integer :: max_loc                                                      ! local maximum
         
         ! initialize ierr
         ierr = 0
@@ -370,16 +351,37 @@ contains
         !   (c d)
         ! means that  process 0  gets a  from process  0 and  b from  process 1.
         ! Process 1 gets c from process 0 and d from process 1.
+        ! The  source  ranges  may  overlap:  the  grids  carry  ghost  regions
+        ! (4*norm_disc_prec_eq  points on either side of the equilibrium range,
+        ! norm_disc_prec_sol  on  the  solution  range,  and  so  on) and every
+        ! process  hands in its whole local range. Each point is taken from its
+        ! owner,  the process for which it is not a ghost point: the overlap of
+        ! two  neighbours is split in the middle, as in trim_grid, which is the
+        ! owner  boundary  for symmetric ghost regions. A ghost point lies near
+        ! the end of its process' range, where radial derivatives are one-sided
+        ! and splines end, so its value is less accurate; taken from the owner,
+        ! every point has the value it has with a single process.
+        allocate(lims_eff_tot(2,n_procs))
+        lims_eff_tot = lims_tot
+        do id = 2,n_procs
+            if (lims_tot(1,id).le.lims_tot(2,id-1)) then                        ! overlap between id-1 and id
+                lims_eff_tot(1,id) = lims_tot(1,id) + &
+                    &ceiling((lims_tot(2,id-1)-lims_tot(1,id)+1._dp)/2)
+                lims_eff_tot(2,id-1) = lims_eff_tot(1,id) - 1
+            end if
+        end do
+        
+        ! set up the number of values that destination jd receives from source
+        ! id: the intersection of jd's range with id's owned range
         allocate(n_vars(n_procs,n_procs))
+        allocate(id_start(n_procs,n_procs))
         n_vars = 0
+        id_start = 0
         do jd = 1,n_procs
-            max_loc = lims_dis_tot(1,jd)
             do id = 1,n_procs
-                if (lims_tot(2,id).ge.max_loc) then
-                    n_vars(jd,id) = min(lims_tot(2,id),lims_dis_tot(2,jd)) - &
-                        &max_loc + 1
-                    max_loc = max_loc + n_vars(jd,id)
-                end if
+                id_start(jd,id) = max(lims_dis_tot(1,jd),lims_eff_tot(1,id))
+                n_vars(jd,id) = max(0,min(lims_dis_tot(2,jd),&
+                    &lims_eff_tot(2,id)) - id_start(jd,id) + 1)
             end do
         end do
         
@@ -396,10 +398,10 @@ contains
         allocate(id_rec(n_procs))
         allocate(id_sen(n_procs))
         do id = 1,n_procs
-            nr_rec(id) = n_vars(rank+1,id)
-            nr_sen(id) = n_vars(id,rank+1)
-            id_rec(id) = sum(n_vars(rank+1,1:id-1))
-            id_sen(id) = sum(n_vars(id,1:rank)) + lims_dis_tot(1,id) - lims(1)
+            nr_rec(id) = n_vars(rank+1,id)                                      ! received from source id
+            nr_sen(id) = n_vars(id,rank+1)                                      ! sent to destination id
+            id_rec(id) = id_start(rank+1,id) - lims_dis(1)                      ! where it lands in the local destination array
+            id_sen(id) = id_start(id,rank+1) - lims(1)                          ! where it starts in the local source array
         end do
         
         call MPI_Alltoallv(var,nr_sen,id_sen,MPI_DOUBLE_PRECISION,&
@@ -417,197 +419,23 @@ contains
         !end do
     end function redistribute_var
     
-    !> \private 3-D complex version
-    integer function get_ghost_arr_3D_complex(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_3D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: arr(:,:,:)                                !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes(2)                                                   ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = [size(arr,1),size(arr,2)]
-        tot_size = size(arr,3)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank-1,&
-                    &rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,rank-1,&
-                    &rank,arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_COMPLEX,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_3D_complex
-    !> \private 3-D real version
-    integer function get_ghost_arr_3D_real(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_3D_real'
-        
-        ! input / output
-        real(dp), intent(inout) :: arr(:,:,:)                                   !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes(2)                                                   ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = [size(arr,1),size(arr,2)]
-        tot_size = size(arr,3)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank-1,rank,MPI_Comm_world,ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,:,1:size_ghost),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank-1,&
-                    &rank,arr(:,:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*product(n_modes),MPI_DOUBLE_PRECISION,&
-                    &rank+1,rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_3D_real
-    !> \private 2-D complex version
-    integer function get_ghost_arr_2D_complex(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_2D_complex'
-        
-        ! input / output
-        complex(dp), intent(inout) :: arr(:,:)                                  !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: n_modes                                                      ! number of modes
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        n_modes = size(arr,1)
-        tot_size = size(arr,2)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(:,tot_size-size_ghost+1:tot_size),&
-                    &size_ghost*n_modes,MPI_DOUBLE_COMPLEX,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank-1,rank,MPI_Comm_world,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(:,1:size_ghost),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank-1,rank,&
-                    &arr(:,tot_size-size_ghost+1:tot_size),size_ghost*n_modes,&
-                    &MPI_DOUBLE_COMPLEX,rank+1,rank+1,MPI_Comm_world,&
-                    &istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_2D_complex
-    !> \private 1-D real version
-    integer function get_ghost_arr_1D_real(arr,size_ghost) result(ierr)
-        use num_vars, only: rank, n_procs
-        
-        character(*), parameter :: rout_name = 'get_ghost_arr_1D_real'
-        
-        ! input / output
-        real(dp), intent(in) :: arr(:)                                          !< divided array
-        integer, intent(in) :: size_ghost                                       !< width of ghost region
-        
-        ! local variables
-        integer :: tot_size                                                     ! total size (including ghost region)
-        integer :: istat(MPI_STATUS_SIZE)                                       ! status of send-receive
-        
-        ! initialize ierr
-        ierr = 0
-        
-        ! initialize number of modes and total size
-        tot_size = size(arr)
-        
-        ! ghost regions only make sense if there is more than 1 process
-        if (n_procs.gt.1) then
-            if (rank.eq.0) then                                                 ! first rank only receives
-                call MPI_Recv(arr(tot_size-size_ghost+1:tot_size),&
-                    &size_ghost,MPI_DOUBLE_PRECISION,rank+1,&
-                    &rank+1,MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to receive')
-            else if (rank+1.eq.n_procs) then                                    ! last rank only sends
-                call MPI_Send(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank-1,rank,MPI_Comm_world,&
-                    &ierr)
-                CHCKERR('Failed to send')
-            else                                                                ! middle ranks send and receive
-                call MPI_Sendrecv(arr(1:size_ghost),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank-1,rank,&
-                    &arr(tot_size-size_ghost+1:tot_size),size_ghost,&
-                    &MPI_DOUBLE_PRECISION,rank+1,rank+1,&
-                    &MPI_Comm_world,istat,ierr)
-                CHCKERR('Failed to send and receive')
-            end if
-        end if
-    end function get_ghost_arr_1D_real
-    
     !> \private real version
     integer function broadcast_var_real(var,source) result(ierr)
         character(*), parameter :: rout_name = 'broadcast_var_real'
         
         ! input / output
-        real(dp), intent(in) :: var                                             !< variable to be broadcast
+        real(dp), intent(inout) :: var                                          !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_DOUBLE_PRECISION,source_loc,MPI_COMM_WORLD,&
@@ -619,16 +447,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_int'
         
         ! input / output
-        integer, intent(in) :: var                                              !< variable to be broadcast
+        integer, intent(inout) :: var                                           !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
@@ -639,16 +469,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_log'
         
         ! input / output
-        logical, intent(in) :: var                                              !< variable to be broadcast
+        logical, intent(inout) :: var                                           !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
@@ -659,16 +491,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_complex_arr'
         
         ! input / output
-        complex(dp), intent(in) :: var(:)                                       !< variable to be broadcast
+        complex(dp), intent(inout) :: var(:)                                    !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_DOUBLE_COMPLEX,source_loc,&
@@ -680,16 +514,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_real_arr'
         
         ! input / output
-        real(dp), intent(in) :: var(:)                                          !< variable to be broadcast
+        real(dp), intent(inout) :: var(:)                                       !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_DOUBLE_PRECISION,source_loc,&
@@ -701,16 +537,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_int_arr'
         
         ! input / output
-        integer, intent(in) :: var(:)                                           !< variable to be broadcast
+        integer, intent(inout) :: var(:)                                        !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
@@ -721,16 +559,18 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_log_arr'
         
         ! input / output
-        logical, intent(in) :: var(:)                                           !< variable to be broadcast
+        logical, intent(inout) :: var(:)                                        !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
@@ -883,6 +723,7 @@ contains
         integer, allocatable :: ranks_to_activate(:)                            ! ranks to be set active
         logical :: next_proc_exists                                             ! a next process exists
         logical :: next_proc_Bl                                                 ! next process is BL
+        logical :: no_NB_running                                                ! no nonblocking processes running any more
 #if ldebug
         integer :: istat                                                        ! status
 #endif
@@ -909,7 +750,8 @@ contains
         !   - NB: was last NB running
         next_proc_Bl = .false.
         next_proc_exists = .false.
-        if (lock%blocking .or. wl_empty(wl_loc,[-2])) then
+        no_NB_running = wl_empty(wl_loc,[-2])                                   ! evaluated separately: impure function in .or. might be short-circuited
+        if (lock%blocking .or. no_NB_running) then
             ! find all BL procs
             next_proc_exists = .not.wl_empty(wl_loc,[1],next_procs=next_procs)
             if (next_proc_exists) next_proc_Bl = .true.

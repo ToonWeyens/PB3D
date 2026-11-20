@@ -19,7 +19,8 @@ module VMEC_ops
         &jcuru, jcurv, &                                                        ! poloidal (FM) and toroidal (FM) current
         &bmns, bmnc, &                                                          ! magnitude of B (HM)
         &lmns, lmnc, rmns, rmnc, zmns, zmnc, &                                  ! lambda (HM), R (FM), Z(FM)
-        &gmnc, gmns                                                             ! Jacobian in VMEC coordinates
+        &gmnc, gmns, &                                                          ! Jacobian in VMEC coordinates
+        &mnmax_nyq, xm_nyq, xn_nyq                                              ! the Nyquist mode set of jac, B and B_sub
     use VMEC_vars
     
     implicit none
@@ -31,7 +32,8 @@ contains
     !!
     !! \return ierr
     integer function read_VMEC(n_r_in,use_pol_flux_V) result(ierr)
-        use num_utilities, only: calc_int, spline
+        use num_utilities, only: calc_int
+        use spline_utilities, only: spline
         use num_vars, only: eq_name, max_deriv, norm_disc_prec_eq
         
         character(*), parameter :: rout_name = 'read_VMEC'
@@ -43,6 +45,7 @@ contains
         ! local variables
         integer :: id, kd                                                       ! counters
         real(dp), allocatable :: r_V(:)                                         ! normal coordinate
+        real(dp), allocatable :: r_V_H(:)                                       ! normal coordinate of VMEC's half mesh
         real(dp), allocatable :: L_c_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: L_s_H(:,:,:)                                   ! temporary HM variable
         real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
@@ -89,7 +92,16 @@ contains
         else
             flux_name = 'toroidal'
         end if
-        B_0_V = sum(1.5*bmnc(:,2)-0.5_dp*bmnc(:,3))                             ! convert to full mesh
+        ! |B| on the magnetic axis: its (m,n) = (0,0) Fourier component, the
+        ! average over theta and zeta. VMEC lists that mode first; bmnc is on
+        ! the half mesh, so its first two interior values are extrapolated to
+        ! the axis.
+        if (nint(xm_nyq(1)).ne.0 .or. nint(xn_nyq(1)).ne.0) then
+            ierr = 1
+            err_msg = 'The first Nyquist mode of the VMEC file is not (0,0)'
+            CHCKERR(err_msg)
+        end if
+        B_0_V = 1.5_dp*bmnc(1,2) - 0.5_dp*bmnc(1,3)
         
         call writo('VMEC version is ' // trim(r2str(VMEC_version)))
         if (is_freeb_V) then
@@ -123,6 +135,23 @@ contains
         mn_V(:,1) = nint(xm(1:mnmax_V))
         mn_V(:,2) = nint(xn(1:mnmax_V))
         
+        ! The Jacobian, |B| and the covariant  components of B live on VMEC's
+        ! Nyquist mode set (xm_nyq, xn_nyq),  which is larger than (mpol, ntor)
+        ! and  ordered on  its  own grid  of m  and  n; only  for  ntor =  0 or
+        ! mnmax_nyq = mnmax does it start with the main modes. The set is
+        ! therefore kept whole, with its own mode list; fourier2real evaluates
+        ! any mode list from the one-angle trigonometric basis, whose extent
+        ! covers both sets.
+        mnmax_nyq_V = mnmax_nyq
+        allocate(mn_V_nyq(mnmax_nyq_V,2))
+        mn_V_nyq(:,1) = nint(xm_nyq(1:mnmax_nyq_V))
+        mn_V_nyq(:,2) = nint(xn_nyq(1:mnmax_nyq_V))
+        mpol_tf = max(mpol_V,maxval(mn_V_nyq(:,1))+1)
+        ntor_tf = max(ntor_V,maxval(abs(mn_V_nyq(:,2)))/nfp_V)
+        call writo('Nyquist mode set: '//trim(i2str(mnmax_nyq_V))//&
+            &' modes, m up to '//trim(i2str(maxval(mn_V_nyq(:,1))))//&
+            &', n up to '//trim(i2str(maxval(abs(mn_V_nyq(:,2)))/nfp_V)))
+        
         call lvl_ud(-1)
         call writo('Data from VMEC output successfully read')
         
@@ -136,23 +165,23 @@ contains
         allocate(Z_V_s(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_c(mnmax_V,n_r_in,0:max_deriv+1))
         allocate(L_V_s(mnmax_V,n_r_in,0:max_deriv+1))
-        allocate(jac_V_c(mnmax_V,n_r_in,0:max_deriv))
-        allocate(jac_V_s(mnmax_V,n_r_in,0:max_deriv))
+        allocate(jac_V_c(mnmax_nyq_V,n_r_in,0:max_deriv))
+        allocate(jac_V_s(mnmax_nyq_V,n_r_in,0:max_deriv))
         allocate(L_c_H(mnmax_V,n_r_in,0:0))
         allocate(L_s_H(mnmax_V,n_r_in,0:0))
-        allocate(jac_c_H(mnmax_V,n_r_in,0:0))
-        allocate(jac_s_H(mnmax_V,n_r_in,0:0))
+        allocate(jac_c_H(mnmax_nyq_V,n_r_in,0:0))
+        allocate(jac_s_H(mnmax_nyq_V,n_r_in,0:0))
         
         ! factors R_V_c,s; Z_V_c,s and L_C,s and HM varieties
         R_V_c(:,:,0) = rmnc(1:mnmax_V,:)
         Z_V_s(:,:,0) = zmns(1:mnmax_V,:)
         L_s_H(:,:,0) = lmns(1:mnmax_V,:)
-        jac_c_H(:,:,0) = gmnc(1:mnmax_V,:)
+        jac_c_H(:,:,0) = gmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
             R_V_s(:,:,0) = rmns(1:mnmax_V,:)
             Z_V_c(:,:,0) = zmnc(1:mnmax_V,:)
             L_c_H(:,:,0) = lmnc(1:mnmax_V,:)
-            jac_s_H(:,:,0) = gmns(1:mnmax_V,:)
+            jac_s_H(:,:,0) = gmns(1:mnmax_nyq_V,:)
         else
             R_V_s = 0._dp
             Z_V_c = 0._dp
@@ -165,6 +194,10 @@ contains
         ! size is 1/(n_r_in-1).
         allocate(r_V(n_r_in))
         r_V = [((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]
+        
+        ! VMEC stores  the half-mesh quantities  in rows 2 ..  n_r_in, row  j at
+        ! (j-3/2)/(n_r_in-1), halfway between full-mesh points j-1 and j
+        r_V_H = r_V(2:n_r_in) - 0.5_dp/(n_r_in-1)
         
         ! up to order 2, full mesh
         do kd = 1,2
@@ -187,13 +220,13 @@ contains
         
         ! up to order 2, half mesh: also extrapolate
         do kd = 0,2
-            do id = 1,mnmax_V
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            do id = 1,mnmax_nyq_V
+                ierr = spline(r_V_H,&
                     &jac_c_H(id,2:n_r_in,0),r_V,jac_V_c(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                 CHCKERR('')
                 if (is_asym_V) then
-                    ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    ierr = spline(r_V_H,&
                         &jac_s_H(id,2:n_r_in,0),r_V,jac_V_s(id,:,kd),&
                         &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                     CHCKERR('')
@@ -225,12 +258,12 @@ contains
         ! up to order 2, half mesh: also extrapolate
         do kd = 0,3
             do id = 1,mnmax_V
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &L_s_H(id,2:n_r_in,0),r_V,L_V_s(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                 CHCKERR('')
                 if (is_asym_V) then
-                    ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                    ierr = spline(r_V_H,&
                         &L_c_H(id,2:n_r_in,0),r_V,L_V_c(id,:,kd),&
                         &ord=norm_disc_prec_eq,deriv=kd,extrap=.true.)
                     CHCKERR('')
@@ -247,64 +280,68 @@ contains
         pres_V(:,3:) = 0._dp
         
         ! allocate helper variables
-        allocate(B_V_sub_c_M(mnmax_V,n_r_in,3)); B_V_sub_c_M = 0._dp
-        allocate(B_V_sub_s_M(mnmax_V,n_r_in,3)); B_V_sub_s_M = 0._dp
+        allocate(B_V_sub_c_M(mnmax_nyq_V,n_r_in,3)); B_V_sub_c_M = 0._dp
+        allocate(B_V_sub_s_M(mnmax_nyq_V,n_r_in,3)); B_V_sub_s_M = 0._dp
 #if ldebug
-        allocate(B_V_c_H(mnmax_V,n_r_in)); B_V_c_H = 0._dp
-        allocate(B_V_s_H(mnmax_V,n_r_in)); B_V_s_H = 0._dp
+        allocate(B_V_c_H(mnmax_nyq_V,n_r_in)); B_V_c_H = 0._dp
+        allocate(B_V_s_H(mnmax_nyq_V,n_r_in)); B_V_s_H = 0._dp
 #endif
         
         ! store in helper variables
-        B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_V,:)
-        B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_V,:)
-        B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_V,:)
+        B_V_sub_s_M(:,:,1) = bsubsmns(1:mnmax_nyq_V,:)
+        B_V_sub_c_M(:,:,2) = bsubumnc(1:mnmax_nyq_V,:)
+        B_V_sub_c_M(:,:,3) = bsubvmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_V,:)
-            B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_V,:)
-            B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_V,:)
+            B_V_sub_c_M(:,:,1) = bsubsmnc(1:mnmax_nyq_V,:)
+            B_V_sub_s_M(:,:,2) = bsubumns(1:mnmax_nyq_V,:)
+            B_V_sub_s_M(:,:,3) = bsubvmns(1:mnmax_nyq_V,:)
         else
             B_V_sub_c_M(:,:,1) = 0._dp
             B_V_sub_s_M(:,:,2) = 0._dp
             B_V_sub_s_M(:,:,3) = 0._dp
         end if
 #if ldebug
-        B_V_c_H(:,:) = bmnc(1:mnmax_V,:)
+        B_V_c_H(:,:) = bmnc(1:mnmax_nyq_V,:)
         if (is_asym_V) then                                                     ! following only needed in asymmetric situations
-            B_V_s_H(:,:) = bmns(1:mnmax_V,:)
+            B_V_s_H(:,:) = bmns(1:mnmax_nyq_V,:)
         else
             B_V_s_H(:,:) = 0._dp
         end if
 #endif
         
         ! allocate FM variables
-        allocate(B_V_sub_c(mnmax_V,n_r_in,3))
-        allocate(B_V_sub_s(mnmax_V,n_r_in,3))
+        allocate(B_V_sub_c(mnmax_nyq_V,n_r_in,3))
+        allocate(B_V_sub_s(mnmax_nyq_V,n_r_in,3))
 #if ldebug
-        allocate(B_V_c(mnmax_V,n_r_in))
-        allocate(B_V_s(mnmax_V,n_r_in))
+        allocate(B_V_c(mnmax_nyq_V,n_r_in))
+        allocate(B_V_s(mnmax_nyq_V,n_r_in))
         allocate(J_V_sup_int(n_r_in,2))
 #endif
         
         ! half mesh: extrapolate
-        do id = 1,mnmax_V
+        do id = 1,mnmax_nyq_V
             do kd = 2,3
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &B_V_sub_c_M(id,2:n_r_in,kd),r_V,B_V_sub_c(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
                 CHCKERR('')
-                ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+                ierr = spline(r_V_H,&
                     &B_V_sub_s_M(id,2:n_r_in,kd),r_V,B_V_sub_s(id,:,kd),&
                     &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
                 CHCKERR('')
             end do
         end do
+        
+        ! full mesh: B_s, no interpolation
+        B_V_sub_c(:,:,1) = B_V_sub_c_M(:,:,1)
+        B_V_sub_s(:,:,1) = B_V_sub_s_M(:,:,1)
 #if ldebug
-        do id = 1,mnmax_V
-            ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+        do id = 1,mnmax_nyq_V
+            ierr = spline(r_V_H,&
                 &B_V_c_H(id,2:n_r_in),r_V,B_V_c(id,:),&
                 &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
             CHCKERR('')
-            ierr = spline(-0.5_dp/n_r_in+r_V(2:n_r_in),&
+            ierr = spline(r_V_H,&
                 &B_V_s_H(id,2:n_r_in),r_V,B_V_s(id,:),&
                 &ord=norm_disc_prec_eq,deriv=0,extrap=.true.)
             CHCKERR('')
