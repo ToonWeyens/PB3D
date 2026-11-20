@@ -7,12 +7,16 @@
 #   debug   -> ~/pb3d/build-debug  (CMAKE_BUILD_TYPE=Debug, PB3D_ENABLE_DEBUG=ON)
 #
 # The source tree is expected in ~/pb3d/src (a clean `git archive` of the
-# PB3D worktree). Builds on the login node with nice and at most 16 jobs.
+# PB3D worktree); PB3D_SRC names another one, and PB3D_BUILD_SUFFIX is
+# appended to the two build directories (build$PB3D_BUILD_SUFFIX,
+# build-debug$PB3D_BUILD_SUFFIX). Builds on the login node with nice and at
+# most 16 jobs.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../env.sh"
 
-SRC=$PB3D_ROOT/src
+SRC=${PB3D_SRC:-$PB3D_ROOT/src}
+SUFFIX=${PB3D_BUILD_SUFFIX:-}
 NP=16
 NICE="nice -n 10"
 
@@ -28,8 +32,8 @@ configure_and_build() {   # configure_and_build <build-dir> <extra cmake args...
 }
 
 case ${1:-release} in
-    release) configure_and_build "$PB3D_ROOT/build" -DCMAKE_BUILD_TYPE=Release ;;
-    debug)   configure_and_build "$PB3D_ROOT/build-debug" -DCMAKE_BUILD_TYPE=Debug -DPB3D_ENABLE_DEBUG=ON ;;
+    release) configure_and_build "$PB3D_ROOT/build$SUFFIX" -DCMAKE_BUILD_TYPE=Release ;;
+    debug)   configure_and_build "$PB3D_ROOT/build-debug$SUFFIX" -DCMAKE_BUILD_TYPE=Debug -DPB3D_ENABLE_DEBUG=ON ;;
     all)     "$0" release; "$0" debug ;;
     *) echo "usage: $0 [release|debug|all]"; exit 1 ;;
 esac

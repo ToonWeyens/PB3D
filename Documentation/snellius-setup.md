@@ -87,6 +87,20 @@ SLEPc: `./configure --prefix=~/pb3d/deps/slepc` against that PETSc. Both
 leave `lib/pkgconfig/{PETSc,SLEPc}.pc`, which CMake finds through
 `PKG_CONFIG_PATH` from `env.sh`.
 
+`build_deps.sh` takes the releases from `PETSC_VER` and `SLEPC_VER`
+(default 3.25.3 and 3.25.1). A newer release is built next to the working
+one by also setting `PB3D_PETSC_DIR` and `PB3D_SLEPC_DIR`, which `env.sh`
+reads; `build_pb3d.sh` then builds against it when the same two variables
+are set, from the source tree in `PB3D_SRC` into
+`build$PB3D_BUILD_SUFFIX`:
+
+```bash
+export PETSC_VER=3.26.1 SLEPC_VER=3.26.1 \
+       PB3D_PETSC_DIR=~/pb3d/deps/petsc-3.26 PB3D_SLEPC_DIR=~/pb3d/deps/slepc-3.26
+~/pb3d/scripts/build_deps.sh petsc && ~/pb3d/scripts/build_deps.sh slepc
+PB3D_BUILD_SUFFIX=-3.26 ~/pb3d/scripts/build_pb3d.sh release
+```
+
 PSPLINE: `build_pspline_linux.sh` is `Libraries/build_pspline.sh` without
 the Homebrew `PATH` line, taking the checkout as its first argument; it
 applies `Libraries/pspline-r8genxpkg-nx3.patch` when `build_deps.sh` finds
@@ -211,15 +225,18 @@ in 69.6 s and 18/18 in 84.0 s.
 
 ## Known points
 
-- **CMake 3.31 loops on PETSc 3.25's Fortran headers.** With the site
-  `CMake/3.31.3` (and the system 3.31.8), `cmake --build` never starts
-  compiling: `cmake -E cmake_depends` for the `pb3d_modules` target runs
+- **CMake 3.31 looped on PETSc 3.25's Fortran headers.** With the site
+  `CMake/3.31.3` (and the system 3.31.8), `cmake --build` never started
+  compiling: `cmake -E cmake_depends` for the `pb3d_modules` target ran
   for a quarter of an hour at 13 GB peak memory, opening
   `petsc/finclude/petscmath.h` and `petscsys.h` over and over. The two
   headers include each other under `#if !defined(...)` guards, which CMake
-  3.31's own Fortran preprocessor does not terminate on. CMake 4.4.4 (the
-  Mac builds use 4.3) scans the tree in a second, so `env.sh` puts the
-  venv's CMake first. The Makefile generator is kept (same as on the Mac).
+  3.31's own Fortran preprocessor does not terminate on. Since 20 November
+  2026 `CMakeLists.txt` sets `CMAKE_DEPENDS_IN_PROJECT_ONLY`, which keeps
+  the scan inside PB3D's own files: the site CMake 3.31.3 then compiles
+  normally (checked on `int6`; without the variable, no object of
+  `pb3d_modules` had started after 150 s). `env.sh` still puts the venv's
+  CMake 4.4.4 first; it is no longer needed.
 - **More than one MPI process needs MUMPS.** PB3D's eigensolve is
   shift-invert (`STSINVERT`), whose default KSP is a direct LU of the
   shifted operator. PETSc's built-in LU is sequential only, so with 2 or 4
@@ -229,7 +246,10 @@ in 69.6 s and 18/18 in 84.0 s.
   `~mumps ~superlu-dist`, and `mpirun` crashes on the Mac (Homebrew OpenMPI
   5), so this was never visible there. The recipe builds PETSc with
   `--download-mumps --download-parmetis --download-metis`; PETSc then picks
-  MUMPS by itself for distributed LU, no PB3D change needed.
+  MUMPS by itself for distributed LU, no PB3D change needed. Since 20
+  November 2026 CMake reads `petscconf.h` and warns when the PETSc it finds
+  has no distributed LU, and the 2- and 4-process regression rows
+  (`PB3D_TEST_MPI_REGRESSION`) are on by default when it has one.
 - **Slurm drops the submitting environment.** `BC_STYLE=... sbatch` and
   `sbatch --export=ALL,...` do not reach the job on Snellius; the job
   options of `run_deck.sbatch` are therefore positional.
