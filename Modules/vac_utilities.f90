@@ -121,8 +121,8 @@ contains
         real(dp), intent(in) :: norm_s(4,3)                                     !< normal vector at the four stencil points
         real(dp), intent(in) :: h_fac_in(3)                                     !< metric factors g_aa, g_at, g_tt at the influence point
         real(dp), intent(in) :: step_size(2)                                    !< step sizes in parallel direction and alpha
-        real(dp), intent(in) :: tol                                             !< tolerance on distance between points
-        integer, intent(in) :: i_int                                            !< stencil index of the left point of the interval (1, 2 or 3)
+        real(dp), intent(in) :: tol                                             !< tolerance on the squared distance between an endpoint and the influence point
+        integer, intent(in) :: i_int                                          !< stencil index of the left point of the interval (1, 2 or 3)
         logical, intent(in), optional :: use_near                               !< whether the near-field rule may be used (default true)
 
         ! local variables

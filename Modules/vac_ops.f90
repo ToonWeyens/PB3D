@@ -520,10 +520,24 @@ contains
     !! and H  with respect  to other  points, outside of  the boundary.  This is
     !! useful when the potential is to be calculated at external points.
     !!
-    !! In this case, however, no (near-)  singular points are calculated, and if
-    !! they appear any way, perhaps by accident, they will not be accurate.
+    !! For external points no diagonal is set, and the points near the boundary
+    !! are treated as follows:
+    !!  - field-line style (calc_gh_1()): the near-field rule along the field
+    !!    lines is used for an external point that lies closer to its nearest
+    !!    boundary point than that boundary point lies to its neighbour on the
+    !!    same field line. A point that coincides with a boundary point gets
+    !!    the analytical half-cell integral of G, with the metric factors of
+    !!    the left endpoint of the interval, which is the coinciding point or
+    !!    its neighbour on the field line.
+    !!  - axisymmetric style (calc_gh_2()): a point that coincides with a
+    !!    boundary point gets the row that returns the boundary value, with
+    !!    \f$4\pi\f$ in the column of that point and zero elsewhere. Other
+    !!    points near the boundary get no special treatment.
     !!
-    !! \Note Multiple  field lines are  stored sequentially, which  implies that
+    !! Within a few grid spacings of the boundary the quadrature does not
+    !! resolve the kernels (eval_pot_ext()).
+    !!
+    !! \note Multiple  field lines are  stored sequentially, which  implies that
     !! the integral between the  last point on a field line  and the first point
     !! on the next field lines needs to be left out.
     !!
@@ -890,8 +904,10 @@ contains
                         ! metric factors at the influence point, used only
                         ! for the singular half-cell; an external point has
                         ! none (its row index does not number a boundary
-                        ! point), and the source point's are used should it
-                        ! coincide with one
+                        ! point), and should it coincide with a boundary
+                        ! point, the factors of the left endpoint cd of the
+                        ! interval are used, which is that point or its
+                        ! neighbour on the field line
                         if (ext_in) then
                             h_fac_in = vac%h_fac(cd,:)
                         else
@@ -1535,13 +1551,13 @@ contains
     !! In practice, the complex matrix \f$\overline{\text{E}}\f$ is split in the
     !! two components of a real matrix twice the width.
     !!
-    !! For vacuum style  1, the poloidal grid points correspond  to the paralell
-    !! grid points and have to be provied by a \c grid variable.
+    !! For vacuum style 1, the parallel coordinate and the field-line label of
+    !! every boundary point follow from \c min_par_X, \c min_alpha and the
+    !! steps of vac_utilities.vac_steps(); for vacuum style 2, the poloidal
+    !! angles are those stored in \c vac\%ang.
     !!
     !! If \c  jump_to_sol is used for  the current Richardson level,  the vacuum
     !! quantities are not calculated, but just restored.
-    !!
-    !! Currently, this procedure only works for vacuum style 2 (axisymmetric).
     !!
     !! \return ierr
     integer function calc_vac_res(mds,vac) result(ierr)
