@@ -1061,14 +1061,18 @@ contains
                 ! set local row index
                 rdl = loc_idx(lims_r_in,i_rd,rd)
 
-                ! An external point within the tolerance of a boundary point
-                ! (checked against all of them, which every process holds) is
-                ! that point: its row gives the boundary value, 4 pi phi_j
-                ! with 4 pi in the column of the point and nothing else. The
-                ! other external points are farther than the tolerance from
-                ! every boundary point, so calc_GH_int_2 never takes its
-                ! analytical branch, which needs the angle and normal of an
-                ! influence point on the boundary.
+                ! If the boundary point j_sing nearest to an external point is
+                ! closer than tol_loc, the code treats the external point as
+                ! j_sing. Its row then has G = 0 in every column, and H = 4 pi
+                ! in column j_sing and 0 in every other column, so that
+                ! eval_pot_ext returns the boundary value phi(j_sing). The
+                ! search for j_sing runs over all boundary points, which every
+                ! process holds, so all processes make the same choice for the
+                ! row. Every other external point is farther than tol_loc from
+                ! every boundary point, so calc_GH_int_2 always takes its
+                ! regular branch for that point. Only the analytical branch
+                ! reads the angle and normal of the influence point, and only
+                ! boundary points have these.
                 if (ext_in) then
                     j_sing = minloc(sum((vac%x_vec-spread(x_vec_in(rd,:),1,&
                         &vac%n_bnd))**2,2),1)
