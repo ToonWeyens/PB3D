@@ -196,9 +196,7 @@ bit-identical in a second job, so the shift is systematic, not noise.
 Found and fixed on 30 October 2026 (issue #4, commit 798fe50):
 `redistribute_var` filled the overlap between two process ranges from the
 lower rank's ghost region; since then the process counts agree to 1.5e-8,
-the reproducibility of the eigenvalue itself (see
-`vacuum-2026/plan_vacuum_bugfix.md` in the private repository
-PB3D_studies, "Night of 30 October 2026").
+the reproducibility of the eigenvalue itself.
 
 Crash statistics, fixed deck, singleton, ten launches in a row: 10 of 10
 produced the eigenvalue file with the unpatched PSPLINE and 10 of 10 with
