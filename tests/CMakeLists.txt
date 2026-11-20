@@ -242,7 +242,7 @@ endif()
 
 # on by default when PETSc has a distributed LU (cmake/PB3DCheckPETSc.cmake),
 # because only then can PB3D solve on more than one process
-if(PB3D_PETSC_DIST_LU STREQUAL "MUMPS" OR PB3D_PETSC_DIST_LU STREQUAL "SuperLU_DIST")
+if(PB3D_PETSC_DIST_LU MATCHES "^(MUMPS|SuperLU_DIST)")
     set(_pb3d_mpi_regression_default ON)
 else()
     set(_pb3d_mpi_regression_default OFF)

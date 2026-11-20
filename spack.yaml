@@ -20,6 +20,15 @@
 # matrix type mpibaij", PB3D error 92). MUMPS is that distributed LU; PETSc
 # picks it by itself. CMake warns when the PETSc it finds has none.
 #
+# -DAVOID_MPI_IN_PLACE for MUMPS. Spack builds MUMPS as shared libraries.
+# On macOS each of them keeps its own copy of the COMMON block behind
+# MPI_IN_PLACE in mpif.h, so Open MPI does not recognise the MPI_IN_PLACE
+# that MUMPS passes, and the reduction that maps the distributed right-hand
+# side to the processes adds up garbage: PB3D crashed on two processes with
+# a bus error in zmumps_scatter_dist_rhs (MUMPS 5.8.2 and 5.9.0). With the
+# flag MUMPS uses a separate receive buffer instead. On Linux the flag only
+# costs a copy of one integer array per solve.
+#
 # MPI. OpenMPI is preferred, not required: on a cluster, register the site
 # MPI first (spack external find openmpi, or mpich) and Spack uses it. On
 # macOS, Homebrew's OpenMPI 5 needs HWLOC_SYNTHETIC set before mpirun
@@ -37,6 +46,8 @@ spack:
       prefer: ["%gcc"]
     mpi:
       prefer: [openmpi]
+    mumps:
+      require: ["fflags=-DAVOID_MPI_IN_PLACE"]
   concretizer:
     unify: true
   view: true

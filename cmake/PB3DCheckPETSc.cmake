@@ -18,7 +18,8 @@
 #   64-bit indices         warning: never tested
 #
 # Sets PB3D_PETSC_DIST_LU to the distributed LU package that PETSc has
-# (MUMPS or SuperLU_DIST) or to "none".
+# ("MUMPS <version>", or "SuperLU_DIST"), to "none", or to "unknown" when
+# petscconf.h was not found.
 
 # the newest PETSc/SLEPc minor release that PB3D was built and tested with
 set(PB3D_PETSC_NEWEST_TESTED 3.25)
@@ -86,6 +87,17 @@ double precision; PB3D needs --with-precision=double.")
     endif()
     if(_pb3d_mumps)
         set(PB3D_PETSC_DIST_LU "MUMPS")
+        get_filename_component(_pb3d_petsc_inc "${PB3D_PETSCCONF_H}" DIRECTORY)
+        set(_pb3d_mumps_ver "")
+        if(EXISTS "${_pb3d_petsc_inc}/petscpkg_version.h")
+            file(STRINGS "${_pb3d_petsc_inc}/petscpkg_version.h" _pb3d_mumps_ver
+                REGEX "^#define PETSC_PKG_MUMPS_VERSION_(MAJOR|MINOR|SUBMINOR) ")
+        endif()
+        string(REGEX REPLACE ".*MAJOR ([0-9]+).*MINOR ([0-9]+).*SUBMINOR ([0-9]+).*"
+            "\\1.\\2.\\3" _pb3d_mumps_ver "${_pb3d_mumps_ver}")
+        if(_pb3d_mumps_ver MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+            set(PB3D_PETSC_DIST_LU "MUMPS ${_pb3d_mumps_ver}")
+        endif()
     elseif(_pb3d_superlu_dist)
         set(PB3D_PETSC_DIST_LU "SuperLU_DIST")
     else()

@@ -66,8 +66,16 @@ The `spack.yaml` in the project root lists the libraries: PETSc 3.19 to
 3.25 with complex scalars and MUMPS, the SLEPc that belongs to it, parallel
 HDF5, NetCDF-Fortran and ScaLAPACK. Spack takes the newest PETSc in that
 range that it knows. MUMPS gives PETSc the distributed LU that PB3D needs
-on two or more processes. OpenMPI is preferred, not required: on a cluster,
-`spack external find` the site MPI first and Spack uses it.
+on two or more processes. MUMPS is compiled with `-DAVOID_MPI_IN_PLACE`.
+Without it, PB3D on two or more processes crashed on macOS with a bus error
+in `zmumps_scatter_dist_rhs`: each shared MUMPS library keeps its own copy
+of the COMMON block behind `MPI_IN_PLACE` in `mpif.h`, Open MPI does not
+recognise the `MPI_IN_PLACE` that MUMPS passes, and a reduction in MUMPS
+adds up garbage. For a PETSc whose MUMPS was built without the flag, the
+PETSc option `-st_mat_mumps_icntl_20 0` avoids that reduction: MUMPS then
+gathers the right-hand side on one process. OpenMPI is preferred, not
+required: on a cluster, `spack external find` the site MPI first and Spack
+uses it.
 
 Now concretize and install:
 
