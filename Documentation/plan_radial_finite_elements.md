@@ -1,6 +1,6 @@
 # Plan: finite elements in the radial direction
 
-Branch `dev/radial-finite-elements`, started from `dev/vacuum-fixes` at f9713d7 (version 2.50). Written on 20 November 2026.
+Branch `dev/radial-finite-elements`, started from `dev/vacuum-fixes` at f9713d7 (version 2.50). Written on 20 November 2026. GitHub issue: [#51](https://github.com/ToonWeyens/PB3D/issues/51).
 
 **State.** This is a plan with the measurements it rests on. Nothing in `Modules/` is changed. The branch holds this file and the scripts of `Documentation/radial_finite_elements/`. It is a trial: nothing here is decided or required, and whether the finite elements replace the finite differences in `dev/vacuum-fixes` is Toon's decision after the gates of section 7.
 
