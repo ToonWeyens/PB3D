@@ -255,10 +255,10 @@ contains
     !! The basis holds, at given 3-D arrays for the (VMEC) E(quilibrium) angles
     !! \f$\theta_\text{E}\f$ and \f$\zeta_\text{E}\f$,
     !!  - \f$\cos(m \theta)\f$ and \f$\sin(m \theta)\f$ for \f$m = 0 \ldots
-    !!  \text{mpol_tf}-1\f$ at index \f$m+1\f$,
+    !!  \mathrm{mpol\_tf}-1\f$ at index \f$m+1\f$,
     !!  - \f$\cos(n N_\text{fp} \zeta)\f$  and \f$\sin(n N_\text{fp} \zeta)\f$ for
-    !!  \f$n = -\text{ntor_tf} \ldots \text{ntor_tf}\f$ at index \f$\text{mpol_tf}
-    !!  + \text{ntor_tf} + 1 + n\f$,
+    !!  \f$n = -\mathrm{ntor\_tf} \ldots \mathrm{ntor\_tf}\f$ at index \f$\mathrm{mpol\_tf}
+    !!  + \mathrm{ntor\_tf} + 1 + n\f$,
     !!
     !! so that the dimensions of the output array are
     !!
