@@ -343,8 +343,7 @@ uv run fortitude check --select=OB Modules/ tests/unit tests/fullstack PB3D.f90 
 
 ## Relation to the older test mechanisms
 
-- Isolated experiments and studies go in the private repository PB3D_studies,
-  one folder per study; anything that should *keep* passing belongs in `tests/`.
+- Anything that should *keep* passing belongs in `tests/`.
 - The `--test`/`-t` flag of a debug-built `PB3D` runs interactive developer
   checks (`Modules/test.f90`) and is unaffected by this infrastructure.
 

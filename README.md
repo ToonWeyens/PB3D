@@ -20,7 +20,7 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 - Configurable and modifiable
 - Scripts that compare and tabulate PB3D output (`analysis/`), and scripts to run TERPSICHORE on PB3D's VMEC equilibria (`terpsichore/`).
 
-This repository holds the code, its tests and example inputs. Studies done with PB3D (their inputs, scripts, reports and figures, without the run output) are in a separate, private repository, PB3D_studies, one folder per study. Paths below that start with `analysis/` or `terpsichore/` are in PB3D_tools.
+This repository holds the code, its tests and example inputs.
 
 ---
 
