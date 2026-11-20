@@ -1073,6 +1073,22 @@ contains
                 ! regular branch for that point. Only the analytical branch
                 ! reads the angle and normal of the influence point, and only
                 ! boundary points have these.
+                ! Warning: external points are not treated accurately in two
+                ! cases.
+                !  - The row above is the limit from outside only for
+                !    potentials that are harmonic outside the boundary. For a
+                !    potential that is harmonic inside the boundary, such as
+                !    the R^|n| that vac_pot_plot passes to sub_nearest, the
+                !    limit is 0, so the plotted potential at such a point is
+                !    0 instead of phi(j_sing). Boundary row j_sing of H and
+                !    G, with 4 pi added in column j_sing, gives the correct
+                !    limit for both kinds of potential.
+                !  - An external point farther than tol_loc from every
+                !    boundary point, but closer to the boundary than about
+                !    one spacing of the boundary points, goes through the
+                !    regular quadrature, which is inaccurate there.
+                !    sub_nearest removes only part of that error. Such points
+                !    need a quadrature for nearly singular integrals.
                 if (ext_in) then
                     j_sing = minloc(sum((vac%x_vec-spread(x_vec_in(rd,:),1,&
                         &vac%n_bnd))**2,2),1)
