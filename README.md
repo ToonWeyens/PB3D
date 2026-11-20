@@ -21,9 +21,22 @@ Also, have a look at <https://github.com/ToonWeyens/PB3D_tools> for auxiliary to
 
 ---
 
+## Copyright and license
+
+Copyright (C) 2019-2026 Toon Weyens
+
+Copyright (C) 2014-2019 ITER Organization
+
+PB3D is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. PB3D is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for the full text.
+
+Two bundled pieces keep their own licenses: `Libraries/foul.f90` (Philipp Emanuel Weidmann) is under the GNU General Public License version 3, and the test framework in `tests/vendor/test-drive` (Sebastian Ehlert) is under the MIT license.
+
+---
+
 ## Changelog
 
 ## 2.50:
+* Updated license and contact details.
 * Input checks and POST output (20 November 2026). PB3D chose the X style from `min_sec_X` alone, so a deck that set only `max_sec_X`, or `max_sec_X` together with `n_mod_X`, ran with X style 2 and ignored `max_sec_X` without a message. Both decks now stop with a message, as a deck with only `min_sec_X` already did. POST closed its energy decomposition file `POST_out_EN_R<lvl>.txt` after the first solution, so the energies of the other solutions went to a file `fort.57`, where each overwrote the one before. All solutions are now in `POST_out_EN_R<lvl>.txt`, with the same values. POST with `PB3D_rich_lvl` below 1 stopped with an HDF5 error instead of doing only the equilibrium output, and for a level above the highest one in the file it named the wrong highest level; it now does the equilibrium output, and names the highest level found. PB3D recognizes the PETSc option `-st_pc_factor_mat_solver_type` instead of the old name `-st_pc_factor_mat_solver_package`. New regression test `post_checks`, the first that runs POST. No eigenvalue changes.
 * Radial discretisation, two options removed (18 November 2026, issue #36): the input `norm_disc_style_sol` is gone, and the radial derivative is always a left finite difference over `norm_disc_prec_sol` + 1 points. Central differences gave exactly zero for a mode that changes sign from one radial point to the next, had no end weights, and were used by no test or example; the runs of the 2017 paper stay reproducible from the tag `Weyens2017PB3D`. `BC_style(2) = 4` is gone as well: the free boundary is `BC_style(2) = 2`, and an input file that asks for another value stops with a message. With the default settings no eigenvalue changes. `misc_sol` in the PB3D output has seven entries where it had eight, so the version goes to 2.50 and `min_PB3D_version` with it: POST stops with a message on output of an older version, and so does PB3D when it continues from such output (`rich_restart_lvl` above 1). Before, only POST compared the versions. The numbers of the earlier cross-check with style 4 are in `Documentation/testing.md`.
 * Exit status (18 November 2026, issue #40): `PB3D` and `POST` returned exit status 0 after they stopped on an error, because `abort_MPI` passed 0 to `MPI_Abort`; a shell script, a batch system or a test saw a successful run. They now return the error code that they print if it lies between 1 and 125, and 1 for every other code (negative codes, such as those of HDF5 and NetCDF, and codes above 125). Before it aborts, `sudden_stop` writes out the buffered output, so that the error message reaches an output that is redirected to a file; there it was lost before. The usage message and `--help` return 0 as before. New regression test `reject_BC_style`: a deck with `BC_style = 1 4` has to be refused with the message of the input check and a status that is not zero, with one process and under `mpirun -n 2`. The regression scripts print the real exit status of a failed run (they printed 0).
