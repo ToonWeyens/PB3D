@@ -151,19 +151,11 @@ the other with `sbatch --wait`.
 and prints one `MEM ...` line with the wall time, the peak resident memory
 and the eigenvalue; it was used for the before/after table of step 9 of
 issue #4. (`sacct`'s MaxRSS is empty or wrong for jobs shorter than about
-a minute, because the accounting samples every 30 s.) The `compare_*.py`
-helpers (h5py, numpy) read the `PB3D_out.h5` files kept with `keep`:
-`compare_eq.py` compares the equilibrium and grid datasets of two outputs,
-`compare_np.py` finds the radial indices where the integrated perturbation
-matrices differ between process counts, `compare_petsc_mats.py` compares
-PETSc binary matrix dumps, `compare_res.py` and `compare_res_series.py`
-look at the stored 3-D vacuum response (diagonal ratios against a
-reference, eigenvalues of the Hermitian part, convergence of a series of
-runs, given as output files or run directories), and `checkvac_table.py`
-turns the `CHECKVAC` lines of the run logs (`run.log` in the run
-directory, written with `check_vac = .true.`) into one table row per run.
-They were written for the investigations of 30 and 31 October 2026 and
-are kept as the record of how those tables were made.
+a minute, because the accounting samples every 30 s.) The scripts that
+read the `PB3D_out.h5` files kept with `keep` and the `CHECKVAC` lines of
+the run logs (`compare_*.py`, `checkvac_table.py`) are in the `analysis/`
+folder of [PB3D_tools](https://github.com/ToonWeyens/PB3D_tools); its
+README says what each one prints.
 
 A run of the fixed-boundary deck takes 4-5 s on one Rome core, the
 free-boundary deck 8-10 s; a whole `run_deck.sbatch` job with four process
@@ -205,7 +197,8 @@ Found and fixed on 30 October 2026 (issue #4, commit 798fe50):
 `redistribute_var` filled the overlap between two process ranges from the
 lower rank's ghost region; since then the process counts agree to 1.5e-8,
 the reproducibility of the eigenvalue itself (see
-`Documentation/plan_vacuum_bugfix.md`, "Night of 30 October 2026").
+`vacuum-2026/plan_vacuum_bugfix.md` in the private repository
+PB3D_studies, "Night of 30 October 2026").
 
 Crash statistics, fixed deck, singleton, ten launches in a row: 10 of 10
 produced the eigenvalue file with the unpatched PSPLINE and 10 of 10 with

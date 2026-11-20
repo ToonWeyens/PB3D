@@ -4,8 +4,8 @@
 
 **PB3D** ("Peeling Ballooning in 3D") is a scientific/HPC **Fortran** code that computes the
 linear ideal-MHD **peeling-ballooning stability** of 3-D (tokamak or stellarator) plasma
-equilibria. It was written by Toon Weyens (ITER Organization / TU Eindhoven / Universidad
-Carlos III de Madrid, 2012–present); see [`/README.md`](/README.md) for authorship and a
+equilibria. It was written by Toon Weyens (Ignition Computing / ITER Organization / TU Eindhoven /
+Universidad Carlos III de Madrid, 2012–present); see [`/README.md`](/README.md) for authorship and a
 version-by-version changelog (the README is almost entirely changelog — there is no separate
 narrative "about" section in-repo, which is why this wiki exists).
 
@@ -51,4 +51,4 @@ against namelist input files and equilibrium files.
 - **VMEC vs. HELENA** equilibrium input is selected at runtime via `eq_style` (1 = VMEC, 2 = HELENA), not at compile time.
 - **The vacuum module (`vac_ops.f90`) is verified by the full-stack test suite** (`tests/fullstack`, see `Documentation/testing.md`): axisymmetric kernels/matrices/solve/response, the free-boundary chain end-to-end (`regression_cbm18a_free_bnd`), and the 3-D field-line machinery (cross-checked against the axisymmetric response). Style-1 needs `n_alpha > 1`, and the response has only been validated on axisymmetric boundaries so far — extend the tests when touching the vacuum.
 - **Companion tooling lives outside this repo**: cluster run scripts and parameter-scan helpers were moved to the separate `PB3D_tools` repository (see README changelog, version 2.34); this repo's `Examples/` only holds sample input files.
-- License: GNU GPLv3 (see [`/LICENSE`](/LICENSE)).
+- License: GNU General Public License, version 3 or later (see [`/LICENSE`](/LICENSE)). Copyright Toon Weyens (2019–2026) and ITER Organization (2014–2019); ITER Organization agreed to the GPL for its part. `Libraries/foul.f90` is GPL version 3 only, and `tests/vendor/test-drive` is MIT.

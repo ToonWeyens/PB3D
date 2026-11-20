@@ -65,13 +65,15 @@ contains
         integer :: istat                                                        ! status
         
         if (rank.eq.0) then
-            call write_formatted(' PB3D Copyright (C) 2019  Toon Weyens',&
+            call write_formatted(' PB3D Copyright (C) 2019-2026 Toon Weyens',&
                 &'italic')
+            call write_formatted('      Copyright (C) 2014-2019 ITER &
+                &Organization','italic')
             call write_formatted(' This program comes with ABSOLUTELY NO &
                 &WARRANTY.','italic')
             call write_formatted(' This is free software, and you are welcome &
                 &to redistribute it','italic')
-            call write_formatted(' under certain conditions; See LICENSE for &
+            call write_formatted(' under certain conditions; see LICENSE for &
                 &details.','italic')
             call write_formatted('','italic')
             

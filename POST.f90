@@ -12,11 +12,12 @@
 !------------------------------------------------------------------------------!
 !>  \author
 !!  Toon Weyens,
-!!  Contact: weyenst@gmail.com
+!!  Contact: info@toonweyens.com
 !------------------------------------------------------------------------------!
 !>  \version    2.50
 !!  \date       2012-2026
-!!  Copyright (C) 2019 Toon Weyens
+!!  Copyright (C) 2019-2026 Toon Weyens,
+!!  Copyright (C) 2014-2019 ITER Organization
 !!
 !!  This program is free software: you can redistribute it and/or modify
 !!  it under the terms of the GNU General Public License as published by
@@ -28,8 +29,8 @@
 !!  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 !!  GNU General Public License for more details.
 !!
-!!  You should have received a copy of the License along with this program.
-!!  If not, contact weyenst@gmail.com
+!!  You should have received a copy of the GNU General Public License
+!!  along with this program. If not, see <https://www.gnu.org/licenses/>.
 !------------------------------------------------------------------------------!
 !>  \see
 !!  References:
