@@ -74,28 +74,28 @@ contains
     !! VMEC:
     !! @dot
     !! digraph G {
-    !!  eq_job -> restart [label="yes"]
-    !!  eq_job -> store [label="no"]
-    !!  restart -> jump [label="yes"]
-    !!  restart -> copy [label="no"]
-    !!  jump -> reconstructcur [label="yes"]
-    !!  jump -> restartone [label="no"]
+    !!  eq_job -> restart [label=<yes>]
+    !!  eq_job -> store [label=<no>]
+    !!  restart -> jump [label=<yes>]
+    !!  restart -> copy [label=<no>]
+    !!  jump -> reconstructcur [label=<yes>]
+    !!  jump -> restartone [label=<no>]
     !!  reconstructcur -> return
-    !!  restartone -> reconstruct [label="no"]
+    !!  restartone -> reconstruct [label=<no>]
     !!  copy -> store
     !!  reconstruct -> store
-    !!  restartone -> store [label="yes"]
+    !!  restartone -> store [label=<yes>]
     !!  store -> return
     !!  
-    !!  eq_job [shape=diamond,label="eq_job = 1"]
-    !!  store [label="store new vec, res"]
-    !!  restart [shape=diamond,label="restart"]
-    !!  jump [shape=diamond,label="jump"]
-    !!  copy [label="copy previous level"]
-    !!  reconstructcur [label="reconstruct current level"]
-    !!  return [label="return"]
-    !!  restartone [shape=diamond,label="restart = 1"]
-    !!  reconstruct [label="reconstruct previous level"]
+    !!  eq_job [shape=diamond,label=<eq_job = 1>]
+    !!  store [label=<store new vec, res>]
+    !!  restart [shape=diamond,label=<restart>]
+    !!  jump [shape=diamond,label=<jump>]
+    !!  copy [label=<copy previous level>]
+    !!  reconstructcur [label=<reconstruct current level>]
+    !!  return [label=<return>]
+    !!  restartone [shape=diamond,label=<restart = 1>]
+    !!  reconstruct [label=<reconstruct previous level>]
     !! }
     !! @enddot
     !!
