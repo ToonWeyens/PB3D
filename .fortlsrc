@@ -1,6 +1,6 @@
 {
   "source_dirs": ["Modules", "Libraries", "tests/**"],
   "pp_suffixes": [".f90", ".F90"],
-  "include_dirs": ["Include"],
+  "include_dirs": ["include"],
   "pp_defs": {"lwith_gnu": "", "PB3D_WITH_STRUMPACK": ""}
 }

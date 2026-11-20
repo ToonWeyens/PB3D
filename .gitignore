@@ -16,3 +16,6 @@ doc/
 
 # Python environment made by uv sync (pyproject.toml, uv.lock)
 .venv/
+
+# editor settings with paths of one machine
+.vscode/
