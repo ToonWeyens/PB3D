@@ -1,7 +1,6 @@
 # Python helpers of PB3D: the HDF5 checks of the regression tests, the
-# reference derivations and the Snellius and TERPSICHORE scripts, and the
-# Fortran language server and linter. Not a package. `uv sync` makes .venv
-# with all of it (Documentation/testing.md).
+# reference derivations, the Fortran language server and the linter. Not a
+# package. `uv sync` makes .venv with all of it (Documentation/testing.md).
 [project]
 name = "pb3d-tools"
 version = "0"
@@ -13,7 +12,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-# reference derivations, figures, the cbm18a cut and the TERPSICHORE converter
+# reference derivations (tests/reference/)
 scripts = ["matplotlib", "netCDF4", "sympy"]
 # editor and lint tools: the Fortran language server of the Modern Fortran
 # extension, and the linter of the CI job, at the CI version

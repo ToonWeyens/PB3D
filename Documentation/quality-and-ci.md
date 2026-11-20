@@ -97,7 +97,7 @@ Notes:
 - **Inherently heavy**: `MPI_utilities` (all collectives), the SLEPc/HDF5
   layers, the drivers — covered by fullstack/regression layers instead.
 
-### 4.2 Legacy test machinery (`--test` flag, `Modules/test.f90`, `Test/`)
+### 4.2 Legacy test machinery (`--test` flag, `Modules/test.f90`)
 
 - Converted to automated suites (self-contained analytic references):
   `test_splines` → `tests/fullstack/test_splines.f90` (polynomial
@@ -111,10 +111,9 @@ Notes:
   vacuum debug toggles → `tests/fullstack/test_vac_*`.
 - Not automatable: `test_lock` (timing/concurrency stress), ~25 plot-only
   `debug_*` toggles.
-- The capital-`Test/` directory is a scratch graveyard (one program
+- The capital-`Test/` directory of scratch programs (one program
   self-labeled "NOT WORKING", stale committed binaries, an obsolete PETSc
-  API demo). **Recommendation: delete it** (history preserves it); nothing
-  is worth salvaging.
+  API demo) was deleted on 20 November 2026; git history keeps it.
 
 ### 4.3 Compiler warnings
 
@@ -203,8 +202,8 @@ executable) are still single-process.
    follow-up.
 9. **PETSc 3.25 matrix leg** (scheduled weekly, spack build cache) to guard
    the 3.19/3.25 version guards from both sides.
-10. **Delete `Test/`** and the stale committed binaries after sign-off.
-11. **Valgrind nightly** on the fixed-boundary regression (the old
+10. ~~**Delete `Test/`**~~ **Done** (20 November 2026), with its committed binaries.
+11. **Valgrind nightly** on the fixed-boundary regression (the former
     `Test/HDF5` scratch program suggests HDF5+Valgrind history) — catches
     leaks the sanitizers miss in MPI context.
 
