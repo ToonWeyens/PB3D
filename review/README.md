@@ -10,6 +10,12 @@ blocks they touched; the vacuum modules are shown routine by routine
 (stage 5). Each block names the commits that changed its lines. Line numbers link to the line on GitHub (left
 at 2.47, right at 9e9aba5).
 
+Last state, 20 November 2026, before `dev/vacuum-fixes` goes into `master`:
+stages 0 to 4 show 9e9aba5 as they were reviewed (inserted from guide commit
+df519a4), every section from stage 5 on shows b3e55db (`REV_B` in
+`build_report.py`), and section N holds the commits of 18 to 20 November
+outside the vacuum modules. The guide is not updated after this.
+
 - `index.html`: the guide (also published privately as a claude.ai artifact).
   Generated; do not edit by hand.
 - `report.src.html`: the prose, with markers that `build_report.py` fills
