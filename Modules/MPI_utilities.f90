@@ -424,7 +424,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_real'
         
         ! input / output
-        real(dp), intent(in) :: var                                             !< variable to be broadcast
+        real(dp), intent(inout) :: var                                          !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -447,7 +447,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_int'
         
         ! input / output
-        integer, intent(in) :: var                                              !< variable to be broadcast
+        integer, intent(inout) :: var                                           !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -469,7 +469,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_log'
         
         ! input / output
-        logical, intent(in) :: var                                              !< variable to be broadcast
+        logical, intent(inout) :: var                                           !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -491,7 +491,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_complex_arr'
         
         ! input / output
-        complex(dp), intent(in) :: var(:)                                       !< variable to be broadcast
+        complex(dp), intent(inout) :: var(:)                                    !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -514,7 +514,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_real_arr'
         
         ! input / output
-        real(dp), intent(in) :: var(:)                                          !< variable to be broadcast
+        real(dp), intent(inout) :: var(:)                                       !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -537,7 +537,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_int_arr'
         
         ! input / output
-        integer, intent(in) :: var(:)                                           !< variable to be broadcast
+        integer, intent(inout) :: var(:)                                        !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
@@ -559,7 +559,7 @@ contains
         character(*), parameter :: rout_name = 'broadcast_var_log_arr'
         
         ! input / output
-        logical, intent(in) :: var(:)                                           !< variable to be broadcast
+        logical, intent(inout) :: var(:)                                        !< variable to be broadcast
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
