@@ -699,7 +699,6 @@ contains
                     &'G_transp')
             end if
             deallocate(loc_ser)
-            
         end if
 #endif
         
@@ -801,8 +800,13 @@ contains
                     ! iterate over all pairs of columns of this subcolumn
                     ! (upper limit is one lower as lims_c_loc
                     col: do cd = lims_c_loc(1),lims_c_loc(2)-1
-                        ! skip the interval that bridges two field lines: its
-                        ! geometry connects unrelated points
+                        ! cd is the last point of a field line and cd+1 the
+                        ! first point of the next one (points are stored
+                        ! line by line): these two points are not the ends
+                        ! of an interval on the surface, so there is nothing
+                        ! to integrate here. Both points still enter every
+                        ! row as sources, with the half weight of the end
+                        ! of their own line.
                         if (mod(cd,vac%n_ang(1)).eq.0) cycle col
                         
                         ! set local column index
@@ -3026,7 +3030,7 @@ logical, allocatable :: in_ext(:)                                       ! points
         if (.not.use_pol_flux_F) then
             ierr = 1
             err_msg = 'The vacuum potential plot needs the poloidal flux'
-            CHCKERR(err_msg)
+            CHCKERR(err_msg) 
         end if
 
         ! field-line style: the grid variables that vac_steps reads, here and
