@@ -428,12 +428,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_DOUBLE_PRECISION,source_loc,MPI_COMM_WORLD,&
@@ -449,12 +451,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
@@ -469,12 +473,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,1,MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
@@ -489,12 +495,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_DOUBLE_COMPLEX,source_loc,&
@@ -510,12 +518,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_DOUBLE_PRECISION,source_loc,&
@@ -531,12 +541,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_INTEGER,source_loc,MPI_COMM_WORLD,ierr)
@@ -551,12 +563,14 @@ contains
         integer, intent(in), optional :: source                                 !< process that sends
         
         ! local variables
-        integer :: source_loc = 0                                               ! local value for source
+        integer :: source_loc                                                   ! local value for source
         
         ! initialize ierr
         ierr = 0
         
-        ! set local source if given
+        ! set local source: 0 unless given (assigned here because an
+        ! initialisation in the declaration would keep an earlier call's value)
+        source_loc = 0
         if (present(source)) source_loc = source
         
         call MPI_Bcast(var,size(var),MPI_LOGICAL,source_loc,MPI_COMM_WORLD,ierr)
