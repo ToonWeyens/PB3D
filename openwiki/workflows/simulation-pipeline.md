@@ -1,7 +1,38 @@
+---
+type: "Workflow"
+title: "Simulation Pipeline"
+description: "What happens when PB3D and POST run: the command lines, the start-up sequence, the Richardson loop with its equilibrium jobs and the drivers, where the vacuum geometry is stored and the vacuum response computed, the version check on restart and in POST, the POST sequence, and how errors end the run with a non-zero exit status."
+tags: [workflow, pipeline, richardson, drivers, post, error-handling]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-20T18:32:33.626Z
+sources:
+  - id: openwiki-source-f71e15dc61ec9541c2ea2c88
+    resource: repo://include/PB3D_macros.h
+  - id: openwiki-source-9676454832f9c783053e9eed
+    resource: repo://Modules/driver_eq.f90
+  - id: openwiki-source-4361ace621d24e5f0bcbb1a2
+    resource: repo://Modules/driver_sol.f90
+  - id: openwiki-source-1de3db34d54cdd02011c9204
+    resource: repo://Modules/files_ops.f90
+  - id: openwiki-source-2b951757a1f7314b5a33d0bf
+    resource: repo://Modules/MPI_ops.f90
+  - id: openwiki-source-ceb46d56be8dccc0770a071b
+    resource: repo://Modules/PB3D_ops.f90
+  - id: openwiki-source-ea0f6caa297b3dce09db8548
+    resource: repo://Modules/rich_ops.f90
+  - id: openwiki-source-5ebda9f0933cb8606c609e8f
+    resource: repo://PB3D.f90
+  - id: openwiki-source-8257526ded3898f9506f023a
+    resource: repo://POST.f90
+generated: { by: "claude-code", at: "2026-11-20T18:32:33.626Z" }
+---
+
 # Simulation Pipeline
 
-This page traces what actually happens at runtime for both executables. Source of truth:
-[`/PB3D.f90`](/PB3D.f90) and [`/POST.f90`](/POST.f90).
+<!-- openwiki: broken internal link [/PB3D.f90] link "/PB3D.f90" is root-absolute, which no real consumer resolves against the repository root (not a coding agent reading the page, not GitHub's Markdown renderer, not a local viewer); use a path relative to this file instead. Fix the href or restore the target, then delete this comment. -->
+<!-- openwiki: broken internal link [/POST.f90] link "/POST.f90" is root-absolute, which no real consumer resolves against the repository root (not a coding agent reading the page, not GitHub's Markdown renderer, not a local viewer); use a path relative to this file instead. Fix the href or restore the target, then delete this comment. -->
+This page traces what happens at run time in both programs. The sources are [`/PB3D.f90`](/PB3D.f90) and [`/POST.f90`](/POST.f90).
 
 ## Running PB3D
 
@@ -9,65 +40,42 @@ This page traces what actually happens at runtime for both executables. Source o
 PB3D USER_INPUT EQUILIBRIUM_INPUT [OPTIONS]
 ```
 
-- `USER_INPUT` — a namelist file with group `inputdata_PB3D` (see
-  [Input & Configuration](input-and-configuration.md)); if it can't be opened, PB3D falls back to
-  defaults ("No input file found. Default used").
-- `EQUILIBRIUM_INPUT` — VMEC NetCDF output or HELENA plain-text output, in `.txt` format per the
-  usage string built in `files_ops.f90`'s `parse_args`.
-- `[OPTIONS]` — flags such as `--no_guess`, `--jump_to_sol`, `--export_HEL`,
-  `--plot_VMEC_modes`, `--invert_top_bottom_H`, `--no_plots`, `--no_output`,
-  `--do_execute_command_line`, `--mem_info`, `-t`/`--test`, plus pass-through PETSc/SLEPc flags
-  (`-eps_type`, `-st_pc_type`, `-log_view`, etc.). Full list and argument counts are in
-  `files_ops.f90::init_files`.
-- `-h` / `--help` prints usage and exits.
+- `USER_INPUT`: a file with the namelist `inputdata_PB3D` (see [Input & Configuration](input-and-configuration.md)). If the file cannot be opened, PB3D says "No input file found. Default used" and runs with the defaults.
+- `EQUILIBRIUM_INPUT`: a VMEC `wout` file (`.nc`) or a HELENA mapping file; PB3D recognises which from the file itself.
+- `[OPTIONS]`: PB3D's own options, such as `--no_guess`, `--jump_to_sol`, `--export_HEL`, `--plot_VMEC_modes`, `--invert_top_bottom_H`, `--no_plots`, `--no_output`, `--do_execute_command_line`, `--mem_info` and `-t`/`--test`, and PETSc/SLEPc options that are passed on (`-eps_type`, `-st_pc_type`, `-st_pc_factor_mat_solver_type`, `-log_view`, ...). `parse_args` in `files_ops.f90` holds the full list.
+- `-h`/`--help` prints the usage and exits with status 0.
 
-### Startup sequence (`PB3D.f90`)
+### Start-up (`PB3D.f90`)
 
-1. `start_MPI()` — must succeed before anything else.
-2. `print_hello()`, `init_output()`, `init_files()`, `init_time()`, `init_HDF5()`.
-3. Master rank (`rank == 0`) only:
-   - `parse_args()` → `open_input()` → `read_input_opts()`.
-   - If `rich_restart_lvl == 1` (starting fresh, not resuming a Richardson level): `read_input_eq()`
-     reads the equilibrium file, `calc_normalization_const()` + `normalize_input()` normalize
-     physical units, `open_output()` creates the HDF5 output, `print_output_in('in')` records the
-     input, then `dealloc_in()` frees the raw equilibrium-code input.
-   - Otherwise (resuming a run): just `open_output()`.
-4. `broadcast_input_opts()` — sends all input options from master to every MPI rank.
-5. **(debug builds only, `ldebug`)** if `ltest` (`-t`/`--test` was passed): run
-   `test::generic_tests()` and stop after — see [Testing & Extension](../testing-and-extension.md).
-6. `init_rich()` — initialize the Richardson-extrapolation state machine.
+1. `start_MPI()`, then `print_hello`, `init_output`, `init_files`, `init_time`, `init_HDF5`.
+2. On rank 0 only: `parse_args` → `open_input` → `read_input_opts`. For a fresh run (`rich_restart_lvl = 1`): `read_input_eq` reads the equilibrium, `calc_normalization_const` and `normalize_input` make it dimensionless, `open_output` creates the HDF5 output, `print_output_in('in')` writes the input, and `dealloc_in` frees the equilibrium code's data. For a restart, only `open_output`.
+3. `broadcast_input_opts()` sends the input options to every rank.
+4. In debug builds with `--test`: `generic_tests()` runs and the program stops (see [Testing & Extension](../testing-and-extension.md)).
+5. `init_rich()` sets up the Richardson loop. On a restart it reads the earlier output with `reconstruct_PB3D_in`, which stops with a message if that output is older than `min_PB3D_version`.
 
 ### Main loop
 
 ```
-RICH: do while (do_rich())                     ! Richardson levels (grid refinement)
-    start_rich_lvl()
-    PAR: do while (do_eq())                    ! "equilibrium jobs" (memory-limited chunks)
-        run_driver_eq(...)                     ! equilibrium quantities on this grid/job
-        run_driver_X(...)                      ! perturbation modes + magnetic integrals
+RICH: do while (do_rich())               ! Richardson levels
+    start_rich_lvl()                     ! sets n_r_sol and the other per-level sizes
+    PAR: do while (do_eq())              ! equilibrium jobs, sized to fit in memory
+        run_driver_eq(...)               ! equilibrium on this job; vacuum geometry (store_vac) for a free boundary
+        run_driver_X(...)                ! perturbation quantities and magnetic integrals
     end do PAR
-    run_driver_sol(...)                        ! assemble + solve eigenvalue problem (SLEPc),
-                                                ! Richardson-extrapolate results
+    run_driver_sol(...)                  ! vacuum response, eigenvalue problem, Richardson extrapolation
     stop_rich_lvl()
 end do RICH
 term_rich()
 ```
 
-- The **outer `RICH` loop** implements Richardson extrapolation: PB3D can be run at increasing
-  perturbation-grid resolutions (`max_it_rich` levels, `tol_rich` convergence tolerance) to
-  extrapolate to the continuum limit. See `rich_ops.f90`.
-- The **inner `PAR` loop** iterates over "equilibrium jobs" — the equilibrium/perturbation grid can
-  be split into chunks (`eq_jobs_lims`, `divide_eq_jobs` in `eq_ops.f90`) to bound peak memory use
-  (`max_tot_mem`, `max_X_mem` in `num_vars.f90`), driven by `do_eq()`.
-- `run_driver_sol` is where the vacuum response (`vac_ops::calc_vac_res`) and the SLEPc eigenvalue
-  solve (`SLEPC_ops::solve_EV_system_SLEPC`) are actually invoked, followed by Richardson
-  extrapolation of the solution (`rich_ops::calc_rich_ex`).
+- **The `RICH` loop** is Richardson extrapolation: up to `max_it_rich` levels of increasing resolution, stopping when the extrapolated eigenvalue changes by less than `tol_rich` (`rich_ops.f90`).
+- **The `PAR` loop** runs over equilibrium jobs: the grid is divided into pieces (`divide_eq_jobs`, `calc_eq_jobs_lims` in `eq_ops.f90`) so that the memory stays below `max_tot_mem`.
+- **The vacuum** enters in two places, only for a free boundary (`BC_style(2) = 2`): `run_driver_eq` stores the boundary geometry (`store_vac`), and `run_driver_sol` computes the response matrix (`calc_vac_res`) before it solves the eigenvalue problem (`solve_EV_system_SLEPC`). See [Vacuum Response](../domain/vacuum-response.md).
+- **`run_driver_sol`** also extrapolates the eigenvalues over the levels (`calc_rich_ex`).
 
 ### Shutdown
 
-`stop_MPI(...)` deallocates all major state (grids, equilibrium, perturbation, vacuum, solution
-types) and finalizes MPI; `close_output` closes the HDF5 file; `print_goodbye` prints final
-timing.
+`stop_MPI(...)` frees the grids, equilibrium, perturbation, vacuum and solution and finalises MPI; the HDF5 output is closed and `print_goodbye` prints the timing.
 
 ## Running POST
 
@@ -75,31 +83,24 @@ timing.
 POST USER_INPUT PB3D_OUTPUT [OPTIONS]
 ```
 
-- `USER_INPUT` — namelist file with group `inputdata_POST`.
-- `PB3D_OUTPUT` — the `.h5` file produced by a prior PB3D run (must be at least
-  `min_PB3D_version` as checked against `prog_version` in `num_vars.f90`).
-- Options include `--swap_angles` and `--compare_tor_pos` (see `files_ops.f90::init_files`, case 2).
+- `USER_INPUT`: a file with the namelist `inputdata_POST`.
+- `PB3D_OUTPUT`: the HDF5 output of a PB3D run, of version `min_PB3D_version` or newer.
+- Options include `--swap_angles` and `--compare_tor_pos` (`parse_args`, program style 2).
 
 ### Sequence (`POST.f90`)
 
-1. `start_MPI()`, `print_hello()`, `init_output()`, `init_files()`, `init_time()`, `init_HDF5()`.
-2. Master rank: `parse_args()` → `open_input()` → `reconstruct_PB3D_in('in')` (rehydrate PB3D's
-   recorded input state from HDF5) → `read_input_opts()` → `open_output()` → `dealloc_in()`.
+1. `start_MPI()`, `print_hello`, `init_output`, `init_files`, `init_time`, `init_HDF5`.
+2. On rank 0: `parse_args` → `open_input` → `reconstruct_PB3D_in('in')`, which reads PB3D's recorded input and checks the version → `read_input_opts` → `open_output` → `dealloc_in`.
 3. `broadcast_input_opts()`.
-4. `init_POST()` → `run_driver_POST(...)` → `stop_POST()` (see `driver_POST.f90`): reconstructs
-   full grids/equilibrium/solution state, builds either an "extended" or "field-aligned" output
-   grid (`POST_style`), and produces the requested plots (magnetic field, current, curvature,
-   flux quantities, solution eigenvectors, energy reconstruction, vacuum potential — all gated by
-   the `plot_*` flags in `num_vars.f90`).
+4. `init_POST` → `run_driver_POST` → `stop_POST` (`driver_POST.f90`). POST reconstructs the grids, equilibrium and solutions of the Richardson level `PB3D_rich_lvl`, builds the extended or field-aligned output grid (`POST_style`), and writes the plots and tables the `plot_*` switches ask for: the field, current and curvature, flux quantities, eigenvectors, the energy decomposition of every solution, and the vacuum potential. With `PB3D_rich_lvl` below 1 it does only the equilibrium output; for a level above the highest one in the file it stops and names the highest level found.
 
-## Practical notes for future changes
+## Errors and exit status
 
-- Both programs share the exact same startup boilerplate (MPI/output/files/time/HDF5 init) — if
-  you need to change initialization order, change it in both `PB3D.f90` and `POST.f90` or you will
-  create drift between the two.
-- `rich_restart_lvl` is the switch between "fresh run" and "restart at a higher Richardson level";
-  logic that assumes a fresh run (e.g. reading/normalizing the equilibrium) is guarded by
-  `if (rich_restart_lvl.eq.1)` and must stay guarded that way for restarts to work.
-- All `CHCKERR` calls immediately return/abort on nonzero `ierr` (`ierr == 66` is the "silent
-  stop" convention used for `--help`/usage errors, handled specially — see
-  [`/include/PB3D_macros.h`](/include/PB3D_macros.h)).
+<!-- openwiki: broken internal link [/include/PB3D_macros.h] link "/include/PB3D_macros.h" is root-absolute, which no real consumer resolves against the repository root (not a coding agent reading the page, not GitHub's Markdown renderer, not a local viewer); use a path relative to this file instead. Fix the href or restore the target, then delete this comment. -->
+Every routine returns an error code `ierr`, and the `CHCKERR` macro returns at once when it is not zero (see [`/include/PB3D_macros.h`](/include/PB3D_macros.h)). In the main programs `CHCKERR` calls `sudden_stop`, which writes out the buffered output and ends the run through `abort_MPI` with a status that is not zero: the error code itself between 1 and 125, and 1 for every other code. The code 66 is the silent stop of the usage and `--help` paths: no error message is printed.
+
+## Notes for changes
+
+- Both programs have the same start-up code (MPI, output, files, time, HDF5). If you change the order, change it in `PB3D.f90` and `POST.f90` together.
+- `rich_restart_lvl` separates a fresh run from a restart at a higher Richardson level. Code that assumes a fresh run, such as reading and normalising the equilibrium, sits behind `if (rich_restart_lvl.eq.1)` and has to stay there for restarts to work.
+- A change to what PB3D writes can break POST and restarts on older output; raise `min_PB3D_version` when the layout changes (see [Testing & Extension](../testing-and-extension.md#versioning)).

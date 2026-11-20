@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:92d26fddb81ee3dd25ded5a9799889ff29f8387b5b0b528a3f0be90580883fbb",
+  "claims": [
+    {
+      "id": "claim_0b1d143ef15d4d4cbca2163469572659",
+      "statement": "PB3D and POST each read their namelist (inputdata_PB3D or inputdata_POST) once from the input file; check_vac and vac_diag_style are PB3D inputs, and the vacuum plot inputs (plot_vac_pot, n_vac_plot, min/max_Rvac_plot, min/max_Zvac_plot) and PB3D_rich_lvl are POST inputs.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L133-L140",
+          "version": "repo-lines-v1:sha256:4cadda71ddbb78b2d4f0e6bb9f1a6614c9407bdc4377bc0922dd8642eb4a3e0a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc2MmY1NjMwOWI1NjgzZTU1YjY3NmExOWEzNDM2OTBjY2E0YzhiOTEzMTk3MjcxNTIzMjQ4OGE0NjFlNWIzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiNDQ0NTNmMGZlMzIzNWU3ZWExMmEzZGU3YmFiMmE2YmY5MDMzMzk1YjU1NzkzZmY0MzJkYjlhODYxODJjYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2NmZjRjMTk1YmFjNzc2MDQxMzJhNmMxZjRjMzRhODM0M2I3Mjg0ZWIxNThkZjY0ZjE2YTQ1YjQ4YzY4MTEyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzdhMTZlYTExYTdmMWZhOWU1MjRhOWNkOWY1MTg5NTNlNDM0MWI4NzE4NjkwNzM5ZTlkZGJkZjZhYTk4MTIxZCJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L203-L207",
+          "version": "repo-lines-v1:sha256:355826dd2a072cfa6666e81e81a8ae9df7d05dfdcd6e7606433b6a6fa8871ade:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGViMTQzMjc0MWQxMDJiNjQ5OWFhZjJiNmRiZTQ4YTY0MjM5OTY5MmYyZmQ0MGE4ZTU3MmM2ZDE1NDA4MzUxOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZiNDQ0NTNmMGZlMzIzNWU3ZWExMmEzZGU3YmFiMmE2YmY5MDMzMzk1YjU1NzkzZmY0MzJkYjlhODYxODJjYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdmOGJkMTFlYjJlOGUwYzBlNTUxZjAzM2JjYjU0ZWZiNTdiMThjMTY2ZmYwOWI1ZmZkYjJjMzlkMDRmYTg5OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzdhMTZlYTExYTdmMWZhOWU1MjRhOWNkOWY1MTg5NTNlNDM0MWI4NzE4NjkwNzM5ZTlkZGJkZjZhYTk4MTIxZCJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L61-L83",
+          "version": "repo-lines-v1:sha256:28e458081ec7a9473d79278b56877aed94195886e7e2fc5c0361315a9db0b2b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4NTQxOGNkMDYyMDk3ZGY4MzM1ZjRkZDA3ZDliNGEyZGQxZmM4ZDI0YTc1ZWFjOTFhMWQwZjVjZTk1Zjg2NjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NWJhMGU4ZDdhNjNmOTUwZTkwOGZkNTU2MDJhMjY0NTllNDcxNTMxOGYzODI3Y2QxY2E1MGI1MTI4YWQ5NGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlY2U0YzM3NGUzMjIxODc3ZWY0MDVhMTZkZGM2Y2NmZjcwNjgyOGRkZDcxMTdhNTE4ZjBjNmRlMjQxY2RiZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiZDMwMWQ2MDE1NjBjMzkwZDRlODFmNTdkZDNlNDliODliOGUyY2YxNjIzZmQ0Y2QwMDFlODMxMjNlNmNhNTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_87b03ef675104980b99fa6337985cefb",
+      "statement": "The defaults include BC_style = [1,2], X_style 2, norm_disc_prec_sol = 3, vac_diag_style 1, check_vac false, max_it_rich 1 with tol_rich 1e-4, and alpha_style 2 with n_alpha = 10 for VMEC but alpha_style 1 for HELENA.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L120-L124",
+          "version": "repo-lines-v1:sha256:247e6dd86d6b7f18e142b20ec86636df6a4247de10bf47527e74d4a2c63a02f6:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjAxYmFkYzVlNDhjM2MxNTk3MDQyMjBhMjcxM2Q5MmU5MTU5ZTc5ZGYxZDQwYWZkYjJmMjNkMGQ1YjNlMWVlYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTgyNjk3NzhjZDgwNzQ5YzkxODY1MzUxYWJhYTJhOGE0MTNhZjIwNmJmMmY4OTQ4MDdhZDI1N2JiNjg5MzIzNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTQ1NWNiMmVkYjA4NGU5MzIzOTgxYmI2MTM5YzZiZDY5MGQ1NjI4ZjU5ZmU3NGJmZTc2YWNkYTM3ZWFhZjllMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWQyYjEyYjc4YTQ2ZGQ2MTZhZTI1MTZiODU5ZWY1ZjU4NGM3ODQ5N2QzZDUyMmRjZWJmZDZmM2E2YTk4NmM3MiJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L266-L276",
+          "version": "repo-lines-v1:sha256:77056edde39e6ab43537d82d9f4b71f46b6b83beb00b4c83ea1dc77e596cec5a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4NzYyMmI0MGQ2MTJjZGRmMzQxYTIxMjM2NGUyYWQzM2VhOWE5MmZkODE2YzU2MDM3OGY4Yjc4MWRjZDI1NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhOTMyOGY1NmZjNzViNzBjNGU2MDBkYzQ5NjA2YzRjYjU4NjE5NTNjMGY2NjdkODdhMmQxNTM0MzUwMTdjMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMzQzOTAyNjM5MmI0OGNhYmJhYTAwOWUzMGU3NTZkYzc0MmI4MGFkMDNlZmYwMTMwNzY3Yzk2ODZhZDIzZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0MDg2NGYyYjRkMzgwZmJiMTA3NGFmYTRmYzJhMDdhNjQ3M2I2NzIyMWM0NTczMWRlZTE5MDkwOWU2ZGZmODkifQ"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L304-L312",
+          "version": "repo-lines-v1:sha256:a231f291a46413741c5136fe5ad885c928802dc9eea835290005ef698c13950e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTExYWE3MDA1MWMyOWY3ODJlYTg5YjVhYzNiZTI2YzdiNTIyOTA2ZTkyNTRiMDZlZTQ5Y2ZhYWUxZWFiNTMzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdkMTk4NTkzNjJmYzI4MjExNTE4YmZlOTJjMTVhNzIyMWQxZGM5OTQyNzAyN2Q0NDdkMzgzZGY3OTg1YjllNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTFlOTZhNTkxNjlmYmQ3ZTQ2MTI0MjIwNGFjMDZlODhmMDUwNzBkNzEyNzRjNjgzMzJhNzY3ZmFkNTI3ZmMyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzIyZjliNDMwNjJiY2VjOWYwNWJmNjI0ZmJkMDRkZjdhNzdhZjZiNmFhY2EwZWE3MjBlNDEzZGMxNzJkZTgyZCJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L327-L331",
+          "version": "repo-lines-v1:sha256:f19fdcaaad59f056303b18f79644f5dbbf5c1c5c45fbb7eb1ea9c7c115361ebb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmQ1MTJmY2FkYWJjNDY2MDAwYzMwMGY1ZDA5MzliZTlhZjgzMWE0MzcyZGU3NmViNmM0NzlkYmUwNzQyMmI1MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGIwYTFmNjhmYmYxYjVhODY2ZjVjYzkyZTE2ZTU1ZjM2MDQxZjRiODQ5YzBmOGRlZDNlMzQxMjc2NjVjMTMyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODdmNzkyNTcxZDljNTk1MGY2MDVhMTA4Y2Q2ZTkzMDEwYmM5NzQ5NDBjMzVhOThlYzE3OGM0ZjkwYjk4MGMxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTkxYjhmMmEzOGYzZWVhYjI4OTIwOTNlOGVjZjJmZDkxNDM4MDAxNGE5ZDZhYmM0ZTY3OGFhMmQwYTcyNDE0OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c03cf2b17d2a4186a116d6349b566247",
+      "statement": "The X style follows from the deck: min_sec_X or max_sec_X without n_mod_X gives X_style 1 and then requires both limits with |max_sec_X| >= |min_sec_X|; neither limit gives X_style 2 with n_mod_X = 10 by default; a limit together with n_mod_X is refused.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L736-L753",
+          "version": "repo-lines-v1:sha256:a2736393f6535c4fc131556f652ec9bef295823efd815f25f04836d0ae6f1e1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlZTY4NzQwYzkyMTIyN2IyYTk1OThiMTNjMGZjNzJiNTAxODlmMzNjYjJkYzcyNzVhZWE2OGYyMmNkOWRhZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTk1ZjgyZTI3OTM2OTA2YTFkYzFmZDM1NWNkNzk2YjIwNDQyOTBjMGZjNzZiMjVhZDkxYzk4ZjhiNjllYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmNjNhODU4YmIwMmM5M2E4ZWU2NDhhMzU4N2VhYTk1NzFkOGFlZDRmMmY3MzZiYTljZDk5MDNiNzc4NDEwNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmMjYwZmFiMTc1MTVhMGNiYzdiZjBkMjYxY2VkMjA4Y2ZmN2Q1MTM4NjU3ZjRmNTMzNzdjMDQxNjI5MDYwNjcifQ"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L774-L803",
+          "version": "repo-lines-v1:sha256:3d52c3013a6986bc074130936bf0187e1496747b29afda46167f41b896b12963:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmOWMwMmVlZGY1MmI0NGI5ZWM2YTVmMzA1YzFhNjE2YjY2NDZlMzBjNDhjMWViNjEzYzZhMzJmYmQwZTkyMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwOTdiY2FkZDRhZTc5ODI0MTJhYTQyODc3YzE2NWQwYmNkMTA4MmViYTE2MmY2MmU5ODExMjIwZjQxY2ZhYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjMGI4NjJlYTc3OTRlMTE1M2FhMTEwOWMxY2RlOTAwYWZjN2RiYThhOTQ4NGEwYjZhMjVmZTg3ZGU1ZGI1YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhMzJjMDZmNTNiNjYwOTNkNTZjYmUxMWU4MDAwN2U1ZTRmZTRiMjUyZmVjY2RlNWEzOTg2MTg4YjNkN2I0NTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ec5bfe97551a4357900c570b9a2d8052",
+      "statement": "The POST vacuum plot is on by default with 101 x 101 points and a box that follows the boundary when the maxima do not exceed the minima, and it is switched off for a fixed boundary.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L352-L362",
+          "version": "repo-lines-v1:sha256:990beb84344e5d4f712e436e30da378682865e07b6328698d99d88e73eaae52a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZGFiNWI1NWRjMTMxZjE5M2MyOWYyNjA2ZTU5ZTE1N2IwYTFmNTMzZjJjMGE4Yjk3NzMxNDhlOWVhMjNlM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YmRlMDI1MmM1YzIyZmNhMDNmMjkxZDQ1ODk1MWJkNGE0NTQ1NTAyZTI1OWNmNGJiOTFhMGUwZjM5NDMzNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjNGJjMDcyNmMxNjQ3ZjAyMWYxMmEyY2I2ZDJkNGUxNDE2NDY2NzViMzkyNjFlMTA2MGJkODk2NzBlNmNhZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyNDZlY2ZlZTAyMmMzYTE4OTUzN2ZiZDA3NmU3YzI2NWY2YmI3M2FiNTUxMzgwYzE0MjJmZTYzYTkxYTY0YjgifQ"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L699-L703",
+          "version": "repo-lines-v1:sha256:ee4bd56278e90a78ae5db1dc4bba7c77801edbca7e64deae2ee4756e644b7e16:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzZkMWUyMzBlOWUyYjk1ZDc1NTVlMDIwMGY3Nzk3NGNkYmY5YjM5ZWNiMGZiNjg4NDNhMTA1NzNlMGM0NzI2NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ0ODk4YmQ4YThhMjE2ZTM4ZDZkYjcxMDNkNTdiZTkwZmM0MTMxYzBkMzgyNTk4ZjViZjYzODc2N2MyOGUzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjhhZjYxNjNlODBhYTBlMjI5NTU0YzM1MzExMWU5MmExZmNlMTgwN2YxY2RlY2FhZjRhMThiOTk5MTM3ZDZkNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4NmI5N2YwMmU1ZDlhMzc3MTQ2NDM4YTJjZTFlMjQwYWVkMWRmYjVhYWU2Yjg0NTdkOGE3YzYwNmUxNjEyMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_89adc272ad02400fb76f1c78f0d6c76a",
+      "statement": "PB3D recognises a VMEC equilibrium by the extension .nc and a HELENA equilibrium by a first item that reads as an integer.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/files_ops.f90#L226-L252",
+          "version": "repo-lines-v1:sha256:5caa3f72b739fb5345a64a41ee65dd4f1be46eb9a25369098605f9401a60a547:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YjQ0NDUzZjBmZTMyMzVlN2VhMTJhM2RlN2JhYjJhNmJmOTAzMzM5NWI1NTc5M2ZmNDMyZGI5YTg2MTgyY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NGYxYTA1YTU5YzExMzI1ZGMxNGIwMjkzNmZiNWE4NTYwYWI2MTNhZWY1NTY5ZTAyZDAyMTRhNzlmMmViNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljNjgwYzMzODlkYjY5M2ZlY2NmZWVlNzBkNDAyYTk5MDBlYTlkNzExNGZlMTRlZmRkYmQ2ZDVkYzI2MWY2YmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyN2JiODNmNTE1NTBmMjkzNGEzY2ZkYjQ3ZWRhYjg4MWY1YmIyOTBhZWI1ZmRmZmM2MTExY2VlYjhiYzMxZTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_26b62f48fbc446e99f7ca2bdb61b398f",
+      "statement": "PB3D accepts PETSc and SLEPc options on its command line, among them -st_pc_factor_mat_solver_type, besides its own options such as --jump_to_sol and --export_HEL.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/files_ops.f90#L27-L45",
+          "version": "repo-lines-v1:sha256:df8c4b42d7728f2dc16e2d514abdc9370291795bbbd64643f2b8cd7dbd6f0dbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZWJjZWVlMjhiYWFiMTc3ZGIyNWM2OTA2NWYyMzRlMGJmMGU3OTE4YzhjMGJmOGQyZjE3MWExMjJkMjZlNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmMjY1ZTAzZjRlZmU3YTBiZTU3NTFiMTgxZGM5MGQ2MjhkZmU1MGM3NzNjZWU2Y2I5MWJjMjUzNTNhYzFiMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZjRmY2VhYWYzN2FiOTc4OGVhMmYwODMxOGRhMzA0Y2E2ZWFlZGRhZjBhNTQyMDFlNjY0ZTdlZDQ4NzhmMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ZGZiMWY0Nzk5YmU0NjFkZmMxNTFhMGQxYTUxYWY4MmIwMDg5NjljODBjNmI4ZWM2MzRlYTBlNzMzZjJmZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_706d23a337744ee79e72933f228fb639",
+      "statement": "tol_SLEPC holds one tolerance per Richardson level, and retain_all_sol keeps faulty solutions too.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/num_vars.f90#L121-L121",
+          "version": "repo-lines-v1:sha256:5d07d6a815efe34963d4539415316d18a5aa0e675f7d44dc90ec92c361cae67c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQwN2Q2YTgxNWVmZTM0OTYzZDQ1Mzk0MTUzMTZkMThhNWFhMGU2NzVmN2Q0NGRjOTBlYzkyYzM2MWNhZTY3YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQwN2Q2YTgxNWVmZTM0OTYzZDQ1Mzk0MTUzMTZkMThhNWFhMGU2NzVmN2Q0NGRjOTBlYzkyYzM2MWNhZTY3YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2YwMGQxZGExZThmYjY4ZTg5ZjAyZjViODJiMDM0M2U1NjhhYzIzNmViNWMwYjc2ZDIxYzFiNGY4ZjljY2Q5MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTgzYWUxZTM2ZmI2MmRmN2IwZGE4NGRhYTllOTEyMTk1NzNmYzFkNTdmYWVjMzdiNTExM2JjM2M0NjQ1N2U2MCJ9"
+        },
+        {
+          "resource": "repo://Modules/num_vars.f90#L168-L168",
+          "version": "repo-lines-v1:sha256:4359932c89162ccc34284cbe86fff2ad8f0925441d823e7eea6c0fc90b9b5b6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1OTkzMmM4OTE2MmNjYzM0Mjg0Y2JlODZmZmYyYWQ4ZjA5MjU0NDFkODIzZTdlZWE2YzBmYzkwYjliNWI2ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1OTkzMmM4OTE2MmNjYzM0Mjg0Y2JlODZmZmYyYWQ4ZjA5MjU0NDFkODIzZTdlZWE2YzBmYzkwYjliNWI2ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjNiMjE2OTNhMGRkODcyMTMxMWExNTdjNjc4NWY4YzUwZDYwMTJhZGY2ZDM3OTAwZmI1ZTc3Yjc3NmZlNTFkZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODdiODJmMDA0NWY2NGYxN2IyMmFhYjRkZWQ4OGE2YjE3NzljYTYzZTA2ZmM5MGJiYjBhNzZhYWUyZGEzMTYyMyJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

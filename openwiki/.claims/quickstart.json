@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:210605c0b2a029cb8cacc4153c2f63bad4427fd0b22526a60b5138d6f8411f6f",
+  "claims": [
+    {
+      "id": "claim_5b5013cf00e64e5dbc383a6fa828bcf1",
+      "statement": "PB3D and POST both start with start_MPI and link the same object library pb3d_modules built from Modules/*.f90.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L370-L370",
+          "version": "repo-lines-v1:sha256:444a57527b8180761a0b36c464aedb8c87b50a94b05f0bfe7be31a91b6d217b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQ0YTU3NTI3YjgxODA3NjFhMGIzNmM0NjRhZWRiOGM4N2I1MGE5NGIwNWYwYmZlN2JlMzFhOTFiNmQyMTdiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQ0YTU3NTI3YjgxODA3NjFhMGIzNmM0NjRhZWRiOGM4N2I1MGE5NGIwNWYwYmZlN2JlMzFhOTFiNmQyMTdiMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2QzNjIyMzcwMDJlMDM2NWZiY2FkY2NkZDQ5MTU4ZjEyY2ViZDAwYTc4MDg1Y2E0MzRiN2Q3OTg5ZTMyNDQ5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmEzOTA5MDhhMjkwMjg2ODdjOTAxZDNjNGU2NDY5YjY1ZWUyZDU3YzNkZmM1OWQxOGQ5NTYwNWJiNTY0MThlMyJ9"
+        },
+        {
+          "resource": "repo://PB3D.f90#L88-L88",
+          "version": "repo-lines-v1:sha256:eb6564c882ead96418ad16d941045e5870315f0dfbe66f6f24ed1613e953c155:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI2NTY0Yzg4MmVhZDk2NDE4YWQxNmQ5NDEwNDVlNTg3MDMxNWYwZGZiZTY2ZjZmMjRlZDE2MTNlOTUzYzE1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI2NTY0Yzg4MmVhZDk2NDE4YWQxNmQ5NDEwNDVlNTg3MDMxNWYwZGZiZTY2ZjZmMjRlZDE2MTNlOTUzYzE1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE5NjliODVlYWQ4MmQyMjVmYWQzZmY3MTRhMTBiNzM0MWFmOGYwZDcwMzRkMDU2OTg2YzRkZGZjODVhNThhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjVjYzcwODc2MWJmMzNhYzZlNDBiMTIwYzQzMDY4NTI2OGE0M2I2YjA2MTJmMjdmMjMzNjU2YTgxZDRiZTFhMiJ9"
+        },
+        {
+          "resource": "repo://POST.f90#L68-L68",
+          "version": "repo-lines-v1:sha256:eb6564c882ead96418ad16d941045e5870315f0dfbe66f6f24ed1613e953c155:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI2NTY0Yzg4MmVhZDk2NDE4YWQxNmQ5NDEwNDVlNTg3MDMxNWYwZGZiZTY2ZjZmMjRlZDE2MTNlOTUzYzE1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI2NTY0Yzg4MmVhZDk2NDE4YWQxNmQ5NDEwNDVlNTg3MDMxNWYwZGZiZTY2ZjZmMjRlZDE2MTNlOTUzYzE1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE5NjliODVlYWQ4MmQyMjVmYWQzZmY3MTRhMTBiNzM0MWFmOGYwZDcwMzRkMDU2OTg2YzRkZGZjODVhNThhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODRhNTNmMDgwMWIyMjcyNTBjYzk4YzM2NGNiMGQwMzI0MzA2MzAzYTMxNzliY2NhODhmZDZhOWU3ZjU0YTNjNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_dce723e589594883807d40a75e7418bd",
+      "statement": "The default boundary conditions are BC_style = [1,2], zero at the inner end and free with the vacuum at the edge, and the input check accepts only 1 at the inner end and 1 or 2 at the edge.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L329-L329",
+          "version": "repo-lines-v1:sha256:371dec38e5fc6432100ac97ad05b290763d264c1e202095a0a1e5b94929d0c30:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzcxZGVjMzhlNWZjNjQzMjEwMGFjOTdhZDA1YjI5MDc2M2QyNjRjMWUyMDIwOTVhMGExZTViOTQ5MjlkMGMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzcxZGVjMzhlNWZjNjQzMjEwMGFjOTdhZDA1YjI5MDc2M2QyNjRjMWUyMDIwOTVhMGExZTViOTQ5MjlkMGMzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWZkOTdmNzRlYjYwOGNlOWQ3OGUxYTQ4MjBiMTNmZmI5NDNiYzc2M2E2OTkxOTNjYTEzMjRjOTk3YzgyOGI2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjMwOTVjZTQ4ZjE0YWJiYjJmOGUyOWE2YzAzYzg5NDAxZmQ2MzJkYzVhZTQxZTIzNWQ4NTJkOWJiOTkwMGY5MiJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L458-L469",
+          "version": "repo-lines-v1:sha256:bdf64de2449e9f2e6745681926e88793f898f7455eeaa7d0c1de91bbd88f8cd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiYzExZjU3ZjQ2MmJmMTIzN2I4MDE4Y2VmZDYwNDBhZjUxNTBhOWUzNjg4Y2M5NmJlZTA3ZTQxM2IyOWE4ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTk1ZjgyZTI3OTM2OTA2YTFkYzFmZDM1NWNkNzk2YjIwNDQyOTBjMGZjNzZiMjVhZDkxYzk4ZjhiNjllYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNGYyMDI5NjlhZWNjMGYwYjViOGZlY2E0YzVmYjc4MGE0Y2Y1OTZhMjQxZDc5MTJkNGEwMGVjYmEzZDk3ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxOGU3ZTc5YTg4YWI0N2VhN2YxYzIzYTdjMjgxYjQ4OGM4ZTY4ZmJkYmRjMGY5MTljMWU2YmExMTAwYmMzZDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_80abc54657784e4bb7f06a6806a5f366",
+      "statement": "The LICENSE file is a BSD-style licence of the ITER Organization that also requires the program to keep the name PB3D and changes leading to published or public work to be communicated back through a pull request.",
+      "evidence": [
+        {
+          "resource": "repo://LICENSE#L1-L19",
+          "version": "repo-lines-v1:sha256:6589f066792039dfd7bf018cbafe8c3badcffaef616e6224db81c56da97fe130:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0Yjg3OGU3ZmQ5NmEzM2IwNTY1OGE5NTVkNTEwMzgxOGIyNjExM2YxMjI1NzMzM2M5MWU0MmExZTkxZWI2ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhMmU5MDBjN2QyMmU0NzM3YjgxZmM0MWY2MTEwODFjNWI1Y2I1MTczN2QwMjMzMmM1NjA1MjlmZjI3N2YyMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3M2YzY2YyMTg4NjRlNTk4ZjljM2Q2ODY2ZjY5OTEwOTI2ZTdiMmQ5OGIwOGJiZDllYTA3MTIzN2Y0MmRkMDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f9bde9d26a4642b2a2a8e618fbddee0a",
+      "statement": "prog_version and min_PB3D_version in num_vars.f90 are both 2.50.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/num_vars.f90#L60-L61",
+          "version": "repo-lines-v1:sha256:85ced1c3675ad6b8e307518086228698cb0d82aab4f933ddbc0c071a995fc491:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Y3MWU3OTJlN2ZiM2RkYTQ5NjQ4ZTBjZTY4ZjFkZTNiOTA1N2ZmODgxYTc1NmY3YjM3ODZmNGI1NDIwMWJlMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIxNTQ5NzZmZWFiZDJmYzIzNDQwMjE1MTZkNzc5MjlkMGY3ODNkMDk0NDFjZGUxZDNhNDBhYzY0YTBhMjhiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGMxNmFmYWMyNDA3MDI2ODVjNDE2YWJjM2FjYmJiYzA1Njg5OGUzN2ViZTRhNDY3NGQ2ZDJmYTRkOWQzMDdmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjNhNGMyNjdiNjEzNWU0MWM4ZjA2ODFkZWQ5Y2IzMGI5MWJkODVjM2M3MmQ5ODE4MGFmYmZjZGZiNzExNjg0YiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

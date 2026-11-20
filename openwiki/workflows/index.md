@@ -1,0 +1,4 @@
+# Files
+
+- [Input & Configuration](input-and-configuration.md) - How PB3D and POST are configured: the namelists inputdata_PB3D and inputdata_POST, the defaults and input checks of the main switches (eq_style detection, X_style and the mode-range rules, alpha_style, BC_style, norm_disc_prec_sol, vac_diag_style, check_vac), the POST vacuum plot inputs, the equilibrium and perturbation files, the example decks, and how to add a new option.
+- [Simulation Pipeline](simulation-pipeline.md) - What happens when PB3D and POST run: the command lines, the start-up sequence, the Richardson loop with its equilibrium jobs and the drivers, where the vacuum geometry is stored and the vacuum response computed, the version check on restart and in POST, the POST sequence, and how errors end the run with a non-zero exit status.

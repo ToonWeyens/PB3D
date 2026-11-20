@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "pages": {
+    "/openwiki/architecture/build-and-dependencies.md": {
+      "pageVersion": "sha256:6102bd64f6e28a128ebd050d426c98d23654541d371cfe02150d5c84dcda2a84",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/architecture/module-map.md": {
+      "pageVersion": "sha256:ab1548f50f893ec5c9651b91c683eaf632d6b1f1495842982349ee7b84f158dd",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/domain/physics-domains.md": {
+      "pageVersion": "sha256:0bb24d70e219db0d398770d515be04d290af3369cd4fca740573c9606042cc00",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/domain/vacuum-response.md": {
+      "pageVersion": "sha256:40e2f53067c9ef718a58a034999e7fe73d9c26a846a4c7333de2fb156c80d303",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/quickstart.md": {
+      "pageVersion": "sha256:210605c0b2a029cb8cacc4153c2f63bad4427fd0b22526a60b5138d6f8411f6f",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/testing-and-extension.md": {
+      "pageVersion": "sha256:ce1a67b123254fcdf4ce5af6d9cc75dad71a1446abe8265d1543b8445c5c892f",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/workflows/input-and-configuration.md": {
+      "pageVersion": "sha256:92d26fddb81ee3dd25ded5a9799889ff29f8387b5b0b528a3f0be90580883fbb",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    },
+    "/openwiki/workflows/simulation-pipeline.md": {
+      "pageVersion": "sha256:dab114b6a3d783d0304a1b6e803f384686b075dbee823f9dff9f73f73f30c111",
+      "completedBy": "claude-code",
+      "completedRunId": "40078265-de45-4111-a830-0502e47e825c",
+      "gitHead": "a9334b245df3e2e2dfc984c2532a46991ebe5958",
+      "sourceFingerprint": "sha256:59394e18d45a48ebec45c4b168d804e71154701969dffa1cc10a4dda982a5a0d"
+    }
+  }
+}

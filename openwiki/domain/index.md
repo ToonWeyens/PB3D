@@ -1,0 +1,4 @@
+# Files
+
+- [Physics Domains](physics-domains.md) - The physics behind PB3D's module groups: the imported VMEC or HELENA equilibrium and its normalisation, the perturbation modes, the radial discretisation with left finite differences and the free edge, the boundary conditions, the generalised eigenvalue problem for omega squared (negative is unstable), Richardson extrapolation, grids and storage, and POST; the vacuum response has its own page.
+- [Vacuum Response (Boundary Element Method)](vacuum-response.md) - How PB3D computes the free-boundary vacuum energy: the field-line 3-D style for VMEC and the axisymmetric style for HELENA, the sign convention along the stored normal -J grad psi and the Green identities the discrete operators satisfy, the diagonals of H and G (vac_diag_style), the exterior solve, the response matrix added to the edge block of A, the check_vac diagnostics, POST's vacuum potential plot, the tests, and the known limits and cost.

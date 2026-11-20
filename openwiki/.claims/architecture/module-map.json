@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:ab1548f50f893ec5c9651b91c683eaf632d6b1f1495842982349ee7b84f158dd",
+  "claims": [
+    {
+      "id": "claim_8f7ea8fb48294393adef1d6510b55593",
+      "statement": "PB3D_MODULE_SOURCES lists the modules in Fortran module dependency order, from num_vars and str_utilities through MPI, HDF5, grid, equilibrium, VMEC/HELENA, perturbation, solution, vacuum, Richardson, SLEPc, input/output, PB3D output and drivers to test.f90.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L283-L365",
+          "version": "repo-lines-v1:sha256:146ef0e8d43f8f047df06df87d4dbed01fec222456d7ac1dc50fdea72b583be9:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5YjFjMDAxMTM4ODEzMDFiNjA0MTA3N2VkNDBlMDM5NWNlZmNlYTVhODZkYTRjZDIxMjIyMWE5MmQ0YzU5NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1OGMxNjczZmU3ODVhNzhhZDkzMzU5ZjQ5ODY3YTg1MTY5NDRjMzIwYzFmZmVkN2Q5ZTIwNTk5OGU1YTQ5MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1NDUzMzEyZDk3ZWRkMTA1Y2RjNDU5OTFmYzVkMGQ2M2M3ZjA1YzZkMmI3MGI5ODU4OGNjMjNlYTI4ZjE0YTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aa4ca3b7f8834e34acb2781c021c579e",
+      "statement": "spline_utilities wraps the PSPLINE/EZspline library and is separate from num_utilities so that the numerical utilities compile and are unit-tested without PSPLINE.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L241-L257",
+          "version": "repo-lines-v1:sha256:c828c17c1fcff10e64560bdb81885e5b62ea587c61ebb50c353aa8702c461c8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlOGRiY2E2MjMyMTZiMzNlYmQ0ZTRmY2QzZTQ1NDU0ZGI3NmFmY2E4OTNhZjdmZWZkNmI0ODJlMTAwYzRmZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjOTlkNDc4NmExZTFlOTQzMTczNWJiNGJkNGE1NDE3MGJmOTI5ZTllYzYxMmU2Zjk0NTM0ZDNiMDc0YTE5ZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzODU5NTYyZWRiOGY2Y2YwNjdjZmU4MWM4NjM4NDZmMjIxOWJjOWE5ZDU4ZWZiMWZlZjBlN2JlNzQzYzJkMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzOGEzNmYyYWZlM2U3ZWZmNjZjM2RhZTNiYzMyODc1MTA2MmRmZWE3OTEzMGQ4YmYwNWQyY2VlMTUyZGJjNTcifQ"
+        },
+        {
+          "resource": "repo://Modules/spline_utilities.f90#L1-L12",
+          "version": "repo-lines-v1:sha256:6c751207b34a6e293f5c36d07c541450903d5ffa3e7bd6c4ef9f792e91a03d27:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwNjQ4ODIwZDRlNWU4NzBkZDQwYzUxMzE3MDg0MGEzYjZkNWMxZmE1ODc2NDgyMzFhY2ZjOWIwM2E0MGI0NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZjU2YjU5YmQyODFhOTVhNjAwNjRiYzNiMGNlYWI3MzM3MmFjY2E2MTU3YTE4ODJjMjk3OTk3ZDFkMzI4OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkOTNmNGQyMDk1NTg5MGIwM2M3MWQ0MzhhZDI4N2M0ZDI5MGQ1OTEzOWZmNzBlM2Y4YWIyZTI5NTUwNjkwZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_88f12da883e74d71a486b45fe6739e97",
+      "statement": "flat_vars holds the flattened variable type used for HDF5 storage without depending on HDF5, so that PB3D_utilities can be compiled and unit-tested without the HDF5 library.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L228-L239",
+          "version": "repo-lines-v1:sha256:3b24b7dea29a6d355790d1d03034e2aaef19ad890c7bbb3f461e1b866b4eb1e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YjEyMjJiYjg2MThiZTIzOGVhZGI0NjdmMzJlMTEzN2NiMmE3MmEwM2ZlOWJkOTcxYjYwZmFhMTgzYWU5MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2ZWRmZjZjMmI4NDc2N2NjMWUxMzNmYjU3MmE5NzgzNjdjMmMwMTNjOTRjMzQwYTQ0Y2FhOTEwNTU1NDA0OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjMjQ0MmE2ZDMwNGEwODI0OTRkNWQxZGVhY2NiOGFhZmVlZDQ0MjNjYWY1NmVkOTcyMWJjYTBlYjM1ZDMyMDcifQ"
+        },
+        {
+          "resource": "repo://Modules/flat_vars.f90#L1-L10",
+          "version": "repo-lines-v1:sha256:d12436d8100b0574827d9919d8a9de4bb1624cf3149eaaa38b9538b7d1820937:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwNjQ4ODIwZDRlNWU4NzBkZDQwYzUxMzE3MDg0MGEzYjZkNWMxZmE1ODc2NDgyMzFhY2ZjOWIwM2E0MGI0NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjOTg4ZDNiMmE4MjZkZDM4NWY0YWQ3NDI3MWMxNWM3NGMwNGY2OWRkYjZmOGExYzU1NjBiM2MyZTgxYjQ2MDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d04a589b3e7847188f865d35110986ab",
+      "statement": "The vacuum style is chosen by the equilibrium: VMEC equilibria get the field-line 3-D style 1 with n_par_X times n_alpha boundary points, HELENA equilibria the axisymmetric style 2.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L176-L186",
+          "version": "repo-lines-v1:sha256:e78bce2159a8f2efffb5af520b95f8efa37304acce5884bfacb10428e7bcbf4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMjNiNTRiNTk1YjdiNzExM2I3NGZlMzM1MmMxOTE1Mzk2N2FhNTY2YzI5NDVkZjZhZWE3ZjdiMDFjNDYyZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMGRkZjhmOTkyOGM2YTdkNjYyZDNjYjhjZTgxYWU5YmVjOGQxNDEwMDI5MDk2NTIxN2UzYmUzMjcxMWU3ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNzZmOTY1NjU1MDg2YjQxYzgzMzRjYThlYjZmZWRjMGUxOWJlYTQwY2QxMjI0NTFhZmEzYmVmZjEzMWUzM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0ZGI4ZmMxOGFkYmVjOTllMjQ3ZjhjZWUyYzRjMWY3ZTFmN2U5OWRlNDI3MGEzNjlmYmQ5MTQwYWU0YzBiYWIifQ"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L255-L262",
+          "version": "repo-lines-v1:sha256:7d08ab7b1ade91df00a5a5eb232555a5705f6016b2906b19c5a17e03e944b4ba:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGNhYzMyZjJhMWIyZGYxYjlmODY3MDdkYzBjYjgyMGYyOTA2ZTg0MTA4Njk1YWI4OWU0OGRjNmY2YTMyM2E3NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWE3NzVmN2NlZTgzODZjMzIzMDc3MThmN2ZhNGNkMGMzOTlmZjFhZTA2YTNkN2IxNmJhMWI1YzQ1ZWIyY2VmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDA3NWI0NjI4MGI0ZjU0MzUyOGVmNzk3MTFlZjEwNDI0NjFjZGY3ZTdjYzE1ODY1M2EzZGNkMTM2MzAwNDVkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWI4MmZiM2Y5MjJhY2Q3MmMwYmMwZmMyNzM3YTg1YWYwNmVjOWYxNjI4MmI0MmFmN2NhYmM2MzRmZmRiOTRlZiJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L390-L396",
+          "version": "repo-lines-v1:sha256:7ce10e1f8bda6df035db191726050ab6142984804e9c7131217f8308d5865752:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWVlZTI2ZDRjOGVmZTk3ZDM4OTc4YTY2MjZlMzY1MDNjMjMyMmQ1MTM1OGZjM2IzMjE3ZWZmYzQwOTA3ODVkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjBhMmQ0MDkwMjMwMjUzYzdmZjM5ZDk1YjZmOTIwZWYxMDE4ZTFhMjQ0YTFlYzcwMjUzNmMzNzMxYTBjNTlhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzMyOWUzMTRjMjVkMTc2YmI1MWIyNTU4YzBmN2Q4M2U0NTQ1ZjUzOWRjNTI2OTE3ZTEzYjMxNTEyMzA1ODM2YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDMyNmIxYzY4Yjk4YzRiMjVmYzJkZTQzNGM1MDMxOTdjMThlOTZiZjBiNTNmMzAyMWRjM2U0ZWI0MDY5NzQ5MSJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_vars.f90#L54-L54",
+          "version": "repo-lines-v1:sha256:c4a0fb85c422367f7856605347d799dc7374300d21247cbec1560dc25d933d79:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRhMGZiODVjNDIyMzY3Zjc4NTY2MDUzNDdkNzk5ZGM3Mzc0MzAwZDIxMjQ3Y2JlYzE1NjBkYzI1ZDkzM2Q3OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRhMGZiODVjNDIyMzY3Zjc4NTY2MDUzNDdkNzk5ZGM3Mzc0MzAwZDIxMjQ3Y2JlYzE1NjBkYzI1ZDkzM2Q3OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTcyOWY1OGMxMjM3MDEyMDhlZTYwMzAxMWZhMTYzYjAzODlhZTMwZGQyYjc1N2FmMGI0ZGZhZTllMGVmMjAwMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTkxY2MyNzc3M2NjOTFmYjExYmNiNTQ3OTU5NTE5ZDMzNGM5NjRmYTNkMTU0NzE3YTRmNmZiY2U4ZmM5MTNmYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3dd0da627a4a4a96b191217db4870ee8",
+      "statement": "abort_MPI ends the run through MPI_Abort with an exit status derived from the error code: codes 1 to 125 become the exit status itself and every other code gives exit status 1.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/MPI_ops.f90#L233-L262",
+          "version": "repo-lines-v1:sha256:d85d5841aa93f0176855d30694f3bdc3f1b2c26743eb1e83ec84820c19fdaf9e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNjZhM2JmMjZjYTYxNDZhMTI0ZDUyNDMzM2JiMTQ2ZDY1MjFmOTBiMDgwMzM5ZWE0MmM3YmRmZmE4OTY0YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkNTdhNTc0ZDYxYjYxZDI0NWQ2YTUzOWI2MDIwOWYzODhmMTcxYjBkMGNiZGQzZGE4NzAyNTJmN2Y4MWY1YWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5YWMxOTQ4NjMwOWE4ZTFiODc3ZjEwMjUyNWZmYjY2NTJjN2UzOGNlZmJiZjc5ZTI3ZjRkNjdmZDVhZjNmMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1MGJiZjNmN2Y5YjcwZTkzY2Y0ODU3MTFhZDM3ZTFiZDcwYmQ5MWQwZjBhMDAyZWZkZWI1MTM3OTdlZTM5ZDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_072fe92e21d54f3d9e19559f82e50ef1",
+      "statement": "writo splits a message into parts so that no printed line, including indentation and time stamp, exceeds max_str_ln = 120 characters.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/messages.f90#L365-L375",
+          "version": "repo-lines-v1:sha256:04bd9d9549169d1ca454c748781975641638a3108772573499dfbcb5cd07ccc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwY2MxZjIxYWYwMzcxNGNmMjE3ZTNjMzQ0MWY2Zjk0NWE5MTM5YjU0MmVhNmE3MDhlMzc1YjY5OTZiNzA2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhYWIyYmMzMTA0NWI4ZWI4YmExYzhjOWZmNzAxMDhkNWFmZjdkNDQxZDkxMTUzODBjM2FmY2Y0MmZlNTk3ZmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlNmE2ZTQ3ZjJmMGU1YzIzODczMGU2YzU2YzQ4NWQ5NTdhYTAyYTQ4ZWYxZmFmMTAwNDdlYmQ5YjRlOWJlY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2OWIyZGQzZjA2YzkxMjRkZDY1ZTJhOGNjNTAyZGFkNzE4NDhiYTBjNmVlZGFmMjRlYjlhNTU4MDI1YjhiMjAifQ"
+        },
+        {
+          "resource": "repo://Modules/num_vars.f90#L51-L51",
+          "version": "repo-lines-v1:sha256:5dd743e54249a1a4baae77053274e1df3eb1af6bf1df65d5d5a980ca99241a1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRkNzQzZTU0MjQ5YTFhNGJhYWU3NzA1MzI3NGUxZGYzZWIxYWY2YmYxZGY2NWQ1ZDVhOTgwY2E5OTI0MWExZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRkNzQzZTU0MjQ5YTFhNGJhYWU3NzA1MzI3NGUxZGYzZWIxYWY2YmYxZGY2NWQ1ZDVhOTgwY2E5OTI0MWExZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjJlNmU4OWE2ZjgyNTdmYWVkMDNiNmU2MzkzZDAwM2U5YzIyYWJjMDMwODgyYzQzNmI5NTg3Y2VkZWY2NzMzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTlhNTk2NDNkMTJhOTNkMjE4NTRmZjZiOGJmNTNlNjU4YjE3YzZkMmUzZGU4NmI1MzlhNmQ2OGRiM2U1OGRmMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3b363766e5d94fdda8f735b79147a27e",
+      "statement": "setup_modes computes the slot of each mode from its mode number and checks that every mode of ind_tot finds its own number in its slot of nm_X.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/X_ops.f90#L1170-L1230",
+          "version": "repo-lines-v1:sha256:ffc3255d2a4565f3ff68f4b6da744677d9257f913abf44dbc242b08429e37b0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhZmI4M2I3MWJiYjdiMzM3OTgwNTMzOTc3YTE2YTE0NzgyOGU2NmU0NmQ1Mzk0MWJiODg0ODg1MTAyYjkwYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYjE0MzI3NDFkMTAyYjY0OTlhYWYyYjZkYmU0OGE2NDIzOTk2OTJmMmZkNDBhOGU1NzJjNmQxNTQwODM1MTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmMjNiODhhYjM3M2UwYWRkNGY1NTEyYjlkN2EwMmE0ZGUxZDAwNDRmOGFhZWQwOGQ0MjRmNzQzOTFkMDFlN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExMWFlM2MxYzc4NmI0MmRiZjgyYTRiMjljMDk1MDg0MDQwZGY2NWRjN2E3YTY0YzFmMjJiY2VlYWU1NTA2NWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_42e34e194eb74e089d0415c9a48edd6c",
+      "statement": "read_VMEC keeps the Jacobian, |B| and the covariant field components on VMEC's Nyquist mode set (xm_nyq, xn_nyq) and splines the half-mesh quantities from VMEC's half-mesh positions r_V_H.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/VMEC_ops.f90#L136-L150",
+          "version": "repo-lines-v1:sha256:d69633cc0df2311e904201700aa74698f9512054af7fb671cba2ad3ce0e035ba:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmNTg5MTFlMzUxZjZhNWU0MWRhNGMwNTFkNzdlOTUzMTMzZmNlNzdkN2QzMTQ1NzhkMjRkM2Q0YjQ2ZmJkOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYjA2NzYzZTIxMzc4NzFkOTkxMzBhYzI2Yzk1MGNiZThjYTQwZmRjYzMxYzZkNjQ0YmM1ODkyZTE5OTkxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzY3ZWU2YjM0OWI2YmMyYjlmNjQwYWNkZTQ1M2M0ZTdhYTQ3NDM0OTBlNzJhOTJlNmYwM2ZiZmMxMjZiODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlZTY0OWZkZWFmYTM0OWFkOGQ5ZGI3ZGNiYWJmYjA5ZWVmMzFiNjEyMmQ1N2FkZjNjMmE4NTI3YzA0NWExZTgifQ"
+        },
+        {
+          "resource": "repo://Modules/VMEC_ops.f90#L196-L232",
+          "version": "repo-lines-v1:sha256:fbe47ca73ef4df48774dbfaf57092c60de9dba4d85a91b1f5cb1d87e2b8dfe62:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5MjM2ZDJhOWY2ZDJlZWE0ZmNmN2QwNzk3NDZiYzY5M2UwMGQ3YWM5ZjVkNDMxODRhNDAzZTM0ZWU1NjI0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNzc1ZjdjZWU4Mzg2YzMyMzA3NzE4ZjdmYTRjZDBjMzk5ZmYxYWUwNmEzZDdiMTZiYTFiNWM0NWViMmNlZjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkZTQzNmJjNDY2ZDYyODRlNzQzYzlmYjk1ZWFiYTE0YTIxMGQ2NWYxNTAwM2ExZjc3OTQyMWRjYzFlODI0YTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0ODc0OTMyM2M0NGIzOWFjNjg3MTE4YmJhMDRlYThlMTlkN2M5ODhhYzkyNjI4OGY0NWM0ZmI2MWM3YzliMmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9fdf5eb46cb47c09d38914dbdec99bb",
+      "statement": "fill_mat sums the energy over the radial points with a quadrature weight w_q per point, which near the free edge takes the end weights from calc_end_weights in num_utilities.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/SLEPC_ops.f90#L665-L715",
+          "version": "repo-lines-v1:sha256:daa9922a8aeb227f2976ff71dfa4e2892bc55b3894ff076dc76a43ed31befa82:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3MDZkNGRmODQyZGRiYzU3N2M5MzBlMzYxZmVmOGUxYWFiNzJmNjQzOGEwOTNhYmZmNjc1MWY2YjIwYjU3MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwMjQ2YTI4MzlhMGYzMDRlMGZjNjdkZWI1ZGZiOGYwMWUzZjVhNzAxOWZjNTE1MjZkZTc4YzQyNmQ1MjFhZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3ZDZmYzk5OTY5NDA2NDA5Y2I0ODQ3NmE0OGJiZGEzZjNhNGIyMzM4MzQ4N2U0ZWQ1NjhlM2E5NWRhZGViMGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwMmUxNTBjZWI1NzEyZGJlYmU5MjgxZjNkNTcxMDFhMmIwZDhjMDc3NDQ1NjhhZjZmNmY5ZTM1NTVkMDg5MzIifQ"
+        },
+        {
+          "resource": "repo://Modules/num_utilities.f90#L2157-L2160",
+          "version": "repo-lines-v1:sha256:24dffb2d485595e9fb2484b8a16f249a4aba009eb0fb0f0acd4bd1230348ac10:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmMTU4NzhjYTA3YmIyMzhjNjA3ZDE5YzJiOTgzMTRjOTdmNGIyOWZiYTc5ZjZhYmU1MzgwMTAwMDQzNTY3MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDAxMWU2MzgwOWE3ZDI4MmI0YzE4MDk2M2JmNDMwOWQxYWQ4ZDFjMDA4NmEzNzAxZmRhMmFiNjBlNGUyYTg2OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTY1MDNlMDFkMGFjYmQ1MzAxNzEzYWNmYjk2NTkyODY2ZmEyZWMwZmZlYzI5NDhkMTIzZTI4YWMxMjJiMTI4ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmM5MzEwZGYyZTJmZjRkYjgzN2I3MGE2OGQyODhkYTFlMmVhMzIzM2Q0ZTYwMTNhMzQ2Yzc1ZWYwNWM1NjljMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6423d9881c6748af8be70b325a17961e",
+      "statement": "dtorh computes the toroidal functions P and Q of half-integer degree, adapted from the DTORH1 routine of Segura and Gil.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/dtorh.f90#L1-L8",
+          "version": "repo-lines-v1:sha256:0e35df04d2d26153bc7ec8ecf487df8b069f6cd2fc2923db080a0ad10eb3b435:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjUwYTk5MGM3OWUzOWQ1YTY4MTNiOTBmOGE4ZTVjNDkyZDM4YjI4NmVhYTlmZjA3ZDA2MTYzMzU3OTZiOGJjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjZhZTBjODU5NzhiZjZlZGZhMDYwMDY1ZjU5MmQzZGFmM2I5ZDc5NzIyMWJkM2JiM2E3NjcwMjZmMzk2NDQ0NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGM5NzYxMTI5ZjA3MDNjMTliMDU0MWQyNTljZTc4NDM4M2FjMjY0MjhiMzE5ZWJiOTBmMTYzNzgwNmVkNDkxOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd4064a2e5a5416db9c87bf982f99044",
+      "statement": "interp_V_spline, the radial spline interpolation of solution vectors, is in sol_utilities.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/sol_utilities.f90#L805-L806",
+          "version": "repo-lines-v1:sha256:01f455bf87332e93752745f489faf535c49e5e657392653d924a201609014732:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjI2YWRmYjUwODgyN2U4N2ZmOGIwYjVhZDcxMjZkZTFmMDE3Yzc5MTAxNzU1MTFiYmEyN2VlMzFmMTViZDlhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVhNDRiZWZhYTlmZDJlMGRmMjRiNTQ4MjkwYjkyYTlmNWZiNzA0ZTRmMDc2MDdiOWU1ZjJjMjI0YjE5NmI1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTZkZjRmMGUzMTY4MGY5Yjg3MjVjMWQ0MTAwM2JhODIxMzA5MmNkZGEzODZhOWQxMDI0NTFlMDA2YWI1ZjhmYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2NjY2RjYWNhMDIxZDAwMmM1MjYxMTFlZDgzMjVlNDVmZjgwZDk3MDgzYTQxZDM0ZTQ3ODg5ZTliNTZkOWQzMCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

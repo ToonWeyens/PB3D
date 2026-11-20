@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:0bb24d70e219db0d398770d515be04d290af3369cd4fca740573c9606042cc00",
+  "claims": [
+    {
+      "id": "claim_6ab0717d2da5465786578b159fa0529c",
+      "statement": "For VMEC equilibria the default B_0 of the MISHKA normalisation is the (0,0) Fourier component of |B| on the magnetic axis, extrapolated from the half mesh, which is the average over both angles; a value given in the input overrides it.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/VMEC_ops.f90#L95-L104",
+          "version": "repo-lines-v1:sha256:07205ef7ffc72d37bf21d766228a61160fb53f2f18d5d6f9c64a027c50533525:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiYTc5OTM5NmU0MmJmYWFhNDBlZjdkZmQ2YjY3ZWU2YWY2NjFmMjcxNGRjZjQzMDQwOTBmYTNkODQ0NzZiYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxMmJmODYyY2RiMTc4NzYzNzBiMDFjNDMzMjA3MTVmOGE3NmJhNTAyNDAzNDRkZDE4Y2Q5Y2YxMDUxYjUzYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4NjM2MDM5NDY4NDFiODczNDQ1MmEzYjgzNTEzNGE0NDVlZGExMzExMzk3NTcwYTQyNjFiMTY0NjVkNjMwZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmMmIwMDQ2ODA1N2RlMTk5Zjc1ZTQ3Y2ZkYzc1OWI2OTExYTMyNmQwYjljOTM2NzVkOWQ5MzE3Yjg4ZGFkNDcifQ"
+        },
+        {
+          "resource": "repo://Modules/eq_ops.f90#L5511-L5529",
+          "version": "repo-lines-v1:sha256:fdf78878d9e3af34c4e8cabc2192c2736d361cd024649d88d311760942d81774:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZWYyNGIzN2EzY2I2NWRmOWM1ODNkYzBkMmVlYjBjN2VjNDEwYmZhOTgxOTA4MmNiMmUwNDVlMDYxZWNjNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYjE0MzI3NDFkMTAyYjY0OTlhYWYyYjZkYmU0OGE2NDIzOTk2OTJmMmZkNDBhOGU1NzJjNmQxNTQwODM1MTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzNGQwOTcxZDQ2YjRhNDRiMGU3YzFhYmI0MDU2ZDFlMWIwN2QzOWFlNTdkNDRiOTI5MzZhYTNkYmY0ODQ4YTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxNTc5MzVlYTAxNjY1NGJhYTY0ZGUzNTBmOTBlZWJmMjQ1NDZmNTU0YjI2ZDQ5NDVlODU2MGZkYTQ4MzZiODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e0dcb1ed33a74fc4a066217fe23073da",
+      "statement": "With X_style 2 the secondary mode numbers on each flux surface are the n_mod_X numbers around the resonant value, m = nq ± N/2 for the poloidal flux and n = iota m ± N/2 for the toroidal flux; X_style 1 prescribes them.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/X_ops.f90#L900-L912",
+          "version": "repo-lines-v1:sha256:873d7c514c7475cec7c104c871c3fbbf16ce269057446978c51419d460f817a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMjBiN2ZhMzMyMjRiNzhkMWE2NjdlYWY2NWU4Njk5YzZmMmQ5YjFmYzA5ZWYzYWU3OTExYjE0OWQxNGJmNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZGYyNmU5MzhiMmViNDZlZWQ3NDY5ZTJhNmIzYTk0MmIyODQyYTk0MzAwMzNkNzdkODNmY2U5OWU3ZmQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZjRjYjNkYzk1NzE3NzY0ZWQxMjI3ZGJlZWQ0YmI1Y2EzODAwYzY5YTQxYWY1ZDAxNWFkMmU5Mjc1NTUwMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4NGFkMWE1YTk5Yjg0MDg2MDY5Y2NlMmZhMzg3M2NmYWRiMDgyYjcyYWU0Y2U1ZDA3ZTYzOTNmMjQ2YjA5OGYifQ"
+        },
+        {
+          "resource": "repo://Modules/num_vars.f90#L96-L96",
+          "version": "repo-lines-v1:sha256:f0030ef6b9a19b383f87b2aef503995056d286d5b0c162c6c5dd17ba5bcf3141:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjAwMzBlZjZiOWExOWIzODNmODdiMmFlZjUwMzk5NTA1NmQyODZkNWIwYzE2MmM2YzVkZDE3YmE1YmNmMzE0MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjAwMzBlZjZiOWExOWIzODNmODdiMmFlZjUwMzk5NTA1NmQyODZkNWIwYzE2MmM2YzVkZDE3YmE1YmNmMzE0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTU3YzFiNzdhYTZmYWYwN2ZkMjFlMzc4ZDkwMjkxYzcxNGJlNzNmNDhmNjMyNzAwMGExNGIxMmE3Y2ZjMDlkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGZhMmZhMzQwNGM2NTUwMGQ4YjVmYmFjZTFlM2E5MjM2ZDhmOTk1MTI5MTQzMDZiMTUyNmRkZWE5NjZkMDA4MCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_95910d204a384ab0bea90366b2ec147e",
+      "statement": "The radial derivative of the perturbation is a left finite difference over the point itself and the norm_disc_prec_sol points to its left, and the input check requires norm_disc_prec_sol between 1 and 3.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/SLEPC_ops.f90#L924-L928",
+          "version": "repo-lines-v1:sha256:ae185f6a7398bd8efd4c43d3b607d81568994451293e6754cf62edd96a39277c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzg5NDM1YTFkMjUwNzZhZjQ0OTYzNjgwOGQ5YTI2ZjcxYWIyYjE3NzRiNGU0Yzg3MjQzMDc5ODcyYmNlMzM0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTRkZjI2ZTkzOGIyZWI0NmVlZDc0NjllMmE2YjNhOTQyYjI4NDJhOTQzMDAzM2Q3N2Q4M2ZjZTk5ZTdmZDYyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQyNDljMzBlNjQ1ZWMxYTM5OTk5ZTQ4YTI0ODc2MWUxZmU2YzBmYmE5Y2ZlNWY5MWYzZDNjMzA0OWQ3ZTMwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTM2ZDU1YzQxZWExM2E4MWY5MDQyYzc2MTY0ZThiN2EzMTQwNzFkMDY1MDBjZTQ5ZmMwNTRkY2YwMzliZjBkYyJ9"
+        },
+        {
+          "resource": "repo://Modules/input_ops.f90#L453-L457",
+          "version": "repo-lines-v1:sha256:afdae62fffbbc2e08da3ee2d1d51787cd9e95db679bb3bd33c04349ac2b6fa59:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTNlOTBjMWI1Mzk1ZjcxMWI2OTg2NGRjMDY0OTY2NzE0MWUwOTUzY2NlMDg0ZDc0OWVkNzE2MTliZjllN2ZjNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmZlOTVmODJlMjc5MzY5MDZhMWRjMWZkMzU1Y2Q3OTZiMjA0NDI5MGMwZmM3NmIyNWFkOTFjOThmOGI2OWVhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGJiMDk3ZmVmZDA5OWE5MjQ3YzVhYzgxNGY2YzBhZDUzMjU4MDIyZTQxZmFkNGYyY2E4MmFmYjgzZDdiNTk3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQ5Yjc5NWFlNzYzNTNhMmQzMWYxNGY4MzA4YWMyZjc1ZDRkNzk1NmRhNDJlMmMxYmIzNWZlYTZhM2MwZjZlYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4af91751a9de425d918a134819811ca9",
+      "statement": "The end weights of calc_end_weights make h times the weighted sum of the left finite differences of a grid function equal its value at the last point, the discrete counterpart of integrating X' to X at the edge.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/num_utilities.f90#L2120-L2156",
+          "version": "repo-lines-v1:sha256:e57719ebdd2df8ae4a27d67909269b313d1553a82c6de258d7392b4ec143ee99:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYWQ4ZTg1MzQ5ZmUxMTgxOTg4NTk3NmVmOTZjYmUzZjZmNjVjMjg4YjI5MDcxM2FjYWRiZGY5YTkyODAzODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YjU3MGY2NmZkNzMwYTZmYzU5ZTgyZTY5MjI0ZjZkYzc2NDIwYTJlZDIxYjk1YmE0MTM0Y2ZlNDUyMTU5NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExMTZlODIwOTI3MWRkNTEyNzYwYzI1ZTliOTE3YzYyMmIzZDQxMjNhMGY5OGEwZmEyOTRhMWMzOTkyNWU5OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkM2I5Y2RiOGRmMWI3YWNiMWNmZGZlNGU2ZjdiNmY3OWMyYjJjODZmZjMwZTRiM2RlNzljYzAwZTBlZmFlN2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_587ee7b300ba43269793fff67638ede0",
+      "statement": "The inner end always takes BC_style 1 (perturbation set to zero) and the edge takes 1 (fixed) or 2 (free boundary with vacuum); the input check refuses other values.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L458-L469",
+          "version": "repo-lines-v1:sha256:bdf64de2449e9f2e6745681926e88793f898f7455eeaa7d0c1de91bbd88f8cd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiYzExZjU3ZjQ2MmJmMTIzN2I4MDE4Y2VmZDYwNDBhZjUxNTBhOWUzNjg4Y2M5NmJlZTA3ZTQxM2IyOWE4ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTk1ZjgyZTI3OTM2OTA2YTFkYzFmZDM1NWNkNzk2YjIwNDQyOTBjMGZjNzZiMjVhZDkxYzk4ZjhiNjllYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNGYyMDI5NjlhZWNjMGYwYjViOGZlY2E0YzVmYjc4MGE0Y2Y1OTZhMjQxZDc5MTJkNGEwMGVjYmEzZDk3ZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxOGU3ZTc5YTg4YWI0N2VhN2YxYzIzYTdjMjgxYjQ4OGM4ZTY4ZmJkYmRjMGY5MTljMWU2YmExMTAwYmMzZDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_841946df49f743ab8face5a6610a39fa",
+      "statement": "With BC_style 2 the natural boundary condition is not written into the matrix: the edge row is assembled like any other row and the vacuum term is added to the edge diagonal block, which keeps A and B Hermitian; with BC_style 1 the rows get the artificial eigenvalue EV_BC.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/SLEPC_ops.f90#L929-L948",
+          "version": "repo-lines-v1:sha256:b7a803ad8a4af815bbc1275ecf939610141c4d9fa50f082723c9abc9f41453ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYjYwNTU0OWQxMTQxNDllZTMzNmRkZjhhMTE0NzkzZDIxNzJhNzRhZjM0OTgwNzNhZjIzZTk4ZDE5NjhhYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZGYyNmU5MzhiMmViNDZlZWQ3NDY5ZTJhNmIzYTk0MmIyODQyYTk0MzAwMzNkNzdkODNmY2U5OWU3ZmQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViOGI2MWQyZTljZGY1ZDY0NzIwMmVmMTY0ZjM3YzI5OWYzYmE1MzEwMWUxYzU5ZDU0MmI5MDlmZmFlZDhkZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiYTA5YmQ1MTEyNWRjMzJhMGJmMGE1YjEwZDMzMDU1MWY3YzI2NmJiYzYyNjg1Y2I2NDE2YzYwNDljZWZkNTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b6a46ffc605429a84f033ab3390a44c",
+      "statement": "POST counts an eigenvalue omega^2 with a negative real part as unstable.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/driver_POST.f90#L1056-L1061",
+          "version": "repo-lines-v1:sha256:4912aee3ff1510faf4e4bc8de7c778118db03f68555be19e50cad8ad23ad25e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzMWVlMGJjYTIyNTBiNzc2MzQ3MjVhODQzZTdjZmNkMDg4MTU0ZjE5MzUwZjFjNzlhZTNkZTA2NWE0MDUwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmI4MDA4YTUyNWU1NTIxNDA0OGEwY2ZiNDlhMTI4NmEzZjk2YzE4MzIwYjRmNmM4Y2IyM2M0ODAwZTQ3NzhkYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzkzNzE3NDhmYjMyNDZhMGU4ODE0ZmVkOTg4NmM1YWFmMTZkYTNiODE4ZWUxZGExYThjZDkzZTg3YzZjOTk0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjQ5YzM0MDkzYjM3NmQ1YzA1MTQ4YzQzN2RkZWZhODM3NjRlMzNmYzQzN2IwZTUwN2I1ZGQxYzEwMTAxYTNlYSJ9"
+        },
+        {
+          "resource": "repo://Modules/sol_ops.f90#L61-L67",
+          "version": "repo-lines-v1:sha256:d43ecbfcdbfc4188f63e811aeb311219ff05bed6db9f63faf637d88961b3d269:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTIxZTQ2ODQxN2I2ZjVkY2FjMTA1ODkyN2RjZmIzOGQyY2QzNjkxZDZmZDA5ODY4MTA4MjQ5MDEwZjcyZDI1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzJiOWU3NTYzMjI1MTkwZGYyMmZiOGY3ZDY1NDRmYWFlMGI3OWMyMjk0MmE1ZTMyNzI5MWM0NzkxZTJjY2FmMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjRhYTM1YzQwMzNkMGQ4MjcxNDlmMTMzMjI2MTg2ODNjMzRhOWQyZDVlNWQzYjgzNTY1ZTEyMzI1NTM0YzM5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDMyZDVkOTc4MmVjN2JiMDQwYjMzZjc5MzU4YmEwZTViNjdkNzI1NDYwM2EwNDljYmNmZTZlNTI1N2ZiOGFjMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5b3ee5a0ad3e492aafe11015bd19aff0",
+      "statement": "The fast mode window of X_style 2 drops the coupling between a mode that leaves the window and one that enters it, so its trial space is not nested; doubling n_mod_X once checks the effect.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L40-L40",
+          "version": "repo-lines-v1:sha256:f75be16d62e5584376d8040bfecbe8ed09d3959b5728bd97d824a08dff211b72:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjc1YmUxNmQ2MmU1NTg0Mzc2ZDgwNDBiZmVjYmU4ZWQwOWQzOTU5YjU3MjhiZDk3ZDgyNGEwOGRmZjIxMWI3MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjc1YmUxNmQ2MmU1NTg0Mzc2ZDgwNDBiZmVjYmU4ZWQwOWQzOTU5YjU3MjhiZDk3ZDgyNGEwOGRmZjIxMWI3MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzk0NjdhYTg3ODM5NGZmMGZkNTE2YjIyMjgzMjRmYmE3OTYzYzcxZWY1OTBhZTQwYzQ1MzAwMjIxNzVmODIzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjZlNWY0ZTA4MjE0NDY2YjVmNTBhYzg1Yzk3Y2ZiY2Y1MmI0NGQ2NmExMDI3MjE5MmEzNzFhNmUwNTJmYTgxMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5628b23d99b64fc9a528e5fb208ef0eb",
+      "statement": "POST writes the energy decomposition of all solutions of a Richardson level into one file whose name ends in _EN_R followed by the level.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/driver_POST.f90#L870-L882",
+          "version": "repo-lines-v1:sha256:06bb5eb340169c81b1776fcc975c6006c5d2a8706fbda2dfa2e0b69b4a5c9c18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzFlZTBiY2EyMjUwYjc3NjM0NzI1YTg0M2U3Y2ZjZDA4ODE1NGYxOTM1MGYxYzc5YWUzZGUwNjVhNDA1MGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5NzFiMTk0OGQzMDBjM2FjZWY2NWYxZDkxZWM5ZDJlNDllMTJkMzI3MmU0NGY3NTJjMWI3Y2FjNWYzOTA3Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiYWVjZDY3M2NkZDlmNWY5NmU2YjczNTI2NzgzMzllZjliNmI5NGVkMjcwZjZkYjVjMzRmYTIwMzY0NzQ5N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMTNlOTUxMDE2ODg2ZGY5Zjk4M2UwYjhlM2M3YjkwNDFlMzg4NmYyNzJlODhmNjI4MzNhNzA1MTQ1YjQ0NWMifQ"
+        },
+        {
+          "resource": "repo://README.md#L27-L27",
+          "version": "repo-lines-v1:sha256:d8345d48c2024e9590ff536a81de49c7028d3fe0d35b8127f73db44052b6a532:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgzNDVkNDhjMjAyNGU5NTkwZmY1MzZhODFkZTQ5YzcwMjhkM2ZlMGQzNWI4MTI3ZjczZGI0NDA1MmI2YTUzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgzNDVkNDhjMjAyNGU5NTkwZmY1MzZhODFkZTQ5YzcwMjhkM2ZlMGQzNWI4MTI3ZjczZGI0NDA1MmI2YTUzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWU0YjEyNGFlOTMxNDZjMTQ3MDMzMDk0ZGQ2ZjAwZDljYjdmODU1N2EyNjI5ZDYxMzgyMzI4NzJlMjgyODc5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWZjMGMyODI3MzVlYTVhY2JmOGIzYjBkZDMwMDJlY2I3MzIzNjk2NDA5MmZkYTYyMjE1NTgzYzY1OTdiMzExOSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

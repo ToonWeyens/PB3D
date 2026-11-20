@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:40e2f53067c9ef718a58a034999e7fe73d9c26a846a4c7333de2fb156c80d303",
+  "claims": [
+    {
+      "id": "claim_33d32b9f772c4a43a098787698a57653",
+      "statement": "With a fixed boundary (BC_style(2) = 1) run_driver_sol does not compute the vacuum response.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/driver_sol.f90#L155-L162",
+          "version": "repo-lines-v1:sha256:607faef590fc36ea05e5732f5c03ed8af162d11b090f5f519f36d930c296d12f:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ0ODk4YmQ4YThhMjE2ZTM4ZDZkYjcxMDNkNTdiZTkwZmM0MTMxYzBkMzgyNTk4ZjViZjYzODc2N2MyOGUzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWFkYTFmYzc5YWM4ZTc5MjFkMDNmMDBmZGIwYTVlOWQzOTYxMmM5MWVhZWYzMzRkMTc3ZjZkZjM2YWZhY2EzOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGU0YWQ5MTZiNGU5NTQyOGIwMDM0Zjc1ZDNmM2ZkZWQzNTFiYmY5NTk4ZmU3YWEyZjEzZWEwYzkwNWYyZmQzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWZmZWI0YmY4NmJhMzk3MTNhNWMxNGEzOWMwMTc1YjIzYmYxNDhiM2I5NWUzZGE3NzRjMmZiOGEzZDQzZmY0OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b48325fd53e54a7485ac0b52a36e8cf3",
+      "statement": "VMEC equilibria use the field-line 3-D vacuum style 1, with n_par_X points on each of n_alpha field lines, and HELENA equilibria the axisymmetric style 2 on the poloidal boundary points.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L176-L186",
+          "version": "repo-lines-v1:sha256:e78bce2159a8f2efffb5af520b95f8efa37304acce5884bfacb10428e7bcbf4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMjNiNTRiNTk1YjdiNzExM2I3NGZlMzM1MmMxOTE1Mzk2N2FhNTY2YzI5NDVkZjZhZWE3ZjdiMDFjNDYyZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMGRkZjhmOTkyOGM2YTdkNjYyZDNjYjhjZTgxYWU5YmVjOGQxNDEwMDI5MDk2NTIxN2UzYmUzMjcxMWU3ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNzZmOTY1NjU1MDg2YjQxYzgzMzRjYThlYjZmZWRjMGUxOWJlYTQwY2QxMjI0NTFhZmEzYmVmZjEzMWUzM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0ZGI4ZmMxOGFkYmVjOTllMjQ3ZjhjZWUyYzRjMWY3ZTFmN2U5OWRlNDI3MGEzNjlmYmQ5MTQwYWU0YzBiYWIifQ"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L255-L262",
+          "version": "repo-lines-v1:sha256:7d08ab7b1ade91df00a5a5eb232555a5705f6016b2906b19c5a17e03e944b4ba:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGNhYzMyZjJhMWIyZGYxYjlmODY3MDdkYzBjYjgyMGYyOTA2ZTg0MTA4Njk1YWI4OWU0OGRjNmY2YTMyM2E3NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWE3NzVmN2NlZTgzODZjMzIzMDc3MThmN2ZhNGNkMGMzOTlmZjFhZTA2YTNkN2IxNmJhMWI1YzQ1ZWIyY2VmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDA3NWI0NjI4MGI0ZjU0MzUyOGVmNzk3MTFlZjEwNDI0NjFjZGY3ZTdjYzE1ODY1M2EzZGNkMTM2MzAwNDVkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWI4MmZiM2Y5MjJhY2Q3MmMwYmMwZmMyNzM3YTg1YWYwNmVjOWYxNjI4MmI0MmFmN2NhYmM2MzRmZmRiOTRlZiJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L390-L396",
+          "version": "repo-lines-v1:sha256:7ce10e1f8bda6df035db191726050ab6142984804e9c7131217f8308d5865752:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWVlZTI2ZDRjOGVmZTk3ZDM4OTc4YTY2MjZlMzY1MDNjMjMyMmQ1MTM1OGZjM2IzMjE3ZWZmYzQwOTA3ODVkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjBhMmQ0MDkwMjMwMjUzYzdmZjM5ZDk1YjZmOTIwZWYxMDE4ZTFhMjQ0YTFlYzcwMjUzNmMzNzMxYTBjNTlhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzMyOWUzMTRjMjVkMTc2YmI1MWIyNTU4YzBmN2Q4M2U0NTQ1ZjUzOWRjNTI2OTE3ZTEzYjMxNTEyMzA1ODM2YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDMyNmIxYzY4Yjk4YzRiMjVmYzJkZTQzNGM1MDMxOTdjMThlOTZiZjBiNTNmMzAyMWRjM2U0ZWI0MDY5NzQ5MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0b05d311ee9642d4a6e6ca7eeff286f1",
+      "statement": "In the field-line style the boundary points are stored line by line, the surface integral uses the trapezoidal rule along each line and equal weights across the lines, and the stored normal -J grad psi has the length of the surface element per unit parallel coordinate and field-line label.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L728-L777",
+          "version": "repo-lines-v1:sha256:b7f86a32eecbb2a8319d4aae53c361b5e9ce49dd33968d6e39532b1f45e968eb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMmQ4NzVmNThkMTM0OWQ1YjgyZGYyNjk4Y2QwMjFjNzg0YzIxYTdkM2RiODBkMjA3MWRmMGJmMjEwZjJmNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZGYyNmU5MzhiMmViNDZlZWQ3NDY5ZTJhNmIzYTk0MmIyODQyYTk0MzAwMzNkNzdkODNmY2U5OWU3ZmQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4NTYyNDk4M2NiZTlhZmFkMzRmNzMyNDExODU1ZDc4ZDYyMTVlZGZiNTk0NDQzODUxMjllNDg5NjJhYmY4YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhY2U0MWI2OGYyMGFhNDc2ZjMwMTgyZDM5NTAzMTg4MmMwNzg1NDU2MmUzNjE0OTExMGQ4M2I3MDAxNTlkMmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_57de88a6c0bd4e26a2b893f6e326b15b",
+      "statement": "Within four interval lengths of the influence point the field-line style integrates the kernel along the line with Gauss-Legendre points on the cubic through four points of the same line, and at the singular point it uses the analytical half-cell integral reaching half a field-line spacing to either side.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L778-L793",
+          "version": "repo-lines-v1:sha256:10fcc2ffd24d68ef9513da98e54104aa1011e5c55b1185b8f9a73d5d0b2ef4b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2U0YmU5ZTk4Y2E3YWU0NjRkYTQ5N2FmYjAwZDRmOWNhYjczNTZjZGE4ODA1NThjNmU1NzQ4MWFhNmE4MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZGYyNmU5MzhiMmViNDZlZWQ3NDY5ZTJhNmIzYTk0MmIyODQyYTk0MzAwMzNkNzdkODNmY2U5OWU3ZmQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4MDBmNTMwMDU2OTQxYzA5YTJmYWEwOTliYmE0NGY2ODI0NWJhZDNkMTMxZjI3NDFiOTA3YmY5NTk0YTgwZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiNTNjMDdmNmZhMmM0ZTJhYWYxODlmMGJkNjAwN2I4MjE3MjhkMjFmM2IxNjY1MmZkZTE3MWFmNzEzMWY0MTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2e35bb38caa43b4bd0816ebb46c0145",
+      "statement": "A free-boundary VMEC run with alpha_style 1 is refused at input, because the field-line vacuum needs more than one field line.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L897-L909",
+          "version": "repo-lines-v1:sha256:b678ccf4c3bce5b14fa5753055943e17a2e7925535e75c1c310ca85f90c6dee0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwZmE0MjEzZGE5YTY0NGU5ZWY4ZjZkYTIzMGQ4ZjBlOTUzNmE1YTY4NWViZjY3MjI2YWNjZTNiYTJjNzQ0MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTk1ZjgyZTI3OTM2OTA2YTFkYzFmZDM1NWNkNzk2YjIwNDQyOTBjMGZjNzZiMjVhZDkxYzk4ZjhiNjllYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjNDg5ZTZhZDM4MTEyMjg0Yjk4N2RmZGJmNDg3NzFiNWJmOTYyMzM4ZTc2ODc1N2U3Y2EwMWY5ZTY5NzVlZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhZGI5YmRlODA3OWM2YmE0NWJiMmFjMzhiNDRlMDViODM1MWRjZmE3OGI0NzlhNWU1MWE4NWFkYWUyN2Y1OTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c4509e7c74c1474faf2ea7f343396a9f",
+      "statement": "Both vacuum styles take the normal derivative along the stored normal -J grad psi, out of the vacuum; with the diagonals of calc_GH the discrete operators satisfy H phi - G dphi = 0 for potentials harmonic in the vacuum and decaying, and -4 pi phi for potentials harmonic inside the boundary.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L3455-L3468",
+          "version": "repo-lines-v1:sha256:5dd1f889bffc7a96b7b35be3b71a9a84dc635da2289f2ea0973fc4d5ade369b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4MWVlYjYyMjg2ZjU3ZjJjOTA4MzVmZjViODdkNjllZmMwYWYxYjJmNDdmNWM4MDA2YTUwODJhNzkyMzRlYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNDA3NmIxOWI5ODZlODBmMGJmYzc2YjY4ZjUwZmVhN2FmMGQzMzVmMjZlODIyNTMxYzk4NjBiZWJlZTI4ZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5MzRiYzU5Y2I2ZjIyYTNmMWQ5MGUwZGI0M2ExZTA3YTQ5NWE3NjUyNTNiZTkyNzQyOWM0NmJhZDVjNzVlNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkM2M5ZDM0NDNlYWRmNDgwNTE3NmJiMjY1MmU4OWE2OTJkOTU5YmRkODMxNDcxODVjYWE3Y2M0ZDg0MTFlNTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_85a04d01b8be4f828cd8f444724986a7",
+      "statement": "At a point off the boundary, the sum of H phi - G dphi without a diagonal gives 4 pi phi in the vacuum and 0 in the plasma for a vacuum potential (eval_pot_ext).",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L2627-L2645",
+          "version": "repo-lines-v1:sha256:2ac1dc72fa387efa3d2bb277c38d364651bff52d225e80bb17d177d7bdaa776b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzOTJkNzZjMjZiYmZkMDc0ZGVlOWQwNzk2OTMzNzRiOGI1NTExZWJkMDcxMTMyMWUxYTIzZGEwNjM1ZjIyZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZGYyNmU5MzhiMmViNDZlZWQ3NDY5ZTJhNmIzYTk0MmIyODQyYTk0MzAwMzNkNzdkODNmY2U5OWU3ZmQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMjNiMDM4MGUwZDRjYzhlOTNjNWM2OTk4Y2FjNGM5NmZjNTdmMzFjYzU5ZDY2NTgzY2IyMzFlMTVkMmEzZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5NTBhNDVmMmU3ZGQyZWVlMjNkNTY1ZDNkNmY2NjI3OTZhZjRmYjJiNjI4NzliODcxZmIxMGI1NjBiZDlmYmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_87ad1a6a55a94c2ea50738dbb9ac980f",
+      "statement": "With vac_diag_style 1 (indirect, default) the field-line style sets H_ii from the constant potential (row sum -4 pi) and then G_ii from x, y and z, and the axisymmetric style sets both from the three potentials of set_pot_2 scaled to unit maximum.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L1426-L1440",
+          "version": "repo-lines-v1:sha256:64a067ca62884a9f0c867e650ed20f5a97a71bd4e908c327a4592809d555a501:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZTFiYTJhYTEwMWIxZTliMTJkYmI4NzM2Mjc4MzIwNTQ1NWQ2YzYyMGQ2YTA1YTUzMzE1NGEwZWQzMmQzNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMTkyZGFkNzUzMjFlNzdiZWI1YzI2MjJlNGUxYThkMjRlY2E4ZjViNTUyMGZlZTRiYzhjYTUyYTE5YzAzMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwMjNkOTM5YzRlMDVjZDNjMWE5MWM1OWU2ZTcyNTRlMzczY2FlMGQwMmEwYmI1MzhkNGEyZTM0NDU5NTg4YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzOGRiYTZlODNkNjAyM2Y2MjI5NGNjMjYwMWY5OTc5NGQyODhiNmE0N2U4MWRjM2JmMDVmZjFhYWRhNDRmMjUifQ"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L660-L667",
+          "version": "repo-lines-v1:sha256:59c5d564cfed4144abddffbb701b7b10383f66c503fc9c27d52bbed3b20a8fca:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYyZTM0OGMxMDE2ZTJhNjRlNWM5Y2UwZWQwYTE5MTJmYWZkZWRjYmY4NWZkOTkwOGU3ZmM1ODdkNjgzYzZmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U0NjQwNjg5Y2VkNTZkYzEwYjQ4NDA2NTEyZGNmNzk1MzRiNmQ1NWZiN2NhOGE3MzQzZmRlMDZhZWRmNDliNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzNmNWEwMjExOGFlZjU1MTM1NzcxMjI5NDUzMDhlOTMwZThhMWFhOTczYzU1NTI0YjA0NGMwMTAyMDM2ODZhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTIwNGU0M2QxMWRjMmEyNmM5YWIxZDczZDIwYzY2ZmEwM2Q4NWE5ZTAwZWRkNGJjZWJjMWFlOTBkOWQyNGFlZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b845ca230b934e7aa04f5f5966baa16e",
+      "statement": "With vac_diag_style 2 (direct) the field-line style takes H_ii = -2 pi plus the cell integral of the kernel where the node has a full cell and the indirect value at the line ends, while G_ii keeps the half-cell integral; the input check warns that this is a diagnostic not meant for production runs.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L910-L919",
+          "version": "repo-lines-v1:sha256:7850a30872d988215d70f63b233fdd87a4084659cae9c09d4a202c51333677d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YjRhN2MxMWUyMmE4Y2FiNzNjNTA3MWFiYzBmZTEzNmFjYzg0NTVhMTk2YjI2ZDZhNTA2MDAwYmU3MTk1OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTk1ZjgyZTI3OTM2OTA2YTFkYzFmZDM1NWNkNzk2YjIwNDQyOTBjMGZjNzZiMjVhZDkxYzk4ZjhiNjllYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkOGUxYWQyYjYyY2FiMzMxYTViZjlhYjY1YmViNWZjMjgwNDZlNjNhNGQ1ZmJiMmQ1YTYxYWUwZTViNDUxMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZmZhNWY1YmQyOTBiYjEzNDYyNmVmODk5ZWFlZThlNWQ2NzUzNzZkZjBjNjBmYTY4MTNmYzFlZGQzYzBmMTMifQ"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L649-L684",
+          "version": "repo-lines-v1:sha256:b0f636094efea1900cf8fdc02965ac67ba37df6a66b37adb6b5c7aa79be2839d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzZThmZTQ3ZTRhN2E5OTExNTQ2MzgzOGI0OGFmZDRhN2Q4ZDQ1MmQyZmQxYzIzNDUzMWUyZTIwODZhNTI0MDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YjZhODQ2ODE4ZTdlYzU5NjE3OWU1ZjY0NTRjYmFmNGU5ODYyODY5OWFmNjVlZDY2YWYwYjNmOGZlM2M0MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ODllMWFhNmZkMmMzZTBkMzEwNWYyNjRmOTYyODZkNDY3MTVmNTQ2ZmU1NTcyMWVkMzlmNGFjYmNlYzI4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0MGZlYmU4NDhhNTM4NDY0ZmU5NDZhMGVjNTI0OWJiODlhOWQyNjMyZTk3NGViN2FlNTNmYWM4OTc1M2VkMDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9008d1646bb040958d95223f4b18e43c",
+      "statement": "calc_vac_res divides the projected response by the permeability, multiplies it by 2 pi for the toroidal integral, and keeps its Hermitian part; the vacuum then adds 2 dW_vac = 2 pi X_e^H res X_e to the potential-energy matrix.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L2029-L2058",
+          "version": "repo-lines-v1:sha256:6b42e5367696cef152830540e4c7e89cab20a1675936cdb94db5f4383c7f7b50:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZTM0MGI2MDBiODlkN2VhN2Y4N2Y5Y2Y2Njc1OTI3ZWEzNmE1YWM2NjJiNWEwMGQ3MWMxMWI3MjdiNmM2YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MmQ5N2E2MWFkZWJkYjU0N2NmOGJjMmY3NTA4NDJkNWQ4YjJiOTA4NDFkMGNkYTVkYTBlOWIyOTRmNGE0NTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NzBhMjI2NjdkNmIwNTk0NjQyZDJkZTRjMGI1OTExZDJjNGUxODZkYTQxMGU0Y2VkMjRlODQ0MjdiNzE5NDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNmIwYjc1N2FmZmRhOTE5NTBmMjQ3MmUzNjEwYjg0MzVlNTc1MWJiYmRjNGNhNWY4ZTM4YWJhYmJjOTBjMTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4eac43af84fd4601a8754ecbf14b60f6",
+      "statement": "set_BC inserts the vacuum response vac%res into the edge diagonal block of the matrix A.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/SLEPC_ops.f90#L1165-L1175",
+          "version": "repo-lines-v1:sha256:c8a92a7231fbef30fc9231b3afb09eab0014ac19694e6507053ad523a5dddb1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxYWVjOGIzOTcyNmJmMGY3NmQ1YzI5NTFkMzgxNDUxMDJhYmVlYTMxYjk1NzRiNjdmNTE1ZjRlYWM2ODM4MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhZGExZmM3OWFjOGU3OTIxZDAzZjAwZmRiMGE1ZTlkMzk2MTJjOTFlYWVmMzM0ZDE3N2Y2ZGYzNmFmYWNhMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MDBjNGU0MWI2MjRmMWU1ZGY4ODY2ZjViOTM0OTk1N2QyZGUyYjY5MTg2YzQyZmE5NTQ0NDU4YWJkNmZlOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwOTUyOGI2Mjk5Yjg0ZTM0ZjBhZTE2ODYwNzMwZjE3M2M4M2RjNGJkMTRiOGM5NTI5YTZlYmRmOTk1NDc0OGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1d941e3e945640599178cd6648c87e5c",
+      "statement": "With the input check_vac, check_vac_exact prints CHECKVAC lines with the Green-identity residuals for c = -4 pi, -2 pi, 0, 2 pi, 4 pi on interior and exterior exact potentials, the exterior solve errors, and the comparison of the assembled diagonals with the alternative ones.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L1676-L1682",
+          "version": "repo-lines-v1:sha256:b1477557ea26fe06883f0c0353369b9c340caecacc62854e431c7e4ef0db6015:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzMWVlMGJjYTIyNTBiNzc2MzQ3MjVhODQzZTdjZmNkMDg4MTU0ZjE5MzUwZjFjNzlhZTNkZTA2NWE0MDUwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzMWVlMGJjYTIyNTBiNzc2MzQ3MjVhODQzZTdjZmNkMDg4MTU0ZjE5MzUwZjFjNzlhZTNkZTA2NWE0MDUwYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDNkOTRiMjMwZTliNGQxYTJjZmUyM2M2YmJjMDczZGU0ZWQzZTk4YTQ0NTdjZmM4Yzg2ZGUzMDAwYTU5YTdhYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjEzNjg2YTU2OTIxY2EyMzQxOGViNDJhMzFmZGRlODhkZmQ0YWQ4Mzc2OWEwODlhMmRiYTM2MzYzODc1NTUyMSJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L2058-L2091",
+          "version": "repo-lines-v1:sha256:cf4eb780fcaeead5688f585bf62882e05168bc86615fabd5b341aa23770881c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MmQ5N2E2MWFkZWJkYjU0N2NmOGJjMmY3NTA4NDJkNWQ4YjJiOTA4NDFkMGNkYTVkYTBlOWIyOTRmNGE0NTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmODc3NDgyODc5NzkwNDEyODhkMDI4YjgzMDA0ZmNiOTYwMjhkOGVhMGM0MDhlYmY5MTZiNWQ1MjlmY2RjY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNWM5NWY0MzBkYTUwNjQyMTUwM2MxOTEwZThiZTk2ZmY3ZmVlNTQwZTI5YTJlYzQzOWUzOWIyNmMzODVjNmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmNWFlNzU0YjI1YjJiYzRlZjMwNWQyODE3ZTkwZGFkNGIxN2UyYWNjZTJmZjE0ZmU1ZTIwZDZhYzNkMjkyOGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5c39a9da71e14c90bdd87ac89c94ef2c",
+      "statement": "POST's vac_pot_plot evaluates the vacuum potential of every eigenmode on an (R, Z) grid in the planes of constant zeta_F, with a default box of the boundary's extent widened by half its larger width, and writes [id]_vac_pot_RE/IM, Data/[id]_vac_bnd.dat and vac_in_plasma; the input check switches the plot off for a fixed boundary.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/input_ops.f90#L699-L703",
+          "version": "repo-lines-v1:sha256:ee4bd56278e90a78ae5db1dc4bba7c77801edbca7e64deae2ee4756e644b7e16:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzZkMWUyMzBlOWUyYjk1ZDc1NTVlMDIwMGY3Nzk3NGNkYmY5YjM5ZWNiMGZiNjg4NDNhMTA1NzNlMGM0NzI2NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ0ODk4YmQ4YThhMjE2ZTM4ZDZkYjcxMDNkNTdiZTkwZmM0MTMxYzBkMzgyNTk4ZjViZjYzODc2N2MyOGUzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjhhZjYxNjNlODBhYTBlMjI5NTU0YzM1MzExMWU5MmExZmNlMTgwN2YxY2RlY2FhZjRhMThiOTk5MTM3ZDZkNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4NmI5N2YwMmU1ZDlhMzc3MTQ2NDM4YTJjZTFlMjQwYWVkMWRmYjVhYWU2Yjg0NTdkOGE3YzYwNmUxNjEyMCJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L3030-L3067",
+          "version": "repo-lines-v1:sha256:a1d8799c40d2ee07e6b3eccd36ad4438f7eb1ae9c56213a92fb6107f93d98d6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MGFlMzg0NWZiZTBmZTQxMzI4NjczZDJjYmFmZDMyMjcwMzRmZmJhNTU3NWExNzY2NTJjZjYxNjdhYjMyYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YjU3MGY2NmZkNzMwYTZmYzU5ZTgyZTY5MjI0ZjZkYzc2NDIwYTJlZDIxYjk1YmE0MTM0Y2ZlNDUyMTU5NDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiMmNmZDkzZjk2Y2IzYmNlZmViOGM2N2IyZTNlN2ViYTk0ZmFjZjA4ZTBmMmVmNWE5YzZjNWIyMmU1NmNlMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5OTY1ZTk1ODA1N2NiNGU0MzQ5MTljNTc3YzlmYjg2NDE0NjI5YzA2ZjJmMGI2NzYxNzZjNDdkMGNhZDA3MWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f06c1ead36334d17befc8f63815e0ec8",
+      "statement": "In the axisymmetric style, external points that coincide with a boundary point (for potentials harmonic inside the boundary) or lie within about one point spacing of the boundary but beyond the tolerance are not treated accurately.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L1076-L1090",
+          "version": "repo-lines-v1:sha256:364630cd1ce36a81b8dbe6328da6ced11bfd936a9fc4e28b72e0d1d4b1d0f220:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMDhhMDI2NTc0M2U5Mjc2MjQ1OTFjYmJiOTU0MzZhZmJkMTI3NzhlMmU5NmI5ZmQyNjA3OWExMmRhMGViZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5NGNlM2FiOTY5YTZjNjgyZTMwODNjZTRjY2ZkNWFjNWFjZmY3NzdhNzY4ZGQyZDVkM2ZlNTIxMGJmMmE3YWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3MTJlZDI0N2FmNDI5M2MzZjE3ZmM5YWU1YmQyMDRlYmRhZTQzOTRjZjg3ZTE4ZTRiN2I3YzljMzliYmE3ZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxY2ViYzU0ZjRhNmQ0OWY3MjZhY2FmMTRlYjhhN2RmOThjMDRiMTBiMTEzY2E5NGUxOWNlZGUwMGZiN2E2OTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0eb41a073c424f4981726c7bd9bfe2e4",
+      "statement": "The full-stack test response_1_vs_2 compares the field-line style with the axisymmetric one on the same boundary and asserts five recorded ratios to 0.5 %.",
+      "evidence": [
+        {
+          "resource": "repo://tests/fullstack/test_vac_3d.f90#L745-L770",
+          "version": "repo-lines-v1:sha256:fbdd0f76768edab31c4ed710a1d3a68d97192cd146f17aa9539216f34091f639:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxMDAxMTgxNWQ3YzI2NDEyZjMyZWRmNGI4Yjc5Y2U2Y2MyZjNjZTI0MTZiNGM3YTFiMThkYmQ1NzAwZDk1MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjNmEzYzg0Y2M3YTdiYjNmZjlkNzQxZWYwMDA5NDc0MjIxNmJlZDEyNmVhYzBjZjlkYzhkNWEzYTIzM2ZlNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxNWFjMzkyMWQ5NDA2OTQxMjVhNGM3MGQ1NGQwYTE0MThlNGJjMjJiMjE0ZDM2YzVlODRiNjg3NjY3N2E1NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyYmExOTRlZmFlMTUwYjQ2YTY2ZTMzNWQxYTc1MjFjNzRiMWVmZTQ3ZmYyNDFmMWE4OGQyNjljYTQ2NmNlOTIifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

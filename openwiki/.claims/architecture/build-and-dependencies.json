@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:6102bd64f6e28a128ebd050d426c98d23654541d371cfe02150d5c84dcda2a84",
+  "claims": [
+    {
+      "id": "claim_affe0db1bbf04b79a20229fc48ddb9b4",
+      "statement": "With PB3D_BUILD_EXECUTABLES=OFF, CMake builds only the dependency-light core library pb3d_core and its unit tests, which need no PETSc, SLEPc, HDF5, NetCDF, PSPLINE or LIBSTELL; num_utilities and X_utilities join the core only when LAPACK is found, and num_ops only in non-debug builds.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L17-L25",
+          "version": "repo-lines-v1:sha256:38ab16c41d5eedff4dd48fc804994b8e07c58d1ed27eddf379aaa820c20c9617:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmY2YTcwNDE4NDdlNDJmOTgxMjY4NTI1MDE0NjVjYWU2ZDc2ZTIzMzc1MDY3MWE0ZTI4MWRhYjAyMDBhY2EzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNhMTM1MmE5ODI3Yjk2ZTNhODlhODhlNWIzN2JmMDA4YTBmM2U4Yzg4YzA4M2E3YTA2ZWI0NDA5MjMwZTRkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTFkY2NlMzdiMzU0ZmY1NjViY2E1YjRlNTA4ZjljNjJiNTU2MDM2ZGJjOWJkMjFjZmExN2QyMTM3YTVjZTc5NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ1YzI3ZjNkNzA5OTQ1YzUxYTFmOTBmNjQ4NmQ4MTkzZGQ4NzQ5NGY3ZTQ0YWQ1YWYyMjA5OTVkMDZlMDc5YSJ9"
+        },
+        {
+          "resource": "repo://CMakeLists.txt#L220-L276",
+          "version": "repo-lines-v1:sha256:eb209c37608ab874fd8bb6060c7ffbae21d291db0807d69ee92bfb55bac997ca:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjMTFlNzhlNjRmZmI2ZGI5MTMzMTFlMmY5NDg5MDFhOGMxZWYyNzA3MjM4ZWJiNDIxZjQzNTQxM2Y3N2QxMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ODBjNjIzMTY4ZWE2YzBhNzg5ZDNiZTAwMDg1MmE1NjlkZjUxOThlZWIzNjUwY2Y1YjJhNzVlODYzZjIxNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzMDQxNTA4N2E5ZGM2MTE3ZjcwODA0OTgyODhiYmY1YmFhNjgxYTMzMzQ1NDg3N2RiYWRlM2NiNDg0NzcyMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExMmUwYTkwODY3Y2UzMTI3MWMwN2MzOTM5MzBjMTFmYmQ0MjUzN2RiMzhkNzcyNzMxN2M2MmY5MjgyNWU0ZTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_105c2288c8914cefa3a7916665364912",
+      "statement": "For gfortran 14.x the Debug build replaces -fcheck=all by -fcheck=all,no-bounds, because those compiler versions miscompile the bounds check of a subscript that calls a function with an array-constructor argument.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L64-L77",
+          "version": "repo-lines-v1:sha256:1a5e01d38680f3c1acf1a38987244c38848df517e71dc0ac3f0ea9eaf7ddfbab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljOTI5NmFkY2ExMmRhNzA5ZWE3ZjBmNDgzOTU2YmFlYTcwZDI0YmRiZjlhMDliZDYyZjNjYjhkMjEyY2Y0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjOTlkNDc4NmExZTFlOTQzMTczNWJiNGJkNGE1NDE3MGJmOTI5ZTllYzYxMmU2Zjk0NTM0ZDNiMDc0YTE5ZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMGQ2NThmNjQ5ZjllZGFlZjFlNWM3OWRjMjI5NTMxYzZhYWJlYWYxN2RmZjA4Y2RlODY1YjZjMzAzMTNmN2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3YmE0ZWU2MTE1Mzk2N2UwYTFhZWJiZDQxNTM4NTA4MjFjNmE2M2IxYzlhMzk2YTI2YzdmODgyMTg5YWE1MGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1f55955840094b70b8d6e57dd0b5604c",
+      "statement": "STRUMPACK-Dense 1.1.1 is optional and searched only under STRUMPACK_DIR with NO_DEFAULT_PATH; when found, PB3D_WITH_STRUMPACK is defined, and otherwise the vacuum boundary-element system is solved with ScaLAPACK LU (pdgesv).",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L153-L178",
+          "version": "repo-lines-v1:sha256:7a7115d33bba51166df3ef0b773ecc327df9757f9c50757b7cc12295a9fb4e33:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0Y2MxYjRjZGJlM2M2MjY3YmY4ODEzM2FkNmMyODExZDZlOTYwOWMyNmJkOTc2ZTdlNDg4NzhmNGViMzRjZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ODBjNjIzMTY4ZWE2YzBhNzg5ZDNiZTAwMDg1MmE1NjlkZjUxOThlZWIzNjUwY2Y1YjJhNzVlODYzZjIxNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzMjg0MmY0YjA0OWJlYjc1NDc5Mjk4MTk1NWQ3M2IzZTJlNzUyNTE1M2Y1MDgwYWIxMWI0ZDIzYTQxZDQ4NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjZDgwOTk5NzI3MjlmOGZmNjdkYjU3NjE1Yzg2NDk3MTk3ZWExMmU2OGU2YTljZGViYjA1M2M1OWI4NzNhNDQifQ"
+        },
+        {
+          "resource": "repo://CMakeLists.txt#L396-L399",
+          "version": "repo-lines-v1:sha256:a55e4076cff6ecb96a39c0be40b3a6d8207292c51f174f6fa3e2fae87df60943:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VmYmNiNzcwMmJhNTdkYzBjMjc1ZTI1YzliZTA2NDExNWFiMmQwNzI2OGY2N2I1ZDM4OWZkOTBhZjYwYzIxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTU4MGM2MjMxNjhlYTZjMGE3ODlkM2JlMDAwODUyYTU2OWRmNTE5OGVlYjM2NTBjZjViMmE3NWU4NjNmMjE3OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTZmYTE4YTZhMGQwYzI5YzRmZmYyOGY2MjlmMzk2MjI1OGUxNTRhYWVkMDgxMjQxMGY3MmM1M2U2ZDY5NzI1MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2EyMTk3ZGYwNThkYzlhM2QyNDVkNjEzNTViMGFmODMyM2U0NTliYjM2MThmNzMzN2YyMTljZjU2Yzc1YWJjNyJ9"
+        },
+        {
+          "resource": "repo://Modules/vac_ops.f90#L3470-L3471",
+          "version": "repo-lines-v1:sha256:530937df40c5fecfce34a6241485699da99a96518ffd9dae6e411de4e2701e6a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzczNTM3YTlhYjAwNDM0MTVjMzZmZjIwOTUxOWYxZWEyZTYyYmI0NTUzMTZhYmU0YmU3ZDNmOWQ5YmU1ZGVhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc0OTJhMzllYmJmNWUxYjY5ZWJmYTI0YzFiODE5MzMyY2ZiZDlhOWZjNGYxZjE5OGY0MDMyOGFhM2UxZTQwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTYxNmE0MTVhMTIwMzU5YzE2YWNhMzU3NWZmNDc1OTgzZjZkOTNiYWEwNjhkMzc4ZDQ1ZDdjMzRiMGFmMWQ3YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODVjMzZlZjVmYjkyYTNiNDQ5ZGQwODA1NGVmNTE2N2MzMDA1Nzc0YWU4M2JiZmU4YmE1MTY1ZWVhODEzYWRkYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_55579570ac3e472a9e710074c3dd1204",
+      "statement": "When STRUMPACK is used, solve_Phi_BEM checks the residual of the compressed solution against the uncompressed operator and falls back to ScaLAPACK LU when the relative residual exceeds 1e-6.",
+      "evidence": [
+        {
+          "resource": "repo://Modules/vac_ops.f90#L3600-L3622",
+          "version": "repo-lines-v1:sha256:9a94a0a6dfac312979d6d0c55302b3508618bd77e920d24d18058fe72d129552:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMzVhNTYwMjNlZDdmMjgzYjVlM2RhZDFiMTZiYzMzNjI5OGY2YTUwZGM2MzQ0ZGI3OWI2YTNjOTMzMGZjZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhMDgzYWFhOGQ0ZWJiYTc2ZDVjZmQ2MmMyYzRkYzc1ZGU4OTAyMGJhMWExZjY5ZjkxNDZjMDU2MDU0MDQ5YTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczYzM4OTMzOTVhMWNlNjQzMmI5NzYwMWYzZWY5ZDJiY2M0MDM3MzE2YjVhMDBiZDM3NzFiZDc0MjA2NGUyNGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9444437e3fb54724a2420e1724c9da84",
+      "statement": "All Modules/*.f90 sources are compiled once into the object library pb3d_modules, listed in Fortran module dependency order, and linked into both the PB3D and POST executables.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L283-L370",
+          "version": "repo-lines-v1:sha256:0599a8189e0d8817abc5eca43577d3c5c7c07800daefc1bb6dc65e92b011842f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5YjFjMDAxMTM4ODEzMDFiNjA0MTA3N2VkNDBlMDM5NWNlZmNlYTVhODZkYTRjZDIxMjIyMWE5MmQ0YzU5NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NGE1NzUyN2I4MTgwNzYxYTBiMzZjNDY0YWVkYjhjODdiNTBhOTRiMDVmMGJmZTdiZTMxYTkxYjZkMjE3YjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1OGMxNjczZmU3ODVhNzhhZDkzMzU5ZjQ5ODY3YTg1MTY5NDRjMzIwYzFmZmVkN2Q5ZTIwNTk5OGU1YTQ5MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhMzkwOTA4YTI5MDI4Njg3YzkwMWQzYzRlNjQ2OWI2NWVlMmQ1N2MzZGZjNTlkMThkOTU2MDViYjU2NDE4ZTMifQ"
+        },
+        {
+          "resource": "repo://CMakeLists.txt#L404-L407",
+          "version": "repo-lines-v1:sha256:fd6d11fcc4b7fd8a4813de42c9e97beb262c271f356a725945a555fc58af6417:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTAyNWVkZjA1MjlhMzY5NGQ2Yzc0YzdlNDE5OGUyMGJkMTY0N2Y2YzJlZWRkNDc0OTYwNjU2MTJiMTY4MmFkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ2YTE1MTY5NjM2ZjFjMGIwYjY5MjZiZDU1MzU3YTgwYWUyYWFlMTRmNTI2YjMyYThiZjBiNzliOTIyZGQ0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGI0ZTg5Zjg5OTI3ZDlkNTRiMGE1M2NlY2RhMjJhMWM4YWM3ZTYzYTAzMzYwNTE3N2ZmNTdmZjMxNTg3OTBiYiJ9"
+        },
+        {
+          "resource": "repo://CMakeLists.txt#L456-L459",
+          "version": "repo-lines-v1:sha256:044cdc4d8f8a520ba39e6779a0531c9f631f5b3b7c2e728ab19b3cb84a5405cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTkyMjJlMjI4MGI3NTljNzVmYTk1YWUyMTkxODg0OGQ0NTNmZTdkNDY5ODA5MjUyMTFkOGZkYWRlYWI1YzNkZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzQzM2Q2NzU5ZTJiMjNjMTc2Y2E0MzBjZWEyYjNiZDE3YWMxZjRkMzY5OWIxNGRjNGRiNTg3Zjg4MjRhODY3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjY0OWFhOWI0NGJlY2VkYmJlOWY5ZjRjOGRlNjY2NGI4YTZmMmZlYmEwMDg2NWM2M2I0N2EyNDAyNWI3NDY2NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8a79d5f3f5434b0493fe011fd77952bf",
+      "statement": "The Spack environment pins PETSc 3.25 with complex scalars and SLEPc 3.25, together with parallel HDF5 with Fortran bindings, netcdf-fortran and netlib-scalapack, with OpenMPI required.",
+      "evidence": [
+        {
+          "resource": "repo://spack.yaml#L1-L28",
+          "version": "repo-lines-v1:sha256:cc6f307eee754d16002d7571edaec7fa86e7fd6e9d7947ce8c489cd024ae7c72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3N2IxZmEzZjc2MTFlYzkxYmQwOTQ4N2U2MTYxOGQ2MjgxZTA0ZWI4Zjk5NGNlMzEwNWUwNWQzMmZkZDYxMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YzI0M2RmODNkYTRkMzk2MmFjMjgwYzljZjgwNjMwMjU2ZDQyNmJmOTVjN2FmMTIwNmQwNWRmY2NjMTk3MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlZjQxMjM4ODNkMTQxMGU5ZGJhNGMxNjNiM2QxNjQxMzI2NDE5NzY5NDJiOTJlYjdmYWNiMGQ3MWNlY2U5YjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_891a21263d7948d79e3eb4e1d89eee16",
+      "statement": "build_pspline.sh applies the patch pspline-r8genxpkg-nx3.patch before compiling PSPLINE, a guard against a heap overrun in r8genxpkg for three points.",
+      "evidence": [
+        {
+          "resource": "repo://Libraries/build_pspline.sh#L1-L29",
+          "version": "repo-lines-v1:sha256:359614aec2d97ee7cd24a4d797a6a96b50724226184f7dadc884040797cb55f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NzVmOTI4NTQ2YWVlNzg1NWNiMWRiOWFmYzhhYjNmMWE4YTM0ZDQzZGU1YmJkNjJmNzA3NmQ3YmE5ZjM5MTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiMTI2ZTgzOWY0ODc3ODQ2NjE4Zjk2NTYzNmEzZTY5MzMwYWQwZWY0ZTI5OTk4YjkzMTJlZDA4ZDY4MWMwZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5Y2JkOTkzNmY0ODIxODdmN2E5MTk0ZWFiM2JkMDljYWVmODNkZjBmZDUwYTdhMDI5NmQ5NWJhNjJjZDZjODUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_11d108c554454bfdb46f61f8fe24fdc0",
+      "statement": "Runs on more than one MPI process need a distributed LU in PETSc such as MUMPS; the Snellius dependency script builds PETSc with MUMPS for that reason, and the test option PB3D_TEST_MPI_REGRESSION requires it.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/snellius/build_deps.sh#L30-L52",
+          "version": "repo-lines-v1:sha256:41d1e7362f5a0ec0333f9ffa175e892fad72734b230f5b7cbf367ff0c2f0fb13:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwN2Y1MjRmZGI2ZWE4OGZjNzE2NmMwMDE5MTY1Y2Q3ZjhkNGNlYmM5YjQ4YTI4ZTdlMjUzNmQ2NjhhZWE1N2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYmY4MWZjNGRhN2QwMTcxM2MxOGZiMTdhZjI5YTBkZjc0MGRhNjMzM2Q2OWZjMmFmMGQwMmZkMDRiZWNhNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3ZWQyYjFjMjgwNmM3ZmEzYWM5MTQ0NDI1OGMyY2Y0MjBkMTk5NTkwYWUwODU3YjJiODc3ZTZkOTFmOTQ3ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ZTQ2YzlhZDJhZjgzMDU1MDZlYzcwNzdlNTUzZDQzNzFjZjM4NWFmYjY0YmRlYzM1NmQ2MDkxMGZkMGMzYWIifQ"
+        },
+        {
+          "resource": "repo://tests/CMakeLists.txt#L226-L228",
+          "version": "repo-lines-v1:sha256:29337389704b3890a8337b7d21b9c3686d41b73b2603e968da8a44b798591ace:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWZiNDAxMzdlODZkOTBlN2I1N2M5YTRmYzU4M2U3MjQxMjJkYTQyMGI0MTgyNmZlZTU3MGY1MjhhN2RhZGIyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDNmYmE2YzQxMjU2MTMyMjBkOTBkYmY2ODNiNWM0MjM0NmI3ODRmNWZmMjcwZGM0MjIzZTY2ODhjMDIyZjdlZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTMyODQyZjRiMDQ5YmViNzU0NzkyOTgxOTU1ZDczYjNlMmU3NTI1MTUzZjUwODBhYjExYjRkMjNhNDFkNDg0NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDRkMDE4NzRkNmFkNmYxMDQzNGE5NmEyZTg2ZWVkNDNiNmRiOWI4NDgyM2Y0N2NlMTk1MjBkYzQ4YTZiYTRhZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_05ad34762336494a8b1f077f3c912d84",
+      "statement": "The vendored dfftpack library is compiled with -w and -fcheck=no-bounds, because its F77 work arrays declared with length 1 would stop every FFT call under -fcheck=all.",
+      "evidence": [
+        {
+          "resource": "repo://CMakeLists.txt#L198-L209",
+          "version": "repo-lines-v1:sha256:8df02216854319a959d2ce5fde67d326d3a59a760e1443d436dda520837d0243:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZmYxZjkyNGQ0NGM3NDZlZTA3NTZlMzI4YmQ5ODI2OGYwNDkwYWVjMTZlZmRhZTQ5M2I3NDAxN2VjZjRjNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMTllMTBjMDczNjVjNDVmYzhkMTQzNGM4OWJmOWIxMTI1ZWExNmNmMGQ4MzEwMGJmOTg3ODBmOGFlYWY2YzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlYjRlOTk3MTk0ZjRhNGJlZmE1NDJiMGI5YjMxZWM5OGMwMTAyYTRjZDRhZDI4M2Y2YzAxMTc5NWVlMzM4OGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyMWFmYjUwYTdhOWQ5M2I4MjMwMTNiMzI5MzkzMTliOGE3MTk0NWYzMzkzNWI3NjViMmY5ZGIxZjJkMWM3OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_77d52bcde9e3430eaf751c0a5800472e",
+      "statement": "The fortitude linter runs with line length 132, ignores rule E001 because it misreads the preprocessor lines, and excludes the vendored code in Libraries/ and tests/vendor/.",
+      "evidence": [
+        {
+          "resource": "repo://fortitude.toml#L1-L20",
+          "version": "repo-lines-v1:sha256:dda84850ca4df278076a42aa3716010e14f44804f017b16fcb65cbc87cc2e2f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZjQ0ZGU1NWM0OWNlMTc4NDgwMjA1OWVhZDQzNjdlOGY2MmQ3NWIyMzQ2OTk5MDkxMDA0MTAyMTU2OGM0NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNThkZTFkZDhlZTQ5MTQwYTQ0YjRjOTgzYWI0ZGI3ODU0MDMzMTlhMzBkNzU5YjYwMmI4NTdmOTI5NTE4MDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-20T18:32:33.626Z"
+  }
+}

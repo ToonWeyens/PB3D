@@ -1,0 +1,4 @@
+# Files
+
+- [Build & Dependencies](build-and-dependencies.md) - How PB3D and POST are built with CMake: build options, the dependency-light core library, the external libraries (PETSc/SLEPc 3.25 with complex scalars, HDF5, NetCDF-Fortran, ScaLAPACK, optional STRUMPACK-Dense 1.1.1, PSPLINE, minimal LIBSTELL), the scripts that build the libraries Spack does not carry, and the Python and lint tooling.
+- [Module Map (`Modules/`)](module-map.md) - What each of the 50 Fortran modules in Modules/ does, grouped by layer in the order of PB3D_MODULE_SOURCES in CMakeLists.txt, which is the Fortran module dependency order: foundations, messages and numerics, MPI, HDF5, grids, equilibrium, VMEC and HELENA, perturbation, solution, vacuum, Richardson, SLEPc, input/output, PB3D output, drivers and the debug test module.
