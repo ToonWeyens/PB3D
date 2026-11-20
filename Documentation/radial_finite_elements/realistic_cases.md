@@ -8,8 +8,8 @@ $N$ is the number of radial points (`n_r_sol`). "Order" is `norm_disc_prec_sol` 
 
 | | cbm18a, interior ballooning | peeling-ballooning, free boundary |
 |---|---|---|
-| Input | `inputs/input_cbm18a_range_015_085` | `inputs/input_peeling_ballooning_free`, from the archived run `simulations-2013-2018/PB3D/TEST_VAC_PEELING_BALLOONING` of PB3D_studies |
-| Equilibrium (HELENA) | `cbm18a_extended_vac.12` of the fixtures | `fort.12` of that run's `HELENA` folder on pCloud |
+| Input | `inputs/input_cbm18a_range_015_085` | `inputs/input_peeling_ballooning_free`, the input of a run of 2017 (`TEST_VAC_PEELING_BALLOONING`) |
+| Equilibrium (HELENA) | `cbm18a_extended_vac.12` of the fixtures | the HELENA output (`fort.12`) of that run |
 | Radial range | 0.15 to 0.85 | 0.5 to 1.0 |
 | Edge | fixed (the eigenfunction is $3 \times 10^{-3}$ there) | free, with the vacuum |
 | Fourier modes | $n = 10$, fixed set $m = 7 \ldots 64$ | $n = 5$, fixed set $m = 12 \ldots 37$ |
