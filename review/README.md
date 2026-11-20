@@ -27,6 +27,8 @@ at 2.47, right at 9e9aba5).
 - `tools/statement_diff.py SHA files...`: the Fortran statements a commit
   changed, with comments and whitespace ignored (for refactoring commits).
 - `tools/timeline.py`: the commit timeline figure.
+- `tools/fingerprint_series.py`: appendix A as a figure, the first eigenvalue
+  of each deck against the builds in commit order, one panel per deck.
 - `fingerprint/`: appendix A, the first eigenvalue of nine decks at every
   commit that changes the compiled code (48 commits), built and run on
   Snellius. `make_decks.sh` writes `decks/`, `submit.sh` unpacks the commits
