@@ -102,8 +102,14 @@ combined over all ranks.
   against the smooth direct one, converging), `point_source_direct_3d` and
   `exact_exterior_2d_options` (the point-source solve of the field-line
   style and the exact toroidal harmonics of the axisymmetric style with the
-  direct and the indirect diagonals, `vac_diag_style` 2 and 1, printed for
-  the benchmark; both must converge).
+  direct and the indirect diagonals, `vac_diag_style` 2 and 1, at n = 10
+  and n = 30, printed for the benchmark; the solution error must fall from
+  301 to 601 points, for the direct diagonals at n = 10 only).
+- **`fit_diag_pair` (full-stack, issue 29)** — `fit_diag` on synthetic
+  \(H\), \(G\) with known diagonals and two potentials, the first \(10^{-9}\)
+  of the second at every row: the exact solve of the two equations per row
+  returns the diagonals to rounding; with the two equations of one row made
+  dependent, the routine has to stop with an error instead of returning NaN.
 - **`vac_greens` (full-stack)** — the assembled axisymmetric \(G\), \(H\)
   matrices on a synthetic circular boundary (built like `store_vac_HEL`'s,
   seam point duplicated) through the two jump relations
