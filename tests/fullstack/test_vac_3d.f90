@@ -69,7 +69,8 @@ contains
             &new_unittest("H_sing_node", test_H_sing_node), &
             &new_unittest("diag_direct_3d", test_diag_direct_3d), &
             &new_unittest("point_source_direct_3d", test_point_source_direct), &
-            &new_unittest("exact_exterior_2d_options", test_exact_2d_options) &
+            &new_unittest("exact_exterior_2d_options", test_exact_2d_options), &
+            &new_unittest("fit_diag_pair", test_fit_diag_pair) &
             &]
     end subroutine collect_vac_3d
 
@@ -1139,7 +1140,11 @@ contains
     !! axisymmetric style with the direct (vac_diag_style 2) and the indirect
     !! (1) diagonals: for every harmonic and both resolutions, the identity
     !! residuals and the solution error are printed for the benchmark of the
-    !! two options, and both must converge.
+    !! two options, and the solution error must fall from 301 to 601 points.
+    !! At n = 30, R^n is 2^-30 of its maximum on the inboard side, so test
+    !! potentials that grow like R^n would not fix the inboard rows (issue
+    !! 29); there the direct diagonals do not converge yet at these
+    !! resolutions and are only printed.
     subroutine test_exact_2d_options(error)
         use num_vars, only: eq_style, rank, vac_diag_style
         use vac_vars, only: in_context, set_loc_lims
@@ -1148,31 +1153,37 @@ contains
         use vac_utilities, only: n_col1_loc, vec_glob2dis, dis_matvec
         type(error_type), allocatable, intent(out) :: error
         integer, parameter :: n_bnds(2) = [301,601]                             ! boundary points, two resolutions
-        integer, parameter :: n_tor = 10                                        ! toroidal mode number
-        integer, parameter :: ks(3) = [6,10,15]                                 ! poloidal mode numbers
-        integer, parameter :: styles(2) = [2,1]                                 ! direct, indirect
+        integer, parameter :: n_case = 4                                        ! number of harmonics
+        integer, parameter :: n_tors(n_case) = [10,10,10,30]                    ! toroidal mode numbers
+        integer, parameter :: ks(n_case) = [6,10,15,30]                         ! poloidal mode numbers
+        integer, parameter :: n_opt = 2                                         ! number of options
+        integer, parameter :: diag_styles(n_opt) = [2,1]                        ! direct, indirect
+        character(len=*), parameter :: opt_names(n_opt) = &
+            &['direct  ', 'indirect']                                           ! names of the options
         type(vac_type) :: vac                                                   ! style-2 vacuum variables
-        integer :: ierr, id, kd, ires, istyle, ik                               ! error status, counters
-        integer :: n_bnd                                                        ! current resolution
+        integer :: ierr, id, kd, ires, iopt, ik                                 ! error status, counters
+        integer :: n_bnd, n_tor                                                 ! current resolution and toroidal mode number
         integer :: n_col1                                                       ! local columns of the right-hand side
         integer :: desc_RPhi(9)                                                 ! descriptor of right-hand side and solution
         integer, allocatable :: lims_c_R(:,:)                                   ! local column limits
         integer :: eq_style_old, style_old                                      ! saved module state
+        logical :: in_ctxt                                                      ! this process is in the BLACS grid of the vacuum
         real(dp) :: t, R                                                        ! angle and major radius
-        real(dp) :: errs(3,2,2)                                                 ! interior residual, exterior residual, solution error (resolution, option)
+        real(dp) :: errs(3,2,n_opt)                                             ! interior residual, exterior residual, solution error (resolution, option)
         real(dp), allocatable :: phi(:), dphi(:), lhs(:), rhs(:), phi_num(:)    ! boundary data, products, solution
         real(dp), allocatable :: R_mat(:,:), Phi_mat(:,:)                       ! distributed right-hand side and solution
         
         eq_style_old = eq_style
         style_old = vac_diag_style
         eq_style = 2
-        harm: do ik = 1,3
+        harm: do ik = 1,n_case
             kd = ks(ik)
-            do istyle = 1,2
-                vac_diag_style = styles(istyle)
+            n_tor = n_tors(ik)
+            do iopt = 1,n_opt
+                vac_diag_style = diag_styles(iopt)
                 do ires = 1,2
                     n_bnd = n_bnds(ires)
-                    errs(:,ires,istyle) = 0._dp
+                    errs(:,ires,iopt) = 0._dp
                     ierr = vac%init(2,n_bnd,n_tor,[n_bnd,1],q_saf)
                     call check(error, ierr, 0, 'style-2 init failed')
                     if (allocated(error)) exit harm
@@ -1186,9 +1197,11 @@ contains
                             &a_min*(a_min*sin(t)**2-R*cos(t))]
                     end do
                     ierr = calc_GH(vac)
-                    call check(error, ierr, 0, 'style-2 matrices failed')
+                    call check(error, ierr, 0, 'style-2 matrices failed for &
+                        &option '//trim(opt_names(iopt)))
                     if (allocated(error)) exit harm
-                    if (in_context(vac%ctxt_HG)) then
+                    in_ctxt = in_context(vac%ctxt_HG)
+                    if (in_ctxt) then
                         allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),&
                             &phi_num(n_bnd))
                         do id = 1,n_bnd
@@ -1200,7 +1213,7 @@ contains
                             &dphi,rhs)
                         call check(error, ierr, 0, 'matrix-vector product failed')
                         if (allocated(error)) exit harm
-                        errs(1,ires,istyle) = maxval(abs(lhs-rhs+4._dp*pi*phi))/&
+                        errs(1,ires,iopt) = maxval(abs(lhs-rhs+4._dp*pi*phi))/&
                             &maxval(abs(4._dp*pi*phi))
                         do id = 1,n_bnd
                             call tor_harm(vac%x_vec(id,1),vac%x_vec(id,2),&
@@ -1211,7 +1224,7 @@ contains
                             &dphi,rhs)
                         call check(error, ierr, 0, 'matrix-vector product failed')
                         if (allocated(error)) exit harm
-                        errs(2,ires,istyle) = maxval(abs(lhs-rhs))/&
+                        errs(2,ires,iopt) = maxval(abs(lhs-rhs))/&
                             &maxval(abs(4._dp*pi*phi))
                         n_col1 = n_col1_loc(vac)
                         call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),&
@@ -1229,29 +1242,31 @@ contains
                             &[vac%n_loc(1)*n_col1]),vac%lims_r,phi_num)
                         call check(error, ierr, 0, 'exterior solve failed')
                         if (allocated(error)) exit harm
-                        errs(3,ires,istyle) = maxval(abs(phi_num-phi))/&
+                        errs(3,ires,iopt) = maxval(abs(phi_num-phi))/&
                             &maxval(abs(phi))
                         deallocate(phi,dphi,lhs,rhs,phi_num,R_mat,Phi_mat,lims_c_R)
                     end if
                     call vac%dealloc()
                 end do
-                if (rank.eq.0) write(error_unit,'(A,I3,A,I2,A,3ES10.2,A,3ES10.2)') &
-                    &'   [2d options] k = ',kd,', vac_diag_style ',&
-                    &styles(istyle),': interior, exterior, solve at 301: ',&
-                    &errs(:,1,istyle),'; at 601: ',errs(:,2,istyle)
+                if (rank.eq.0) write(error_unit,&
+                    &'(A,I3,A,I3,A,A,A,3ES10.2,A,3ES10.2)') &
+                    &'   [2d options] n = ',n_tor,', k = ',kd,', ',&
+                    &opt_names(iopt),': interior, exterior, solve at 301: ',&
+                    &errs(:,1,iopt),'; at 601: ',errs(:,2,iopt)
             end do
-            if (in_context(vac%ctxt_HG)) then
-                do istyle = 1,2
-                    call check(error, errs(3,2,istyle).lt.3.e-2_dp, &
+            if (in_ctxt) then
+                do iopt = 1,n_opt
+                    if (n_tor.gt.10 .and. diag_styles(iopt).eq.2) cycle
+                    call check(error, errs(3,2,iopt).lt.3.e-2_dp, &
                         &'solution error too large for option '//&
-                        &trim(i2str(styles(istyle)))//': '//&
-                        &trim(r2str(errs(3,2,istyle))))
+                        &trim(opt_names(iopt))//': '//&
+                        &trim(r2str(errs(3,2,iopt))))
                     if (allocated(error)) exit harm
-                    call check(error, errs(3,2,istyle).lt.0.8_dp*errs(3,1,istyle), &
+                    call check(error, errs(3,2,iopt).lt.0.8_dp*errs(3,1,iopt), &
                         &'no convergence for option '//&
-                        &trim(i2str(styles(istyle)))//': '//&
-                        &trim(r2str(errs(3,1,istyle)))//' -> '//&
-                        &trim(r2str(errs(3,2,istyle))))
+                        &trim(opt_names(iopt))//': '//&
+                        &trim(r2str(errs(3,1,iopt)))//' -> '//&
+                        &trim(r2str(errs(3,2,iopt))))
                     if (allocated(error)) exit harm
                 end do
             end if
@@ -1260,6 +1275,102 @@ contains
         vac_diag_style = style_old
     end subroutine test_exact_2d_options
     
+
+    !> vac_utilities.fit_diag() on a synthetic system with known diagonals.
+    !! The off-diagonal entries of H and G are built so that two potentials
+    !! satisfy H phi_k - G dphi_k = c_k phi_k exactly with the chosen
+    !! diagonals, and the first potential and its normal data are 1e-9 of the
+    !! second at every row, as R^n is against the ring source on the inboard
+    !! side at n = 22 (issue 29). The exact solve of the two equations per row
+    !! must return the chosen diagonals. With the two equations of one row
+    !! made dependent, fit_diag must stop with an error instead of returning
+    !! NaN.
+    subroutine test_fit_diag_pair(error)
+        use vac_vars, only: in_context, loc_idx
+        use vac_utilities, only: fit_diag
+        type(error_type), allocatable, intent(out) :: error
+        integer, parameter :: n_bnd = 7                                         ! number of rows
+        real(dp), parameter :: c_free(2) = [-4._dp*pi, 0._dp]                   ! free terms
+        real(dp), parameter :: tiny_fac = 1.e-9_dp                              ! size of the first potential against the second
+        type(vac_type) :: vac                                                   ! style-2 vacuum variables
+        integer :: ierr, id, jd, kd, i_rd, i_cd                                 ! error status, counters
+        integer :: j1, j2                                                       ! columns of a row that are solved for
+        real(dp) :: H_g(n_bnd,n_bnd), G_g(n_bnd,n_bnd)                          ! global matrices
+        real(dp) :: phi(n_bnd,2), dphi(n_bnd,2)                                 ! potentials and normal data
+        real(dp) :: h_true(n_bnd), g_true(n_bnd), dH(n_bnd), dG(n_bnd)         ! chosen and fitted diagonals
+        real(dp) :: t(2), det                                                   ! right-hand side and determinant for H_g(id,[j1,j2])
+        
+        do id = 1,n_bnd
+            h_true(id) = -2._dp*pi + 0.1_dp*sin(1._dp*id)
+            g_true(id) = 0.5_dp + 0.05_dp*cos(2._dp*id)
+            do kd = 1,2
+                phi(id,kd) = 1._dp + 0.3_dp*sin(1.7_dp*id+kd)
+                dphi(id,kd) = (-1._dp)**kd*(1._dp + 0.2_dp*cos(1.3_dp*id+2*kd))
+            end do
+            do jd = 1,n_bnd
+                H_g(id,jd) = 0.1_dp*cos(0.7_dp*id+1.1_dp*jd)
+                G_g(id,jd) = 0.05_dp*sin(0.9_dp*id+0.4_dp*jd)
+            end do
+        end do
+        phi(:,1) = tiny_fac*phi(:,1)
+        dphi(:,1) = tiny_fac*dphi(:,1)
+        do id = 1,n_bnd
+            j1 = mod(id,n_bnd) + 1
+            j2 = mod(id+1,n_bnd) + 1
+            H_g(id,[j1,j2]) = 0._dp
+            do kd = 1,2
+                t(kd) = (c_free(kd)-h_true(id))*phi(id,kd) + &
+                    &g_true(id)*dphi(id,kd)
+                do jd = 1,n_bnd
+                    if (jd.eq.id) cycle
+                    t(kd) = t(kd) - H_g(id,jd)*phi(jd,kd) + G_g(id,jd)*dphi(jd,kd)
+                end do
+            end do
+            det = phi(j1,1)*phi(j2,2) - phi(j2,1)*phi(j1,2)
+            H_g(id,j1) = (t(1)*phi(j2,2) - phi(j2,1)*t(2))/det
+            H_g(id,j2) = (phi(j1,1)*t(2) - t(1)*phi(j1,2))/det
+            H_g(id,id) = 7._dp                                                  ! fit_diag ignores the current diagonals
+            G_g(id,id) = -3._dp
+        end do
+        
+        ierr = vac%init(2,n_bnd,10,[n_bnd,1],q_saf)
+        call check(error, ierr, 0, 'style-2 init failed')
+        if (allocated(error)) return
+        if (in_context(vac%ctxt_HG)) then
+            do i_rd = 1,size(vac%lims_r,2)
+                do i_cd = 1,size(vac%lims_c,2)
+                    do id = vac%lims_r(1,i_rd),vac%lims_r(2,i_rd)
+                        do jd = vac%lims_c(1,i_cd),vac%lims_c(2,i_cd)
+                            vac%H(loc_idx(vac%lims_r,i_rd,id),&
+                                &loc_idx(vac%lims_c,i_cd,jd)) = H_g(id,jd)
+                            vac%G(loc_idx(vac%lims_r,i_rd,id),&
+                                &loc_idx(vac%lims_c,i_cd,jd)) = G_g(id,jd)
+                        end do
+                    end do
+                end do
+            end do
+            ierr = fit_diag(vac,phi,dphi,c_free,.true.,.true.,dH,dG)
+            call check(error, ierr, 0, 'fit_diag failed')
+            if (.not.allocated(error)) then
+                if (rank_out()) write(error_unit,'(A,2ES10.2)') &
+                    &'   [fit_diag] largest errors of H_ii and G_ii: ', &
+                    &maxval(abs(dH-h_true)), maxval(abs(dG-g_true))
+                call check(error, maxval(abs(dH-h_true)).lt.1.e-10_dp .and. &
+                    &maxval(abs(dG-g_true)).lt.1.e-10_dp, &
+                    &'fitted diagonals wrong by '//&
+                    &trim(r2str(maxval(abs(dH-h_true))))//' and '//&
+                    &trim(r2str(maxval(abs(dG-g_true)))))
+            end if
+            if (.not.allocated(error)) then
+                phi(3,2) = 2._dp*phi(3,1)
+                dphi(3,2) = 2._dp*dphi(3,1)
+                ierr = fit_diag(vac,phi,dphi,c_free,.true.,.true.,dH,dG)
+                call check(error, ierr.ne.0, 'fit_diag did not stop on a &
+                    &row whose two equations are dependent')
+            end if
+        end if
+        call vac%dealloc()
+    end subroutine test_fit_diag_pair
 
     !> Boundary value and normal data of the toroidal harmonic of order
     !! n and degree k - 1/2 at (R, Z): the gradient by central differences

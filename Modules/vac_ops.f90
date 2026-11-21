@@ -1342,10 +1342,27 @@ contains
     !!     constant potential; eq. 149 of the 2019 manuscript lacks this term,
     !!     erratum E16);
     !!  2. \f$R^n Z\f$, harmonic inside the boundary, \f$c = -4\pi\f$;
-    !!  3. \f$Q_{|n|-1/2}(\gamma(\mathbf{x},\mathbf{x}_\text{src}))/\sqrt{R
-    !!     R_\text{src}}\f$, the n-mode Green's function of a ring source at
-    !!     \c x_src inside the plasma, harmonic outside the boundary and
-    !!     decaying, \f$c = 0\f$; its normal data by a central difference.
+    !!  3. \f$Q_{|n|-1/2}(\gamma)/\sqrt{R R_\text{src}}\f$, the n-mode Green's
+    !!     function of a ring source at \c x_src inside the plasma, harmonic
+    !!     outside the boundary and decaying, \f$c = 0\f$;
+    !!  4. \f$P_{|n|-1/2}(\gamma)/\sqrt{R R_\text{src}}\f$, the other solution
+    !!     of the same Legendre equation, regular at the ring; it grows away
+    !!     from the ring and is singular only on the axis \f$R = 0\f$ and at
+    !!     infinity, both in the vacuum, so it is harmonic inside the boundary,
+    !!     \f$c = -4\pi\f$.
+    !!
+    !! Here \f$\gamma = 1 + |\mathbf{x}-\mathbf{x}_\text{src}|^2/(2 R
+    !! R_\text{src})\f$. The normal data are \f$\phi' = \mathbf{n}\cdot
+    !! \nabla\phi\f$, with \f$\mathbf{n}\f$ the stored normal; for 3 and 4
+    !! \f[ \nabla\phi = \frac{f'(\gamma)\,\nabla\gamma -
+    !!  f(\gamma)\,\mathbf{e}_R/(2R)}{\sqrt{R R_\text{src}}}, \quad
+    !!  \nabla\gamma = \frac{\mathbf{x} - \mathbf{x}_\text{src}}{R
+    !!  R_\text{src}} - \frac{\gamma-1}{R} \mathbf{e}_R , \f]
+    !! with the derivative of
+    !! \f$f = P_\nu\f$ or \f$Q_\nu\f$, \f$\nu = |n|-1/2\f$, from the degree
+    !! recurrence \f$(\gamma^2-1) f'_\nu = \nu(\gamma f_\nu - f_{\nu-1})\f$, or
+    !! \f$(\gamma^2-1) f'_\nu = (\nu+1)(f_{\nu+1} - \gamma f_\nu)\f$ for
+    !! \f$n = 0\f$.
     !! (The spherical potential of eq. 152 of the manuscript is not harmonic
     !! across \f$Z = 0\f$, erratum E17, and is not used.)
     integer function set_pot_2(vac,kd,x_src,phi,dphi,c_free,x_ext,phi_ext) &
@@ -1368,41 +1385,35 @@ contains
         integer :: id                                                           ! counter
         integer :: n_abs                                                        ! |n|
         integer :: max_n                                                        ! maximum degree reached by dtorh1
-        real(dp) :: fp, fm                                                      ! potential values for the central difference
-        real(dp) :: x_pert(2)                                                   ! point displaced along the normal
+        real(dp) :: dum(2)                                                      ! unused gradient
+        real(dp), allocatable :: grad(:,:)                                      ! gradient at the boundary points (R, Z)
         real(dp), allocatable :: pl_loc(:), ql_loc(:)                           ! toroidal functions
-        real(dp), parameter :: eps_src = 1.E-7_dp                               ! step of the central difference
         
         ierr = 0
         n_abs = abs(vac%prim_X)
         c_free = -4._dp*pi
+        allocate(grad(vac%n_bnd,2))
         select case (kd)
             case (1)                                                            ! R^n
                 phi = vac%x_vec(:,1)**n_abs
-                dphi = n_abs*vac%norm(:,1)*vac%x_vec(:,1)**(n_abs-1)
+                grad(:,1) = n_abs*vac%x_vec(:,1)**(n_abs-1)
+                grad(:,2) = 0._dp
                 if (present(x_ext)) phi_ext = x_ext(:,1)**n_abs
             case (2)                                                            ! R^n Z
                 phi = vac%x_vec(:,1)**n_abs*vac%x_vec(:,2)
-                dphi = n_abs*vac%norm(:,1)*vac%x_vec(:,1)**(n_abs-1)*&
-                    &vac%x_vec(:,2) + vac%norm(:,2)*vac%x_vec(:,1)**n_abs
+                grad(:,1) = n_abs*vac%x_vec(:,1)**(n_abs-1)*vac%x_vec(:,2)
+                grad(:,2) = vac%x_vec(:,1)**n_abs
                 if (present(x_ext)) phi_ext = x_ext(:,1)**n_abs*x_ext(:,2)
-            case (3)                                                            ! ring source
-                c_free = 0._dp
+            case (3,4)                                                          ! Q and P of the ring
+                if (kd.eq.3) c_free = 0._dp
                 allocate(pl_loc(0:max(n_abs,1)),ql_loc(0:max(n_abs,1)))
                 do id = 1,vac%n_bnd
-                    ierr = ring_pot(vac%x_vec(id,:),phi(id))
+                    ierr = ring_pot(vac%x_vec(id,:),phi(id),grad(id,:))
                     CHCKERR('')
-                    x_pert = vac%x_vec(id,:) + eps_src*vac%norm(id,:)
-                    ierr = ring_pot(x_pert,fp)
-                    CHCKERR('')
-                    x_pert = vac%x_vec(id,:) - eps_src*vac%norm(id,:)
-                    ierr = ring_pot(x_pert,fm)
-                    CHCKERR('')
-                    dphi(id) = (fp-fm)/(2*eps_src)
                 end do
                 if (present(x_ext)) then
                     do id = 1,size(x_ext,1)
-                        ierr = ring_pot(x_ext(id,:),phi_ext(id))
+                        ierr = ring_pot(x_ext(id,:),phi_ext(id),dum)
                         CHCKERR('')
                     end do
                 end if
@@ -1410,23 +1421,55 @@ contains
                 ierr = 1
                 CHCKERR('no such test potential')
         end select
+        dphi = vac%norm(:,1)*grad(:,1) + vac%norm(:,2)*grad(:,2)
     contains
-        ! The n-mode Green's function potential of the ring source,
-        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src), gamma = 1 + |x-x_src|^2/(2 R R_src)
-        ! (eq. 112 of the 2019 manuscript).
+        ! Q_{|n|-1/2}(gamma)/sqrt(R R_src) (kd = 3, the n-mode Green's function
+        ! of the ring, eq. 112 of the 2019 manuscript) or P_{|n|-1/2}(gamma)/
+        ! sqrt(R R_src) (kd = 4) at x, and its gradient.
         !> \private
-        integer function ring_pot(x,res) result(ierr)
+        integer function ring_pot(x,res,gres) result(ierr)
+            character(*), parameter :: rout_name = 'ring_pot'
+            
             ! input / output
             real(dp), intent(in) :: x(2)                                        ! point (R, Z)
             real(dp), intent(out) :: res                                        ! potential
+            real(dp), intent(out) :: gres(2)                                    ! its gradient (R, Z)
             
             ! local variables
             real(dp) :: gam                                                     ! argument of the toroidal function
+            real(dp) :: f, df                                                   ! toroidal function and its derivative
+            real(dp) :: grad_gam(2)                                             ! gradient of gam (R, Z)
+            real(dp) :: sq                                                      ! sqrt(R R_src)
             
+            ierr = 0
             gam = 1._dp + sum((x-x_src)**2)/(2._dp*x(1)*x_src(1))
             ierr = dtorh1(gam,0,max(n_abs,1),pl_loc,ql_loc,max_n)
-            if (ierr.eq.0 .and. max_n.lt.n_abs) ierr = 1
-            res = ql_loc(n_abs)/sqrt(x(1)*x_src(1))
+            CHCKERR('')
+            if (max_n.lt.max(n_abs,1)) then
+                ierr = 1
+                CHCKERR('toroidal functions out of range')
+            end if
+            if (kd.eq.3) then
+                f = ql_loc(n_abs)
+                if (n_abs.eq.0) then
+                    df = 0.5_dp*(ql_loc(1)-gam*f)/(gam**2-1._dp)
+                else
+                    df = (n_abs-0.5_dp)*(gam*f-ql_loc(n_abs-1))/(gam**2-1._dp)
+                end if
+            else
+                f = pl_loc(n_abs)
+                if (n_abs.eq.0) then
+                    df = 0.5_dp*(pl_loc(1)-gam*f)/(gam**2-1._dp)
+                else
+                    df = (n_abs-0.5_dp)*(gam*f-pl_loc(n_abs-1))/(gam**2-1._dp)
+                end if
+            end if
+            sq = sqrt(x(1)*x_src(1))
+            grad_gam = (x-x_src)/(x(1)*x_src(1))
+            grad_gam(1) = grad_gam(1) - (gam-1._dp)/x(1)
+            res = f/sq
+            gres = df*grad_gam/sq
+            gres(1) = gres(1) - f/(2._dp*x(1)*sq)
         end function ring_pot
     end function set_pot_2
     
@@ -1441,10 +1484,21 @@ contains
     !!    data, so that it gives the row-sum rule \f$\sum_j H_{ij} = -4\pi\f$;
     !!    then \f$G_{ii}\f$ from the potentials x, y and z, which are harmonic
     !!    inside the boundary, with that \f$H_{ii}\f$;
-    !!  - axisymmetric style, in one step: both from the three potentials of
-    !!    set_pot_2(), each scaled to unit maximum. They converge to third order
-    !!    in the poloidal points, the direct diagonals to first order
-    !!    (full-stack test \c exact_exterior_2d_options).
+    !!  - axisymmetric style, in one step: both from Q and P of set_pot_2(),
+    !!    the two solutions of the Legendre equation of a ring at the centroid
+    !!    of the boundary points, by solving their two identities of each row
+    !!    exactly. The centroid has to lie inside the boundary, else Q is
+    !!    harmonic inside and its free term is wrong. Both potentials depend
+    !!    on the position only through \f$\gamma\f$ (and the factor
+    !!    \f$1/\sqrt{R}\f$), so where the boundary normal is perpendicular to
+    !!    \f$\nabla\gamma\f$ they have the same ratio of normal data to value
+    !!    and cannot separate \f$H_{ii}\f$ from \f$G_{ii}\f$. The curves of
+    !!    constant \f$\gamma\f$ are circles around the ring, so this needs a
+    !!    boundary that crosses them at a right angle, as on the flanks of a
+    !!    deep bean; vac_utilities.fit_diag() warns when a row comes close to
+    !!    it. The diagonals converge to third order in the poloidal points,
+    !!    the direct ones to first order (full-stack test
+    !!    \c exact_exterior_2d_options).
     !! The matrices keep their current diagonals.
     integer function diag_indirect(vac,dH,dG) result(ierr)
         use vac_vars, only: in_context
@@ -1480,16 +1534,19 @@ contains
                     &dH,dG)
                 CHCKERR('')
             case (2)                                                            ! axisymmetric
-                allocate(phi(vac%n_bnd,3),dphi(vac%n_bnd,3))
                 x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd     ! centroid of the boundary points
-                do kd = 1,3
-                    ierr = set_pot_2(vac,kd,x_src,phi(:,kd),dphi(:,kd),&
+                if (.not.inside_bnd(x_src)) then
+                    ierr = 1
+                    CHCKERR('the centroid of the boundary points lies outside &
+                        &the boundary: no ring source possible there')
+                end if
+                allocate(phi(vac%n_bnd,2),dphi(vac%n_bnd,2))
+                do kd = 1,2                                                     ! Q and P
+                    ierr = set_pot_2(vac,kd+2,x_src,phi(:,kd),dphi(:,kd),&
                         &c_free(kd))
                     CHCKERR('')
-                    dphi(:,kd) = dphi(:,kd)/maxval(abs(phi(:,kd)))
-                    phi(:,kd) = phi(:,kd)/maxval(abs(phi(:,kd)))
                 end do
-                ierr = fit_diag(vac,phi,dphi,c_free,.true.,.true.,dH,dG)
+                ierr = fit_diag(vac,phi,dphi,c_free(1:2),.true.,.true.,dH,dG)
                 CHCKERR('')
             case default
                 ierr = 1
@@ -1497,6 +1554,33 @@ contains
                     &' possible'
                 CHCKERR(err_msg)
         end select
+    contains
+        ! Whether the point x = (R, Z) lies inside the closed curve through the
+        ! boundary points: an odd number of crossings of the curve by the ray
+        ! from x towards larger R.
+        !> \private
+        logical function inside_bnd(x) result(inside)
+            ! input / output
+            real(dp), intent(in) :: x(2)                                        ! point (R, Z)
+            
+            ! local variables
+            integer :: id, jd                                                   ! end points of a segment
+            integer :: n_cross                                                  ! number of crossings
+            real(dp) :: R_cross                                                 ! R where a segment crosses Z = x(2)
+            
+            n_cross = 0
+            do id = 1,vac%n_bnd
+                jd = mod(id,vac%n_bnd) + 1
+                if ((vac%x_vec(id,2).gt.x(2)) .neqv. &
+                    &(vac%x_vec(jd,2).gt.x(2))) then
+                    R_cross = vac%x_vec(id,1) + (x(2)-vac%x_vec(id,2))*&
+                        &(vac%x_vec(jd,1)-vac%x_vec(id,1))/&
+                        &(vac%x_vec(jd,2)-vac%x_vec(id,2))
+                    if (R_cross.gt.x(1)) n_cross = n_cross + 1
+                end if
+            end do
+            inside = mod(n_cross,2).eq.1
+        end function inside_bnd
     end function diag_indirect
     
     !> Sets the diagonal of a distributed matrix of the vacuum to a global
@@ -2495,8 +2579,9 @@ contains
             &persistent=rank_o)
         allocate(phi(n_bnd),dphi(n_bnd),lhs(n_bnd),rhs(n_bnd),phi_num(n_bnd))
         
-        ! Green identities
-        do kd = 1,3
+        ! Green identities (with the indirect diagonals, those of Q and P hold
+        ! by construction, and R^n and R^n Z are the independent checks)
+        do kd = 1,4
             ierr = set_pot_2(vac,kd,x_src,phi,dphi,c_free)
             CHCKERR('')
             select case (kd)
@@ -2506,6 +2591,8 @@ contains
                     pot_name = 'RnZ'
                 case (3)
                     pot_name = 'ring_source'
+                case (4)
+                    pot_name = 'ring_P'
             end select
             ierr = dis_matvec(vac,vac%H,vac%desc_H,phi,lhs)
             CHCKERR('')
@@ -2529,7 +2616,9 @@ contains
                 &'.dat',abs(lhs-c_free*phi)/maxval(abs(4._dp*pi*phi)))
         end do
         
-        ! exterior solve for the ring source (phi and dphi are its data)
+        ! exterior solve for the ring source
+        ierr = set_pot_2(vac,3,x_src,phi,dphi,c_free)
+        CHCKERR('')
         n_col1 = n_col1_loc(vac)
         call set_loc_lims(n_col1,vac%bs,vac%ind_p(2),vac%n_p(2),lims_c_R)
         allocate(R_mat(max(1,vac%n_loc(1)),n_col1))

@@ -1012,17 +1012,29 @@ contains
     !!
     !! For  a potential  \f$\phi_k\f$ with  normal data  \f$\phi'_k\f$, row
     !! \f$i\f$ of the identity is
-    !! \f[ H_{ii}\phi_{k,i} - G_{ii}\phi'_{k,i} = c_k\phi_{k,i}
+    !! \f[ H_{ii}\phi_{k,i} - G_{ii}\phi'_{k,i} = r_{k,i} \equiv c_k\phi_{k,i}
     !!  - \sum_{j\ne i} H_{ij}\phi_{k,j} + \sum_{j\ne i} G_{ij}\phi'_{k,j} , \f]
     !! where the free term \f$c_k\f$ is \f$-4\pi\f$ for a potential that is
     !! harmonic inside the boundary and \f$0\f$ for one that is harmonic
-    !! outside it and decays. This routine solves these equations for each row,
-    !! in the least-squares sense over the potentials, for the entries that
-    !! \c fit_H and \c fit_G select. An entry that is not fitted keeps the
-    !! value that \c dH or \c dG holds on input, and the routine moves its term
-    !! to the right-hand side. The off-diagonal sums are the products with the
+    !! outside it and decays. The off-diagonal sums are the products with the
     !! full matrices minus their current diagonals, so the matrices are not
     !! changed.
+    !!
+    !! Either one entry is fitted, \c fit_H or \c fit_G, in the least-squares
+    !! sense over any number of potentials; the other keeps the value that
+    !! \c dH or \c dG holds on input, and its term moves to the right-hand side.
+    !! Or both are fitted from exactly two potentials, whose two equations per
+    !! row are solved exactly:
+    !! \f[ H_{ii} = \frac{r_{1,i}\phi'_{2,i} - r_{2,i}\phi'_{1,i}}{D_i}, \quad
+    !!  G_{ii} = \frac{r_{1,i}\phi_{2,i} - r_{2,i}\phi_{1,i}}{D_i}, \quad
+    !!  D_i = \phi_{1,i}\phi'_{2,i} - \phi'_{1,i}\phi_{2,i} . \f]
+    !! The ratio \f$s_i = |D_i| / (|\phi_{1,i}\phi'_{2,i}| +
+    !! |\phi'_{1,i}\phi_{2,i}|)\f$, between 0 and 1, does not depend on how
+    !! either potential is scaled; about \f$-\log_{10}s_i\f$ digits of
+    !! \f$D_i\f$ are lost to cancellation. The routine stops with an error when
+    !! \f$s_i < 10^{-6}\f$ at some row, where the two equations cannot separate
+    !! \f$H_{ii}\f$ from \f$G_{ii}\f$, and warns when the smallest \f$s_i\f$ is
+    !! below \f$10^{-2}\f$.
     integer function fit_diag(vac,phi,dphi,c_free,fit_H,fit_G,dH,dG) &
         &result(ierr)
         use vac_vars, only: in_context
@@ -1040,55 +1052,60 @@ contains
         real(dp), intent(inout) :: dG(:)                                        !< diagonal of G (global): known on input, or fitted on output
 
         ! local variables
-        integer :: kd, rd                                                       ! counters
-        real(dp) :: rr                                                          ! right-hand side of an identity at a point
-        real(dp) :: det_loc                                                     ! determinant of the normal equations
+        integer :: kd                                                           ! counter
+        integer :: rd_min                                                       ! row of the smallest s_i
+        real(dp), parameter :: tol_stop = 1.E-6_dp                              ! smallest s_i accepted
+        real(dp), parameter :: tol_warn = 1.E-2_dp                              ! smallest s_i without a warning
         real(dp), allocatable :: yH(:), yG(:)                                   ! products with the full H and G
         real(dp), allocatable :: dH0(:), dG0(:)                                 ! current diagonals of the matrices
-        real(dp), allocatable :: a11(:), a12(:), a22(:), b1(:), b2(:)           ! normal equations per row
+        real(dp), allocatable :: rr(:,:)                                        ! right-hand sides, per row and potential
+        real(dp), allocatable :: det(:), s_sep(:)                               ! D_i and s_i
+        character(len=max_str_ln) :: err_msg                                    ! error message
 
         ierr = 0
         if (.not.in_context(vac%ctxt_HG)) return
+        if (size(c_free).ne.size(phi,2) .or. fit_H.and.fit_G.and.size(phi,2).ne.2) then
+            ierr = 1
+            CHCKERR('one free term per potential, and exactly two potentials &
+                &to fit both diagonals')
+        end if
         allocate(yH(vac%n_bnd),yG(vac%n_bnd),dH0(vac%n_bnd),dG0(vac%n_bnd))
-        allocate(a11(vac%n_bnd),a12(vac%n_bnd),a22(vac%n_bnd),b1(vac%n_bnd),&
-            &b2(vac%n_bnd))
+        allocate(rr(vac%n_bnd,size(phi,2)))
         ierr = dis_diag(vac,vac%H,dH0)
         CHCKERR('')
         ierr = dis_diag(vac,vac%G,dG0)
         CHCKERR('')
-        a11 = 0._dp
-        a12 = 0._dp
-        a22 = 0._dp
-        b1 = 0._dp
-        b2 = 0._dp
         do kd = 1,size(phi,2)
             ierr = dis_matvec(vac,vac%H,vac%desc_H,phi(:,kd),yH)
             CHCKERR('')
             ierr = dis_matvec(vac,vac%G,vac%desc_G,dphi(:,kd),yG)
             CHCKERR('')
-            do rd = 1,vac%n_bnd
-                ! h phi - g dphi = rr for the diagonal entries h and g
-                rr = c_free(kd)*phi(rd,kd) - (yH(rd)-dH0(rd)*phi(rd,kd)) + &
-                    &(yG(rd)-dG0(rd)*dphi(rd,kd))
-                if (.not.fit_H) rr = rr - dH(rd)*phi(rd,kd)
-                if (.not.fit_G) rr = rr + dG(rd)*dphi(rd,kd)
-                a11(rd) = a11(rd) + phi(rd,kd)**2
-                a12(rd) = a12(rd) - phi(rd,kd)*dphi(rd,kd)
-                a22(rd) = a22(rd) + dphi(rd,kd)**2
-                b1(rd) = b1(rd) + phi(rd,kd)*rr
-                b2(rd) = b2(rd) - dphi(rd,kd)*rr
-            end do
+            rr(:,kd) = c_free(kd)*phi(:,kd) - (yH-dH0*phi(:,kd)) + &
+                &(yG-dG0*dphi(:,kd))
+            if (.not.fit_H) rr(:,kd) = rr(:,kd) - dH*phi(:,kd)
+            if (.not.fit_G) rr(:,kd) = rr(:,kd) + dG*dphi(:,kd)
         end do
         if (fit_H .and. fit_G) then
-            do rd = 1,vac%n_bnd
-                det_loc = a11(rd)*a22(rd) - a12(rd)**2
-                dH(rd) = (a22(rd)*b1(rd) - a12(rd)*b2(rd))/det_loc
-                dG(rd) = (a11(rd)*b2(rd) - a12(rd)*b1(rd))/det_loc
-            end do
+            det = phi(:,1)*dphi(:,2) - dphi(:,1)*phi(:,2)
+            s_sep = abs(phi(:,1)*dphi(:,2)) + abs(dphi(:,1)*phi(:,2))
+            where (s_sep.gt.0._dp) s_sep = abs(det)/s_sep
+            rd_min = minloc(s_sep,1)
+            if (s_sep(rd_min).lt.tol_stop) then
+                ierr = 1
+                err_msg = 'row '//trim(i2str(rd_min))//' of '//&
+                    &trim(i2str(vac%n_bnd))//' (n = '//trim(i2str(vac%prim_X))//&
+                    &'): identities cannot separate H_ii and G_ii'
+                CHCKERR(err_msg)
+            end if
+            if (s_sep(rd_min).lt.tol_warn) call writo('fit_diag: identities &
+                &barely separate H_ii and G_ii at row '//trim(i2str(rd_min))//&
+                &' (s = '//trim(r2strt(s_sep(rd_min)))//')',warning=.true.)
+            dH = (rr(:,1)*dphi(:,2) - rr(:,2)*dphi(:,1))/det
+            dG = (rr(:,1)*phi(:,2) - rr(:,2)*phi(:,1))/det
         else if (fit_H) then
-            dH = b1/a11
+            dH = sum(phi*rr,2)/sum(phi**2,2)
         else if (fit_G) then
-            dG = b2/a22
+            dG = -sum(dphi*rr,2)/sum(dphi**2,2)
         end if
     end function fit_diag
 end module vac_utilities
