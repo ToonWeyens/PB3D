@@ -1066,8 +1066,9 @@ contains
         if (.not.in_context(vac%ctxt_HG)) return
         if (size(c_free).ne.size(phi,2) .or. fit_H.and.fit_G.and.size(phi,2).ne.2) then
             ierr = 1
-            CHCKERR('one free term per potential, and exactly two potentials &
-                &to fit both diagonals')
+            err_msg = 'one free term per potential, and exactly two potentials &
+                &to fit both diagonals'
+            CHCKERR(err_msg)
         end if
         allocate(yH(vac%n_bnd),yG(vac%n_bnd),dH0(vac%n_bnd),dG0(vac%n_bnd))
         allocate(rr(vac%n_bnd,size(phi,2)))

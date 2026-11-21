@@ -1537,8 +1537,9 @@ contains
                 x_src = [sum(vac%x_vec(:,1)),sum(vac%x_vec(:,2))]/vac%n_bnd     ! centroid of the boundary points
                 if (.not.inside_bnd(x_src)) then
                     ierr = 1
-                    CHCKERR('the centroid of the boundary points lies outside &
-                        &the boundary: no ring source possible there')
+                    err_msg = 'the centroid of the boundary points lies outside &
+                        &the boundary: no ring source possible there'
+                    CHCKERR(err_msg)
                 end if
                 allocate(phi(vac%n_bnd,2),dphi(vac%n_bnd,2))
                 do kd = 1,2                                                     ! Q and P
