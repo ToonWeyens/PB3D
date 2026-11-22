@@ -917,6 +917,13 @@ contains
                 call writo('vac_diag_style 2 is a diagnostic, less accurate &
                     &than 1: not for production runs',warning=.true.)
             end if
+#ifndef ldebug
+            if (check_vac) then
+                call writo('check_vac needs a build with ldebug &
+                    &(PB3D_ENABLE_DEBUG): ignored',warning=.true.)
+                check_vac = .false.
+            end if
+#endif
 
             ! for HELENA, warn about axisymmetry
             if (eq_style.eq.2) then

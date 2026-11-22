@@ -1336,7 +1336,8 @@ contains
     !! \f$e^{\imath n\zeta}\f$, with their normal data along the stored normal
     !! \f$-\mathcal{J}\nabla\psi\f$ and the free term \c c_free of the identity
     !! \f$\overline{\text{H}}\phi - \overline{\text{G}}\,\text{d}\phi = c\,\phi\f$
-    !! that they satisfy:
+    !! that they satisfy (1 and 2 only in builds with \c ldebug, for
+    !! check_vac_exact()):
     !!  1. \f$R^n\f$, harmonic inside the boundary, \f$c = -4\pi\f$ (the shell
     !!     at infinity contributes \f$-4\pi\phi(\mathbf{r}_i)\f$, as for the
     !!     constant potential; eq. 149 of the 2019 manuscript lacks this term,
@@ -1394,6 +1395,7 @@ contains
         c_free = -4._dp*pi
         allocate(grad(vac%n_bnd,2))
         select case (kd)
+#if ldebug
             case (1)                                                            ! R^n
                 phi = vac%x_vec(:,1)**n_abs
                 grad(:,1) = n_abs*vac%x_vec(:,1)**(n_abs-1)
@@ -1404,6 +1406,7 @@ contains
                 grad(:,1) = n_abs*vac%x_vec(:,1)**(n_abs-1)*vac%x_vec(:,2)
                 grad(:,2) = vac%x_vec(:,1)**n_abs
                 if (present(x_ext)) phi_ext = x_ext(:,1)**n_abs*x_ext(:,2)
+#endif
             case (3,4)                                                          ! Q and P of the ring
                 if (kd.eq.3) c_free = 0._dp
                 allocate(pl_loc(0:max(n_abs,1)),ql_loc(0:max(n_abs,1)))
@@ -1609,8 +1612,10 @@ contains
         end do
     end subroutine set_diag_vac
     
+#if ldebug
     !> Writes a per-point quantity of the boundary with the point's parallel
-    !! and field-line indices and its position, for the localization of errors.
+    !! and field-line indices and its position, for the localization of errors
+    !! by check_vac_exact(). Only in builds with \c ldebug.
     subroutine write_points_vac(vac,file_name,val)
         use num_vars, only: rank, n_procs
         
@@ -1634,6 +1639,7 @@ contains
         end do
         close(file_i)
     end subroutine write_points_vac
+#endif
     
 
     !> Calculates the vacuum response.
@@ -1670,7 +1676,10 @@ contains
         use MPI
         use rich_vars, only: rich_lvl
         use num_vars, only: jump_to_sol, rich_restart_lvl, eq_style, &
-            &use_pol_flux_F, rank, n_procs, check_vac
+            &use_pol_flux_F, rank, n_procs
+#if ldebug
+        use num_vars, only: check_vac
+#endif
         use PB3D_ops, only: reconstruct_PB3D_vac
         use X_vars, only: n_mod_X
         use vac_vars, only: set_loc_lims, in_context, loc_idx
@@ -1759,11 +1768,13 @@ contains
         ierr = calc_GH(vac)
         CHCKERR('')
         
+#if ldebug
         ! check the operators with exact potentials if requested
         if (check_vac) then
             ierr = check_vac_exact(vac)
             CHCKERR('')
         end if
+#endif
         
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
@@ -2144,6 +2155,7 @@ contains
         
     end function calc_vac_res
     
+#if ldebug
     !> Checks the vacuum operators on the equilibrium surface itself with
     !! potentials whose boundary data are exact, as the full-stack tests do on
     !! an analytic torus.
@@ -2167,7 +2179,8 @@ contains
     !!
     !! Every number is printed on a line starting with CHECKVAC so that it can
     !! be collected from the log, in lines short enough for writo, which cuts
-    !! beyond about 100 characters. Switched on with the input \c check_vac.
+    !! beyond about 100 characters. Switched on with the input \c check_vac,
+    !! only in builds with \c ldebug (CMake option \c PB3D_ENABLE_DEBUG).
     !! For the field-line style (check_vac_exact_1): the Cartesian harmonics and
     !! the axis sources below, the assembled diagonal of H against the direct
     !! one, and the assembled diagonal of G against the indirect one of
@@ -2712,6 +2725,7 @@ contains
         
         call lvl_ud(-1)
     end function check_vac_exact_2
+#endif
 
     !> \public Potential at points off the boundary, from its values and its
     !! normal data on the boundary.
@@ -2976,8 +2990,9 @@ contains
         end do
     end subroutine grad_bnd_1
 
+#if ldebug
     !> Checks the potential that eval_pot_ext() gives off the boundary against
-    !! exact values, for check_vac_exact().
+    !! exact values, for check_vac_exact(). Only in builds with \c ldebug.
     !!
     !! Every column holds a potential's values \c Phi_glob and normal data \c
     !! D_glob on the boundary and its exact values \c val_ex at the points \c
@@ -3111,6 +3126,7 @@ character(len=max_str_ln) :: sub_str                                    ! error 
             close(file_i)
         end if
     end function check_vac_ext
+#endif
 
     !> \public Plots  the vacuum  potential of  computed eigenmodes  outside the
     !! plasma.
@@ -3563,7 +3579,9 @@ logical, allocatable :: in_ext(:)                                       ! points
         &desc_RPhi) result(ierr)
 
         use vac_vars, only: in_context, loc_idx
+#if ldebug
         use num_vars, only: check_vac, rank, n_procs
+#endif
 
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
 
@@ -3580,12 +3598,6 @@ logical, allocatable :: in_ext(:)                                       ! points
         integer, target :: desc_GR(BLACSCTXTSIZE)                               ! descriptor for GR
         integer :: info_loc                                                     ! info variable for ScaLAPACK
         integer, allocatable :: ipiv(:)                                         ! pivot variable for the LU
-        integer :: iwork_q(1)                                                   ! integer workspace query
-        integer, allocatable :: iwork(:)                                        ! integer workspace of the condition estimate
-        real(dp) :: anorm, rcond                                                ! 1-norm of the operator and its reciprocal condition number
-        real(dp) :: work_q(1)                                                   ! workspace query
-        real(dp), allocatable :: work(:)                                        ! workspace of the condition estimate
-        real(dp), external :: pdlange                                           ! ScaLAPACK matrix norm
         logical :: solved_ok                                                    ! whether a verified solution was obtained
         real(dp), allocatable, target :: GR(:,:)                                ! GR
         real(dp), allocatable, target :: H_ext(:,:)                             ! copy of H, overwritten by the factorization
@@ -3601,6 +3613,12 @@ logical, allocatable :: in_ext(:)                                       ! points
         type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H_sdp Phi = GR
 #endif
 #if ldebug
+        integer :: iwork_q(1)                                                   ! integer workspace query
+        integer, allocatable :: iwork(:)                                        ! integer workspace of the condition estimate
+        real(dp) :: anorm, rcond                                                ! 1-norm of the operator and its reciprocal condition number
+        real(dp) :: work_q(1)                                                   ! workspace query
+        real(dp), allocatable :: work(:)                                        ! workspace of the condition estimate
+        real(dp), external :: pdlange                                           ! ScaLAPACK matrix norm
         integer :: lims_rl(2)                                                   ! vac%lims_r in local coordinates
         integer :: cd                                                           ! global counter for row and col
         integer :: cdl                                                          ! local counter for col
@@ -3714,18 +3732,21 @@ logical, allocatable :: in_ext(:)                                       ! points
                 ! solve H Phi = G R with ScaLAPACK LU (pdgetrf and
                 ! pdgetrs, what pdgesv does): the right-hand side is
                 ! overwritten with the solution and the matrix destroyed
-                ! (which is why H_ext is a copy). With check_vac the
-                ! reciprocal condition number in the 1-norm is estimated
-                ! between the two (pdgecon) and printed as a CHECKVAC line.
+                ! (which is why H_ext is a copy). With check_vac (only with
+                ! ldebug) the reciprocal condition number in the 1-norm is
+                ! estimated between the two (pdgecon) and printed as a
+                ! CHECKVAC line.
                 Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                        ! same distribution
                 allocate(ipiv(vac%n_loc(1)+vac%bs))
                 ipiv = 0
+#if ldebug
                 if (check_vac) then
                     allocate(work(vac%n_loc(2)+vac%bs))
                     anorm = pdlange('1',vac%n_bnd,vac%n_bnd,H_ext,1,1,&
                         &vac%desc_H,work)
                     deallocate(work)
                 end if
+#endif
                 call pdgetrf(vac%n_bnd,vac%n_bnd,H_ext,1,1,vac%desc_H,ipiv,&
                     &info_loc)
                 if (info_loc.ne.0) then
@@ -3733,6 +3754,7 @@ logical, allocatable :: in_ext(:)                                       ! points
                     err_msg = 'pdgetrf failed with info '//trim(i2str(info_loc))
                     CHCKERR(err_msg)
                 end if
+#if ldebug
                 if (check_vac) then
                     call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
                         &rcond,work_q,-1,iwork_q,-1,info_loc)
@@ -3745,6 +3767,7 @@ logical, allocatable :: in_ext(:)                                       ! points
                         &' cond1='//trim(r2strt(1._dp/max(rcond,tiny(1._dp)))),&
                         &persistent=rank.eq.n_procs-1)
                 end if
+#endif
                 call pdgetrs('N',vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,&
                     &Phi,1,1,desc_RPhi,info_loc)
                 if (info_loc.ne.0) then
