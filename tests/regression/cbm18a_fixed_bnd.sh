@@ -13,14 +13,16 @@
 # 16.1, macOS arm64, after the HELENA shear fix of issue #4 step 2 (before
 # it: -4.074e-2, 6.5 % too stable). Asserted to 1e-3 relative: the value
 # reproduces to 1e-10 between launches and the parallel grid is converged to
-# 1e-4 at this resolution.
+# 1e-4 at this resolution. Since 23 November 2026 the fixture is written with
+# 16 digits (issue #65): -4.3570e-2, against -4.3573e-2 (6e-5) with the
+# 8-digit file.
 set -u
 
 PB3D_EXE=$1
 INPUT=$2
 EQ_FILE=$3
 
-ANCHOR=-4.3573e-2
+ANCHOR=-4.3570e-2
 RTOL=1e-3
 
 # fresh scratch dir, as PB3D writes several output files

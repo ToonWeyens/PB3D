@@ -19,7 +19,8 @@
 # is 0.24 and 0.13 % (0.55 and 0.26 % before), falling as 1/n^2 like the
 # finite-n terms the high-n ordering drops; and since 17 November 2026, when
 # the last points of the free edge got the weights of calc_end_weights in the
-# normal integral, -4.2551e-1, 0.30 % below MISHKA. The MISHKA value must hold
+# normal integral, -4.2551e-1, 0.30 % below MISHKA; since 23 November 2026,
+# with the fixture written with 16 digits (issue #65), -4.2552e-1. The MISHKA value must hold
 # to 2 %.
 # The deck is also run with 400 radial points: the eigenvalue must move by
 # less than 5e-5 relative. It moves by 1.3e-5 with the weights of
@@ -33,7 +34,7 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.2551e-1
+ANCHOR=-4.2552e-1
 RTOL=1e-3
 MISHKA=-0.42679
 MISHKA_RTOL=0.02

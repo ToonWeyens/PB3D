@@ -22,7 +22,7 @@ outside that directory was touched, and `rm -rf ~/pb3d` removes all of it.
 | `~/pb3d/deps/libstell-min/` | minimal LIBSTELL (`read_wout_mod` and dependencies) |
 | `~/pb3d/deps/stellopt/LIBSTELL/Sources/` | the STELLOPT LIBSTELL sources (rsynced, 8.5 MB) |
 | `~/pb3d/deps/venv/` | Python venv holding CMake 4.4.4 (see "Known points") |
-| `~/pb3d/fixtures/cbm18a_extended_vac.12` | the HELENA equilibrium fixture (25 MB) |
+| `~/pb3d/fixtures/cbm18a_extended_vac.12` | the HELENA equilibrium fixture (39 MB, 16 digits since 23 November 2026) |
 | `~/pb3d/build/`, `~/pb3d/build-debug/` | Release and Debug CMake builds |
 | `~/pb3d/runs/<job>-<jobid>/np<N>/` | one directory per run |
 | `~/pb3d/logs/` | build logs and Slurm output (`%x-%j.out`) |
@@ -56,7 +56,7 @@ combination).
 cd <PB3D worktree>
 ssh snellius 'mkdir -p ~/pb3d/{src,fixtures,scripts,deps/stellopt/LIBSTELL/Sources}'
 git archive HEAD | ssh snellius 'tar -x -C ~/pb3d/src'
-rsync -az ~/Code/PB3D-fixtures/cbm18a_extended_vac.12 snellius:~/pb3d/fixtures/
+xz -dc tests/fixtures/cbm18a_extended_vac.12.xz | ssh snellius 'cat > ~/pb3d/fixtures/cbm18a_extended_vac.12'
 rsync -az ~/Code/stellopt/LIBSTELL/Sources/ snellius:~/pb3d/deps/stellopt/LIBSTELL/Sources/
 rsync -az scripts/snellius/ snellius:~/pb3d/scripts/
 scp scripts/snellius/env.sh snellius:~/pb3d/env.sh

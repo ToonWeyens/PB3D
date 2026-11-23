@@ -96,16 +96,16 @@ contains
         if (allocated(error)) return
 
         ! symmetric equilibria are given on the half poloidal circumference
-        ! (the file stores the angles with 8 significant digits)
         call check(error, abs(chi_H(1)).lt.1.e-12_dp .and. &
-            &abs(chi_H(nchi)-pi).lt.1.e-6_dp, &
+            &abs(chi_H(nchi)-pi).lt.1.e-14_dp, &
             &'chi grid spans [0, pi] for ias = 0')
         if (allocated(error)) return
 
-        ! the fixture is an 8-digit file, which read_HEL warns about (#65)
-        call check(error, chi_H_rounding(chi_H,ias).gt.1.e-12_dp .and. &
-            &chi_H_rounding(chi_H,ias).lt.1.e-6_dp, &
-            &'chi grid of the 8-digit fixture deviates at rounding level: '//&
+        ! the fixture is written with 16 digits (#65), so its poloidal grid
+        ! is HELENA's uniform grid to double precision and read_HEL does not
+        ! warn
+        call check(error, chi_H_rounding(chi_H,ias).lt.1.e-14_dp, &
+            &'chi grid of the 16-digit fixture is the uniform grid: '//&
             &trim(r2str(chi_H_rounding(chi_H,ias))))
         if (allocated(error)) return
 
@@ -154,29 +154,29 @@ contains
         ! golden profile and normalization values (recorded from the
         ! implementation; if these move, the parser or the MISHKA
         ! normalization changed)
-        call check(error, q_saf_H(1,0), 1.0521365_dp, thr=1.e-10_dp, &
+        call check(error, q_saf_H(1,0), 1.052136526182020_dp, thr=1.e-10_dp, &
             &rel=.true., message='q on axis golden')
         if (allocated(error)) return
-        call check(error, q_saf_H(n_r_in,0), 25.031802_dp, thr=1.e-10_dp, &
+        call check(error, q_saf_H(n_r_in,0), 25.03180202258227_dp, thr=1.e-10_dp, &
             &rel=.true., message='q at edge golden')
         if (allocated(error)) return
-        call check(error, pres_H(1,0), 1.2251493e-2_dp, thr=1.e-10_dp, &
+        call check(error, pres_H(1,0), 1.225149257685796e-2_dp, thr=1.e-10_dp, &
             &rel=.true., message='pressure on axis golden')
         if (allocated(error)) return
         call check(error, flux_p_H(n_r_in,0), &
-            &3.767600982734008e-1_dp, thr=1.e-10_dp, rel=.true., &
+            &3.767600972232935e-1_dp, thr=1.e-10_dp, rel=.true., &
             &message='poloidal flux at edge golden')
         if (allocated(error)) return
-        call check(error, RMtoG_H, 8.319203019203020e-1_dp, thr=1.e-10_dp, &
+        call check(error, RMtoG_H, 8.319203012453984e-1_dp, thr=1.e-10_dp, &
             &rel=.true., message='RMtoG golden')
         if (allocated(error)) return
-        call check(error, BMtoG_H, 1.1634848_dp, thr=1.e-10_dp, rel=.true., &
+        call check(error, BMtoG_H, 1.163484786280635_dp, thr=1.e-10_dp, rel=.true., &
             &message='BMtoG golden')
         if (allocated(error)) return
 
         ! ellipticity from the parsed flux surfaces (ias = 0: top half)
         ellip = 2._dp*maxval(Z_H)/(maxval(R_H)-minval(R_H))
-        call check(error, ellip, 9.9995911e-1_dp, thr=1.e-8_dp, rel=.true., &
+        call check(error, ellip, 9.999591117271788e-1_dp, thr=1.e-8_dp, rel=.true., &
             &message='ellipticity golden')
         if (allocated(error)) return
     end subroutine test_cbm18a_golden
