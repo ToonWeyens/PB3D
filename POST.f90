@@ -44,7 +44,8 @@ program POST
     use messages
     use HDF5_vars, only: init_HDF5
     use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, &
-        &sudden_stop
+        &sudden_stop, stop_usage
+    use MPI_utilities, only: broadcast_var
     use files_ops, only: init_files, parse_args, open_input, open_output, &
         &close_output
     use input_ops, only: read_input_opts
@@ -62,6 +63,7 @@ program POST
 
     ! local variables
     integer :: ierr                                                             ! error
+    integer :: usage_status                                                     ! exit status after usage or help, -1 to go on
     
     !------------------------------!
     !   Initialize some routines   !
@@ -82,9 +84,15 @@ program POST
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
+    usage_status = -1                                                           ! go on, unless rank 0 decides otherwise
     if (rank.eq.0) then
-        ierr = parse_args()                                                     ! parse argument (options are used in open_input)
+        ierr = parse_args(usage_status)                                         ! parse argument (options are used in open_input)
         CHCKERR
+    end if
+    ierr = broadcast_var(usage_status)                                          ! every process learns whether to stop
+    CHCKERR
+    if (usage_status.ge.0) call stop_usage(usage_status)                        ! all processes stop after usage or help
+    if (rank.eq.0) then
         ierr = open_input()                                                     ! open the input files
         CHCKERR
         ierr = reconstruct_PB3D_in('in')                                        ! reconstruct miscellaneous PB3D output variables

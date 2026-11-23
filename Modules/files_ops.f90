@@ -72,11 +72,17 @@ contains
     !!
     !! \note The input arguments are saved in \c command_arg
     !!
+    !! After the help message (first argument \c -h or \c --help) and after the
+    !! usage message (fewer arguments than needed), \c usage_status is the exit
+    !! status with which all processes stop (see stop_usage()). Otherwise it is
+    !! -1 and the program goes on.
+    !!
     !! \return ierr
-    integer function parse_args() result(ierr)
+    integer function parse_args(usage_status) result(ierr)
         use num_vars, only: prog_style, prog_name
         
-        character(*), parameter :: rout_name = 'parse_args'
+        ! input / output
+        integer, intent(out) :: usage_status                                    !< exit status after usage or help, -1 to go on
         
         ! local variables
         character(len=max_str_ln), allocatable :: open_error(:)                 ! message for incorrect usage
@@ -86,8 +92,9 @@ contains
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         integer :: min_args                                                     ! minimal nr. of arguments
         
-        ! initialize ierr
+        ! initialize ierr and usage_status
         ierr = 0
+        usage_status = -1
         
         ! Messages for the user
         ! select according to program style
@@ -142,14 +149,14 @@ contains
             do id = 1,size(open_help)
                 call writo(open_help(id))
             end do
-            ierr = 66                                                           ! silent stop
-            CHCKERR('')
+            usage_status = 0                                                    ! the help that was asked for
+            return
         else if (numargs.lt.min_args) then
             do id = 1,size(open_error)
                 call writo(open_error(id))
             end do
-            ierr = 66                                                           ! silent stop
-            CHCKERR('')
+            usage_status = 0                                                    ! too few arguments
+            return
         else
             allocate(command_arg(numargs))
             command_arg = ""
