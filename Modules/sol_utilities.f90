@@ -794,9 +794,9 @@ contains
     
     !> Interpolation for a quantity V using splines.
     !!
-    !! The order is the lower of the setting interp_V_ord and a limit set by the
-    !! number of points: 0 for one point (a copy), 1 for two or three (a straight
-    !! line) and 3 for four or more.
+    !! One point is copied. From two points on, PSPLINE interpolates with the
+    !! order interp_V_ord; the cubic spline (order 3) with its not-a-knot ends
+    !! is the straight line through two points and the parabola through three.
     !!
     !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
     !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
@@ -819,7 +819,6 @@ contains
         
         ! local variables
         integer :: id, jd, kd                                                   ! counters
-        integer :: ord                                                          ! order of the interpolation
 #if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
 #endif
@@ -844,40 +843,28 @@ contains
             err_msg = 'V_i and V_o are not compatible'
             CHCKERR(err_msg)
         end if
+        if (size(r_i).lt.1) then
+            ierr = 1
+            err_msg = 'Need at least one point'
+            CHCKERR(err_msg)
+        end if
 #endif
         
-        ! the order is the lower of the setting interp_V_ord and the limit set
-        ! by the number of points
-        ord = min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
-        
-        select case (ord)
-            case (0)                                                            ! copy directly
-                do kd = 1,size(V_o,3)
-                    V_o(:,:,kd) = V_i(:,:,1)
+        if (size(r_i).eq.1) then                                                ! copy directly
+            do kd = 1,size(V_o,3)
+                V_o(:,:,kd) = V_i(:,:,1)
+            end do
+            if (present(ivs_stat)) ivs_stat = 1
+        else                                                                    ! PSPLINE of order interp_V_ord
+            do jd = 1,size(V_i,2)
+                do id = 1,size(V_i,1)
+                    ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                        &ord=interp_V_ord,extrap=extrap)
+                    CHCKERR('')
                 end do
-            case (1:)
-                if (size(r_i).eq.2) then                                        ! straight line through the two points
-                    do kd = 1,size(V_o,3)
-                        V_o(:,:,kd) = V_i(:,:,1) + &
-                            &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &
-                            &(r_o(kd) - r_i(1))
-                    end do
-                else                                                            ! PSPLINE of order ord
-                    do jd = 1,size(V_i,2)
-                        do id = 1,size(V_i,1)
-                            ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                                &ord=ord,extrap=extrap)
-                            CHCKERR('')
-                        end do
-                    end do
-                end if
-#if ldebug
-            case default
-                ierr = 1
-                CHCKERR('Need more than 0 points')
-#endif
-        end select
-        if (present(ivs_stat) .and. ord.ge.0) ivs_stat = min(ord,2) + 1         ! 1: copy, 2: linear, 3: spline
+            end do
+            if (present(ivs_stat)) ivs_stat = min(interp_V_ord,2) + 1           ! 2: linear, 3: Akima or cubic
+        end if
         
 #if ldebug
         ! visualize

@@ -14,6 +14,9 @@
 !!  - convergence at the expected rate on sin(2 pi x) for all three orders
 !!    (1: linear, 2: Akima Hermite, 3: cubic);
 !!  - periodic boundary conditions on a full sin period;
+!!  - two and three points: a straight line and a parabola for order 3,
+!!    inside the range and extrapolated, a straight line for order 1, and
+!!    the data at the knots for order 2;
 !!  - refusal to extrapolate when extrap is not set (this check lives
 !!    outside ldebug, so it is active in all builds).
 !------------------------------------------------------------------------------!
@@ -39,6 +42,7 @@ contains
             &new_unittest("cubic_extrapolation", test_cubic_extrap), &
             &new_unittest("sin_convergence", test_sin_convergence), &
             &new_unittest("periodic_bc_sin", test_periodic_sin), &
+            &new_unittest("few_points", test_few_points), &
             &new_unittest("extrapolation_refused", test_extrap_refused) &
             &]
     end subroutine collect_splines
@@ -299,6 +303,71 @@ contains
             if (allocated(error)) return
         end do
     end subroutine test_periodic_sin
+
+    !> Two and three points, unevenly spaced, with the default boundary
+    !! conditions (not-a-knot) and extrapolation: order 3 gives the straight
+    !! line through two points and the parabola through three, also outside the
+    !! range (the quadratic Taylor extension of a parabola is the parabola);
+    !! order 1 gives the straight line; order 2 (Akima Hermite) reproduces the
+    !! data at the knots.
+    subroutine test_few_points(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: nx_int = 41                                       ! evaluation points
+        integer :: ierr, kd, n                                                  ! error status, counters
+        real(dp), allocatable :: x(:), y(:), y_knot(:)                          ! knots
+        real(dp) :: x_int(nx_int), y_int(nx_int), y_ref(nx_int)                 ! evaluation
+        real(dp) :: err                                                         ! maximum error
+
+        do kd = 1,nx_int
+            x_int(kd) = -0.4_dp + 2.4_dp*(kd-1._dp)/(nx_int-1._dp)              ! -0.4..2.0, beyond both ends
+        end do
+
+        do n = 2,3
+            x = [0.2_dp,0.7_dp,1.6_dp]
+            x = x(1:n)
+            ! order 3: line through two points, parabola through three
+            if (n.eq.2) then
+                y = 2._dp*x + 1._dp
+                y_ref = 2._dp*x_int + 1._dp
+            else
+                y = x**2 - 3._dp*x + 2._dp
+                y_ref = x_int**2 - 3._dp*x_int + 2._dp
+            end if
+            ierr = spline(x,y,x_int,y_int,ord=3,extrap=.true.)
+            call check(error, ierr, 0, 'order 3 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+            call check(error, err.lt.1.e-12_dp, 'order 3 on '//&
+                &trim(i2str(n))//' points is not the polynomial through &
+                &them: '//trim(r2str(err)))
+            if (allocated(error)) return
+            ! order 1: straight line on linear data
+            y = 2._dp*x + 1._dp
+            y_ref = 2._dp*x_int + 1._dp
+            ierr = spline(x,y,x_int,y_int,ord=1,extrap=.true.)
+            call check(error, ierr, 0, 'order 1 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+            call check(error, err.lt.1.e-12_dp, 'order 1 on '//&
+                &trim(i2str(n))//' points is not the straight line: '//&
+                &trim(r2str(err)))
+            if (allocated(error)) return
+            ! order 2: the data at the knots
+            y = x**2 - 3._dp*x + 2._dp
+            if (allocated(y_knot)) deallocate(y_knot)
+            allocate(y_knot(n))
+            ierr = spline(x,y,x,y_knot,ord=2)
+            call check(error, ierr, 0, 'order 2 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            call check(error, maxval(abs(y_knot-y)).lt.1.e-12_dp, &
+                &'order 2 on '//trim(i2str(n))//' points misses the data')
+            if (allocated(error)) return
+        end do
+    end subroutine test_few_points
 
     !> Evaluation outside the domain without extrap has to fail (this check
     !! is active in all builds, not only ldebug).
