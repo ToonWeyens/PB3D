@@ -27,6 +27,16 @@ if(DEFINED ENV{PSPLINE_ROOT})
     list(APPEND _PSPLINE_SEARCH_DIRS $ENV{PSPLINE_ROOT})
 endif()
 
+# search again when the search directories differ from those of the last
+# configure (or were never recorded), so that a new PSPLINE_DIR replaces the
+# library and modules found before
+if(_PSPLINE_SEARCH_DIRS AND
+   NOT "${_PSPLINE_SEARCH_DIRS}" STREQUAL "${_PSPLINE_SEARCH_DIRS_LAST}")
+    unset(PSPLINE_LIBRARY CACHE)
+    unset(PSPLINE_INCLUDE_DIR CACHE)
+endif()
+set(_PSPLINE_SEARCH_DIRS_LAST "${_PSPLINE_SEARCH_DIRS}" CACHE INTERNAL "")
+
 # Find library
 find_library(PSPLINE_LIBRARY
     NAMES pspline
@@ -35,10 +45,18 @@ find_library(PSPLINE_LIBRARY
     DOC "PSPLINE library"
 )
 
-# Find include directory (look for a typical PSPLINE module file)
+# Find the module directory of the same installation: first under the prefix
+# of the library found above, by ezspline_obj.mod, which PB3D uses and every
+# PSPLINE installation has (ezcdf.mod exists only in builds with netCDF, so
+# searching for it can pick the modules of another installation)
+set(_PSPLINE_LIB_PREFIX)
+if(PSPLINE_LIBRARY)
+    get_filename_component(_PSPLINE_LIB_PREFIX "${PSPLINE_LIBRARY}" DIRECTORY)
+    get_filename_component(_PSPLINE_LIB_PREFIX "${_PSPLINE_LIB_PREFIX}" DIRECTORY)
+endif()
 find_path(PSPLINE_INCLUDE_DIR
-    NAMES pspline.mod ezcdf.mod ezspline_obj.mod
-    HINTS ${_PSPLINE_SEARCH_DIRS}
+    NAMES ezspline_obj.mod
+    HINTS ${_PSPLINE_LIB_PREFIX} ${_PSPLINE_SEARCH_DIRS}
     PATH_SUFFIXES include mod LINUX/mod
     DOC "PSPLINE include directory"
 )
