@@ -140,25 +140,68 @@ if(APPLE AND MPIEXEC_EXECUTABLE AND NOT DEFINED ENV{HWLOC_SYNTHETIC})
     endif()
 endif()
 
-# Invoking without arguments has to print the usage message. The programs
-# then stop through stop_MPI (error code 66 of sudden_stop) and return exit
-# status 0. The tests do not check this: with PASS_REGULAR_EXPRESSION ctest
-# ignores the exit status. Whether a call without arguments should count as
-# an error is an open question of issue #40.
-if(TARGET PB3D)
-    add_test(NAME smoke_PB3D_usage COMMAND PB3D)
-    set_tests_properties(smoke_PB3D_usage PROPERTIES
-        PASS_REGULAR_EXPRESSION "Usage:"
-        ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
-        LABELS "smoke")
+# Settings of every test that runs under mpirun. OMPI_ALLOW_RUN_AS_ROOT covers
+# container use and is ignored by non-root/non-OpenMPI setups; --oversubscribe
+# keeps -n 4 working on smaller CI runners.
+if(MPIEXEC_EXECUTABLE)
+    set(_mpi_test_env "${PB3D_TEST_MPI_ENV}")
+    list(APPEND _mpi_test_env
+        "OMPI_ALLOW_RUN_AS_ROOT=1" "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
+    set(_mpiexec_flags "")
+    if(OMPI_INFO_EXECUTABLE)
+        set(_mpiexec_flags "--oversubscribe")
+    endif()
 endif()
-if(TARGET POST)
-    add_test(NAME smoke_POST_usage COMMAND POST)
-    set_tests_properties(smoke_POST_usage PROPERTIES
-        PASS_REGULAR_EXPRESSION "Usage:"
-        ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
-        LABELS "smoke")
-endif()
+
+# Invoking without arguments has to print the usage message, and invoking
+# with --help the help message. All processes then stop through stop_usage
+# with the exit status that the script checks (issue #40). The rows _np2 run
+# the same under mpirun -n 2: only rank 0 reads the command line, so the other
+# process has to learn from rank 0 that it has to stop, or the run never ends
+# and the TIMEOUT fails the test.
+foreach(_prog PB3D POST)
+    if(TARGET ${_prog})
+        add_test(NAME smoke_${_prog}_usage
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/smoke/usage.sh
+                $<TARGET_FILE:${_prog}>)
+        set_tests_properties(smoke_${_prog}_usage PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            LABELS "smoke"
+            TIMEOUT 60)
+        if(MPIEXEC_EXECUTABLE)
+            add_test(NAME smoke_${_prog}_usage_np2
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/smoke/usage.sh
+                    $<TARGET_FILE:${_prog}>
+                    "${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 ${_mpiexec_flags}")
+            set_tests_properties(smoke_${_prog}_usage_np2 PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
+                ENVIRONMENT "${_mpi_test_env}"
+                LABELS "smoke;mpi"
+                PROCESSORS 2
+                TIMEOUT 60)
+        endif()
+    endif()
+endforeach()
+
+# An input file that does not exist has to stop the program with a message, a
+# link to the tutorial and an exit status that is not zero: there is no
+# default input (issue #40).
+foreach(_prog PB3D POST)
+    if(TARGET ${_prog})
+        add_test(NAME smoke_${_prog}_missing_input
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/smoke/missing_input.sh
+                $<TARGET_FILE:${_prog}> ${_prog})
+        set_tests_properties(smoke_${_prog}_missing_input PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            LABELS "smoke"
+            TIMEOUT 60)
+    endif()
+endforeach()
 
 #------------------------------------------------------------------------------
 # Full-stack tests
@@ -210,21 +253,12 @@ if(PB3D_BUILD_EXECUTABLES)
 
     # Multi-rank rows for the suites with distributed linear algebra
     # (vac_kernels is purely local kernel math, so multi-rank runs of it
-    # would only duplicate work). OMPI_ALLOW_RUN_AS_ROOT covers container
-    # use and is ignored by non-root/non-OpenMPI setups; --oversubscribe
-    # keeps -n 4 working on smaller CI runners.
+    # would only duplicate work).
     set(PB3D_FULLSTACK_MPI_SUITES
         vac_greens
         vac_3d
     )
     if(MPIEXEC_EXECUTABLE)
-        set(_mpi_test_env "${PB3D_TEST_MPI_ENV}")
-        list(APPEND _mpi_test_env
-            "OMPI_ALLOW_RUN_AS_ROOT=1" "OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1")
-        set(_mpiexec_flags "")
-        if(OMPI_INFO_EXECUTABLE)
-            set(_mpiexec_flags "--oversubscribe")
-        endif()
         foreach(np IN ITEMS 2 4)
             foreach(suite IN LISTS PB3D_FULLSTACK_MPI_SUITES)
                 add_test(NAME fullstack_${suite}_np${np}

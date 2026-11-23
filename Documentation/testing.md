@@ -34,7 +34,7 @@ from the regular build directory.
 | Layer | Label | Needs | Contents |
 |---|---|---|---|
 | Unit | `unit` | Fortran compiler only | test-drive suites against `pb3d_core` |
-| Smoke | `smoke` | full executable build | `PB3D`/`POST` usage-message checks |
+| Smoke | `smoke` | full executable build | `PB3D`/`POST` usage and help message with their exit status, also under `mpirun -n 2`; stop on a missing input file |
 | Full-stack | `fullstack` | full executable build | test-drive suites against the complete `pb3d_modules` (currently: the vacuum module); the distributed suites also run under `mpirun -n 2` and `-n 4` |
 | Physics regression | `regression` | full build + `-DPB3D_FIXTURE_DIR=<dir>` | end-to-end eigenvalue anchors on local equilibrium fixtures |
 
@@ -305,9 +305,23 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   file. `reject_BC_style_np2` runs the same under `mpirun -n 2` and checks
   that the launcher returns the status. PB3D stops before any linear
   algebra, so this row needs no distributed LU.
+- `smoke_PB3D_usage` and `smoke_POST_usage` (label `smoke`, no fixture):
+  the program without arguments and with `--help`. The test requires the
+  usage message and the exit status of each call. `smoke_PB3D_usage_np2`
+  and `smoke_POST_usage_np2` run the same under `mpirun -n 2`, where all
+  processes have to stop: only rank 0 reads the command line, and a run in
+  which the other process does not learn that it has to stop never ends
+  (issue #40); the TIMEOUT of 60 s then fails the test.
+- `smoke_PB3D_missing_input` and `smoke_POST_missing_input` (label
+  `smoke`, no fixture): the program with an input file that does not exist.
+  There is no default input (issue #40). The test requires an exit status
+  that is not zero, the name of the file and the link to the tutorial in
+  the output, the program's own name in the line that names the calling
+  routine, and no file `fort.50`.
 
 **Exit status.** `PB3D` and `POST` return exit status 0 after a complete
-run, after the usage message and after `--help`. After an error they return
+run and after `--help`, and 2 after the usage message, that is after a call
+with too few arguments. After an error they return
 the error code that they print ("ERROR CODE ...") if it lies between 1 and
 125, and 1 for every other code, such as the negative codes of HDF5 and
 NetCDF (`get_exit_status` in `MPI_ops`). The regression runners test this

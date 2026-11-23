@@ -72,11 +72,24 @@ contains
     !!
     !! \note The input arguments are saved in \c command_arg
     !!
+    !! After the help message (first argument \c -h or \c --help) and after the
+    !! usage message (fewer arguments than needed), \c usage_status is the exit
+    !! status with which all processes stop (see stop_usage()). Otherwise it is
+    !! -1 and the program goes on.
+    !!
+    !! The exit status is 0 after the help message, which the user asked for,
+    !! and 2 after the usage message. A call with too few arguments is a
+    !! mistake, for example a script that passes an empty variable in place of
+    !! a file name, and the script has to see that the run did not succeed. 2 is
+    !! the exit status that Python's argparse and the GNU tools use for a wrong
+    !! call.
+    !!
     !! \return ierr
-    integer function parse_args() result(ierr)
+    integer function parse_args(usage_status) result(ierr)
         use num_vars, only: prog_style, prog_name
         
-        character(*), parameter :: rout_name = 'parse_args'
+        ! input / output
+        integer, intent(out) :: usage_status                                    !< exit status after usage or help, -1 to go on
         
         ! local variables
         character(len=max_str_ln), allocatable :: open_error(:)                 ! message for incorrect usage
@@ -86,8 +99,9 @@ contains
         character(len=max_str_ln) :: dum_str                                    ! dummy string
         integer :: min_args                                                     ! minimal nr. of arguments
         
-        ! initialize ierr
+        ! initialize ierr and usage_status
         ierr = 0
+        usage_status = -1
         
         ! Messages for the user
         ! select according to program style
@@ -142,14 +156,14 @@ contains
             do id = 1,size(open_help)
                 call writo(open_help(id))
             end do
-            ierr = 66                                                           ! silent stop
-            CHCKERR('')
+            usage_status = 0                                                    ! the help that was asked for
+            return
         else if (numargs.lt.min_args) then
             do id = 1,size(open_error)
                 call writo(open_error(id))
             end do
-            ierr = 66                                                           ! silent stop
-            CHCKERR('')
+            usage_status = 2                                                    ! too few arguments
+            return
         else
             allocate(command_arg(numargs))
             command_arg = ""
@@ -167,9 +181,13 @@ contains
     !> Open the input files.
     !!
     !!  - input file with user options
-    !!  - equilibrium file in
+    !!  - for PB3D, the equilibrium file in
     !!      - NetCDF for VMEC
     !!      - plain for HELENA
+    !!  - for POST, the PB3D output file
+    !!
+    !! Neither file has a default: the program stops with an error when one of
+    !! them cannot be opened.
     !!
     !! \return ierr
     integer function open_input() result(ierr)
@@ -199,20 +217,23 @@ contains
             call writo("Opening files")
             call lvl_ud(1)
             
+            ! open the input file (no default)
+            input_name = command_arg(1)                                         ! first argument is the name of the input file
+            open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=ierr)
+            if (ierr.ne.0) then
+                call writo('Cannot open input file "'//trim(input_name)//'"',&
+                    &error=.true.)
+                call lvl_ud(1)
+                call writo('How to write an input file: &
+                    &https://pb3d.github.io/Doxygen/html/page_tutorial.html')
+                call lvl_ud(-1)
+                CHCKERR('')
+            end if
+            call writo('Input file "' // trim(input_name) // '" opened')
+            
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    ! check for correct input file and use default if needed
-                    input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
-                    if (istat.eq.0) then
-                        call writo('Input file "' // trim(input_name) &
-                            &// '" opened')
-                    else 
-                        call writo('No input file found. Default used')
-                        input_name = ''
-                    end if
-                    
                     ! check for  equilibrium file and  print error if  not found
                     ! (no default!)
                     eq_name = command_arg(2)
@@ -260,17 +281,6 @@ contains
                     ! set PB3D output name 
                     PB3D_name = prog_name//'_'//trim(output_name)//'.h5'
                 case(2)                                                         ! POST
-                    ! check for correct input file and use default if needed
-                    input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
-                    if (istat.eq.0) then
-                        call writo('Input file "' // trim(input_name) &
-                            &// '" opened')
-                    else 
-                        call writo('No input file found. Default used')
-                        input_name = ''
-                    end if
-                    
                     ! check for PB3D_PB3D file and  print error if not found (no
                     ! default!)
                     PB3D_name = command_arg(2)

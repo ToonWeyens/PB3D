@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: info@toonweyens.com
 !------------------------------------------------------------------------------!
-!>  \version    2.54
+!>  \version    2.55
 !!  \date       2012-2026
 !!  Copyright (C) 2019-2026 Toon Weyens,
 !!  Copyright (C) 2014-2019 ITER Organization
@@ -55,7 +55,9 @@ program PB3D
         &close_output
     use input_ops, only: read_input_opts, read_input_eq, print_output_in
     use input_utilities, only: dealloc_in
-    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, sudden_stop
+    use MPI_ops, only: start_MPI, stop_MPI, broadcast_input_opts, sudden_stop, &
+        &stop_usage
+    use MPI_utilities, only: broadcast_var
     use eq_ops, only: calc_normalization_const, normalize_input
     use eq_utilities, only: do_eq, eq_info
     use rich_ops, only: init_rich, term_rich, do_rich, start_rich_lvl, &
@@ -71,6 +73,7 @@ program PB3D
 
     ! local variables
     integer :: ierr                                                             ! error
+    integer :: usage_status                                                     ! exit status after usage or help, -1 to go on
     type(grid_type), target :: grid_eq                                          ! equilibrium grid
     type(grid_type), pointer :: grid_eq_B => null()                             ! field-aligned equilibrium grid
     type(grid_type), target :: grid_X                                           ! perturbation grid
@@ -86,9 +89,9 @@ program PB3D
     !------------------------------!
     !   Initialize some routines   !
     !------------------------------!
+    prog_name = 'PB3D'                                                          ! program name
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'PB3D'                                                          ! program name
     prog_style = 1                                                              ! main part
     call print_hello()                                                          ! print message with time, etc
     call init_output()                                                          ! initialize output utilities
@@ -102,9 +105,15 @@ program PB3D
     call start_time
     call writo('Initialization')
     call lvl_ud(1)
+    usage_status = -1                                                           ! go on, unless rank 0 decides otherwise
     if (rank.eq.0) then                                                         ! only master
-        ierr = parse_args()                                                     ! parse argument (options are used in open_input)
+        ierr = parse_args(usage_status)                                         ! parse argument (options are used in open_input)
         CHCKERR
+    end if
+    ierr = broadcast_var(usage_status)                                          ! every process learns whether to stop
+    CHCKERR
+    if (usage_status.ge.0) call stop_usage(usage_status)                        ! all processes stop after usage or help
+    if (rank.eq.0) then                                                         ! only master
         ierr = open_input()                                                     ! open the input files
         CHCKERR
         ierr = read_input_opts()                                                ! read input options file
