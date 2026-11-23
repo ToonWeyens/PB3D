@@ -11,8 +11,7 @@
 #
 # Four things are required:
 #  - the exit status is not zero;
-#  - the output names the missing file and links to the input section of the
-#    tutorial;
+#  - the output names the missing file and links to the tutorial;
 #  - the line that names the calling routine names the program itself (POST
 #    named itself "PB3D (main)");
 #  - no file fort.50 exists.
@@ -37,7 +36,7 @@ if [ "$STATUS" -eq 0 ]; then
     OK=0
 fi
 for MESSAGE in 'Cannot open input file "no_such_input"' \
-        'page_tutorial.html#tutorial_inputs' \
+        'pb3d.github.io/Doxygen/html/page_tutorial.html' \
         ">> calling routine: $PROG (main)"; do
     if ! grep -qF "$MESSAGE" run.log; then
         echo "FAIL: the output does not contain '$MESSAGE'"

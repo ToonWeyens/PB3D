@@ -225,7 +225,7 @@ contains
                     &error=.true.)
                 call lvl_ud(1)
                 call writo('How to write an input file: &
-                    &https://pb3d.github.io/Doxygen/html/page_tutorial.html#tutorial_inputs')
+                    &https://pb3d.github.io/Doxygen/html/page_tutorial.html')
                 call lvl_ud(-1)
                 CHCKERR('')
             end if

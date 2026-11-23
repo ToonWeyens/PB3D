@@ -315,9 +315,9 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
 - `smoke_PB3D_missing_input` and `smoke_POST_missing_input` (label
   `smoke`, no fixture): the program with an input file that does not exist.
   There is no default input (issue #40). The test requires an exit status
-  that is not zero, the name of the file and the link to the input section
-  of the tutorial in the output, the program's own name in the line that
-  names the calling routine, and no file `fort.50`.
+  that is not zero, the name of the file and the link to the tutorial in
+  the output, the program's own name in the line that names the calling
+  routine, and no file `fort.50`.
 
 **Exit status.** `PB3D` and `POST` return exit status 0 after a complete
 run and after `--help`, and 2 after the usage message, that is after a call
