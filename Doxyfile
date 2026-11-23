@@ -8,7 +8,7 @@
 
 PROJECT_NAME           = "PB3D"
 PROJECT_BRIEF          = "Peeling-Ballooning in 3-D"
-PROJECT_NUMBER         = 2.53
+PROJECT_NUMBER         = 2.54
 
 INPUT                  = Modules PB3D.f90 POST.f90 README.md
 USE_MDFILE_AS_MAINPAGE = README.md
