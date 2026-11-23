@@ -108,16 +108,22 @@ variable and sets it for the tests itself. A run without `mpirun`
 
 ## 4. Build PSPLINE (not in Spack)
 
-PSPLINE is a Princeton spline library required by PB3D. Its legacy NTCC
-make system does not work with modern toolchains; use the provided script
-(needs only gfortran, no netcdf):
+PSPLINE is the Princeton spline library, required by PB3D. PB3D uses release
+v2.5.0 of [PrincetonUniversity/pspline](https://github.com/PrincetonUniversity/pspline).
+`Libraries/build_pspline.sh` builds it with PSPLINE's own Makefile as the
+static library `libpspline.a`, without netCDF, and installs it with its
+`.mod` files (needs only gfortran and make):
 
 ```bash
-git clone https://github.com/ilonster/pspline.git ~/Code/pspline
-cp /path/to/PB3D/Libraries/build_pspline.sh ~/Code/pspline/
-~/Code/pspline/build_pspline.sh
+git clone --depth 1 --branch v2.5.0 \
+    https://github.com/PrincetonUniversity/pspline.git ~/Code/pspline
+/path/to/PB3D/Libraries/build_pspline.sh ~/Code/pspline
 export PSPLINE_DIR=$HOME/Code/pspline/install
 ```
+
+The script runs `make libpspline.a` rather than plain `make`: plain `make`
+also links the C++ test program `czspline_test`, which fails on macOS because
+clang++ does not find libgfortran.
 
 ## 5. Build LIBSTELL (not in Spack)
 

@@ -31,8 +31,8 @@ cd "$WORKDIR"
 
 # note: singleton MPI (no mpirun); see Documentation/testing.md
 # One launch, no retries: a crash is a failure. (The intermittent macOS
-# crashes of 2026-07 were a heap overrun in PSPLINE's r8genxpkg for 3-point
-# splines, fixed by Libraries/pspline-r8genxpkg-nx3.patch; issue #4.)
+# crashes of 2026-07 were a heap overrun for 3-point splines in r8genxpkg of
+# the PSPLINE copy used then; issue #4.)
 "$PB3D_EXE" input_deck "$EQ_FILE" > run.log 2>&1
 STATUS=$?
 if [ "$STATUS" -ne 0 ]; then

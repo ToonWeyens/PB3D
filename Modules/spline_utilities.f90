@@ -46,7 +46,7 @@ contains
         logical, intent(in), optional :: extrap                                 !< whether extrapolation is allowed [def .false.]
         
         ! local variables
-        type(EZspline1_r8) :: f_spl                                             ! spline object
+        type(EZspline1) :: f_spl                                                ! spline object
         integer :: ord_loc                                                      ! local order
         integer :: deriv_loc                                                    ! local deriv
         integer :: bcs_loc(2)                                                   ! local bcs
@@ -198,8 +198,7 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! initialize; EZspline_preInit sets the allocation flags of f_spl,
-        ! which PSPLINE leaves undefined and EZspline_init reads
+        ! initialize; EZspline_preInit marks f_spl as not set up
         call EZspline_preInit(f_spl)
         if (ord_loc.eq.1) then
             call EZlinear_init(f_spl,n,ierr)

@@ -19,7 +19,8 @@ module load pkgconf/2.3.0-GCCcore-14.2.0
 export PETSC_DIR=${PB3D_PETSC_DIR:-$PB3D_ROOT/deps/petsc}
 unset PETSC_ARCH
 export SLEPC_DIR=${PB3D_SLEPC_DIR:-$PB3D_ROOT/deps/slepc}
-export PSPLINE_DIR=$PB3D_ROOT/deps/pspline/install
+export PSPLINE_VERSION=v2.5.0                 # release of github.com/PrincetonUniversity/pspline
+export PSPLINE_DIR=$PB3D_ROOT/deps/pspline-$PSPLINE_VERSION/install
 export LIBSTELL_DIR=$PB3D_ROOT/deps/libstell-min
 export PB3D_FIXTURE_DIR=$PB3D_ROOT/fixtures
 

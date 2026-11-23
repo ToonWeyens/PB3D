@@ -18,7 +18,7 @@ outside that directory was touched, and `rm -rf ~/pb3d` removes all of it.
 | `~/pb3d/src/` | clean source tree (`git archive HEAD` of the worktree) |
 | `~/pb3d/deps/petsc/` | PETSc 3.25.3, complex scalars, with MUMPS/ParMETIS/METIS, prefix install |
 | `~/pb3d/deps/slepc/` | SLEPc 3.25.1, prefix install |
-| `~/pb3d/deps/pspline/` | PSPLINE checkout (`install/` holds `lib/libpspline.a` + `.mod`) |
+| `~/pb3d/deps/pspline-v2.5.0/` | PSPLINE v2.5.0 checkout (`install/` holds `lib/libpspline.a` + `.mod`) |
 | `~/pb3d/deps/libstell-min/` | minimal LIBSTELL (`read_wout_mod` and dependencies) |
 | `~/pb3d/deps/stellopt/LIBSTELL/Sources/` | the STELLOPT LIBSTELL sources (rsynced, 8.5 MB) |
 | `~/pb3d/deps/venv/` | Python venv holding CMake 4.4.4 (see "Known points") |
@@ -56,7 +56,6 @@ combination).
 cd <PB3D worktree>
 ssh snellius 'mkdir -p ~/pb3d/{src,fixtures,scripts,deps/stellopt/LIBSTELL/Sources}'
 git archive HEAD | ssh snellius 'tar -x -C ~/pb3d/src'
-scp Libraries/pspline-r8genxpkg-nx3.patch snellius:~/pb3d/src/Libraries/   # if not yet committed
 rsync -az ~/Code/PB3D-fixtures/cbm18a_extended_vac.12 snellius:~/pb3d/fixtures/
 rsync -az ~/Code/stellopt/LIBSTELL/Sources/ snellius:~/pb3d/deps/stellopt/LIBSTELL/Sources/
 rsync -az scripts/snellius/ snellius:~/pb3d/scripts/
@@ -71,8 +70,8 @@ nohup ~/pb3d/scripts/pipeline.sh > ~/pb3d/logs/pipeline.log 2>&1 &
 
 `build_deps.sh` downloads anonymously (generic User-Agent, no identity in
 any request): the PETSc release tarball from `web.cels.anl.gov`, the SLEPc
-tarball from `slepc.upv.es`, and `git clone` of
-`github.com/ilonster/pspline`. STELLOPT is not cloned; only
+tarball from `slepc.upv.es`, and `git clone` of release v2.5.0 of
+`github.com/PrincetonUniversity/pspline`. STELLOPT is not cloned; only
 `LIBSTELL/Sources` is rsynced from the Mac.
 
 PETSc configure line (in `build_deps.sh`):
@@ -101,16 +100,16 @@ export PETSC_VER=3.26.1 SLEPC_VER=3.26.1 \
 PB3D_BUILD_SUFFIX=-3.26 ~/pb3d/scripts/build_pb3d.sh release
 ```
 
-PSPLINE: `build_pspline_linux.sh` is `Libraries/build_pspline.sh` without
-the Homebrew `PATH` line, taking the checkout as its first argument; it
-applies `Libraries/pspline-r8genxpkg-nx3.patch` when `build_deps.sh` finds
-it in `~/pb3d/src/Libraries/`. LIBSTELL: `build_libstell_min_linux.sh` is
+PSPLINE: `build_deps.sh` clones the release named by `PSPLINE_VERSION` in
+`env.sh` into `~/pb3d/deps/pspline-$PSPLINE_VERSION` and builds it with
+`Libraries/build_pspline.sh` of `~/pb3d/src`, the same script as on the Mac,
+into `$PSPLINE_DIR`. LIBSTELL: `build_libstell_min_linux.sh` is
 `Libraries/build_libstell_min.sh` with the Homebrew line removed and the
 defaults pointing at `$EBROOTNETCDFMINFORTRAN` and `~/pb3d/deps/stellopt`.
 
 CMake configure (in `build_pb3d.sh`):
 `cmake -S ~/pb3d/src -B ~/pb3d/build -DCMAKE_BUILD_TYPE=Release
--DPSPLINE_DIR=~/pb3d/deps/pspline/install
+-DPSPLINE_DIR=~/pb3d/deps/pspline-v2.5.0/install
 -DLIBSTELL_DIR=~/pb3d/deps/libstell-min -DPB3D_FIXTURE_DIR=~/pb3d/fixtures`;
 the Debug variant adds `-DCMAKE_BUILD_TYPE=Debug -DPB3D_ENABLE_DEBUG=ON`
 in `~/pb3d/build-debug`.
@@ -252,10 +251,11 @@ in 69.6 s and 18/18 in 84.0 s.
 - **Slurm drops the submitting environment.** `BC_STYLE=... sbatch` and
   `sbatch --export=ALL,...` do not reach the job on Snellius; the job
   options of `run_deck.sbatch` are therefore positional.
-- **PSPLINE `r8genxpkg` overrun** (`Libraries/pspline-r8genxpkg-nx3.patch`):
-  invisible on Linux. Ten singleton runs of the fixed deck with the
-  unpatched library all produced the eigenvalue file with the identical
-  value; the patched library gives the same value (table above).
+- **PSPLINE `r8genxpkg` overrun** of the 2011 PSPLINE copy used up to
+  PB3D 2.53, which needed a patch (issue #4): invisible on Linux. Ten
+  singleton runs of the fixed deck with the unpatched library all produced
+  the eigenvalue file with the identical value; the patched library gives
+  the same value (table above). PSPLINE v2.5.0 has the guard itself.
 - `ld` warns once that `grid_utilities.f90.o` "requires executable stack"
   (its `.note.GNU-stack` section is marked executable; gfortran does this
   when an internal procedure is passed as an actual argument and needs a
