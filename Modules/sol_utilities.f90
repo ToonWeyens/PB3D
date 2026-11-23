@@ -792,17 +792,9 @@ contains
         end select
     end function calc_loc_sol_vec
     
-    !> Interpolation for a quantity V using splines.
-    !!
-    !! One point is copied. From two points on, PSPLINE interpolates with the
-    !! order interp_V_ord; the cubic spline (order 3) with its not-a-knot ends
-    !! is the straight line through two points and the parabola through three.
-    !!
-    !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
-    !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
-    !! spline interpolation (3), Akima or cubic.
-    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,ivs_stat) &
-        &result(ierr)
+    !> Interpolation of a quantity V(i,j,r) in r, for every i and j, with the
+    !! spline of order interp_V_ord.
+    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap) result(ierr)
         
         use spline_utilities, only: spline
         use num_vars, only: interp_V_ord
@@ -815,10 +807,9 @@ contains
         real(dp), intent(in) :: r_i(:)                                          ! input r
         real(dp), intent(in) :: r_o(:)                                          ! output r
         logical, intent(in) :: extrap                                           ! extrapolation possible
-        integer, intent(out), optional :: ivs_stat                              ! which method was used (1: copy, 2: linear, 3: spline)
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
+        integer :: id, jd                                                       ! counters
 #if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
 #endif
@@ -828,43 +819,20 @@ contains
 
 #if ldebug
         ! test sizes
-        if (size(r_i).ne.size(V_i,3)) then
-            ierr = 1
-            err_msg = 'r_i and V_i are not compatible'
-            CHCKERR(err_msg)
-        end if
-        if (size(r_o).ne.size(V_o,3)) then
-            ierr = 1
-            err_msg = 'r_o and V_o are not compatible'
-            CHCKERR(err_msg)
-        end if
         if (size(V_i,1).ne.size(V_o,1) .or. size(V_i,2).ne.size(V_o,2)) then
             ierr = 1
             err_msg = 'V_i and V_o are not compatible'
             CHCKERR(err_msg)
         end if
-        if (size(r_i).lt.1) then
-            ierr = 1
-            err_msg = 'Need at least one point'
-            CHCKERR(err_msg)
-        end if
 #endif
         
-        if (size(r_i).eq.1) then                                                ! copy directly
-            do kd = 1,size(V_o,3)
-                V_o(:,:,kd) = V_i(:,:,1)
+        do jd = 1,size(V_i,2)
+            do id = 1,size(V_i,1)
+                ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                    &ord=interp_V_ord,extrap=extrap)
+                CHCKERR('')
             end do
-            if (present(ivs_stat)) ivs_stat = 1
-        else                                                                    ! PSPLINE of order interp_V_ord
-            do jd = 1,size(V_i,2)
-                do id = 1,size(V_i,1)
-                    ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                        &ord=interp_V_ord,extrap=extrap)
-                    CHCKERR('')
-                end do
-            end do
-            if (present(ivs_stat)) ivs_stat = min(interp_V_ord,2) + 1           ! 2: linear, 3: Akima or cubic
-        end if
+        end do
         
 #if ldebug
         ! visualize
