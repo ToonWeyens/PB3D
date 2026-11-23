@@ -198,8 +198,7 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! initialize; EZspline_preInit marks f_spl as not set up
-        call EZspline_preInit(f_spl)
+        ! initialize
         if (ord_loc.eq.1) then
             call EZlinear_init(f_spl,n,ierr)
             call EZspline_error(ierr)
