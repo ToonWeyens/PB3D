@@ -34,7 +34,7 @@ from the regular build directory.
 | Layer | Label | Needs | Contents |
 |---|---|---|---|
 | Unit | `unit` | Fortran compiler only | test-drive suites against `pb3d_core` |
-| Smoke | `smoke` | full executable build | `PB3D`/`POST` usage-message checks |
+| Smoke | `smoke` | full executable build | `PB3D`/`POST` usage message; stop on a missing input file |
 | Full-stack | `fullstack` | full executable build | test-drive suites against the complete `pb3d_modules` (currently: the vacuum module); the distributed suites also run under `mpirun -n 2` and `-n 4` |
 | Physics regression | `regression` | full build + `-DPB3D_FIXTURE_DIR=<dir>` | end-to-end eigenvalue anchors on local equilibrium fixtures |
 
@@ -301,6 +301,12 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   file. `reject_BC_style_np2` runs the same under `mpirun -n 2` and checks
   that the launcher returns the status. PB3D stops before any linear
   algebra, so this row needs no distributed LU.
+- `smoke_PB3D_missing_input` and `smoke_POST_missing_input` (label
+  `smoke`, no fixture): the program with an input file that does not exist.
+  There is no default input (issue #40). The test requires an exit status
+  that is not zero, the name of the file and the link to the input section
+  of the tutorial in the output, the program's own name in the line that
+  names the calling routine, and no file `fort.50`.
 
 **Exit status.** `PB3D` and `POST` return exit status 0 after a complete
 run, after the usage message and after `--help`. After an error they return

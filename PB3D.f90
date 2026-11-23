@@ -86,9 +86,9 @@ program PB3D
     !------------------------------!
     !   Initialize some routines   !
     !------------------------------!
+    prog_name = 'PB3D'                                                          ! program name
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'PB3D'                                                          ! program name
     prog_style = 1                                                              ! main part
     call print_hello()                                                          ! print message with time, etc
     call init_output()                                                          ! initialize output utilities

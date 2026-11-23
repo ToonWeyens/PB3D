@@ -167,9 +167,13 @@ contains
     !> Open the input files.
     !!
     !!  - input file with user options
-    !!  - equilibrium file in
+    !!  - for PB3D, the equilibrium file in
     !!      - NetCDF for VMEC
     !!      - plain for HELENA
+    !!  - for POST, the PB3D output file
+    !!
+    !! Neither file has a default: the program stops with an error when one of
+    !! them cannot be opened.
     !!
     !! \return ierr
     integer function open_input() result(ierr)
@@ -199,20 +203,23 @@ contains
             call writo("Opening files")
             call lvl_ud(1)
             
+            ! open the input file (no default)
+            input_name = command_arg(1)                                         ! first argument is the name of the input file
+            open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=ierr)
+            if (ierr.ne.0) then
+                call writo('Cannot open input file "'//trim(input_name)//'"',&
+                    &error=.true.)
+                call lvl_ud(1)
+                call writo('How to write an input file: &
+                    &https://pb3d.github.io/Doxygen/html/page_tutorial.html#tutorial_inputs')
+                call lvl_ud(-1)
+                CHCKERR('')
+            end if
+            call writo('Input file "' // trim(input_name) // '" opened')
+            
             ! select depending on program style
             select case (prog_style)
                 case(1)                                                         ! PB3D
-                    ! check for correct input file and use default if needed
-                    input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
-                    if (istat.eq.0) then
-                        call writo('Input file "' // trim(input_name) &
-                            &// '" opened')
-                    else 
-                        call writo('No input file found. Default used')
-                        input_name = ''
-                    end if
-                    
                     ! check for  equilibrium file and  print error if  not found
                     ! (no default!)
                     eq_name = command_arg(2)
@@ -260,17 +267,6 @@ contains
                     ! set PB3D output name 
                     PB3D_name = prog_name//'_'//trim(output_name)//'.h5'
                 case(2)                                                         ! POST
-                    ! check for correct input file and use default if needed
-                    input_name = command_arg(1)                                 ! first argument is the name of the input file
-                    open(UNIT=input_i,FILE=input_name,STATUS='old',IOSTAT=istat)
-                    if (istat.eq.0) then
-                        call writo('Input file "' // trim(input_name) &
-                            &// '" opened')
-                    else 
-                        call writo('No input file found. Default used')
-                        input_name = ''
-                    end if
-                    
                     ! check for PB3D_PB3D file and  print error if not found (no
                     ! default!)
                     PB3D_name = command_arg(2)

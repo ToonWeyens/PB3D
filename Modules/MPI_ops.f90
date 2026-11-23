@@ -541,7 +541,7 @@ contains
     !! after the usage or help message.
     subroutine sudden_stop(ierr)
         use, intrinsic :: iso_fortran_env, only: output_unit
-        use num_vars, only: rank, output_i
+        use num_vars, only: rank, output_i, prog_name
         
         ! input / output
         integer, intent(in) :: ierr                                             !< error to output
@@ -553,8 +553,8 @@ contains
         logical :: output_open                                                  ! whether the output file is open
         
         if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D (main) of rank '//&
-                &trim(i2str(rank)),persistent=.true.)
+            call writo('>> calling routine: '//trim(prog_name)//&
+                &' (main) of rank '//trim(i2str(rank)),persistent=.true.)
             call writo('ERROR CODE '//trim(i2str(ierr))//&
                 &'. Aborting MPI rank '//trim(i2str(rank)),&
                 &persistent=.true.)

@@ -66,9 +66,9 @@ program POST
     !------------------------------!
     !   Initialize some routines   !
     !------------------------------!
+    prog_name = 'POST'                                                          ! program name
     ierr = start_MPI()                                                          ! start MPI
     CHCKERR
-    prog_name = 'POST'                                                          ! program name
     prog_style = 2                                                              ! post-processing part
     call print_hello()                                                          ! print message with time, etc
     call init_output()                                                          ! initialize output

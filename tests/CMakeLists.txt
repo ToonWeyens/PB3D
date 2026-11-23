@@ -160,6 +160,23 @@ if(TARGET POST)
         LABELS "smoke")
 endif()
 
+# An input file that does not exist has to stop the program with a message, a
+# link to the tutorial and an exit status that is not zero: there is no
+# default input (issue #40).
+foreach(_prog PB3D POST)
+    if(TARGET ${_prog})
+        add_test(NAME smoke_${_prog}_missing_input
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/smoke/missing_input.sh
+                $<TARGET_FILE:${_prog}> ${_prog})
+        set_tests_properties(smoke_${_prog}_missing_input PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            LABELS "smoke"
+            TIMEOUT 60)
+    endif()
+endforeach()
+
 #------------------------------------------------------------------------------
 # Full-stack tests
 #------------------------------------------------------------------------------
