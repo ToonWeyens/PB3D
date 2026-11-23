@@ -210,7 +210,7 @@ contains
         call writo('Store results for '//trim(i2str(max_n_EV))//' least &
             &stable Eigenvalues')
         
-        ierr = store_results(mds,grid_sol,sol,solver,max_n_EV,A,B)
+        ierr = store_results(mds,grid_sol,vac,sol,solver,max_n_EV,A,B)
         CHCKERR('')
         
         ! finalize
@@ -1485,14 +1485,24 @@ contains
     
     !> Stores the results.
     !!
+    !! For every accepted eigenvalue, the potential energy \f$X^* A X\f$ and
+    !! the kinetic energy \f$X^* B X\f$ of the eigenvector are printed. A and B
+    !! include the step size and the quadrature weights of the normal integral
+    !! (see setup_mats()), so these are the discretized energies themselves.
+    !! With a free boundary, the potential energy is also split into its
+    !! plasma part and its vacuum part \f$X_\text{edge}^* R \, X_\text{edge}\f$,
+    !! with \f$R\f$ the vacuum response \c res of vac_type, which set_BC()
+    !! adds to the edge block of A.
+    !!
     !! \return ierr
-    integer function store_results(mds,grid_sol,sol,solver,max_n_EV,A,B) &
+    integer function store_results(mds,grid_sol,vac,sol,solver,max_n_EV,A,B) &
         &result(ierr)
         
         use eq_vars, only: T_0
         use X_vars, only: n_mod_X
         use num_vars, only: use_normalization, EV_BC, prog_name, output_name, &
-            &n_procs, rank, tol_SLEPC, eq_style, output_EV_i, retain_all_sol
+            &n_procs, rank, tol_SLEPC, eq_style, output_EV_i, retain_all_sol, &
+            &BC_style
         use MPI_utilities, only: get_ser_var
         use rich_vars, only: rich_lvl
         use grid_utilities, only: trim_grid
@@ -1502,6 +1512,7 @@ contains
         ! input / output
         type(modes_type), intent(in) :: mds                                     !< general modes variables
         type(grid_type), intent(in) :: grid_sol                                 !< solution grid
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
         type(sol_type), intent(inout) :: sol                                    !< solution variables
         EPS, intent(inout) :: solver                                            !< EV solver
         PetscInt, intent(inout) :: max_n_EV                                     !< nr. of EV's saved, up to \c n_conv
@@ -1527,6 +1538,8 @@ contains
         PetscScalar :: sol_val_loc                                              ! local X val
         PetscScalar :: err_val                                                  ! X*(A-omega^2B)X
         PetscScalar :: E_val(2)                                                 ! X*AX and X*BX
+        PetscScalar :: E_vac                                                    ! vacuum part of X*AX
+        PetscScalar, allocatable :: E_vac_tot(:)                                ! E_vac of all processes
         PetscScalar, allocatable :: sol_vec_loc(:,:)                            ! local solution vector, possibly in extended grid
         PetscScalar, allocatable :: sol_vec_max(:)                              ! max of sol_vec of all processes, including phase at max
         character(len=max_str_ln) :: full_output_name                           ! full name
@@ -1752,13 +1765,30 @@ contains
                 ! multiply with X* and give output
                 call VecDot(E_vec(1),sol_vec,E_val(1),ierr)
                 CHCKERR('Failed to do dot product')
-                call writo('step_size = '//trim(r2str(step_size)))
-                call writo('E_pot = X*AX*step_size = '//&
-                    &trim(c2str(E_val(1)*step_size)))
                 call VecDot(E_vec(2),sol_vec,E_val(2),ierr)
                 CHCKERR('Failed to do dot product')
-                call writo('E_kin = X*BX*step_size = '//&
-                    &trim(c2str(E_val(2)*step_size)))
+                call writo('E_pot = X*AX = '//trim(c2str(E_val(1))))
+                
+                ! with a free boundary, split E_pot into plasma and vacuum part
+                if (BC_style(2).eq.2) then
+                    ! X_edge* vac%res X_edge, by the process with the edge point
+                    E_vac = 0._dp
+                    if (loc_n_r.gt.0 .and. grid_sol_trim%i_max.eq.n_r .and. &
+                        &allocated(vac%res)) &
+                        &E_vac = dot_product(sol_vec_loc(:,loc_n_r),&
+                        &matmul(vac%res,sol_vec_loc(:,loc_n_r)))
+                    ierr = get_ser_var([E_vac],E_vac_tot,scatter=.true.)
+                    CHCKERR('')
+                    E_vac = sum(E_vac_tot)
+                    deallocate(E_vac_tot)
+                    
+                    call lvl_ud(1)
+                    call writo('plasma part = '//trim(c2str(E_val(1)-E_vac)))
+                    call writo('vacuum part = '//trim(c2str(E_vac)))
+                    call lvl_ud(-1)
+                end if
+                
+                call writo('E_kin = X*BX = '//trim(c2str(E_val(2))))
                 call writo('X*AX/X*BX = '//trim(c2str(E_val(1)/E_val(2))))
                 call writo('omega^2   = '//trim(c2str(sol%val(id))))
                 
