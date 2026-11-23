@@ -848,7 +848,7 @@ contains
         
         ! the order is the lower of the setting interp_V_ord and the limit set
         ! by the number of points
-        ord =min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
+        ord = min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
         
         select case (ord)
             case (0)                                                            ! copy directly
