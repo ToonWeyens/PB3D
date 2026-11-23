@@ -320,7 +320,8 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   names the calling routine, and no file `fort.50`.
 
 **Exit status.** `PB3D` and `POST` return exit status 0 after a complete
-run, after the usage message and after `--help`. After an error they return
+run and after `--help`, and 2 after the usage message, that is after a call
+with too few arguments. After an error they return
 the error code that they print ("ERROR CODE ...") if it lies between 1 and
 125, and 1 for every other code, such as the negative codes of HDF5 and
 NetCDF (`get_exit_status` in `MPI_ops`). The regression runners test this

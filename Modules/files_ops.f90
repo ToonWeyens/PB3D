@@ -77,6 +77,13 @@ contains
     !! status with which all processes stop (see stop_usage()). Otherwise it is
     !! -1 and the program goes on.
     !!
+    !! The exit status is 0 after the help message, which the user asked for,
+    !! and 2 after the usage message. A call with too few arguments is a
+    !! mistake, for example a script that passes an empty variable in place of
+    !! a file name, and the script has to see that the run did not succeed. 2 is
+    !! the exit status that Python's argparse and the GNU tools use for a wrong
+    !! call.
+    !!
     !! \return ierr
     integer function parse_args(usage_status) result(ierr)
         use num_vars, only: prog_style, prog_name
@@ -155,7 +162,7 @@ contains
             do id = 1,size(open_error)
                 call writo(open_error(id))
             end do
-            usage_status = 0                                                    ! too few arguments
+            usage_status = 2                                                    ! too few arguments
             return
         else
             allocate(command_arg(numargs))

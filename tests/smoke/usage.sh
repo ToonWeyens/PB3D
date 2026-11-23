@@ -8,7 +8,8 @@
 #               "mpirun -n 2" (one argument, split on spaces on purpose)
 #
 # Required for both calls: the output contains "Usage:", and the exit status
-# is 0 after --help and 0 without arguments.
+# is 0 after --help, which the user asked for, and 2 without arguments, which
+# is a mistake that a script has to notice (option A of issue #40).
 #
 # Under a launcher with more than one process, all processes have to stop.
 # Only rank 0 reads the command line; the other processes learn from its
@@ -48,9 +49,9 @@ run_case() {
 }
 
 run_case "the call with --help" 0 --help
-run_case "the call without arguments" 0
+run_case "the call without arguments" 2
 
 if [ "$OK" -ne 1 ]; then
     exit 1
 fi
-echo "PASS: usage and help message, exit status 0 after --help and 0 without arguments"
+echo "PASS: usage and help message, exit status 0 after --help and 2 without arguments"
