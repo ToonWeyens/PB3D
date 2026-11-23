@@ -1,9 +1,9 @@
 # FindSCALAPACK.cmake
 # -------------------
 # Find ScaLAPACK together with its BLACS. PB3D calls both directly: the BLACS
-# process grid of the vacuum module (vac_vars.f90, MPI_ops.f90) and, when
-# STRUMPACK-Dense is not used, the LU solve of the vacuum boundary-element
-# system. ScaLAPACK is therefore required.
+# process grid of the vacuum module (vac_vars.f90, MPI_ops.f90) and the LU
+# solve of the vacuum boundary-element system. ScaLAPACK is therefore
+# required.
 #
 # Search order:
 #   1. SCALAPACK_LIBRARIES given on the command line: used as it is (for

@@ -113,8 +113,7 @@ CMake configure (in `build_pb3d.sh`):
 -DPSPLINE_DIR=~/pb3d/deps/pspline/install
 -DLIBSTELL_DIR=~/pb3d/deps/libstell-min -DPB3D_FIXTURE_DIR=~/pb3d/fixtures`;
 the Debug variant adds `-DCMAKE_BUILD_TYPE=Debug -DPB3D_ENABLE_DEBUG=ON`
-in `~/pb3d/build-debug`. STRUMPACK is not built; the vacuum uses the
-ScaLAPACK `pdgesv` path.
+in `~/pb3d/build-debug`.
 
 Build times on the login node (`nice -n 10`, `-j16`): PETSc 21 min
 without MUMPS, 35 min with MUMPS 5.8.2, ParMETIS and METIS downloaded and built by its configure; SLEPc 4.7
@@ -264,5 +263,4 @@ in 69.6 s and 18/18 in 84.0 s.
 - A singleton PB3D run (`PB3D input eq` without `mpirun`) works on the
   compute nodes; OpenMPI 5.0.7 `mpirun -np N` inside the Slurm allocation
   works too (no `srun` needed).
-- ScaLAPACK solves the vacuum boundary-element system (`pdgesv`);
-  STRUMPACK-Dense is not built.
+- ScaLAPACK solves the vacuum boundary-element system (LU).

@@ -18,20 +18,15 @@
 !!      - The  integration in the poloidal  angle is done using  the collocation
 !!      method.
 !!
-!! The final  matrix equation is  solved through Strumpack  \cite Meiser2016,
-!! or through ScaLAPACK when PB3D was built without Strumpack.
+!! The final matrix equation is solved with ScaLAPACK's LU.
 !!
 !! \see See \cite Weyens3D.
 !!
 !! \todo Publish vacuum benchmarks and refer to them here.
-!! \todo Investigate Strumpack rather than inefficient scalapack
 !------------------------------------------------------------------------------!
 module vac_ops
 #include <PB3D_macros.h>
 #include <wrappers.h>
-#ifdef PB3D_WITH_STRUMPACK
-    use StrumpackDensePackage
-#endif
     use str_utilities
     use messages
     use output_ops
@@ -50,11 +45,8 @@ module vac_ops
     public debug_calc_GH, debug_calc_vac_res, debug_vac_pot_plot
 #endif
 
-#ifndef PB3D_WITH_STRUMPACK
-    ! (comes from StrumpackDensePackage when PB3D is built with STRUMPACK)
     integer, external :: numroc                                                 !< ScaLAPACK index computation function
-#endif
-    
+
     ! global variables
 #if ldebug
     logical :: debug_calc_GH = .false.                                          !< plot debug information for calc_GH() \ldebug
@@ -1779,11 +1771,7 @@ contains
         ! Only for processes that are in the blacs context
         if (in_context(vac%ctxt_HG)) then
             ! user output
-#ifdef PB3D_WITH_STRUMPACK
-            call writo('Use STRUMPack to solve system',persistent=rank_o)
-#else
             call writo('Use ScaLAPACK to solve system',persistent=rank_o)
-#endif
             call lvl_ud(1)
             
             ! set step sizes if 3-D vacuum
@@ -3573,8 +3561,8 @@ logical, allocatable :: in_ext(:)                                       ! points
     !! last points of a closed boundary coincide, as they do for HELENA: the two
     !! rows differ only in the column of that term.
     !!
-    !! The linear  system is solved  with STRUMPack when PB3D  was configured
-    !! with it, and with ScaLAPACK LU (\c pdgesv) otherwise.
+    !! The linear system is solved with ScaLAPACK's LU (\c pdgetrf and \c
+    !! pdgetrs).
     integer function solve_Phi_BEM(vac,R,Phi,n_RPhi,n_loc_RPhi,lims_c_RPhi,&
         &desc_RPhi) result(ierr)
 
@@ -3586,32 +3574,21 @@ logical, allocatable :: in_ext(:)                                       ! points
         character(*), parameter :: rout_name = 'solve_Phi_BEM'
 
         ! input / output
-        type(vac_type), intent(in), target :: vac                               !< vacuum variables
-        real(dp), intent(inout), target :: Phi(:,:)                             !< \f$\overline{\Phi}\f$
+        type(vac_type), intent(in) :: vac                                       !< vacuum variables
+        real(dp), intent(inout) :: Phi(:,:)                                     !< \f$\overline{\Phi}\f$
         real(dp), intent(in) :: R(:,:)                                          !< \f$\overline{\text{R}}\f$
         integer, intent(in) :: n_RPhi(2)                                        !< \c n for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
         integer, intent(in) :: n_loc_RPhi(2)                                    !< local \c n for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
         integer, intent(in) :: lims_c_RPhi(:,:)                                 !< local limits for row and columns of \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
-        integer, intent(in), target :: desc_RPhi(BLACSCTXTSIZE)                 !< descriptor for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
+        integer, intent(in) :: desc_RPhi(BLACSCTXTSIZE)                         !< descriptor for \f$\overline{\text{R}}\f$ and \f$\overline{\Phi}\f$
 
         ! local variables
-        integer, target :: desc_GR(BLACSCTXTSIZE)                               ! descriptor for GR
+        integer :: desc_GR(BLACSCTXTSIZE)                                       ! descriptor for GR
         integer :: info_loc                                                     ! info variable for ScaLAPACK
         integer, allocatable :: ipiv(:)                                         ! pivot variable for the LU
-        logical :: solved_ok                                                    ! whether a verified solution was obtained
-        real(dp), allocatable, target :: GR(:,:)                                ! GR
-        real(dp), allocatable, target :: H_ext(:,:)                             ! copy of H, overwritten by the factorization
+        real(dp), allocatable :: GR(:,:)                                        ! GR
+        real(dp), allocatable :: H_ext(:,:)                                     ! copy of H, overwritten by the factorization
         character(len=max_str_ln) :: err_msg                                    ! error message
-#ifdef PB3D_WITH_STRUMPACK
-        real(dp) :: SDP_err                                                     ! error
-        real(dp) :: norms_loc(2)                                                ! squared norms of residual and right-hand side
-        real(dp), allocatable :: res_check(:,:)                                 ! residual of the compressed solve
-        real(dp), allocatable, target :: H_sdp(:,:)                             ! copy of H_ext for the compressed solver
-        type(C_PTR) :: CdescH, CH                                               ! C pointers to descriptor of H_sdp and H_sdp itself
-        type(C_PTR) :: CdescGR, CGR                                             ! C pointers to descriptor of GR and GR itself
-        type(C_PTR) :: CdescPhi, CPhi                                           ! C pointers to descriptor of Phi and Phi itself
-        type(StrumpackDensePackage_F90_double) :: SDP_loc                       ! Strumpack object for local solve H_sdp Phi = GR
-#endif
 #if ldebug
         integer :: iwork_q(1)                                                   ! integer workspace query
         integer, allocatable :: iwork(:)                                        ! integer workspace of the condition estimate
@@ -3645,145 +3622,58 @@ logical, allocatable :: in_ext(:)                                       ! points
             call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,vac%G,1,1,&
                 &vac%desc_G,R,1,1,desc_RPhi,0._dp,GR,1,1,desc_GR)
 
-            ! copy the operator: the factorization overwrites it, and the
-            ! original stays available for the residual check below
+            ! copy the operator: the factorization overwrites the matrix, and
+            ! vac is intent(in)
             allocate(H_ext(size(vac%H,1),size(vac%H,2)))
             H_ext = vac%H
 
-            solved_ok = .false.
-
-#ifdef PB3D_WITH_STRUMPACK
-            ! try the compressed (HSS) solver first, on a copy of the
-            ! operator so that the original stays available for the residual
-            ! check and the possible fallback below
-            allocate(H_sdp(size(H_ext,1),size(H_ext,2)))
-            H_sdp = H_ext
-
-            ! set C pointers
-            CH = C_LOC(H_sdp)
-            CdescH = C_LOC(vac%desc_H)
-            CGR = C_LOC(GR)
-            CdescGR = C_LOC(desc_GR)
-            CPhi = C_LOC(Phi)
-            CdescPhi = C_LOC(desc_RPhi)
-
-            ! initialize the solver and set parameters
-            call SDP_F90_double_init(SDP_loc,vac%MPI_Comm)
-            SDP_loc%use_HSS=1
-            SDP_loc%levels_HSS=4
-            SDP_loc%min_rand_HSS=10
-            SDP_loc%lim_rand_HSS=5
-            SDP_loc%inc_rand_HSS=10
-            SDP_loc%max_rand_HSS=100
-            SDP_loc%tol_HSS=1D-12
-            SDP_loc%steps_IR=10
-            SDP_loc%tol_IR=1D-10
-
-            ! compression
-            call SDP_F90_double_compress_A(SDP_loc,CH,CdescH)
-
+            ! solve H Phi = G R with ScaLAPACK LU (pdgetrf and pdgetrs, what
+            ! pdgesv does): the right-hand side is overwritten with the
+            ! solution. With check_vac (only with ldebug) the reciprocal
+            ! condition number in the 1-norm is estimated between the two
+            ! (pdgecon) and printed as a CHECKVAC line.
+            Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                            ! same distribution
+            allocate(ipiv(vac%n_loc(1)+vac%bs))
+            ipiv = 0
 #if ldebug
-            ! accuracy checking
-            SDP_err = SDP_F90_double_check_compression(SDP_loc,CH,CdescH)
-#endif
-
-            ! factorization
-            call SDP_F90_double_factor(SDP_loc,CH,CdescH)
-
-            ! solve H Phi = G R
-            call SDP_F90_double_solve(SDP_loc,CPhi,CdescPhi,CGR,CdescGR)
-
-#if ldebug
-            ! accuracy checking
-            SDP_err = SDP_F90_double_check_solution(SDP_loc,CH,CdescH,CPhi,&
-                &CdescPhi,CGR,CdescGR)
-#endif
-
-            ! iterative refinement
-            SDP_err = SDP_F90_double_refine(SDP_loc,CH,CdescH,CPhi,CdescPhi,&
-                &CGR,CdescGR)
-            deallocate(H_sdp)
-
-            ! Verify the solution: the randomized HSS compression can fail
-            ! silently when the boundary operator has higher off-diagonal
-            ! ranks than the hard-coded sampling parameters can capture
-            ! (observed for the field-line 3-D style at moderate sizes). The
-            ! residual is checked against the uncompressed operator, and on
-            ! failure the solve falls back to ScaLAPACK LU below.
-            allocate(res_check(vac%n_loc(1),n_loc_RPhi(2)))
-            res_check = GR
-            call pdgemm('N','N',vac%n_bnd,n_RPhi(2),vac%n_bnd,1._dp,H_ext,1,1,&
-                &vac%desc_H,Phi,1,1,desc_RPhi,-1._dp,res_check,1,1,desc_GR)
-            norms_loc(1) = sum(res_check**2)
-            norms_loc(2) = sum(GR**2)
-            call dgsum2d(vac%ctxt_HG,'all',' ',2,1,norms_loc,2,-1,-1)
-            deallocate(res_check)
-            if (norms_loc(1).le.1.E-12_dp*norms_loc(2)) then                    ! relative residual <= 1e-6
-                solved_ok = .true.
-            else
-                call writo('The STRUMPACK solution has a relative residual '//&
-                    &trim(r2strt(sqrt(norms_loc(1)/max(norms_loc(2),&
-                    &tiny(1._dp)))))//' - falling back to ScaLAPACK LU',&
-                    &warning=.true.)
+            if (check_vac) then
+                allocate(work(vac%n_loc(2)+vac%bs))
+                anorm = pdlange('1',vac%n_bnd,vac%n_bnd,H_ext,1,1,&
+                    &vac%desc_H,work)
+                deallocate(work)
             end if
 #endif
-
-            if (.not.solved_ok) then
-                ! solve H Phi = G R with ScaLAPACK LU (pdgetrf and
-                ! pdgetrs, what pdgesv does): the right-hand side is
-                ! overwritten with the solution and the matrix destroyed
-                ! (which is why H_ext is a copy). With check_vac (only with
-                ! ldebug) the reciprocal condition number in the 1-norm is
-                ! estimated between the two (pdgecon) and printed as a
-                ! CHECKVAC line.
-                Phi(1:vac%n_loc(1),1:n_loc_RPhi(2)) = GR                        ! same distribution
-                allocate(ipiv(vac%n_loc(1)+vac%bs))
-                ipiv = 0
-#if ldebug
-                if (check_vac) then
-                    allocate(work(vac%n_loc(2)+vac%bs))
-                    anorm = pdlange('1',vac%n_bnd,vac%n_bnd,H_ext,1,1,&
-                        &vac%desc_H,work)
-                    deallocate(work)
-                end if
-#endif
-                call pdgetrf(vac%n_bnd,vac%n_bnd,H_ext,1,1,vac%desc_H,ipiv,&
-                    &info_loc)
-                if (info_loc.ne.0) then
-                    ierr = 1
-                    err_msg = 'pdgetrf failed with info '//trim(i2str(info_loc))
-                    CHCKERR(err_msg)
-                end if
-#if ldebug
-                if (check_vac) then
-                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
-                        &rcond,work_q,-1,iwork_q,-1,info_loc)
-                    allocate(work(int(work_q(1))),iwork(iwork_q(1)))
-                    call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
-                        &rcond,work,size(work),iwork,size(iwork),info_loc)
-                    deallocate(work,iwork)
-                    call writo('CHECKVAC condition n_bnd='//&
-                        &trim(i2str(vac%n_bnd))//' norm1='//trim(r2strt(anorm))//&
-                        &' cond1='//trim(r2strt(1._dp/max(rcond,tiny(1._dp)))),&
-                        &persistent=rank.eq.n_procs-1)
-                end if
-#endif
-                call pdgetrs('N',vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,&
-                    &Phi,1,1,desc_RPhi,info_loc)
-                if (info_loc.ne.0) then
-                    ierr = 1
-                    err_msg = 'pdgetrs failed with info '//trim(i2str(info_loc))
-                    CHCKERR(err_msg)
-                end if
-                deallocate(ipiv)
+            call pdgetrf(vac%n_bnd,vac%n_bnd,H_ext,1,1,vac%desc_H,ipiv,&
+                &info_loc)
+            if (info_loc.ne.0) then
+                ierr = 1
+                err_msg = 'pdgetrf failed with info '//trim(i2str(info_loc))
+                CHCKERR(err_msg)
             end if
+#if ldebug
+            if (check_vac) then
+                call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                    &rcond,work_q,-1,iwork_q,-1,info_loc)
+                allocate(work(int(work_q(1))),iwork(iwork_q(1)))
+                call pdgecon('1',vac%n_bnd,H_ext,1,1,vac%desc_H,anorm,&
+                    &rcond,work,size(work),iwork,size(iwork),info_loc)
+                deallocate(work,iwork)
+                call writo('CHECKVAC condition n_bnd='//&
+                    &trim(i2str(vac%n_bnd))//' norm1='//trim(r2strt(anorm))//&
+                    &' cond1='//trim(r2strt(1._dp/max(rcond,tiny(1._dp)))),&
+                    &persistent=rank.eq.n_procs-1)
+            end if
+#endif
+            call pdgetrs('N',vac%n_bnd,n_RPhi(2),H_ext,1,1,vac%desc_H,ipiv,&
+                &Phi,1,1,desc_RPhi,info_loc)
+            if (info_loc.ne.0) then
+                ierr = 1
+                err_msg = 'pdgetrs failed with info '//trim(i2str(info_loc))
+                CHCKERR(err_msg)
+            end if
+            deallocate(ipiv)
 
 #if ldebug
-#ifdef PB3D_WITH_STRUMPACK
-            ! statistics
-            call SDP_F90_double_print_statistics(SDP_loc)
-#endif
-
             ! user output
             ! set global angle (the same for every subrow and column; the
             ! subrow slices below use global indices, so ang has to span
@@ -3821,11 +3711,6 @@ logical, allocatable :: in_ext(:)                                       ! points
 
             ! clean up
             deallocate(ang)
-#endif
-
-#ifdef PB3D_WITH_STRUMPACK
-            ! destroy Strumpack object
-            call SDP_F90_double_destroy(SDP_loc)
 #endif
         end if
     end function solve_Phi_BEM

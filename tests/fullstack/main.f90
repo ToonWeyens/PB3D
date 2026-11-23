@@ -3,7 +3,7 @@
 !!
 !! In contrast to the unit tests (tests/unit), these tests link against the
 !! complete pb3d_modules library, and therefore require the full dependency
-!! stack (MPI, ScaLAPACK, STRUMPACK, ...). The executable initializes MPI
+!! stack (MPI, ScaLAPACK, PETSc, ...). The executable initializes MPI
 !! itself, so it can be run directly (MPI singleton mode) or under
 !! mpirun -n <N>; the test suites are rank-agnostic (they assert on globally
 !! gathered quantities, see fullstack_utils), so multi-process runs exercise

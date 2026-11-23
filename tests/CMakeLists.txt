@@ -170,8 +170,8 @@ endif()
 # are rank-agnostic (they assert on globally gathered quantities, see
 # fullstack/fullstack_utils.f90): they run in MPI singleton mode by default
 # and are additionally registered under mpirun -n 2 and 4 below, which
-# exercises the 2-D block-cyclic ScaLAPACK distribution (blocksize 16)
-# instead of the single whole-matrix block.
+# exercises the 2-D block-cyclic ScaLAPACK distribution (block size 64)
+# instead of one process holding the whole matrix.
 if(PB3D_BUILD_EXECUTABLES)
     add_executable(pb3d_fullstack_tests
         fullstack/main.f90

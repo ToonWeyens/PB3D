@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.52
-    LANGUAGES Fortran C CXX
+    VERSION 2.53
+    LANGUAGES Fortran C
     DESCRIPTION "Peeling Ballooning in 3D"
 )
 
@@ -123,7 +123,7 @@ endif()
 # MPI: needed by the full build always, and by the core library only in debug
 # mode (messages.f90 uses MPI for memory monitoring under ldebug)
 if(PB3D_BUILD_EXECUTABLES OR PB3D_ENABLE_DEBUG)
-    find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
+    find_package(MPI REQUIRED COMPONENTS Fortran C)
     message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
 endif()
 
@@ -157,20 +157,6 @@ message(STATUS "Found NetCDF-Fortran ${NETCDF_FORTRAN_VERSION}: ${NETCDF_FORTRAN
 # ScaLAPACK with BLACS, required (cmake/FindSCALAPACK.cmake)
 find_package(SCALAPACK REQUIRED)
 
-# STRUMPACK-Dense 1.1.1, optional (cmake/FindSTRUMPACKDense.cmake)
-option(PB3D_USE_STRUMPACK
-    "Solve the vacuum boundary-element system with STRUMPACK-Dense 1.1.1 when it is found under STRUMPACK_DIR; OFF: always with ScaLAPACK's LU"
-    ON)
-set(STRUMPACK_FOUND FALSE)
-if(PB3D_USE_STRUMPACK)
-    find_package(STRUMPACKDense)
-    set(STRUMPACK_FOUND ${STRUMPACKDense_FOUND})
-endif()
-if(NOT STRUMPACK_FOUND)
-    message(STATUS "Vacuum boundary-element system: ScaLAPACK LU (pdgesv), \
-STRUMPACK-Dense 1.1.1 not used")
-endif()
-
 # PSPLINE and LIBSTELL, built outside any package manager
 # (cmake/FindPSPLINE.cmake, cmake/FindLIBSTELL.cmake)
 find_package(PSPLINE REQUIRED)
@@ -196,24 +182,20 @@ target_link_libraries(pb3d_deps INTERFACE
     ${PSPLINE_LIBRARIES}
     ${LIBSTELL_LIBRARIES}
     MPI::MPI_Fortran
-    MPI::MPI_CXX
     PkgConfig::PETSC
     PkgConfig::SLEPC
     ${HDF5_Fortran_LIBRARIES}
     PkgConfig::NETCDF_FORTRAN
     SCALAPACK::SCALAPACK
 )
-if(STRUMPACK_FOUND)
-    target_link_libraries(pb3d_deps INTERFACE STRUMPACK::Dense)
-endif()
 if(LAPACK_FOUND)
     target_link_libraries(pb3d_deps INTERFACE ${LAPACK_LIBRARIES})
 endif()
 if(BLAS_FOUND)
     target_link_libraries(pb3d_deps INTERFACE ${BLAS_LIBRARIES})
 endif()
-# the C++ runtime of STRUMPACK-Dense and of MPI's C++ part, and libm
-target_link_libraries(pb3d_deps INTERFACE m stdc++)
+# libm
+target_link_libraries(pb3d_deps INTERFACE m)
 
 endif() # PB3D_BUILD_EXECUTABLES
 
@@ -408,10 +390,6 @@ target_include_directories(pb3d_modules PUBLIC
 )
 target_link_libraries(pb3d_modules PUBLIC foul pb3d_deps)
 
-if(STRUMPACK_FOUND)
-    target_compile_definitions(pb3d_modules PRIVATE PB3D_WITH_STRUMPACK)
-endif()
-
 #------------------------------------------------------------------------------
 # PB3D and POST executables: each is its main program plus the objects of
 # pb3d_modules
@@ -471,7 +449,6 @@ if(PB3D_BUILD_EXECUTABLES)
     message(STATUS "  HDF5:           ${HDF5_VERSION} (parallel: ${HDF5_IS_PARALLEL})")
     message(STATUS "  NetCDF-Fortran: ${NETCDF_FORTRAN_VERSION}")
     message(STATUS "  ScaLAPACK:      ${SCALAPACK_FOUND}")
-    message(STATUS "  STRUMPACK:      ${STRUMPACK_FOUND}")
     message(STATUS "  PSPLINE:        ${PSPLINE_LIBRARIES}")
     message(STATUS "  LIBSTELL:       ${LIBSTELL_LIBRARIES}")
     message(STATUS "")

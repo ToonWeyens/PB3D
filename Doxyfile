@@ -8,7 +8,7 @@
 
 PROJECT_NAME           = "PB3D"
 PROJECT_BRIEF          = "Peeling-Ballooning in 3-D"
-PROJECT_NUMBER         = 2.52
+PROJECT_NUMBER         = 2.53
 
 INPUT                  = Modules PB3D.f90 POST.f90 README.md
 USE_MDFILE_AS_MAINPAGE = README.md
@@ -22,7 +22,7 @@ EXTENSION_MAPPING      = f90=FortranFree
 ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 INCLUDE_PATH           = include
-PREDEFINED             = ldebug=1 PB3D_WITH_STRUMPACK=1
+PREDEFINED             = ldebug=1
 
 EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = YES

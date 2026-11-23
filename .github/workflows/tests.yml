@@ -75,7 +75,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Full-stack build (distro PETSc/SLEPc 3.19 complex, cached PSPLINE +
-  # minimal LIBSTELL, no STRUMPACK: ScaLAPACK vacuum solver). Runs every
+  # minimal LIBSTELL). Runs every
   # test layer, including the physics regressions on the committed
   # (xz-compressed) HELENA fixture, and enforces the compiler-warning
   # baseline (.github/warnings-baseline.txt).

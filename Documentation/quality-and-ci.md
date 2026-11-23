@@ -162,8 +162,8 @@ made rank-agnostic (`tests/fullstack/fullstack_utils.f90`: distributed
 matrix-vector products through `pdgemv`, global gathers, response broadcast
 from the last process), and the `vac_greens`/`vac_3d` suites now also run
 under `mpirun -n 2` and `-n 4` in every CI leg — covering BLACS grids 1×2
-and 2×2, blocksize-16 block-cyclic G/H, `vec_dis2loc` gathers and
-multi-process STRUMPACK and `pdgesv` solves, with results identical to the
+and 2×2, block-cyclic G/H with block size 64, `vec_dis2loc` gathers and
+multi-process ScaLAPACK LU solves, with results identical to the
 single-process runs. Remaining gap: the *regression* decks (full PB3D
 executable) are still single-process.
 
