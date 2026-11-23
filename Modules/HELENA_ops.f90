@@ -15,7 +15,7 @@ module HELENA_ops
     
     implicit none
     private
-    public read_HEL, interp_HEL_on_grid
+    public read_HEL, interp_HEL_on_grid, chi_H_rounding
 #if ldebug
     public test_metrics_H, test_harm_cont_H
 #endif
@@ -77,7 +77,12 @@ contains
     !! HELENA input (10). \n The other  variables should probably not be touched
     !! for consistency.
     !! \note Finally, the variables IAS and B0 are in the mapping file (12) only
-    !! in patched versions. See \ref tutorial_eq.
+    !! in patched versions. See \ref tutorial_eq_helena.
+    !! \note HELENA writes the  mapping file with 8 significant  digits unless it
+    !! is patched to write 16. With 8 digits the eigenvalue can be off by per
+    !! cents at low n on fine  mappings, mostly through the rounded poloidal grid
+    !! \c chi_H (issue #65). PB3D detects such a file with chi_H_rounding() and
+    !! warns. See \ref tutorial_eq_helena for the patch.
     !!
     !! \return ierr
     integer function read_HEL(n_r_in,use_pol_flux_H) result(ierr)
@@ -117,6 +122,9 @@ contains
         real(dp) :: ellip                                                       ! ellipticity
         real(dp) :: tria                                                        ! triangularity
         real(dp) :: delta_RZ(2)                                                 ! R and Z range
+        real(dp) :: dchi                                                        ! deviation of chi_H from HELENA's uniform grid
+        real(dp), parameter :: tol_chi_16 = 1.E-12_dp                           ! above: the file has fewer than 16 digits
+        real(dp), parameter :: tol_chi_grid = 1.E-6_dp                          ! above: not HELENA's uniform grid, no conclusion
 #if ldebug
         real(dp), allocatable :: inv_loc(:)                                     ! used to invert top-bottom
 #endif
@@ -131,7 +139,8 @@ contains
         
         ! set error messages
         err_msg = 'Failed to read HELENA output file. &
-            &Does it output IAS and B0? See tutorial!'
+            &Does it output IAS and B0? See "Patching HELENA" in the &
+            &tutorial'
         
         ! rewind input file
         rewind(eq_i)
@@ -172,6 +181,23 @@ contains
         read(eq_i,*,IOSTAT=ierr) (chi_H(id),id=1,nchi_loc)
         CHCKERR(err_msg)
         if (ias.ne.0) chi_H(nchi) = 2*pi
+        
+        ! check the number of digits of the file on the poloidal grid
+        dchi = chi_H_rounding(chi_H(1:nchi_loc),ias)
+        if (dchi.gt.tol_chi_16 .and. dchi.lt.tol_chi_grid) then
+            call writo('The HELENA mapping file has fewer than 16 &
+                &significant digits',warning=.true.)
+            call lvl_ud(1)
+            call writo('Its poloidal grid deviates by up to '//&
+                &trim(r2strt(dchi))//' from the uniform grid of HELENA')
+            call writo('The eigenvalue can then be wrong by per cents at &
+                &low n on fine mappings (PB3D issue #65)')
+            call writo('Patch HELENA to write 16 digits, FORMAT(4E24.16), &
+                &and run it again')
+            call writo('See "Patching HELENA" in the tutorial of the &
+                &documentation')
+            call lvl_ud(-1)
+        end if
         
         allocate(h_H_11(nchi,n_r_in))                                           ! upper metric factor 1,1
         read(eq_i,*,IOSTAT=ierr) &
@@ -370,6 +396,42 @@ contains
         call lvl_ud(-1)
         call writo('Data from HELENA output succesfully read')
     end function read_HEL
+    
+    !> Largest  deviation of  HELENA's poloidal  grid from  the uniform  grid that
+    !! HELENA computes.
+    !!
+    !! HELENA sets <tt>chi_j = pi (j-1)/(nchi-1)</tt> for a top-bottom symmetric
+    !! equilibrium (<tt>ias = 0</tt>) and <tt>chi_j = 2 pi (j-1)/nchi</tt>
+    !! otherwise, and  writes it to the  mapping file. In a file  written with 16
+    !! digits  the deviation  is at  rounding level,  below 1e-15.  In a  file
+    !! written with HELENA's original <tt>FORMAT(4E16.8)</tt> it is up to 5e-8,
+    !! which  read_HEL() uses to warn  that the file has  too few digits (issue
+    !! #65).
+    !!
+    !! \return deviation
+    pure function chi_H_rounding(chi,ias) result(dev)
+        ! input / output
+        real(dp), intent(in) :: chi(:)                                          !< poloidal grid as read from the file (\c nchi points)
+        integer, intent(in) :: ias                                              !< 0 if top-bottom symmetric
+        real(dp) :: dev                                                         !< largest deviation from the uniform grid
+        
+        ! local variables
+        integer :: id                                                           ! counter
+        integer :: nc                                                           ! number of points
+        real(dp) :: chi_ex                                                      ! point of the uniform grid
+        
+        dev = 0._dp
+        nc = size(chi)
+        if (nc.lt.2) return
+        do id = 1,nc
+            if (ias.eq.0) then
+                chi_ex = pi*(id-1)/(nc-1)
+            else
+                chi_ex = 2*pi*(id-1)/nc
+            end if
+            dev = max(dev,abs(chi(id)-chi_ex))
+        end do
+    end function chi_H_rounding
     
     !> Calculate interpolation factors for  angular interpolation in \c grid_out
     !! of quantities defined on \c grid_in.

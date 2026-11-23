@@ -32,14 +32,15 @@ contains
         type(unittest_type), allocatable, intent(out) :: testsuite(:)
 
         testsuite = [ &
-            &new_unittest("cbm18a_golden", test_cbm18a_golden) &
+            &new_unittest("cbm18a_golden", test_cbm18a_golden), &
+            &new_unittest("chi_rounding", test_chi_rounding) &
             &]
     end subroutine collect_read_HEL
 
     !> Parse the fixture and pin everything.
     subroutine test_cbm18a_golden(error)
         use num_vars, only: eq_i, eq_name
-        use HELENA_ops, only: read_HEL
+        use HELENA_ops, only: read_HEL, chi_H_rounding
         use HELENA_vars, only: pres_H, q_saf_H, rot_t_H, flux_p_H, flux_t_H, &
             &nchi, chi_H, ias, RBphi_H, R_H, Z_H, RMtoG_H, BMtoG_H
 
@@ -99,6 +100,13 @@ contains
         call check(error, abs(chi_H(1)).lt.1.e-12_dp .and. &
             &abs(chi_H(nchi)-pi).lt.1.e-6_dp, &
             &'chi grid spans [0, pi] for ias = 0')
+        if (allocated(error)) return
+
+        ! the fixture is an 8-digit file, which read_HEL warns about (#65)
+        call check(error, chi_H_rounding(chi_H,ias).gt.1.e-12_dp .and. &
+            &chi_H_rounding(chi_H,ias).lt.1.e-6_dp, &
+            &'chi grid of the 8-digit fixture deviates at rounding level: '//&
+            &trim(r2str(chi_H_rounding(chi_H,ias))))
         if (allocated(error)) return
 
         ! exact-by-construction consistency relations
@@ -172,4 +180,51 @@ contains
             &message='ellipticity golden')
         if (allocated(error)) return
     end subroutine test_cbm18a_golden
+
+    !> chi_H_rounding() on HELENA's uniform grids written with 16 and with 8
+    !! significant digits, for both symmetries (issue #65).
+    subroutine test_chi_rounding(error)
+        use HELENA_ops, only: chi_H_rounding
+
+        type(error_type), allocatable, intent(out) :: error
+
+        integer :: ias, nc, id                                                  ! symmetry, number of points, counter
+        real(dp), allocatable :: chi(:), chi_8(:)                               ! grid, grid with 8 digits
+        character(len=32) :: str                                                ! one number as HELENA writes it
+        real(dp) :: dev                                                         ! deviation
+
+        do ias = 0,1
+            do nc = 257,2049,896
+                allocate(chi(nc),chi_8(nc))
+                do id = 1,nc
+                    if (ias.eq.0) then
+                        chi(id) = pi*real(id-1,dp)/real(nc-1,dp)
+                    else
+                        chi(id) = 2*pi*real(id-1,dp)/real(nc,dp)
+                    end if
+                    write(str,'(E24.16)') chi(id)                               ! FORMAT(4E24.16), patched
+                    read(str,*) chi(id)
+                    write(str,'(E16.8)') chi(id)                                ! FORMAT(4E16.8), original
+                    read(str,*) chi_8(id)
+                end do
+                dev = chi_H_rounding(chi,ias)
+                call check(error, dev.lt.1.e-14_dp, '16 digits, ias = '//&
+                    &trim(i2str(ias))//', nchi = '//trim(i2str(nc))//': '//&
+                    &trim(r2str(dev)))
+                if (allocated(error)) return
+                dev = chi_H_rounding(chi_8,ias)
+                call check(error, dev.gt.1.e-12_dp .and. dev.lt.1.e-6_dp, &
+                    &'8 digits, ias = '//trim(i2str(ias))//', nchi = '//&
+                    &trim(i2str(nc))//': '//trim(r2str(dev)))
+                if (allocated(error)) return
+                ! a grid that is not HELENA's uniform one is not taken for
+                ! a rounded one
+                chi_8 = chi**1.1_dp
+                dev = chi_H_rounding(chi_8,ias)
+                call check(error, dev.gt.1.e-6_dp, 'non-uniform grid')
+                if (allocated(error)) return
+                deallocate(chi,chi_8)
+            end do
+        end do
+    end subroutine test_chi_rounding
 end module test_read_HEL
