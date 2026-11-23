@@ -47,10 +47,10 @@ gathered quantities (`tests/fullstack/fullstack_utils.f90` provides a
 distributed matrix-vector product through `pdgemv` and gathers through
 `vec_dis2loc`/`MPI_Bcast`), so the same assertions run identically on every
 process. The suites with distributed linear algebra (`vac_greens`,
-`vac_3d`) are registered three times: in MPI singleton mode (where the
-whole matrix is one ScaLAPACK block) and as `fullstack_<suite>_np2`/`_np4`
+`vac_3d`) are registered three times: in MPI singleton mode (where one
+process holds the whole matrix) and as `fullstack_<suite>_np2`/`_np4`
 under `mpirun`, where G and H genuinely live in the 2-D block-cyclic
-distribution (blocksize 16, BLACS grids 1×2 and 2×2). This covers the
+distribution (block size 64, BLACS grids 1×2 and 2×2). This covers the
 distribution machinery — descriptor setup, `lims_r`/`lims_c` index
 bookkeeping, `dgsum2d` gathers, multi-process ScaLAPACK LU solves —
 that single-process runs bypass. Rank 0 reports to stderr; other ranks
