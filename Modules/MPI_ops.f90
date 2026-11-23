@@ -12,7 +12,7 @@ module MPI_ops
     implicit none
     private
     public start_MPI, stop_MPI, abort_MPI, broadcast_input_opts, &
-        &sudden_stop
+        &sudden_stop, stop_usage
     
 contains
     !> Start MPI and gather information.
@@ -536,12 +536,11 @@ contains
     !! and the error message would be lost when the output goes to a file or to
     !! a pipe.
     !!
-    !! As a special case, if \c ierr = 66, no error message is printed, MPI is
-    !! stopped with stop_MPI() and the exit status is zero. This is the stop
-    !! after the usage or help message.
+    !! The stop after the usage or help message is not an error and goes
+    !! through stop_usage().
     subroutine sudden_stop(ierr)
         use, intrinsic :: iso_fortran_env, only: output_unit
-        use num_vars, only: rank, output_i
+        use num_vars, only: rank, output_i, prog_name
         
         ! input / output
         integer, intent(in) :: ierr                                             !< error to output
@@ -552,33 +551,52 @@ contains
         integer :: istat                                                        ! status of flush
         logical :: output_open                                                  ! whether the output file is open
         
-        if (ierr.ne.66) then
-            call writo('>> calling routine: PB3D (main) of rank '//&
-                &trim(i2str(rank)),persistent=.true.)
-            call writo('ERROR CODE '//trim(i2str(ierr))//&
-                &'. Aborting MPI rank '//trim(i2str(rank)),&
-                &persistent=.true.)
-            call lvl_ud(1)
-            status = get_exit_status(ierr)
-            
-            ! write out the buffered output, as MPI_Abort does not do this
-            flush(output_unit,iostat=istat)
-            inquire(unit=output_i,opened=output_open)
-            if (output_open) flush(output_i,iostat=istat)
-            
-            ! does not return, unless MPI cannot abort
-            ierr_abort = abort_MPI(status)
-        else
-            status = 0
-            ierr_abort = stop_MPI()
-            if (ierr_abort.ne.0) status = get_exit_status(ierr_abort)
-        end if
+        call writo('>> calling routine: '//trim(prog_name)//&
+            &' (main) of rank '//trim(i2str(rank)),persistent=.true.)
+        call writo('ERROR CODE '//trim(i2str(ierr))//&
+            &'. Aborting MPI rank '//trim(i2str(rank)),&
+            &persistent=.true.)
+        call lvl_ud(1)
+        status = get_exit_status(ierr)
+        
+        ! write out the buffered output, as MPI_Abort does not do this
+        flush(output_unit,iostat=istat)
+        inquire(unit=output_i,opened=output_open)
+        if (output_open) flush(output_i,iostat=istat)
+        
+        ! does not return, unless MPI cannot abort
+        ierr_abort = abort_MPI(status)
         if (ierr_abort.ne.0) then
             call writo('MPI cannot abort...',persistent=.true.)
             call writo('Shutting down',persistent=.true.)
         end if
         call lvl_ud(-1)
-        if (status.ne.0) error stop status
-        stop
+        error stop status
     end subroutine
+    
+    !> Stops all processes after the usage or help message.
+    !!
+    !! Only rank 0 reads the command line, in parse_args(). The main programs
+    !! broadcast the exit status that it returns, and every process then calls
+    !! this routine. Every process has to call it, because stop_MPI() makes
+    !! collective calls: a process that stopped alone would wait in them for the
+    !! others, which would wait in their next broadcast for it, and the run would
+    !! never end.
+    !!
+    !! The program ends with exit status \c status and prints nothing more, as
+    !! the usage or help message has already been printed.
+    subroutine stop_usage(status)
+        ! input / output
+        integer, intent(in) :: status                                           !< exit status
+        
+        ! local variables
+        integer :: ierr                                                         ! error
+        
+        ierr = stop_MPI()
+        if (ierr.ne.0) then
+            call writo('MPI cannot stop',persistent=.true.)
+            error stop get_exit_status(ierr)
+        end if
+        stop status, quiet=.true.
+    end subroutine stop_usage
 end module MPI_ops
