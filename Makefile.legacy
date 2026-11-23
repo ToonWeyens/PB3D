@@ -44,10 +44,6 @@ include  $(SLEPC_DIR)/lib/slepc/conf/slepc_variables
 PB3D_DIR=/opt/PB3D# 1. XPS 9360
 #PB3D_DIR=$(PROGRAM_DIR)/PB3D# 2. ITER
 
-# STRUMPACK
-STRUMPACK_DIR=/opt/STRUMPACK-Dense-1.1.1# 1. XPS 9360
-#STRUMPACK_DIR=$(COMPILE_DIR)# 2. ITER
-
 # SCALAPACK
 SCALAPACK_LIB=-L/opt/scalapack-2.1.0/lib -lscalapack -L/usr/lib -llapack -lblas# 1. XPS 9360
 #SCALAPACK_LIB=-L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lmkl_blacs_intelmpi_lp64 -liomp5 -lpthread -lm -ldl# 2. ITER
@@ -69,13 +65,11 @@ INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   $(PETSC_FC_INCLUDES) \
   $(SLEPC_INCLUDE) \
   -I/usr/include/hdf5/openmpi \
-  -I$(STRUMPACK_DIR)/include \
   -I$(PB3D_DIR)/include#1. XPS 9360
 
 #INCLUDE = -I$(LIBSTELL_DIR)/libstell_dir \
   #$(PETSC_FC_INCLUDES) \
   #$(SLEPC_INCLUDE) \
-  #-I$(STRUMPACK_DIR)/include \
   #-I$(PB3D_DIR)/include \
   #-I$(SCALAPACK_INC)#2. ITER
 
@@ -91,10 +85,9 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   -L$(NETCDFF_DIR)/lib -lnetcdff \
   -Wl,-R$(NETCDFF_DIR)/lib \
   -L$(PSPLINE_DIR)/lib -lpspline \
-  -L$(STRUMPACK_DIR)/lib -lstrumpack \
   $(SCALAPACK_LIB) \
   -Wl,-rpath,/opt/scalapack-2.1.0/lib \
-  -lm -lstdc++ -lmpi_cxx# 1. XPS 9360
+  -lm# 1. XPS 9360
 
 #LINK = $(LIBSTELL_DIR)/libstell.a \
   #$(PETSC_LIB) \
@@ -103,7 +96,6 @@ LINK = $(LIBSTELL_DIR)/libstell.a \
   #-L$(NETCDFF_DIR)/lib -lnetcdff \
   #-Wl,-R$(NETCDFF_DIR)/lib \
   #-L$(PSPLINE_DIR)/lib -lpspline \
-  #-L$(STRUMPACK_DIR)/lib -lstrumpack \
   #$(SCALAPACK_LIB)#2. ITER
 
 LINK := $(LIB_INTERNAL) $(LINK)

@@ -1,7 +1,7 @@
 # Spack environment for the libraries of PB3D that Spack packages: PETSc and
 # SLEPc with complex scalars, parallel HDF5, NetCDF-Fortran, ScaLAPACK and
-# pkg-config. PSPLINE, the minimal LIBSTELL and, optionally, STRUMPACK-Dense
-# 1.1.1 are built outside Spack (Documentation/spack-setup.md).
+# pkg-config. PSPLINE and the minimal LIBSTELL are built outside Spack
+# (Documentation/spack-setup.md).
 #
 #   spack env create pb3d spack.yaml
 #   spack env activate pb3d

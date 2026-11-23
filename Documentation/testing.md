@@ -52,7 +52,7 @@ whole matrix is one ScaLAPACK block) and as `fullstack_<suite>_np2`/`_np4`
 under `mpirun`, where G and H genuinely live in the 2-D block-cyclic
 distribution (blocksize 16, BLACS grids 1×2 and 2×2). This covers the
 distribution machinery — descriptor setup, `lims_r`/`lims_c` index
-bookkeeping, `dgsum2d` gathers, multi-process STRUMPACK/`pdgesv` solves —
+bookkeeping, `dgsum2d` gathers, multi-process ScaLAPACK LU solves —
 that single-process runs bypass. Rank 0 reports to stderr; other ranks
 write to `pb3d_fullstack_tests_rank<r>.log`, and the failure count is
 combined over all ranks.
@@ -119,8 +119,7 @@ combined over all ranks.
   convention for both vacuum styles), their first-order convergence with
   resolution, and the
   `solve_Phi_BEM` round trip (Neumann data of a known exterior harmonic
-  returns its boundary trace), both with STRUMPACK and with the ScaLAPACK
-  fallback.
+  returns its boundary trace) with ScaLAPACK's LU.
 - **`splines` (full-stack)** — the spline interpolation wrapper
   (`spline_utilities::spline`, backed by PSPLINE/EZspline; converted from
   the interactive legacy check): exact reproduction of polynomials in the

@@ -22,7 +22,7 @@ EXTENSION_MAPPING      = f90=FortranFree
 ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 INCLUDE_PATH           = include
-PREDEFINED             = ldebug=1 PB3D_WITH_STRUMPACK=1
+PREDEFINED             = ldebug=1
 
 EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = YES

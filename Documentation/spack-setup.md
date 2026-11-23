@@ -19,7 +19,6 @@ What PB3D needs, and what CMake checks at configure time:
 | ScaLAPACK with BLACS | the vacuum | stops if absent |
 | PSPLINE | splines | `cmake/FindPSPLINE.cmake` |
 | LIBSTELL (`read_wout_mod`) | VMEC equilibria | `cmake/FindLIBSTELL.cmake` |
-| STRUMPACK-Dense 1.1.1 | optional vacuum solver | used when found, see section 6 |
 
 ## 1. Install Spack
 
@@ -212,49 +211,9 @@ cd LIBSTELL && make release && cd ..
 # Module files are at $STELLOPT_PATH/install/include/*.mod
 ```
 
-## 6. Build STRUMPACK-Dense 1.1.1 (optional, for the vacuum module)
+## 6. Building PB3D with CMake
 
-PB3D's vacuum module can use the old STRUMPACK-Dense 1.1.1 library (not the
-newer STRUMPACK 7.x) to solve its boundary-element system with a compressed
-(HSS) solver. **This is optional**: without it, the same system is solved
-with ScaLAPACK LU (`pdgesv`), which is perfectly adequate for the moderate
-system sizes of axisymmetric vacua. The original download location
-(`portal.nersc.gov`) has become unreliable, so skipping this dependency is
-the recommended default unless you work with very large 3-D vacua:
-
-```bash
-cd ~/Code
-curl -L -O http://portal.nersc.gov/project/sparse/strumpack/STRUMPACK-Dense-1.1.1.tar.gz
-tar -xzf STRUMPACK-Dense-1.1.1.tar.gz
-cd STRUMPACK-Dense-1.1.1/examples
-
-# Build the two library objects directly (validated with GCC 16 / OpenMPI 5
-# on macOS arm64). Use GNU g++ via OMPI_CXX so that PB3D's -lstdc++ link
-# resolves the matching GNU C++ runtime.
-cd src
-OMPI_CXX=g++-16 mpic++ -O3 -std=gnu++11 -I. -c StrumpackDensePackage_C.cpp -o StrumpackDensePackage_C.o
-mpif90 -O3 -c StrumpackDensePackage.F90 -o StrumpackDensePackage.o
-ar -rcs libstrumpack.a StrumpackDensePackage_C.o StrumpackDensePackage.o
-cd ..
-
-# Create the layout PB3D's CMake expects
-mkdir -p lib inc
-ln -sf ../src/libstrumpack.a lib/libstrumpack.a
-ln -sf ../src/strumpackdensepackage.mod inc/strumpackdensepackage.mod
-
-export STRUMPACK_DIR=$PWD
-```
-
-CMake looks for STRUMPACK-Dense only under `STRUMPACK_DIR` (CMake variable,
-else environment variable, else `~/Code/STRUMPACK-Dense-1.1.1`) and uses it
-when it finds it. `-DPB3D_USE_STRUMPACK=OFF` builds without it although it
-is there; that build is reproducible from run to run, which the build with
-STRUMPACK is not on macOS (its compressed solve differs slightly per run and
-sometimes falls back to ScaLAPACK).
-
-## 7. Building PB3D with CMake
-
-With the Spack environment active and PSPLINE/LIBSTELL built (plus optionally STRUMPACK-Dense, see section 6):
+With the Spack environment active and PSPLINE/LIBSTELL built:
 
 ```bash
 spack env activate pb3d
@@ -269,8 +228,7 @@ ctest --test-dir build --output-on-failure
 
 The executables `PB3D` and `POST` are created in the build directory. The
 summary at the end of the configure step names the PETSc it found, its
-distributed LU, whether HDF5 is parallel and whether STRUMPACK is used;
-read it once. `cmake --install build --prefix <dir>` copies the two
+distributed LU and whether HDF5 is parallel; read it once. `cmake --install build --prefix <dir>` copies the two
 executables to `<dir>/bin`; they keep the paths of the Spack libraries, so
 they run without `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH`.
 
@@ -285,8 +243,6 @@ they run without `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH`.
 | `CMAKE_BUILD_TYPE` | Release | Build type (Debug, Release, RelWithDebInfo) |
 | `PSPLINE_DIR` | - | Path to PSPLINE installation |
 | `LIBSTELL_DIR` | - | Path to LIBSTELL installation |
-| `STRUMPACK_DIR` | ~/Code/STRUMPACK-Dense-1.1.1 | Path to STRUMPACK-Dense 1.1.1 installation (also read from the environment) |
-| `PB3D_USE_STRUMPACK` | ON | Use STRUMPACK-Dense when it is found; OFF: always ScaLAPACK's LU |
 | `SCALAPACK_DIR`, `SCALAPACK_LIBRARIES` | - | Where ScaLAPACK is, when pkg-config does not know it; or the libraries themselves (MKL) |
 | `PB3D_FIXTURE_DIR` | build/fixtures | Equilibrium files of the regression tests (`testing.md`) |
 | `PB3D_TEST_MPI_REGRESSION` | ON when PETSc has a distributed LU | The 2- and 4-process regression rows |
@@ -318,12 +274,11 @@ cmake .. \
     -DCMAKE_BUILD_TYPE=Debug \
     -DPB3D_ENABLE_DEBUG=ON \
     -DPSPLINE_DIR=$PSPLINE_DIR \
-    -DLIBSTELL_DIR=$LIBSTELL_DIR \
-    -DSTRUMPACK_DIR=$STRUMPACK_DIR
+    -DLIBSTELL_DIR=$LIBSTELL_DIR
 make -j4
 ```
 
-## 8. HPC Cluster with Module System
+## 7. HPC Cluster with Module System
 
 On a cluster, the site modules usually give MPI, HDF5, NetCDF-Fortran and
 ScaLAPACK. The site PETSc is often built with real scalars, which PB3D
@@ -343,7 +298,7 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
-## 9. Legacy Makefile
+## 8. Legacy Makefile
 
 The original Makefile is preserved as `Makefile.legacy` for reference. To use it:
 
@@ -353,7 +308,7 @@ The original Makefile is preserved as `Makefile.legacy` for reference. To use it
 
 The CMake-based build is recommended for new installations.
 
-## 10. Sharing the setup
+## 9. Sharing the setup
 
 `spack concretize` writes `spack.lock` next to the environment's
 `spack.yaml` (`spack env location`). It pins every version, variant and
@@ -363,7 +318,7 @@ hash; someone else reproduces the same stack with
 spack env create pb3d /path/to/spack.lock
 ```
 
-## 11. Useful Spack commands
+## 10. Useful Spack commands
 
 - `spack find` – list installed packages.
 - `spack find --deps <spec>` – show dependency tree.
