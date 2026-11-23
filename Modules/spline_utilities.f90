@@ -198,7 +198,9 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! initialize
+        ! initialize; EZspline_preInit sets the allocation flags of f_spl,
+        ! which PSPLINE leaves undefined and EZspline_init reads
+        call EZspline_preInit(f_spl)
         if (ord_loc.eq.1) then
             call EZlinear_init(f_spl,n,ierr)
             call EZspline_error(ierr)

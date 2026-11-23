@@ -1352,6 +1352,7 @@ contains
                         allocate(pert_map_interp(n_b))
                         bcs(:,1) = [0,0]                                        ! not a knot
                         bcs(:,2) = [0,0]                                        ! not a knot
+                        call EZspline_preInit(f_spl)                            ! sets the allocation flags EZspline_init reads
                         call EZspline_init(f_spl,n_pert_map(1),n_pert_map(2),&
                             &bcs(:,1),bcs(:,2),ierr)
                         call EZspline_error(ierr)
@@ -1374,6 +1375,12 @@ contains
                             call EZspline_error(ierr)
                             CHCKERR('')
                         end do
+                        
+                        ! free
+                        call EZspline_free(f_spl,ierr)
+                        call EZspline_error(ierr)
+                        CHCKERR('')
+                        
                         call print_ex_2D('ripple','pert_map_interp',&
                             &pert_map_interp,x=theta_B,draw=.false.)
                         call draw_ex(['ripple'],'pert_map_interp',&
@@ -3019,6 +3026,7 @@ contains
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
             ! initialize 2-D cubic spline for even (1) and odd (2) quantities
             do ld = 1,2
+                call EZspline_preInit(f_spl(ld))                                ! sets the allocation flags EZspline_init reads
                 call EZspline_init(f_spl(ld),grid_eq%n(1),grid_eq%loc_n_r,&
                     &bcs(:,ld),bcs(:,3),ierr) 
                 call EZspline_error(ierr)
@@ -3238,6 +3246,7 @@ contains
             eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
             ! initialize 2-D cubic spline
+            call EZspline_preInit(f_spl)                                        ! sets the allocation flags EZspline_init reads
             call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
                 &bcs(:,1),bcs(:,2),ierr) 
             call EZspline_error(ierr)
