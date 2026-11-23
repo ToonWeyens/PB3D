@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
     VERSION 2.52
-    LANGUAGES Fortran C CXX
+    LANGUAGES Fortran C
     DESCRIPTION "Peeling Ballooning in 3D"
 )
 
@@ -123,7 +123,7 @@ endif()
 # MPI: needed by the full build always, and by the core library only in debug
 # mode (messages.f90 uses MPI for memory monitoring under ldebug)
 if(PB3D_BUILD_EXECUTABLES OR PB3D_ENABLE_DEBUG)
-    find_package(MPI REQUIRED COMPONENTS Fortran C CXX)
+    find_package(MPI REQUIRED COMPONENTS Fortran C)
     message(STATUS "Found MPI: ${MPI_Fortran_COMPILER}")
 endif()
 
@@ -182,7 +182,6 @@ target_link_libraries(pb3d_deps INTERFACE
     ${PSPLINE_LIBRARIES}
     ${LIBSTELL_LIBRARIES}
     MPI::MPI_Fortran
-    MPI::MPI_CXX
     PkgConfig::PETSC
     PkgConfig::SLEPC
     ${HDF5_Fortran_LIBRARIES}
@@ -195,8 +194,8 @@ endif()
 if(BLAS_FOUND)
     target_link_libraries(pb3d_deps INTERFACE ${BLAS_LIBRARIES})
 endif()
-# the C++ runtime of STRUMPACK-Dense and of MPI's C++ part, and libm
-target_link_libraries(pb3d_deps INTERFACE m stdc++)
+# libm
+target_link_libraries(pb3d_deps INTERFACE m)
 
 endif() # PB3D_BUILD_EXECUTABLES
 

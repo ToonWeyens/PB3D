@@ -10,7 +10,7 @@ What PB3D needs, and what CMake checks at configure time:
 
 | Library | Needed for | Checked |
 |---|---|---|
-| MPI (Fortran, C, C++) | everything; PB3D is an MPI program | found by `find_package(MPI)` |
+| MPI (Fortran and C) | everything; PB3D is an MPI program | found by `find_package(MPI)` |
 | PETSc, complex scalars, double precision, 3.19 or newer | the eigenvalue problem | stops if real, single precision or older than 3.19; warns if newer than 3.25, the newest tested |
 | a distributed LU in PETSc (MUMPS or SuperLU_DIST) | runs on two or more processes | warns if absent: PB3D then runs on one process only |
 | SLEPc of the same minor version as PETSc | the eigensolver | stops if the versions differ |
