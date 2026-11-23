@@ -812,7 +812,7 @@ contains
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium quantities
         
         ! local variables
-        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
+        type(EZspline2) :: f_spl                                                ! spline object for interpolation
         integer :: id, jd, kd, ld                                               ! counters
         integer :: n_B                                                          ! nr. of points in Fourier series
         integer :: nfp                                                          ! scale factor for toroidal mode numbers
@@ -1352,7 +1352,7 @@ contains
                         allocate(pert_map_interp(n_b))
                         bcs(:,1) = [0,0]                                        ! not a knot
                         bcs(:,2) = [0,0]                                        ! not a knot
-                        call EZspline_preInit(f_spl)                            ! sets the allocation flags EZspline_init reads
+                        call EZspline_preInit(f_spl)                            ! marks f_spl as not set up
                         call EZspline_init(f_spl,n_pert_map(1),n_pert_map(2),&
                             &bcs(:,1),bcs(:,2),ierr)
                         call EZspline_error(ierr)
@@ -2943,7 +2943,7 @@ contains
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
-        type(EZspline2_r8) :: f_spl(2)                                          ! spline object for interpolation, even and odd
+        type(EZspline2) :: f_spl(2)                                             ! spline object for interpolation, even and odd
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd, ld                                               ! counters
         integer :: bcs(2,3)                                                     ! boundary conditions (theta(even), theta(odd), r)
@@ -3026,7 +3026,7 @@ contains
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
             ! initialize 2-D cubic spline for even (1) and odd (2) quantities
             do ld = 1,2
-                call EZspline_preInit(f_spl(ld))                                ! sets the allocation flags EZspline_init reads
+                call EZspline_preInit(f_spl(ld))                                ! marks f_spl as not set up
                 call EZspline_init(f_spl(ld),grid_eq%n(1),grid_eq%loc_n_r,&
                     &bcs(:,ld),bcs(:,3),ierr) 
                 call EZspline_error(ierr)
@@ -3210,7 +3210,7 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(EZspline2_r8) :: f_spl                                             ! spline object for interpolation
+        type(EZspline2) :: f_spl                                                ! spline object for interpolation
         integer :: jd, kd                                                       ! counters
         integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), r)
         real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
@@ -3246,7 +3246,7 @@ contains
             eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
             ! initialize 2-D cubic spline
-            call EZspline_preInit(f_spl)                                        ! sets the allocation flags EZspline_init reads
+            call EZspline_preInit(f_spl)                                        ! marks f_spl as not set up
             call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
                 &bcs(:,1),bcs(:,2),ierr) 
             call EZspline_error(ierr)

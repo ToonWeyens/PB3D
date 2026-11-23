@@ -329,12 +329,13 @@ status first and look for the output files second.
 
 **The macOS crashes of July 2026** (singleton runs dying with SIGTRAP or a
 failed `H5Fcreate` on about every other launch) were a heap overrun in
-PSPLINE: `r8genxpkg.f` writes `xpkg(4,4)` for three unevenly spaced points,
-8 bytes past the array, which glibc hides in malloc padding and the macOS
-allocator traps at a later allocation. `Libraries/build_pspline.sh` now
-applies the one-line guard `Libraries/pspline-r8genxpkg-nx3.patch`; the
-regression runners launch PB3D once and treat any crash as a failure
-(issue #4, step 1).
+PSPLINE: `r8genxpkg.f` of the 2011 copy PB3D used then writes `xpkg(4,4)`
+for three unevenly spaced points, 8 bytes past the array, which glibc hides
+in malloc padding and the macOS allocator traps at a later allocation. Up to
+2.53 `Libraries/build_pspline.sh` applied a one-line guard as a patch (issue
+#4, step 1); since 2.54 PB3D uses PSPLINE v2.5.0, which has the guard
+itself (issue #58). The regression runners launch PB3D once and treat any
+crash as a failure.
 
 ## Python helpers
 
@@ -385,4 +386,3 @@ uv run fortitude check --select=OB Modules/ tests/unit tests/fullstack PB3D.f90 
   `cbm18a_fixed_bnd_np2`/`_np4` rows run on Snellius. The external-code
   comparison of the free boundary exists since step 3 (`circ_eps005_free_bnd`
   against MISHKA).
-- Report the PSPLINE `r8genxpkg` overrun upstream (github.com/ilonster/pspline).

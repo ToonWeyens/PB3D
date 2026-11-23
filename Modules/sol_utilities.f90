@@ -794,10 +794,9 @@ contains
     
     !> Interpolation for a quantity V using splines.
     !!
-    !! The order is the lower of the setting interp_V_ord and the highest order
-    !! the points allow: 0 for one point (a copy), 1 for two or three (a straight
-    !! line; PSPLINE's splines of order 2 and 3 need at least four points) and 3
-    !! for four or more.
+    !! The order is the lower of the setting interp_V_ord and a limit set by the
+    !! number of points: 0 for one point (a copy), 1 for two or three (a straight
+    !! line) and 3 for four or more.
     !!
     !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
     !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
@@ -847,8 +846,8 @@ contains
         end if
 #endif
         
-        ! the order is the lower of the setting interp_V_ord and the highest
-        ! order the points allow
+        ! the order is the lower of the setting interp_V_ord and the limit set
+        ! by the number of points
         ord = min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
         
         select case (ord)
@@ -857,7 +856,7 @@ contains
                     V_o(:,:,kd) = V_i(:,:,1)
                 end do
             case (1:)
-                if (size(r_i).eq.2) then                                        ! straight line by hand: PSPLINE needs at least 3 points
+                if (size(r_i).eq.2) then                                        ! straight line through the two points
                     do kd = 1,size(V_o,3)
                         V_o(:,:,kd) = V_i(:,:,1) + &
                             &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &

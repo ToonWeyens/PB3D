@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# PSPLINE release built by the full-stack jobs (Libraries/build_pspline.sh)
+env:
+  PSPLINE_VERSION: v2.5.0
+
 jobs:
   # ---------------------------------------------------------------------------
   # Unit tests of the dependency-light core (gfortran + LAPACK only). Debug
@@ -105,15 +109,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+          key: pspline-${{ env.PSPLINE_VERSION }}-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
-          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
-          ~/Code/pspline/build_pspline.sh
+          git clone --depth 1 --branch "$PSPLINE_VERSION" \
+            https://github.com/PrincetonUniversity/pspline.git ~/Code/pspline
+          Libraries/build_pspline.sh ~/Code/pspline
 
       - name: Cache minimal LIBSTELL
         id: cache-libstell
@@ -210,15 +214,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+          key: pspline-${{ env.PSPLINE_VERSION }}-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
-          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
-          ~/Code/pspline/build_pspline.sh
+          git clone --depth 1 --branch "$PSPLINE_VERSION" \
+            https://github.com/PrincetonUniversity/pspline.git ~/Code/pspline
+          Libraries/build_pspline.sh ~/Code/pspline
 
       - name: Cache minimal LIBSTELL
         id: cache-libstell
@@ -280,15 +284,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/Code/pspline/install
-          key: pspline-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh', 'Libraries/pspline-r8genxpkg-nx3.patch') }}
+          key: pspline-${{ env.PSPLINE_VERSION }}-${{ runner.os }}-24.04-${{ hashFiles('Libraries/build_pspline.sh') }}
 
       - name: Build PSPLINE
         if: steps.cache-pspline.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/Code
-          git clone --depth 1 https://github.com/ilonster/pspline.git ~/Code/pspline
-          cp Libraries/build_pspline.sh Libraries/pspline-r8genxpkg-nx3.patch ~/Code/pspline/
-          ~/Code/pspline/build_pspline.sh
+          git clone --depth 1 --branch "$PSPLINE_VERSION" \
+            https://github.com/PrincetonUniversity/pspline.git ~/Code/pspline
+          Libraries/build_pspline.sh ~/Code/pspline
 
       - name: Cache minimal LIBSTELL
         id: cache-libstell

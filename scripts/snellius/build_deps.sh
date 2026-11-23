@@ -30,7 +30,7 @@ PETSC_VER=${PETSC_VER:-3.25.3}
 SLEPC_VER=${SLEPC_VER:-3.25.1}
 PETSC_URL=https://web.cels.anl.gov/projects/petsc/download/release-snapshots/petsc-$PETSC_VER.tar.gz
 SLEPC_URL=https://slepc.upv.es/download/distrib/slepc-$SLEPC_VER.tar.gz
-PSPLINE_URL=https://github.com/ilonster/pspline.git
+PSPLINE_URL=https://github.com/PrincetonUniversity/pspline.git
 
 stage=${1:-all}
 
@@ -95,13 +95,15 @@ build_slepc() {
 }
 
 build_pspline() {
-    echo "=== PSPLINE -> $PSPLINE_DIR ==="
-    cd "$DEPS"
-    [ -d pspline ] || git -c http.userAgent="$UA" clone -q --depth 1 "$PSPLINE_URL" pspline
-    # the nx = 3 heap-overrun guard from the PB3D tree (Libraries/), when present
-    PSPLINE_PATCH=${PSPLINE_PATCH:-$PB3D_ROOT/src/Libraries/pspline-r8genxpkg-nx3.patch} \
-        $NICE "$SCRIPT_DIR/build_pspline_linux.sh" "$DEPS/pspline"
-    rm -rf "$DEPS/pspline/build_linux"
+    # PSPLINE_VERSION and PSPLINE_DIR come from env.sh; the checkout is
+    # $DEPS/pspline-$PSPLINE_VERSION, built by Libraries/build_pspline.sh of
+    # the PB3D tree in ~/pb3d/src
+    echo "=== PSPLINE $PSPLINE_VERSION -> $PSPLINE_DIR ==="
+    local src=$DEPS/pspline-$PSPLINE_VERSION
+    [ -d "$src" ] || git -c http.userAgent="$UA" clone -q --depth 1 \
+        --branch "$PSPLINE_VERSION" "$PSPLINE_URL" "$src"
+    NP=$NP $NICE "$PB3D_ROOT/src/Libraries/build_pspline.sh" "$src" "$PSPLINE_DIR"
+    make -C "$src" clean
 }
 
 build_libstell() {
