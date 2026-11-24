@@ -792,17 +792,9 @@ contains
         end select
     end function calc_loc_sol_vec
     
-    !> Interpolation for a quantity V using splines.
-    !!
-    !! The order is the lower of the setting interp_V_ord and a limit set by the
-    !! number of points: 0 for one point (a copy), 1 for two or three (a straight
-    !! line) and 3 for four or more.
-    !!
-    !! Optionally, a variable 'ivs_stat' is  returned that indicates whether the
-    !! interpolation  was a  plain copy  (1), a  linear interpolation  (2) or  a
-    !! spline interpolation (3), Akima or cubic.
-    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap,ivs_stat) &
-        &result(ierr)
+    !> Interpolation of a quantity V(i,j,r) in r, for every i and j, with the
+    !! spline of order interp_V_ord.
+    integer function interp_V_spline(V_i,V_o,r_i,r_o,extrap) result(ierr)
         
         use spline_utilities, only: spline
         use num_vars, only: interp_V_ord
@@ -815,11 +807,9 @@ contains
         real(dp), intent(in) :: r_i(:)                                          ! input r
         real(dp), intent(in) :: r_o(:)                                          ! output r
         logical, intent(in) :: extrap                                           ! extrapolation possible
-        integer, intent(out), optional :: ivs_stat                              ! which method was used (1: copy, 2: linear, 3: spline)
         
         ! local variables
-        integer :: id, jd, kd                                                   ! counters
-        integer :: ord                                                          ! order of the interpolation
+        integer :: id, jd                                                       ! counters
 #if ldebug
         character(len=max_str_ln) :: err_msg                                    ! error message
 #endif
@@ -829,16 +819,6 @@ contains
 
 #if ldebug
         ! test sizes
-        if (size(r_i).ne.size(V_i,3)) then
-            ierr = 1
-            err_msg = 'r_i and V_i are not compatible'
-            CHCKERR(err_msg)
-        end if
-        if (size(r_o).ne.size(V_o,3)) then
-            ierr = 1
-            err_msg = 'r_o and V_o are not compatible'
-            CHCKERR(err_msg)
-        end if
         if (size(V_i,1).ne.size(V_o,1) .or. size(V_i,2).ne.size(V_o,2)) then
             ierr = 1
             err_msg = 'V_i and V_o are not compatible'
@@ -846,38 +826,13 @@ contains
         end if
 #endif
         
-        ! the order is the lower of the setting interp_V_ord and the limit set
-        ! by the number of points
-        ord = min(interp_V_ord,merge(3,min(size(r_i)-1,1),size(r_i).ge.4))
-        
-        select case (ord)
-            case (0)                                                            ! copy directly
-                do kd = 1,size(V_o,3)
-                    V_o(:,:,kd) = V_i(:,:,1)
-                end do
-            case (1:)
-                if (size(r_i).eq.2) then                                        ! straight line through the two points
-                    do kd = 1,size(V_o,3)
-                        V_o(:,:,kd) = V_i(:,:,1) + &
-                            &(V_i(:,:,2) - V_i(:,:,1)) / (r_i(2) - r_i(1)) * &
-                            &(r_o(kd) - r_i(1))
-                    end do
-                else                                                            ! PSPLINE of order ord
-                    do jd = 1,size(V_i,2)
-                        do id = 1,size(V_i,1)
-                            ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
-                                &ord=ord,extrap=extrap)
-                            CHCKERR('')
-                        end do
-                    end do
-                end if
-#if ldebug
-            case default
-                ierr = 1
-                CHCKERR('Need more than 0 points')
-#endif
-        end select
-        if (present(ivs_stat) .and. ord.ge.0) ivs_stat = min(ord,2) + 1         ! 1: copy, 2: linear, 3: spline
+        do jd = 1,size(V_i,2)
+            do id = 1,size(V_i,1)
+                ierr = spline(r_i,V_i(id,jd,:),r_o,V_o(id,jd,:),&
+                    &ord=interp_V_ord,extrap=extrap)
+                CHCKERR('')
+            end do
+        end do
         
 #if ldebug
         ! visualize

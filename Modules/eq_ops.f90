@@ -794,13 +794,11 @@ contains
         use input_utilities, only: pause_prog, get_log, get_int, get_real
         use num_utilities, only: GCD, bubble_sort, order_per_fun, &
             &shift_F, calc_int
-        use spline_utilities, only: spline
+        use spline_utilities, only: spline, spline_2D
         use num_vars, only: eq_name, HEL_pert_i, HEL_export_i, &
             &norm_disc_prec_eq, prop_B_tor_i, tol_zero, mu_0_original, &
             &use_normalization
         use files_utilities, only: skip_comment, count_lines
-        use EZspline_obj
-        use EZspline
 #if ldebug
         use num_vars, only: ltest
 #endif
@@ -812,7 +810,6 @@ contains
         type(eq_1_type), intent(in) :: eq_1                                     !< flux equilibrium quantities
         
         ! local variables
-        type(EZspline2) :: f_spl                                                ! spline object for interpolation
         integer :: id, jd, kd, ld                                               ! counters
         integer :: n_B                                                          ! nr. of points in Fourier series
         integer :: nfp                                                          ! scale factor for toroidal mode numbers
@@ -831,7 +828,6 @@ contains
         integer :: n_prop_B_tor                                                 ! n of angular poins in prop_B_tor
         integer :: nr_m_max                                                     ! maximum nr. of poloidal mode numbers
         integer :: ncurr                                                        ! ncurr VMEC flag (0: prescribe iota, 1: prescribe tor. current)
-        integer :: bcs(2,2)                                                     ! boundary conditions
         integer :: m_range(2)                                                   ! range in poloidal modes
         integer, allocatable :: n_pert(:)                                       ! tor. mode numbers and pol. mode numbers for each of them
         integer, allocatable :: n_pert_copy(:)                                  ! copy of n_pert, for sorting
@@ -1348,36 +1344,11 @@ contains
                             CHCKERR(err_msg)
                         end if
                         
-                        ! set up 2-D spline
+                        ! interpolate the map at the boundary points (2-D
+                        ! cubic spline, not-a-knot)
                         allocate(pert_map_interp(n_b))
-                        bcs(:,1) = [0,0]                                        ! not a knot
-                        bcs(:,2) = [0,0]                                        ! not a knot
-                        call EZspline_init(f_spl,n_pert_map(1),n_pert_map(2),&
-                            &bcs(:,1),bcs(:,2),ierr)
-                        call EZspline_error(ierr)
-                        CHCKERR('')
-                        
-                        ! set grid
-                        f_spl%x1 = pert_map_R
-                        f_spl%x2 = pert_map_Z
-                        
-                        ! set up 
-                        call EZspline_setup(f_spl,pert_map,ierr,&
-                            &exact_dim=.true.)                                  ! match exact dimensions, none of them old Fortran bullsh*t!
-                        call EZspline_error(ierr)
-                        CHCKERR('')
-                        
-                        ! interpolate
-                        do id = 1,n_b
-                            call EZspline_interp(f_spl,BH_0(id,1),BH_0(id,2),&
-                                &pert_map_interp(id),ierr)
-                            call EZspline_error(ierr)
-                            CHCKERR('')
-                        end do
-                        
-                        ! free
-                        call EZspline_free(f_spl,ierr)
-                        call EZspline_error(ierr)
+                        ierr = spline_2D(pert_map_R,pert_map_Z,pert_map,&
+                            &BH_0(:,1),BH_0(:,2),pert_map_interp)
                         CHCKERR('')
                         
                         call print_ex_2D('ripple','pert_map_interp',&
@@ -2930,9 +2901,7 @@ contains
         use num_vars, only: norm_disc_prec_eq
         use HELENA_vars, only: ias, nchi, R_H, Z_H, chi_H, h_H_33
         use num_utilities, only: c
-        use spline_utilities, only: spline
-        use EZspline_obj
-        use EZspline
+        use spline_utilities, only: spline, spline_2D
         
         character(*), parameter :: rout_name = 'calc_g_H_ind'
         
@@ -2942,7 +2911,6 @@ contains
         integer, intent(in) :: deriv(:)                                         !< derivatives
         
         ! local variables
-        type(EZspline2) :: f_spl(2)                                             ! spline object for interpolation, even and odd
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd, ld                                               ! counters
         integer :: bcs(2,3)                                                     ! boundary conditions (theta(even), theta(odd), r)
@@ -3023,50 +2991,21 @@ contains
         else if (deriv(3).ne.0) then                                            ! axisymmetry: deriv. in tor. coord. is zero
             !eq%g_E(:,:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
-            ! initialize 2-D cubic spline for even (1) and odd (2) quantities
-            do ld = 1,2
-                call EZspline_init(f_spl(ld),grid_eq%n(1),grid_eq%loc_n_r,&
-                    &bcs(:,ld),bcs(:,3),ierr) 
-                call EZspline_error(ierr)
-                CHCKERR('')
-                
-                ! set grid
-                f_spl(ld)%x1 = chi_H
-                f_spl(ld)%x2 = grid_eq%loc_r_E
-                
-                ! set boundary conditions
-                f_spl(ld)%bcval1min = bcs_val(1,ld)
-                f_spl(ld)%bcval1max = bcs_val(2,ld)
-                f_spl(ld)%bcval2min = bcs_val(1,3)
-                f_spl(ld)%bcval2max = bcs_val(2,3)
-            end do
-            
+            ! 2-D cubic spline in chi and r, with the boundary conditions in chi
+            ! of even (1) or odd (2) quantities
+            ! Note: deriv is the other way around because poloidal indices come
+            ! before normal
             do ld = 1,6
                 do jd = 1,grid_eq%n(2)
                     if (bc_ld(ld).eq.0) cycle                                   ! quantity is zero
-                    
-                    ! set up 
-                    call EZspline_setup(f_spl(bc_ld(ld)),&
-                        &eq%g_E(:,jd,:,ld,0,0,0),ierr,exact_dim=.true.)         ! match exact dimensions, none of them old Fortran bullsh*t!
-                    call EZspline_error(ierr)
-                    CHCKERR('')
-                    
-                    ! derivate
-                    ! Note:  deriv  is the  other  way  around because  poloidal
-                    ! indices come before normal
-                    call EZspline_derivative(f_spl(bc_ld(ld)),deriv(2),&
-                        &deriv(1),grid_eq%n(1),grid_eq%loc_n_r,chi_H,&
-                        &grid_eq%loc_r_E,eq%g_E(:,jd,:,ld,deriv(1),deriv(2),0),&
-                        &ierr) 
-                    call EZspline_error(ierr)
+                    ierr = spline_2D(chi_H,grid_eq%loc_r_E,&
+                        &eq%g_E(:,jd,:,ld,0,0,0),chi_H,grid_eq%loc_r_E,&
+                        &eq%g_E(:,jd,:,ld,deriv(1),deriv(2),0),&
+                        &deriv=[deriv(2),deriv(1)],bcs1=bcs(:,bc_ld(ld)),&
+                        &bcs2=bcs(:,3),bcs_val1=bcs_val(:,bc_ld(ld)),&
+                        &bcs_val2=bcs_val(:,3))
                     CHCKERR('')
                 end do
-            end do
-            
-            ! free
-            do ld = 1,2
-                call EZspline_free(f_spl(ld),ierr)
-                call EZspline_error(ierr)
             end do
         else
             ierr = 1
@@ -3195,8 +3134,7 @@ contains
     !> \private individual version
     integer function calc_jac_H_ind(grid_eq,eq_1,eq_2,deriv) result(ierr)
         use HELENA_vars, only: ias, h_H_33, RBphi_H, chi_H
-        use EZspline_obj
-        use EZspline
+        use spline_utilities, only: spline_2D
         
         character(*), parameter :: rout_name = 'calc_jac_H_ind'
         
@@ -3208,7 +3146,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        type(EZspline2) :: f_spl                                                ! spline object for interpolation
         integer :: jd, kd                                                       ! counters
         integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), r)
         real(dp) :: bcs_val(2,2)                                                ! values for boundary conditions
@@ -3243,43 +3180,17 @@ contains
         else if (deriv(3).ne.0) then                                            ! axisymmetry: deriv. in tor. coord. is zero
             eq_2%jac_E(:,:,:,deriv(1),deriv(2),deriv(3)) = 0.0_dp
         else if (deriv(1).le.2 .and. deriv(2).le.2) then
-            ! initialize 2-D cubic spline
-            call EZspline_init(f_spl,grid_eq%n(1),grid_eq%loc_n_r,&
-                &bcs(:,1),bcs(:,2),ierr) 
-            call EZspline_error(ierr)
-            CHCKERR('')
-            
-            
-            ! set grid
-            f_spl%x1 = chi_H
-            f_spl%x2 = grid_eq%loc_r_E
-            
-            ! set boundary conditions
-            f_spl%bcval1min = bcs_val(1,1)
-            f_spl%bcval1max = bcs_val(2,1)
-            f_spl%bcval2min = bcs_val(1,2)
-            f_spl%bcval2max = bcs_val(2,2)
-            
+            ! 2-D cubic spline in chi and r
+            ! Note: deriv is the other way around because poloidal indices come
+            ! before normal
             do jd = 1,grid_eq%n(2)
-                ! set up 
-                call EZspline_setup(f_spl,eq_2%jac_E(:,jd,:,0,0,0),ierr,&
-                    &exact_dim=.true.)                                          ! match exact dimensions, none of them old Fortran bullsh*t!
-                call EZspline_error(ierr)
-                CHCKERR('')
-                
-                ! derivate
-                ! Note: deriv is  the other way around  because poloidal indices
-                ! come before normal
-                call EZspline_derivative(f_spl,deriv(2),deriv(1),grid_eq%n(1),&
-                    &grid_eq%loc_n_r,chi_H,grid_eq%loc_r_E,&
-                    &eq_2%jac_E(:,jd,:,deriv(1),deriv(2),0),ierr) 
-                call EZspline_error(ierr)
+                ierr = spline_2D(chi_H,grid_eq%loc_r_E,&
+                    &eq_2%jac_E(:,jd,:,0,0,0),chi_H,grid_eq%loc_r_E,&
+                    &eq_2%jac_E(:,jd,:,deriv(1),deriv(2),0),&
+                    &deriv=[deriv(2),deriv(1)],bcs1=bcs(:,1),bcs2=bcs(:,2),&
+                    &bcs_val1=bcs_val(:,1),bcs_val2=bcs_val(:,2))
                 CHCKERR('')
             end do
-            
-            ! free
-            call EZspline_free(f_spl,ierr)
-            call EZspline_error(ierr)
         else
             ierr = 1
             err_msg = 'Derivative of order ('//trim(i2str(deriv(1)))//','//&

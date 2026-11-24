@@ -14,7 +14,7 @@ module spline_utilities
 
     implicit none
     private
-    public spline
+    public spline, spline_2D
 
     interface spline
         !> \public
@@ -22,10 +22,22 @@ module spline_utilities
         !> \public
         module procedure spline_complex
     end interface
+    
+    !> 2-D cubic spline of y(x1,x2) on the grid x1 x x2, evaluated on another
+    !! grid (ynew of rank 2) or at points (x1new(i),x2new(i)) (ynew of rank 1).
+    interface spline_2D
+        !> \public
+        module procedure spline_2D_grid
+        !> \public
+        module procedure spline_2D_points
+    end interface
 
 contains
     
     !> \private real version
+    !!
+    !! One point gives the constant through it, so its derivatives are zero;
+    !! no point is an error.
     integer function spline_real(x,y,xnew,ynew,ord,deriv,bcs,bcs_val,extrap) &
         &result(ierr)
         
@@ -82,9 +94,14 @@ contains
         ! set other variables
         n = size(x)
         nnew = size(xnew)
+        if (n.lt.1) then
+            ierr = 1
+            CHCKERR('Need at least one point')
+        end if
         
         ! set local x and xnew, possibly flipped if negative
-        flip_x = (x(2) .lt. x(1))
+        flip_x = .false.
+        if (n.gt.1) flip_x = x(2).lt.x(1)
         if (flip_x) then
             allocate(x_loc(n))
             allocate(xnew_loc(nnew))
@@ -196,6 +213,12 @@ contains
                 &trim(r2str(maxval(x)))//']')
             err_msg = 'Extrapolation needed, but not allowed'
             CHCKERR(err_msg)
+        end if
+        
+        ! one point: the constant through it
+        if (n.eq.1) then
+            ynew = merge(y(1),0._dp,deriv_loc.eq.0)
+            return
         end if
         
         ! initialize
@@ -403,4 +426,152 @@ contains
         ! save
         ynew = ynew_loc(:,1) + iu*ynew_loc(:,2)
     end function spline_complex
+    
+    !> \private 2-D cubic spline evaluated on the grid x1new x x2new
+    !!
+    !! deriv(1) and deriv(2) are the orders of the derivative in x1 and x2
+    !! [def 0]; bcs1 and bcs2 the boundary conditions in x1 and x2 as for
+    !! spline [def 0, not-a-knot], with the values bcs_val1 and bcs_val2 [def 0].
+    integer function spline_2D_grid(x1,x2,y,x1new,x2new,ynew,deriv,bcs1,bcs2,&
+        &bcs_val1,bcs_val2) result(ierr)
+        
+        use EZspline_obj
+        use EZspline
+        
+        character(*), parameter :: rout_name = 'spline_2D_grid'
+        
+        ! input / output
+        real(dp), intent(in) :: x1(:), x2(:)                                    !< coordinates
+        real(dp), intent(in) :: y(:,:)                                          !< function value
+        real(dp), intent(in) :: x1new(:), x2new(:)                              !< new coordinates
+        real(dp), intent(out) :: ynew(:,:)                                      !< new function values
+        integer, intent(in), optional :: deriv(2)                               !< derivative [def 0]
+        integer, intent(in), optional :: bcs1(2), bcs2(2)                       !< boundary conditions [def 0]
+        real(dp), intent(in), optional :: bcs_val1(2), bcs_val2(2)              !< boundary condition values [def 0]
+        
+        ! local variables
+        type(EZspline2) :: f_spl                                                ! spline object
+        integer :: deriv_loc(2)                                                 ! local deriv
+        
+        ! initialize ierr
+        ierr = 0
+        
+        deriv_loc = 0
+        if (present(deriv)) deriv_loc = deriv
+        
+        ierr = setup_spline_2D(f_spl,x1,x2,y,bcs1,bcs2,bcs_val1,bcs_val2)
+        CHCKERR('')
+        
+        if (all(deriv_loc.eq.0)) then
+            call EZspline_interp(f_spl,size(x1new),size(x2new),x1new,x2new,&
+                &ynew,ierr)
+        else
+            call EZspline_derivative(f_spl,deriv_loc(1),deriv_loc(2),&
+                &size(x1new),size(x2new),x1new,x2new,ynew,ierr)
+        end if
+        call EZspline_error(ierr)
+        CHCKERR('')
+        
+        call EZspline_free(f_spl,ierr)
+        call EZspline_error(ierr)
+        CHCKERR('')
+    end function spline_2D_grid
+    
+    !> \private 2-D cubic spline evaluated at the points (x1new(i),x2new(i))
+    !!
+    !! The optional arguments are as for spline_2D_grid.
+    integer function spline_2D_points(x1,x2,y,x1new,x2new,ynew,deriv,bcs1,&
+        &bcs2,bcs_val1,bcs_val2) result(ierr)
+        
+        use EZspline_obj
+        use EZspline
+        
+        character(*), parameter :: rout_name = 'spline_2D_points'
+        
+        ! input / output
+        real(dp), intent(in) :: x1(:), x2(:)                                    !< coordinates
+        real(dp), intent(in) :: y(:,:)                                          !< function value
+        real(dp), intent(in) :: x1new(:), x2new(:)                              !< coordinates of the new points
+        real(dp), intent(out) :: ynew(:)                                        !< new function values
+        integer, intent(in), optional :: deriv(2)                               !< derivative [def 0]
+        integer, intent(in), optional :: bcs1(2), bcs2(2)                       !< boundary conditions [def 0]
+        real(dp), intent(in), optional :: bcs_val1(2), bcs_val2(2)              !< boundary condition values [def 0]
+        
+        ! local variables
+        type(EZspline2) :: f_spl                                                ! spline object
+        integer :: deriv_loc(2)                                                 ! local deriv
+        integer :: id                                                           ! counter
+        
+        ! initialize ierr
+        ierr = 0
+        
+        deriv_loc = 0
+        if (present(deriv)) deriv_loc = deriv
+        
+        ierr = setup_spline_2D(f_spl,x1,x2,y,bcs1,bcs2,bcs_val1,bcs_val2)
+        CHCKERR('')
+        
+        do id = 1,size(ynew)
+            if (all(deriv_loc.eq.0)) then
+                call EZspline_interp(f_spl,x1new(id),x2new(id),ynew(id),ierr)
+            else
+                call EZspline_derivative(f_spl,deriv_loc(1),deriv_loc(2),&
+                    &x1new(id),x2new(id),ynew(id),ierr)
+            end if
+            call EZspline_error(ierr)
+            CHCKERR('')
+        end do
+        
+        call EZspline_free(f_spl,ierr)
+        call EZspline_error(ierr)
+        CHCKERR('')
+    end function spline_2D_points
+    
+    !> \private set up the 2-D cubic spline of y(x1,x2) in f_spl
+    integer function setup_spline_2D(f_spl,x1,x2,y,bcs1,bcs2,bcs_val1,&
+        &bcs_val2) result(ierr)
+        
+        use EZspline_obj
+        use EZspline
+        
+        character(*), parameter :: rout_name = 'setup_spline_2D'
+        
+        ! input / output
+        type(EZspline2), intent(inout) :: f_spl                                 !< spline object
+        real(dp), intent(in) :: x1(:), x2(:)                                    !< coordinates
+        real(dp), intent(in) :: y(:,:)                                          !< function value
+        integer, intent(in), optional :: bcs1(2), bcs2(2)                       !< boundary conditions [def 0]
+        real(dp), intent(in), optional :: bcs_val1(2), bcs_val2(2)              !< boundary condition values [def 0]
+        
+        ! local variables
+        integer :: bcs1_loc(2), bcs2_loc(2)                                     ! local bcs
+        real(dp) :: bcs_val1_loc(2), bcs_val2_loc(2)                            ! local bcs_val
+        
+        ! initialize ierr
+        ierr = 0
+        
+        bcs1_loc = 0
+        if (present(bcs1)) bcs1_loc = bcs1
+        bcs2_loc = 0
+        if (present(bcs2)) bcs2_loc = bcs2
+        bcs_val1_loc = 0._dp
+        if (present(bcs_val1)) bcs_val1_loc = bcs_val1
+        bcs_val2_loc = 0._dp
+        if (present(bcs_val2)) bcs_val2_loc = bcs_val2
+        
+        call EZspline_init(f_spl,size(x1),size(x2),bcs1_loc,bcs2_loc,ierr)
+        call EZspline_error(ierr)
+        CHCKERR('')
+        
+        f_spl%x1 = x1
+        f_spl%x2 = x2
+        f_spl%bcval1min = bcs_val1_loc(1)
+        f_spl%bcval1max = bcs_val1_loc(2)
+        f_spl%bcval2min = bcs_val2_loc(1)
+        f_spl%bcval2max = bcs_val2_loc(2)
+        
+        call EZspline_setup(f_spl,y,ierr,exact_dim=.true.)                      ! match exact dimensions
+        call EZspline_error(ierr)
+        CHCKERR('')
+    end function setup_spline_2D
 end module spline_utilities

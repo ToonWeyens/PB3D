@@ -14,6 +14,11 @@
 !!  - convergence at the expected rate on sin(2 pi x) for all three orders
 !!    (1: linear, 2: Akima Hermite, 3: cubic);
 !!  - periodic boundary conditions on a full sin period;
+!!  - two and three points: a straight line and a parabola for order 3,
+!!    inside the range and extrapolated, a straight line for order 1, and
+!!    the data at the knots for order 2;
+!!  - the 2-D cubic spline (spline_2D) on a grid and at points: exact,
+!!    with its derivatives, on a polynomial that is cubic in each variable;
 !!  - refusal to extrapolate when extrap is not set (this check lives
 !!    outside ldebug, so it is active in all builds).
 !------------------------------------------------------------------------------!
@@ -22,7 +27,7 @@ module test_splines
     use testdrive, only: new_unittest, unittest_type, error_type, check
     use num_vars, only: dp, pi
     use str_utilities, only: r2str, i2str
-    use spline_utilities, only: spline
+    use spline_utilities, only: spline, spline_2D
 
     implicit none
     private
@@ -39,6 +44,8 @@ contains
             &new_unittest("cubic_extrapolation", test_cubic_extrap), &
             &new_unittest("sin_convergence", test_sin_convergence), &
             &new_unittest("periodic_bc_sin", test_periodic_sin), &
+            &new_unittest("few_points", test_few_points), &
+            &new_unittest("spline_2D_exact", test_spline_2D), &
             &new_unittest("extrapolation_refused", test_extrap_refused) &
             &]
     end subroutine collect_splines
@@ -299,6 +306,152 @@ contains
             if (allocated(error)) return
         end do
     end subroutine test_periodic_sin
+
+    !> Two and three points, unevenly spaced, with the default boundary
+    !! conditions (not-a-knot) and extrapolation: order 3 gives the straight
+    !! line through two points and the parabola through three, also outside the
+    !! range (the quadratic Taylor extension of a parabola is the parabola);
+    !! order 1 gives the straight line; order 2 (Akima Hermite) reproduces the
+    !! data at the knots.
+    subroutine test_few_points(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: nx_int = 41                                       ! evaluation points
+        integer :: ierr, kd, n                                                  ! error status, counters
+        real(dp), allocatable :: x(:), y(:), y_knot(:)                          ! knots
+        real(dp) :: x_int(nx_int), y_int(nx_int), y_ref(nx_int)                 ! evaluation
+        real(dp) :: err                                                         ! maximum error
+
+        do kd = 1,nx_int
+            x_int(kd) = -0.4_dp + 2.4_dp*(kd-1._dp)/(nx_int-1._dp)              ! -0.4..2.0, beyond both ends
+        end do
+
+        do n = 2,3
+            x = [0.2_dp,0.7_dp,1.6_dp]
+            x = x(1:n)
+            ! order 3: line through two points, parabola through three
+            if (n.eq.2) then
+                y = 2._dp*x + 1._dp
+                y_ref = 2._dp*x_int + 1._dp
+            else
+                y = x**2 - 3._dp*x + 2._dp
+                y_ref = x_int**2 - 3._dp*x_int + 2._dp
+            end if
+            ierr = spline(x,y,x_int,y_int,ord=3,extrap=.true.)
+            call check(error, ierr, 0, 'order 3 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+            call check(error, err.lt.1.e-12_dp, 'order 3 on '//&
+                &trim(i2str(n))//' points is not the polynomial through &
+                &them: '//trim(r2str(err)))
+            if (allocated(error)) return
+            ! order 1: straight line on linear data
+            y = 2._dp*x + 1._dp
+            y_ref = 2._dp*x_int + 1._dp
+            ierr = spline(x,y,x_int,y_int,ord=1,extrap=.true.)
+            call check(error, ierr, 0, 'order 1 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+            call check(error, err.lt.1.e-12_dp, 'order 1 on '//&
+                &trim(i2str(n))//' points is not the straight line: '//&
+                &trim(r2str(err)))
+            if (allocated(error)) return
+            ! order 2: the data at the knots
+            y = x**2 - 3._dp*x + 2._dp
+            if (allocated(y_knot)) deallocate(y_knot)
+            allocate(y_knot(n))
+            ierr = spline(x,y,x,y_knot,ord=2)
+            call check(error, ierr, 0, 'order 2 failed for '//&
+                &trim(i2str(n))//' points')
+            if (allocated(error)) return
+            call check(error, maxval(abs(y_knot-y)).lt.1.e-12_dp, &
+                &'order 2 on '//trim(i2str(n))//' points misses the data')
+            if (allocated(error)) return
+        end do
+    end subroutine test_few_points
+
+    !> The 2-D cubic spline with not-a-knot ends reproduces a polynomial that
+    !! is cubic in each variable, f = (x1^3-2 x1)(x2^2+1) + x2^3, exactly: its
+    !! values and the derivatives (1,0), (0,1), (1,1) and (2,0), on a grid
+    !! (spline_2D with ynew of rank 2) and at points (ynew of rank 1).
+    subroutine test_spline_2D(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: n1 = 9, n2 = 7, m1 = 13, m2 = 11, np = 20         ! knots, grid evaluation points, scattered points
+        integer :: ierr, id, jd, kd                                             ! error status, counters
+        integer :: der(2,5)                                                     ! derivatives to check
+        real(dp) :: x1(n1), x2(n2), y(n1,n2)                                    ! knots
+        real(dp) :: x1g(m1), x2g(m2), yg(m1,m2), yg_ref(m1,m2)                  ! grid evaluation
+        real(dp) :: x1p(np), x2p(np), yp(np), yp_ref(np)                        ! evaluation at points
+        real(dp) :: err                                                         ! maximum error
+
+        der = reshape([0,0, 1,0, 0,1, 1,1, 2,0],[2,5])
+        do id = 1,n1
+            x1(id) = 2._dp*((id-1._dp)/(n1-1._dp))**1.2_dp                      ! 0..2, uneven
+        end do
+        do jd = 1,n2
+            x2(jd) = (jd-1._dp)/(n2-1._dp)                                      ! 0..1
+        end do
+        do jd = 1,n2
+            do id = 1,n1
+                y(id,jd) = f(x1(id),x2(jd),[0,0])
+            end do
+        end do
+        do id = 1,m1
+            x1g(id) = 0.05_dp + 1.9_dp*(id-1._dp)/(m1-1._dp)
+        end do
+        do jd = 1,m2
+            x2g(jd) = 0.03_dp + 0.94_dp*(jd-1._dp)/(m2-1._dp)
+        end do
+        do id = 1,np
+            x1p(id) = 2._dp*modulo(0.37_dp*id,1._dp)
+            x2p(id) = modulo(0.61_dp*id,1._dp)
+        end do
+
+        do kd = 1,size(der,2)
+            ! on a grid
+            ierr = spline_2D(x1,x2,y,x1g,x2g,yg,deriv=der(:,kd))
+            call check(error, ierr, 0, 'spline_2D on a grid failed')
+            if (allocated(error)) return
+            do jd = 1,m2
+                do id = 1,m1
+                    yg_ref(id,jd) = f(x1g(id),x2g(jd),der(:,kd))
+                end do
+            end do
+            err = maxval(abs(yg-yg_ref))/maxval(abs(yg_ref))
+            call check(error, err.lt.1.e-10_dp, 'spline_2D on a grid, &
+                &derivative ('//trim(i2str(der(1,kd)))//','//&
+                &trim(i2str(der(2,kd)))//'): '//trim(r2str(err)))
+            if (allocated(error)) return
+            ! at points
+            ierr = spline_2D(x1,x2,y,x1p,x2p,yp,deriv=der(:,kd))
+            call check(error, ierr, 0, 'spline_2D at points failed')
+            if (allocated(error)) return
+            do id = 1,np
+                yp_ref(id) = f(x1p(id),x2p(id),der(:,kd))
+            end do
+            err = maxval(abs(yp-yp_ref))/maxval(abs(yp_ref))
+            call check(error, err.lt.1.e-10_dp, 'spline_2D at points, &
+                &derivative ('//trim(i2str(der(1,kd)))//','//&
+                &trim(i2str(der(2,kd)))//'): '//trim(r2str(err)))
+            if (allocated(error)) return
+        end do
+    contains
+        !> f and its derivatives d^(d(1)+d(2)) f / dx1^d(1) dx2^d(2)
+        pure real(dp) function f(a,b,d)
+            real(dp), intent(in) :: a, b                                        ! x1 and x2
+            integer, intent(in) :: d(2)                                         ! derivative
+            real(dp) :: p(0:2), q(0:1), r(0:1)                                  ! factors and their derivatives
+
+            p = [a**3-2._dp*a, 3._dp*a**2-2._dp, 6._dp*a]                       ! x1^3-2 x1 and derivatives
+            q = [b**2+1._dp, 2._dp*b]                                           ! x2^2+1 and derivative
+            r = [b**3, 3._dp*b**2]                                              ! x2^3 and derivative
+            f = p(d(1))*q(d(2))
+            if (d(1).eq.0) f = f + r(d(2))
+        end function f
+    end subroutine test_spline_2D
 
     !> Evaluation outside the domain without extrap has to fail (this check
     !! is active in all builds, not only ldebug).
