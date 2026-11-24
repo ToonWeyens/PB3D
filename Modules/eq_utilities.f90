@@ -752,7 +752,7 @@ contains
     
     !> \private flux version
     integer function calc_F_derivs_1(grid_eq,eq) result(ierr)
-        use num_vars, only: eq_style, max_deriv, use_pol_flux_F
+        use num_vars, only: eq_style, max_deriv, use_pol_flux_E, use_pol_flux_F
         use num_utilities, only: derivs, c, fac
         use eq_vars, only: max_flux_E
         
@@ -780,15 +780,23 @@ contains
                 
                 call lvl_ud(1)
                 
-                ! set up local T_FE
+                ! set up local T_FE = d r_E / d psi_F and its derivatives in r_E,
+                ! where r_E is the toroidal flux, or the poloidal flux with lrfp,
+                ! divided by max_flux_E, and psi_F is the poloidal flux / 2pi or
+                ! minus the toroidal flux / 2pi (conversion VMEC LH -> RH)
                 allocate(T_FE_loc(grid_eq%loc_n_r,0:max_deriv+1))
-                if (use_pol_flux_F) then
+                if (use_pol_flux_F .eqv. use_pol_flux_E) then
+                    T_FE_loc(:,0) = 2*pi/max_flux_E
+                    if (.not.use_pol_flux_F) T_FE_loc(:,0) = -T_FE_loc(:,0)
+                    T_FE_loc(:,1:max_deriv+1) = 0._dp
+                else if (use_pol_flux_F) then
                     do id = 0,max_deriv+1
                         T_FE_loc(:,id) = 2*pi/max_flux_E*eq%q_saf_E(:,id)
                     end do
                 else
-                    T_FE_loc(:,0) = -2*pi/max_flux_E
-                    T_FE_loc(:,1:max_deriv+1) = 0._dp
+                    do id = 0,max_deriv+1
+                        T_FE_loc(:,id) = -2*pi/max_flux_E*eq%rot_t_E(:,id)
+                    end do
                 end if
                 
                 ! Transform the  derivatives in E coordinates  to derivatives in
