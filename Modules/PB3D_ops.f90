@@ -469,8 +469,8 @@ contains
     !! \return ierr
     integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
         &lim_pos,grid_limits) result(ierr)
-        
-        use num_vars, only: PB3D_name
+
+        use num_vars, only: PB3D_name, n_procs
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_flat2ND
         
@@ -527,10 +527,11 @@ contains
             where (lim_pos(1,:).ge.0) par_lim = lim_pos(1,:)
         end if
         
-        ! create grid
-        ierr = grid%init(n,i_lim=grid_limits)
+        ! create grid, divided on every process alike if limits are given
+        ierr = grid%init(n,i_lim=grid_limits,&
+            &divided=present(grid_limits).and.n_procs.gt.1)
         CHCKERR('')
-        
+
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
             ! setup par_id 
