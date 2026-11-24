@@ -1620,17 +1620,14 @@ contains
     
     !> Calculates resonating flux surfaces for the perturbation modes.
     !!
-    !! The output  consists of mode  number, resonating normal position  and the
-    !! fraction  \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$.  for  those modes  for
-    !! which a solution is found that is within the plasma range.
-    !!
-    !! It contains three pieces of information:
-    !!  - <tt>(:,1)</tt>: the mode index
+    !! The output has one row  per resonating flux surface of every mode in \c
+    !! sec of  \c mds, which can be  tabulated in an arbitrary  grid, not
+    !! necessarily the equilibrium one. A mode resonates on no, one or more
+    !! than one flux surface in the range of the equilibrium grid: on two, for
+    !! example, if the safety factor has a minimum. A row contains:
+    !!  - <tt>(:,1)</tt>: the mode number
     !!  - <tt>(:,2)</tt>: the radial position in Flux coordinates
     !!  - <tt>(:,3)</tt>: the fraction \f$\frac{m}{n}\f$ or  \f$\frac{n}{m}\f$
-    !!
-    !! for every single mode  in \c sec of \c mds, which can  be tabulated in an
-    !! arbitrary grid, not necessarily the equilibrium one.
     !!
     !! Optionally,  the  total safety  factor  or  rotational transform  can  be
     !! returned to the master.
@@ -1661,10 +1658,15 @@ contains
         
         ! local variables (not to be used in child functions)
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grid
-        integer :: ld                                                           ! counter
-        integer :: ld_loc                                                       ! local ld
+        integer :: kd, ld                                                       ! counters
+        integer :: ld_loc                                                       ! number of resonating flux surfaces found
+        integer :: n_found                                                      ! number of them for one mode
+        integer :: min_mode, max_mode                                           ! lowest and highest mode number
+        integer :: n_r                                                          ! number of equilibrium points
         logical :: info_loc                                                     ! local version of info
+        real(dp) :: zero                                                        ! position of a resonating flux surface
         real(dp), allocatable :: res_surf_loc(:,:)                              ! local copy of res_surf
+        real(dp), allocatable :: jq_dif(:)                                      ! q-m/n or iota-n/m at the equilibrium points
         real(dp), allocatable :: jq_tot(:)                                      ! saf. fac. or rot. transf. and derivs. in Flux coords.
         real(dp), allocatable :: jq_loc(:)                                      ! local version of jq
         real(dp) :: norm_factor                                                 ! normalization factor to make normal coordinate 0..1
@@ -1709,65 +1711,64 @@ contains
             jq = jq_tot
         end if
         
-        ! initialize local res_surf
-        allocate(res_surf_loc(1:size(mds%sec,1),3))
-        
         ! calculate normalization factor max_flux / 2pi
         norm_factor = max_flux_F/(2*pi)
         
-        ! loop over all modes (and shift the index in m_loc and n_loc by 1)
-        ld_loc = 1
-        do ld = 1,size(mds%sec,1)
-            ! Find place  where q  = m/n or  iota = n/m  in Flux  coordinates by
-            ! solving q-m/n = 0 or iota-n/m=0, using the functin jq_fun.
-            
+        ! every mode of sec, once, from the lowest to the highest mode number
+        min_mode = minval(mds%sec(:,1))
+        max_mode = maxval(mds%sec(:,1))
+        n_r = grid_eq_trim%n(3)
+        allocate(res_surf_loc((max_mode-min_mode+1)*n_r,3))
+        allocate(jq_dif(n_r))
+        ld_loc = 0
+        do ld = min_mode,max_mode
             ! set up local m, n and nmfrac for function
             if (use_pol_flux_F) then
                 n_loc = prim_X
-                m_loc = mds%sec(ld,1)
+                m_loc = ld
                 nmfrac_fun = 1.0_dp*m_loc/n_loc
             else
-                n_loc = mds%sec(ld,1)
+                n_loc = ld
                 m_loc = prim_X
                 nmfrac_fun = 1.0_dp*n_loc/m_loc
             end if
             
-            ! calculate zero using Zhang
-            if (use_pol_flux_F) then
-                res_surf_loc(ld_loc,1) = m_loc
-            else
-                res_surf_loc(ld_loc,1) = n_loc
-            end if
-            res_surf_loc(ld_loc,3) = nmfrac_fun
-            err_msg = calc_zero_Zhang(res_surf_loc(ld_loc,2),jq_fun,&
-                &[minval(grid_eq_trim%r_F),maxval(grid_eq_trim%r_F)])
-            
-            ! intercept error
-            if (err_msg.ne.'') then
-                if (info_loc) then
-                    call writo('Mode (n,m) = ('//trim(i2str(n_loc))//','//&
-                        &trim(i2str(m_loc))//') is not found')
-                    call lvl_ud(1)
-                    call writo(trim(err_msg))
-                    call lvl_ud(-1)
+            ! Every place  where q = m/n  or iota = n/m, in  Flux coordinates:
+            ! q-m/n or  iota-n/m changes sign between  equilibrium points, or
+            ! is zero at  one. If q or iota  has an extremum, a mode  can have
+            ! two of them.
+            jq_dif = jq_tot - nmfrac_fun
+            n_found = 0
+            do kd = 1,n_r
+                if (jq_dif(kd).eq.0._dp) then
+                    zero = grid_eq_trim%r_F(kd)
+                else if (kd.lt.n_r) then
+                    if (jq_dif(kd+1).eq.0._dp .or. &
+                        &(jq_dif(kd).gt.0._dp .eqv. jq_dif(kd+1).gt.0._dp)) &
+                        &cycle
+                    err_msg = calc_zero_Zhang(zero,jq_fun,&
+                        &grid_eq_trim%r_F(kd:kd+1))
+                    if (err_msg.ne.'') ierr = 1
+                    CHCKERR(err_msg)
+                else
+                    cycle
                 end if
-            else if (res_surf_loc(ld_loc,2).lt.minval(grid_eq_trim%r_F) .or. &
-                &res_surf_loc(ld_loc,2).gt.maxval(grid_eq_trim%r_F)) then
-                if (info_loc) call writo('Mode (n,m) = ('//&
-                    &trim(i2str(n_loc))//','//trim(i2str(m_loc))//&
-                    &') does not resonate in plasma')
-            else
+                n_found = n_found + 1
+                ld_loc = ld_loc + 1
+                res_surf_loc(ld_loc,:) = [ld*1._dp,zero,nmfrac_fun]
                 if (info_loc) call writo('Mode (n,m) = ('//&
                     &trim(i2str(n_loc))//','//trim(i2str(m_loc))//&
                     &') resonates in plasma at normalized flux surface '//&
-                    &trim(r2str(res_surf_loc(ld_loc,2)/norm_factor)))
-                ld_loc = ld_loc + 1                                             ! advance ld_loc
-            end if
+                    &trim(r2str(zero/norm_factor)))
+            end do
+            if (info_loc .and. n_found.eq.0) call writo('Mode (n,m) = ('//&
+                &trim(i2str(n_loc))//','//trim(i2str(m_loc))//&
+                &') does not resonate in plasma')
         end do
         
         ! set res_surf from local copy
-        allocate(res_surf(ld_loc-1,3))
-        res_surf = res_surf_loc(1:ld_loc-1,:)
+        allocate(res_surf(ld_loc,3))
+        res_surf = res_surf_loc(1:ld_loc,:)
         
         ! clean up
         call grid_eq_trim%dealloc()
