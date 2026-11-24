@@ -7393,7 +7393,7 @@ contains
             else
                 call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
                     &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))&
-                    &/eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &/abs(eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0)),file_name,&
                     &tot_dim,loc_offset,description,output_message=.true.)
             end if
             
