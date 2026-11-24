@@ -1615,6 +1615,12 @@ contains
     !! the next  process, but if the  number of overlapping grid  points is odd,
     !! the next process looses one more point.
     !!
+    !! Where the ghost regions of several processes reach an end of the grid,
+    !! these cuts can cross. They are then moved so that the trimmed parts
+    !! follow each other and every process keeps at least one point. If that
+    !! is not possible, as with fewer points than processes, an error is
+    !! returned.
+    !!
     !! optionally, the trimmed  indices in the normal direction  can be provided
     !! in  \c  norm_id,  i.e.  the  indices in  the  old,  untrimmed  grid  that
     !! correspond to the start and end indices of the trimmed grid. E.g. if
@@ -1647,48 +1653,52 @@ contains
         ! local variables
         integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
         integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
+        integer, allocatable :: i_start(:)                                      ! first index of trimmed grid of all processes, and last index + 1
         integer :: i_lim_out(2)                                                 ! i_lim of output grid
         integer :: n_out(3)                                                     ! n of output grid
-        
+        integer :: id                                                           ! counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+
         ! initialize ierr
         ierr = 0
-        
+
         ! detect whether grid divided
         if (grid_in%divided) then
             ! get min_i's of the grid_in
             ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
             CHCKERR('')
-            
+
             ! get max_i's of the grid_in
             ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
             CHCKERR('')
-            
-            ! set  i_lim of trimmed output  grid (not yet shifted  by first proc
-            ! min)
-            if (rank.gt.0) then
-                i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
-                    &ceiling((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
-            else
-                i_lim_out(1) = tot_i_min(1)
-            end if
-            if (rank.lt.n_procs-1) then
-                i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
-                    &floor((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
-            else
-                i_lim_out(2) = tot_i_max(n_procs)
-            end if
-            
-            ! limit to input limits (necessary if a process has only one point)
-            i_lim_out(1) = max(min(i_lim_out(1),grid_in%i_max),grid_in%i_min)
-            i_lim_out(2) = max(min(i_lim_out(2),grid_in%i_max),grid_in%i_min)
-            
-            ! get  min_i's and max_i's  of the grid_out,  not shifted by  min of
-            ! first process
-            ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
-            CHCKERR('')
-            ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
-            CHCKERR('')
-            
+
+            ! set first index of trimmed output grid of every process (not yet
+            ! shifted by first proc min): middle of the overlap with the
+            ! previous process, then made increasing and inside the ranges
+            allocate(i_start(n_procs+1))
+            i_start(1) = tot_i_min(1)
+            i_start(n_procs+1) = tot_i_max(n_procs)+1
+            do id = 2,n_procs
+                i_start(id) = max(tot_i_min(id)+&
+                    &ceiling((tot_i_max(id-1)-tot_i_min(id)+1._dp)/2),&
+                    &i_start(id-1)+1,tot_i_min(id))
+            end do
+            do id = n_procs,2,-1
+                i_start(id) = min(i_start(id),i_start(id+1)-1,tot_i_max(id-1)+1)
+            end do
+            do id = 1,n_procs
+                if (i_start(id).lt.tot_i_min(id) .or. &
+                    &i_start(id+1).le.i_start(id) .or. &
+                    &i_start(id+1)-1.gt.tot_i_max(id)) then
+                    ierr = 1
+                    err_msg = 'The '//trim(i2str(i_start(n_procs+1)-&
+                        &i_start(1)))//' normal points cannot be divided &
+                        &between '//trim(i2str(n_procs))//' processes'
+                    CHCKERR(err_msg)
+                end if
+            end do
+            i_lim_out = [i_start(rank+1),i_start(rank+2)-1]
+
             ! set n of output grid
             n_out(1) = grid_in%n(1)
             n_out(2) = grid_in%n(2)

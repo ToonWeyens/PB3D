@@ -527,7 +527,7 @@ contains
     !!
     !! \return ierr
     integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
-        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
+        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr, n_procs
         use grid_vars, only: n_r_eq, n_alpha
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
@@ -554,9 +554,11 @@ contains
                 call writo('Field-aligned with '//trim(i2str(n_r_eq))//&
                     &' normal and '//trim(i2str(n_par_X))//' parallel points')
                 
-                ! create grid with eq_jobs_lims
+                ! create grid with eq_jobs_lims, divided on every process alike,
+                ! also where the ghost regions make eq_limits the whole grid
                 ierr = grid_eq%init([eq_jobs_lims(2,eq_job_nr)-&
-                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,n_r_eq],eq_limits)
+                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,n_r_eq],eq_limits,&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
@@ -568,8 +570,9 @@ contains
                 call writo('Will be interpolated to a field-aligned grid &
                     &later')
                 
-                ! create grid
-                ierr = grid_eq%init([nchi,1,n_r_eq],eq_limits)                  ! axisymmetric equilibrium
+                ! create grid, divided on every process alike
+                ierr = grid_eq%init([nchi,1,n_r_eq],eq_limits,&
+                    &divided=n_procs.gt.1)                                      ! axisymmetric equilibrium
                 CHCKERR('')
                 
                 ! copy angular grid from HELENA
@@ -629,7 +632,7 @@ contains
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq_B%init([eq_jobs_lims(2,eq_job_nr)-&
                     &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,grid_eq%n(3)],&
-                    &[grid_eq%i_min,grid_eq%i_max])                             ! only one field line
+                    &[grid_eq%i_min,grid_eq%i_max],grid_eq%divided)             ! only one field line
                 CHCKERR('')
                 
                 ! copy the normal coords.
@@ -653,7 +656,7 @@ contains
     !!
     !! \return ierr
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
-        use num_vars, only: norm_disc_prec_X, X_grid_style
+        use num_vars, only: norm_disc_prec_X, X_grid_style, n_procs
         use grid_utilities, only: coord_F2E
         use spline_utilities, only: spline
         
@@ -677,8 +680,9 @@ contains
                 ierr = grid_eq%copy(grid_X)
                 CHCKERR('')
             case (2,3)                                                          ! solution and enriched
-                ! create grid
-                ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
+                ! create grid, divided on every process alike
+                ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits,&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 
                 ! set Flux variables
@@ -1056,9 +1060,9 @@ contains
             i_lim_tot = [eq_limits_tot(1,1),eq_limits_tot(2,n_procs)]
             i_lim_out = eq_limits-eq_limits_tot(1,1)+1
         end if
-        ierr = grid_out%init(n_out,i_lim_out)
+        ierr = grid_out%init(n_out,i_lim_out,divided=n_procs.gt.1)             ! divided on every process alike
         CHCKERR('')
-        
+
         ! set up limits taking into account angular extent and temporary var
         lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
         lims(2) = product(grid%n(1:2))*grid%i_max
