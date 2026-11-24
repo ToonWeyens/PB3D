@@ -13,6 +13,8 @@
 !!    spline_utilities), so it is pinned with a quadratic polynomial;
 !!  - convergence at the expected rate on sin(2 pi x) for all three orders
 !!    (1: linear, 2: Akima Hermite, 3: cubic);
+!!  - knots in decreasing order: the same values and derivatives with
+!!    respect to x as knots in increasing order;
 !!  - periodic boundary conditions on a full sin period;
 !!  - two and three points: a straight line and a parabola for order 3,
 !!    inside the range and extrapolated, a straight line for order 1, and
@@ -42,6 +44,7 @@ contains
             &new_unittest("linear_exact_on_linear", test_linear_exact), &
             &new_unittest("cubic_exact_on_cubic", test_cubic_exact), &
             &new_unittest("cubic_extrapolation", test_cubic_extrap), &
+            &new_unittest("decreasing_abscissae", test_decreasing), &
             &new_unittest("sin_convergence", test_sin_convergence), &
             &new_unittest("periodic_bc_sin", test_periodic_sin), &
             &new_unittest("few_points", test_few_points), &
@@ -211,6 +214,61 @@ contains
             &trim(r2str(err)))
         if (allocated(error)) return
     end subroutine test_cubic_extrap
+
+    !> Knots in decreasing order, as the normal coordinate of a file whose
+    !! flux decreases outwards: the values and the derivatives with respect to
+    !! x are those of knots in increasing order, for the cubic polynomial with
+    !! exact endpoint first derivatives (derivatives 0..3), and for the first
+    !! derivative of the quadratic extrapolation.
+    subroutine test_decreasing(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: nx = 12, nx_int = 100                             ! knots, evaluation points
+        integer :: ierr, kd, deriv                                              ! error status, counters
+        real(dp) :: x(nx), y(nx)                                                ! knots, from 2 down to 0
+        real(dp) :: x_int(nx_int), y_int(nx_int), y_ref(nx_int)                 ! evaluation
+        real(dp) :: err                                                         ! maximum error
+
+        do kd = 1,nx
+            x(kd) = 2._dp - 2._dp*(kd-1._dp)/(nx-1._dp)
+            y(kd) = cubic_poly(x(kd),0)
+        end do
+        do kd = 1,nx_int
+            x_int(kd) = 2._dp - 2._dp*(kd-1._dp)/(nx_int-1._dp)
+        end do
+        do deriv = 0,3
+            ierr = spline(x,y,x_int,y_int,ord=3,deriv=deriv,bcs=[1,1],&
+                &bcs_val=[cubic_poly(x(1),1),cubic_poly(x(nx),1)])
+            call check(error, ierr, 0, 'spline failed for derivative '//&
+                &trim(i2str(deriv)))
+            if (allocated(error)) return
+            do kd = 1,nx_int
+                y_ref(kd) = cubic_poly(x_int(kd),deriv)
+            end do
+            err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+            call check(error, err.lt.1.e-9_dp, &
+                &'decreasing knots: cubic polynomial not reproduced, &
+                &derivative '//trim(i2str(deriv))//': '//trim(r2str(err)))
+            if (allocated(error)) return
+        end do
+
+        do kd = 1,nx
+            y(kd) = x(kd)**2 - 3._dp*x(kd) + 2._dp
+        end do
+        do kd = 1,nx_int
+            x_int(kd) = 2.5_dp - 3._dp*(kd-1._dp)/(nx_int-1._dp)                ! 2.5..-0.5: 0.5 extrapolated on both sides
+            y_ref(kd) = 2._dp*x_int(kd) - 3._dp
+        end do
+        ierr = spline(x,y,x_int,y_int,ord=3,deriv=1,bcs=[1,1],&
+            &bcs_val=[2._dp*x(1)-3._dp,2._dp*x(nx)-3._dp],extrap=.true.)
+        call check(error, ierr, 0, 'spline failed')
+        if (allocated(error)) return
+        err = maxval(abs(y_int-y_ref))/maxval(abs(y_ref))
+        call check(error, err.lt.1.e-9_dp, &
+            &'decreasing knots: derivative of the extrapolation not exact: '//&
+            &trim(r2str(err)))
+        if (allocated(error)) return
+    end subroutine test_decreasing
 
     !> Convergence on sin(2 pi x) when doubling the number of knots, for all
     !! three orders: the error has to drop at least by the conservative
