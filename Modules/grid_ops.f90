@@ -176,7 +176,7 @@ contains
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_F = flux_p_V(:,0)
+                        flux_E = flux_p_V(:,0)
                     else
                         flux_E = flux_t_V(:,0)
                     end if
