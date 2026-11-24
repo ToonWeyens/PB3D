@@ -328,8 +328,10 @@ contains
         use grid_vars, only: n_r_eq, n_r_sol, n_alpha
         use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
-        use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl
+        use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl, &
+            &X_grid_style, BC_style, max_tot_mem
         use MPI_utilities, only: get_ser_var
+        use sol_utilities, only: calc_memory_sol
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
         
@@ -338,6 +340,9 @@ contains
         logical :: only_half_grid                                               !< calculate only half grid with even points
         integer :: n_par_X_loc                                                  !< local n_par_X
         integer :: var_size_without_par(2)                                      !< size without parallel dimension for eq_2 and X_1 variables
+        integer :: n_bnd                                                        !< number of points on the plasma boundary for the vacuum
+        real(dp) :: mem_sol                                                     !< memory needed by the solution driver [MB]
+        character(len=max_str_ln) :: err_msg                                    !< error message
         
         ! initialize ierr
         ierr = 0
@@ -359,22 +364,51 @@ contains
         ierr = calc_n_par_X_rich(n_par_X_loc,only_half_grid)
         CHCKERR('')
         
+        ! Get  local n_par_X  to  divide  the equilibrium  jobs.  Note that  the
+        ! average size of  eq_2 variables for all processes  together is n_r_eq,
+        ! times  the number  of  field lines,  the size  due  to the  dimensions
+        ! corresponding to  the derivatives,  and the  number of  variables (see
+        ! subroutine 'calc_memory_eq' and 'calc_memory_X'),  while it  is the
+        ! number of  normal points of  the perturbation grid for  the X_1 and
+        ! X_2_int variables. For  X_grid_style 3, the points  that enrich the
+        ! equilibrium grid are not known yet and not counted.
+        var_size_without_par(1) = n_r_eq
+        select case (X_grid_style)
+            case (1,3)                                                          ! equilibrium or enriched
+                var_size_without_par(2) = n_r_eq
+            case (2)                                                            ! solution
+                var_size_without_par(2) = n_r_sol
+        end select
+        var_size_without_par = var_size_without_par * n_alpha
+        
+        ! check whether the solution driver fits in memory
+        n_bnd = 0
+        if (BC_style(2).ne.1) then
+            select case (eq_style)
+                case (1)                                                        ! VMEC: all parallel points of all field lines
+                    n_bnd = n_par_X*n_alpha
+                case (2)                                                        ! HELENA: one poloidal cross-section
+                    n_bnd = 2*nchi
+            end select
+        end if
+        ierr = calc_memory_sol(var_size_without_par(2),n_r_sol*n_alpha,n_bnd,&
+            &mem_sol)
+        CHCKERR('')
+        call writo('The solution driver is estimated to need about '//&
+            &trim(i2str(ceiling(mem_sol)))//'MB')
+        if (mem_sol.gt.max_tot_mem) then
+            ierr = 1
+            err_msg = 'The memory limit is too low, the solution driver needs &
+                &more than '//trim(i2str(ceiling(mem_sol)))//'MB'
+            CHCKERR(err_msg)
+        end if
+        
         if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
             call writo('Jumping straight to solution, no need to divide into &
                 &equilibrium jobs')
             
             return
         end if
-        
-        ! Get  local n_par_X  to  divide  the equilibrium  jobs.  Note that  the
-        ! average size of  eq_2 variables for all processes  together is n_r_eq,
-        ! times  the number  of  field lines,  the size  due  to the  dimensions
-        ! corresponding to  the derivatives,  and the  number of  variables (see
-        ! subroutine 'calc_memory_eq' and 'calc_memory_X'),  while it is n_r_sol
-        ! for the X_1 variables.
-        var_size_without_par(1) = n_r_eq
-        var_size_without_par(2) = n_r_sol
-        var_size_without_par = var_size_without_par * n_alpha
         select case (eq_style)
             case (1)                                                            ! VMEC
                 ! divide equilibrium jobs

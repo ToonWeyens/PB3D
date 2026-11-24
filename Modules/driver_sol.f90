@@ -63,7 +63,7 @@ contains
         type(grid_type), intent(in) :: grid_eq                                  !< equilibrium grid
         type(grid_type), intent(in), target :: grid_X                           !< perturbation grid
         type(grid_type), intent(inout) :: grid_sol                              !< solution grid
-        type(X_2_type), intent(in) :: X                                         !< integrated tensorial perturbation variables
+        type(X_2_type), intent(inout) :: X                                      !< integrated tensorial perturbation variables, freed once copied
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         type(sol_type), intent(inout) :: sol                                    !< solution variables
         
@@ -193,6 +193,10 @@ contains
                 ierr = redistribute_output_X(mds_X,grid_X,grid_X_rdst,X,X_rdst)
                 CHCKERR('')
                 
+                ! X is not needed any more: the next Richardson level reads it
+                ! from the output file
+                call X%dealloc()
+                
                 ! initialize
                 call X_sol%init(mds_sol,grid_X_sol,is_field_averaged=.true.)
                 
@@ -213,6 +217,10 @@ contains
                 
                 ! copy
                 call X%copy(mds_sol,grid_X,X_sol)
+                
+                ! X is not needed any more: the next Richardson level reads it
+                ! from the output file
+                call X%dealloc()
                 
                 call lvl_ud(-1)
         end select

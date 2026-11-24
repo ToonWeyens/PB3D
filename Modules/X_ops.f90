@@ -3372,13 +3372,14 @@ contains
     !!
     !! This  concerns the  calculation of  the magnetic  integrals of  blocks of
     !! tensorial perturbation variables. These are  set up using the equilibrium
-    !! and vectorial perturbation variables that  are stored in memory, but only
-    !! the  integrated tensorial  result is  stored in  memory, with  negligible
-    !! variables size.
+    !! and vectorial perturbation variables that  are stored in memory, and are
+    !! added to the integrated tensorial variables, which are kept during all
+    !! equilibrium jobs and counted in divide_eq_jobs().
     !!
     !! The size of the (k,m) pairs to  be calculated is determined by looking at
     !! what  fits in  memory  when the  equilibrium  and vectorial  perturbation
-    !! variables are stored in memory first.
+    !! variables are stored in memory first. A block counts its tensorial
+    !! variables and the two parts of the vectorial variables it uses.
     !!
     !! \return ierr
     integer function divide_X_jobs(arr_size) result(ierr)
@@ -3394,6 +3395,7 @@ contains
         ! local variables
         integer :: n_div                                                        ! factor by which to divide the total size
         real(dp) :: mem_size                                                    ! approximation of memory required for X variables
+        real(dp) :: mem_X_1_loc                                                 ! approximation of memory required for one part of X_1
         integer :: n_mod_block                                                  ! nr. of modes in block
         integer, allocatable :: n_mod_loc(:)                                    ! number of modes per block
         character(len=max_str_ln) :: block_message                              ! message about how many blocks
@@ -3414,6 +3416,9 @@ contains
             n_mod_block = ceiling(n_mod_X*1._dp/n_div)
             ierr = calc_memory_X(2,arr_size,n_mod_block,mem_size)
             CHCKERR('')
+            ierr = calc_memory_X(1,arr_size,n_mod_block,mem_X_1_loc)
+            CHCKERR('')
+            mem_size = mem_size + 2*mem_X_1_loc                                 ! the two parts of X_1 of the block
             if (n_div.gt.n_mod_X) then
                 ierr = 1
                 err_msg = 'The memory limit is too low'
@@ -3439,7 +3444,8 @@ contains
             &to be about '//trim(i2str(ceiling(mem_size)))//'MB')
         call lvl_ud(1)
         call writo('(maximum: '//trim(i2str(ceiling(max_X_mem)))//&
-            &'MB left over from equilibrium variables)')
+            &'MB left over from equilibrium variables and integrated &
+            &perturbation variables)')
         call lvl_ud(-1)
         
         ! set up jobs data as illustrated below for 3 divisions, order 1:

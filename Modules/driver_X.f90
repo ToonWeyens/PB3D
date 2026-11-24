@@ -43,7 +43,7 @@ contains
     !!      * [1] \c X_1 (only for HELENA, only first Richardson level)
     !!      * [2] \c X_2 
     !!  - deallocates:
-    !!      * \c X_1 before setting up
+    !!      * \c X_1 at the end, for VMEC
     !!      * \c grid_X before setting up
     !!      * \c grid_X_B before setting up
     !!
@@ -252,10 +252,15 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        if (eq_style.eq.2) then
-            call eq_2_B%dealloc()
-            deallocate(eq_2_B)
-        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! X_1 is calculated again in every equilibrium job
+                call X_1%dealloc()
+            case (2)                                                            ! HELENA
+                ! X_1 is calculated once and kept, eq_2_B is interpolated
+                call eq_2_B%dealloc()
+                deallocate(eq_2_B)
+        end select
         nullify(eq_2_B)
         call lvl_ud(-1)
     end function run_driver_X
@@ -412,9 +417,6 @@ contains
         end select
         
         if (do_X_1_ops) then
-            ! possibly deallocate
-            if (allocated(X_1%U_0)) call X_1%dealloc()
-            
             ! calc variables
             ierr = calc_X(mds_X,grid_eq,grid_X,eq_1,eq_2,X_1)
             CHCKERR('')
@@ -525,7 +527,7 @@ contains
         &X_2_int) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_X_2
         use num_vars, only: X_job_nr, X_jobs_lims, eq_style, eq_job_nr, &
-            &eq_jobs_lims, magn_int_style, no_output, rich_restart_lvl
+            &eq_jobs_lims, magn_int_style, no_output
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
@@ -565,9 +567,11 @@ contains
         ierr = divide_X_jobs(var_size_without_par)
         CHCKERR('')
         
-        ! if first equilibrium job of  first Richardson level, set up integrated
-        ! tensorial perturbation variables
-        if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
+        ! If first  equilibrium job, set  up integrated tensorial  perturbation
+        ! variables: zero  for the first  Richardson level, and those  of the
+        ! previous level  from the output  file for  higher levels, as  the
+        ! solution driver frees them.
+        if (eq_job_nr.eq.1) then
             if (rich_lvl.eq.1) then
                 call X_2_int%init(mds_X,grid_X_B,is_field_averaged=.true.)
                 X_2_int%PV_0 = 0._dp

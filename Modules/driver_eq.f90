@@ -41,7 +41,9 @@ contains
     !!  - deallocates:
     !!      * \c grid_eq [out] before setting up
     !!      * \c grid_B_eq [out] before setting up
-    !!      * \c eq_2 [out] before setting up
+    !!      * \c eq_2 [out] before calculating the new one
+    !!      * the E quantities of \c eq_2 before copying it to the output, unless
+    !!      they are needed for plots or tests
     !!
     !! \return ierr
     integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
@@ -205,6 +207,10 @@ contains
                 end if
         end select
         
+        ! free the metric equilibrium variables of the previous job before the
+        ! new ones are calculated
+        if (do_eq_2_ops .and. allocated(eq_2_out%jac_FD)) call eq_2_out%dealloc()
+        
         ! setup equilibrium grid
         call writo('Determine the equilibrium grid')
         call lvl_ud(1)
@@ -290,6 +296,11 @@ contains
                 ierr = store_vac(grid_eq,eq_1,eq_2,vac)
                 CHCKERR('')
             end if
+            
+            ! The  perturbation  and solution  drivers  only  use the  F
+            ! quantities, so that the E quantities are freed before eq_2 is
+            ! copied to the output.
+            if (dealloc_vars) call eq_2%dealloc_E()
         end if
         
         ! set output variables
@@ -331,7 +342,6 @@ contains
         
         ! eq_2_out
         if (do_eq_2_ops) then
-            if (allocated(eq_2_out%jac_FD)) call eq_2_out%dealloc()             ! deallocate if necessary
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or optimized
                     call eq_2%copy(grid_eq,eq_2_out)

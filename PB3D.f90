@@ -14,7 +14,7 @@
 !!  Toon Weyens,
 !!  Contact: info@toonweyens.com
 !------------------------------------------------------------------------------!
-!>  \version    2.55
+!>  \version    2.56
 !!  \date       2012-2026
 !!  Copyright (C) 2019-2026 Toon Weyens,
 !!  Copyright (C) 2014-2019 ITER Organization
@@ -209,6 +209,11 @@ program PB3D
             call writo('')
             call lvl_ud(-1)
         end do PAR
+        
+        ! For VMEC,  the metric equilibrium  variables are calculated  again in
+        ! every equilibrium job, so the solution driver does not need those of
+        ! the last job.
+        if (eq_style.eq.1 .and. allocated(eq_2%jac_FD)) call eq_2%dealloc()
         
         !--------------------------------!
         !   Main driver: Solution part   !

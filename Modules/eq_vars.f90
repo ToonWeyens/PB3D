@@ -150,6 +150,8 @@ module eq_vars
         procedure :: copy => copy_eq_2
         !> deallocate
         procedure :: dealloc => dealloc_eq_2
+        !> deallocate the quantities in E coordinates
+        procedure :: dealloc_E => dealloc_eq_2_E
     end type
 
 contains
@@ -573,6 +575,36 @@ contains
         end subroutine dealloc_eq_1_final
     end subroutine dealloc_eq_1
 
+    !> \public Deallocates the metric equilibrium quantities in E coordinates.
+    !!
+    !! These are all metric quantities except \c g_FD, \c h_FD, \c jac_FD,
+    !! \c S, \c kappa_n, \c kappa_g and \c sigma, which are the only ones the
+    !! perturbation and solution drivers use. copy_eq_2() copies the E
+    !! quantities only if \c jac_E is allocated.
+    subroutine dealloc_eq_2_E(eq)
+        ! input / output
+        class(eq_2_type), intent(inout) :: eq                                   !< equilibrium to be partly deallocated
+        
+        if (allocated(eq%R_E)) deallocate(eq%R_E)
+        if (allocated(eq%Z_E)) deallocate(eq%Z_E)
+        if (allocated(eq%L_E)) deallocate(eq%L_E)
+        if (allocated(eq%g_C)) deallocate(eq%g_C)
+        if (allocated(eq%g_E)) deallocate(eq%g_E)
+        if (allocated(eq%h_E)) deallocate(eq%h_E)
+        if (allocated(eq%g_F)) deallocate(eq%g_F)
+        if (allocated(eq%h_F)) deallocate(eq%h_F)
+        if (allocated(eq%T_VC)) deallocate(eq%T_VC)
+        if (allocated(eq%T_EF)) deallocate(eq%T_EF)
+        if (allocated(eq%T_FE)) deallocate(eq%T_FE)
+        if (allocated(eq%det_T_EF)) deallocate(eq%det_T_EF)
+        if (allocated(eq%det_T_FE)) deallocate(eq%det_T_FE)
+        if (allocated(eq%jac_E)) deallocate(eq%jac_E)
+        if (allocated(eq%jac_F)) deallocate(eq%jac_F)
+#if ldebug
+        eq%estim_mem_usage(1) = 0._dp
+#endif
+    end subroutine dealloc_eq_2_E
+    
     !> \public Deallocates metric equilibrium quantities.
     subroutine dealloc_eq_2(eq)
 #if ldebug

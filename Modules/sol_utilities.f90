@@ -15,7 +15,8 @@ module sol_utilities
 
     implicit none
     private
-    public calc_XUQ, calc_tot_sol_vec, calc_loc_sol_vec, interp_V_spline
+    public calc_XUQ, calc_tot_sol_vec, calc_loc_sol_vec, interp_V_spline, &
+        &calc_memory_sol
 #if ldebug
     public debug_calc_XUQ_arr, debug_interp_V_spline
 #endif
@@ -880,4 +881,55 @@ contains
         end subroutine plot_comp
 #endif
     end function interp_V_spline
+    
+    !> Calculate the memory that the solution driver needs.
+    !!
+    !! This memory does not depend on the division in equilibrium jobs. With
+    !! \f$X\f$ the integrated tensorial perturbation variables \c X_2_int on
+    !! the perturbation grid, \f$X_\text{sol}\f$ these variables interpolated
+    !! on the solution grid and \f$V\f$ one vacuum matrix of \c n_bnd x \c n_bnd
+    !! real numbers, the steps of the solution driver hold:
+    !!  - the vacuum: \f$X\f$, \c G, \c H and the copy of \c H that the LU
+    !!  factorization overwrites, so \f$X + 3V\f$,
+    !!  - the redistribution: \f$X\f$, its copy, \c G and \c H, so
+    !!  \f$2X + 2V\f$,
+    !!  - the interpolation: the copy of \f$X\f$, \f$X_\text{sol}\f$, \c G
+    !!  and \c H, so \f$X + X_\text{sol} + 2V\f$.
+    !!
+    !! The result is the largest of these, \f$X + 2V + \max(V, X,
+    !! X_\text{sol})\f$, with the same 50% safety factor as calc_memory_eq()
+    !! and calc_memory_X(). The vacuum matrices stay allocated during the
+    !! solution of the eigenvalue problem, as the next Richardson level reuses
+    !! them.
+    !!
+    !! \return ierr
+    integer function calc_memory_sol(arr_size_X,arr_size_sol,n_bnd,mem_size) &
+        &result(ierr)
+        use X_utilities, only: calc_memory_X
+        use X_vars, only: n_mod_X
+        
+        character(*), parameter :: rout_name = 'calc_memory_sol'
+        
+        ! input / output
+        integer, intent(in) :: arr_size_X                                       !< number of normal points times field lines of the perturbation grid
+        integer, intent(in) :: arr_size_sol                                     !< number of normal points times field lines of the solution grid
+        integer, intent(in) :: n_bnd                                            !< number of points on the plasma boundary (0 without vacuum)
+        real(dp), intent(inout) :: mem_size                                     !< total size [MB]
+        
+        ! local variables
+        real(dp) :: mem_X                                                       ! integrated tensorial perturbation variables [MB]
+        real(dp) :: mem_X_sol                                                   ! idem, on the solution grid [MB]
+        real(dp) :: mem_vac                                                     ! one vacuum matrix [MB]
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ierr = calc_memory_X(2,arr_size_X,n_mod_X,mem_X)
+        CHCKERR('')
+        ierr = calc_memory_X(2,arr_size_sol,n_mod_X,mem_X_sol)
+        CHCKERR('')
+        mem_vac = (n_bnd*1._dp)**2*storage_size(1._dp)/8*1.E-6_dp*1.5_dp
+        
+        mem_size = mem_X + 2*mem_vac + max(mem_vac,mem_X,mem_X_sol)
+    end function calc_memory_sol
 end module sol_utilities
