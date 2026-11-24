@@ -79,8 +79,8 @@ combined over all ranks.
 - **`X_utilities`** — the pure mode-index logic: local-to-total secondary-
   index translation, the symmetric-storage necessity criterion, the
   contiguous HDF5 ranges of tensorial perturbation variables (pinning the
-  worked example from the `get_sec_X_range` documentation) and the mode-
-  range trimming.
+  worked example from the `get_sec_X_range` documentation) and the check
+  that two grids have the same rows of modes.
 - **`PB3D_utilities`** — the Richardson/parallel index arithmetic:
   `setup_par_id` checked against its docstring formulas, including the
   partition property (the per-level index sets of an interlaced parallel
@@ -135,6 +135,14 @@ combined over all ranks.
   \(f = 1 - r^2 + i\cos\theta\), its second-order convergence, and the
   singleton-dimension convention (a missing angular dimension contributes
   a full turn \(2\pi\)).
+- **`modes` (full-stack)** — the mode tables of `X_style` 2
+  (`X_ops::setup_modes`) for windows on the equilibrium points that move
+  up, down, up and then down (a minimum of the safety factor), down and
+  then up, and up and back down at one equilibrium point: at every point of
+  every grid the rows of `sec` hold the window once, each mode in its own
+  slot of `m`; every grid has the rows of the equilibrium grid, in the same
+  order; and a grid on which the window moves over its full width between
+  two points is refused.
 - **`read_HEL` (full-stack, needs the fixture)** — golden-file test of the
   HELENA equilibrium parser on the committed cbm18a fixture: grid sizes,
   profile values, MISHKA-normalization factors and flux-surface geometry

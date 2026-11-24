@@ -29,7 +29,9 @@ module X_vars
     !!      * 4: index in tables
     !!      where the number of modes can be bigger than the range if the safety
     !!      factor or  rotational transform is  non-monotonous so that  the same
-    !!      mode number can have multiple ranges.
+    !!      mode number can have multiple ranges. Every grid has the same rows,
+    !!      and a row is empty on a grid that has no point in its range (upper
+    !!      limit below lower limit).
     !!  - Flux normal coordinate: \c r_F.
     !!
     !! These are set up in setup_nm_x().

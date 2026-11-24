@@ -74,17 +74,6 @@ if(NOT Python3_EXECUTABLE AND EXISTS ${PROJECT_SOURCE_DIR}/.venv/bin/python)
     set(Python3_EXECUTABLE ${PROJECT_SOURCE_DIR}/.venv/bin/python)
 endif()
 
-# index logic of setup_modes (X_ops) replayed in python on the mode-window
-# sequences that broke the slot bookkeeping (issue #4, step 5)
-find_package(Python3 COMPONENTS Interpreter QUIET)
-if(Python3_Interpreter_FOUND)
-    add_test(NAME unit_setup_modes_sim
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reference/setup_modes_sim.py)
-    set_tests_properties(unit_setup_modes_sim PROPERTIES
-        PASS_REGULAR_EXPRESSION "PASS"
-        LABELS "unit")
-endif()
-
 #------------------------------------------------------------------------------
 # Smoke tests of the executables
 #------------------------------------------------------------------------------
@@ -225,6 +214,7 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_splines.f90
         fullstack/test_calc_int_vol.f90
         fullstack/test_read_HEL.f90
+        fullstack/test_modes.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -243,6 +233,7 @@ if(PB3D_BUILD_EXECUTABLES)
         vac_3d
         splines
         calc_int_vol
+        modes
     )
     foreach(suite IN LISTS PB3D_FULLSTACK_SUITES)
         add_test(NAME fullstack_${suite} COMMAND pb3d_fullstack_tests ${suite})

@@ -1029,29 +1029,42 @@ contains
     !! also the variables of the secondary modes
     !!  - sec,
     !! 
-    !! are set up  in the coordinates of  the grid passed. The  normal values of
-    !! this grid are saved as well, in
-    !!  - r_F.
+    !! are set up  in the coordinates of  the grid passed.
     !!
-    !! All variables  are tabulated in the  full normal grid. The  mode indices,
-    !! however, are  chosen so that  there is maximum overlap  between different
-    !! normal positions. This is trivial for \c  X_style 1 (prescribed), but for
-    !! \c X_style 2 (fast), this is best explained by an example:
+    !! All variables are tabulated in the full normal grid. For \c X_style 1
+    !! (prescribed) the modes are the same at every normal point. For \c
+    !! X_style 2 (fast) the lowest mode of the window at a normal point is the
+    !! linear interpolation of the window on the equilibrium points (\c
+    !! min_n_X or \c min_m_X), rounded. When the window moves by one, one
+    !! mode leaves it and another one enters. The window can move up and down
+    !! if the safety factor or rotational transform has an extremum, and then
+    !! the same mode can enter more than once.
     !!
-    !!  kd  m1 m2 m3
-    !!  ------------
-    !!   1  10 11 12 <- start
-    !!   2  10 11 12 <- no change in limits
-    !!   2  13 11 12 <- limits shift up by one
-    !!   3  13 11 12 <- no change in limits
-    !!   4  13 14 12 <- limits shift up by one
-    !!   5  16 14 15 <- limits shift up by two
-    !!   6  13 14 15 <- limits shift down by one
+    !! Every grid stores a mode in the same slot of \c n and \c m at all the
+    !! normal points where the mode is in the window:
+    !!
+    !!  kd  slot 1  slot 2  slot 3
+    !!  --------------------------
+    !!   1  10      11      12      <- start
+    !!   2  10      11      12      <- no change in limits
+    !!   3  13      11      12      <- limits shift up by one
+    !!   4  13      14      12      <- limits shift up by one
+    !!   5  16      14      15      <- limits shift up by two
+    !!   6  13      14      15      <- limits shift down by one
+    !!
+    !! \c sec has one row per mode and per normal range in which the mode is in
+    !! the window: mode number, first and last normal point, and slot. The rows
+    !! follow the moves of the window on the equilibrium points, so that every
+    !! grid has the same rows, in the same order. A row can then be empty on a
+    !! grid (last point before first point), when the grid has no point where
+    !! that part of the window applies: before the start or after the end of
+    !! the grid, or a short excursion of the window near an extremum of the
+    !! safety factor that falls between two grid points.
     !!
     !! This procedure makes use of the global variables
     !!  - \c min_m_X, max_m_X, min_n_X, max_m_X
     !!
-    !! that have to be set up using init_nm_x().
+    !! that have to be set up using init_modes().
     !!
     !! Optionally, \c n and \c m can be plot.
     !!
@@ -1059,7 +1072,6 @@ contains
     integer function setup_modes(mds,grid_eq,grid,plot_name) result(ierr)
         use num_vars, only: use_pol_flux_F, rank
         use X_vars, only: n_mod_X, min_n_X, min_m_X, max_n_X, max_m_X
-        use grid_utilities, only: trim_grid
         use eq_vars, only: max_flux_F
         use spline_utilities, only: spline
         
@@ -1072,16 +1084,17 @@ contains
         character(len=*), intent(in), optional :: plot_name                     !< name to be used when plotting \c n and \c m
         
         ! local variables
-        real(dp), allocatable :: min_nm_X(:)                                    ! interpolated minimum mode number
+        real(dp), allocatable :: min_nm_X(:)                                    ! interpolated lowest mode number
         real(dp), allocatable :: x_plot(:,:)                                    ! abscissa of plot
         integer, pointer :: nm_X(:,:)                                           ! either n or m
-        integer :: id, ld, kd                                                   ! counters
-        integer :: ld_loc                                                       ! shfited ld
+        integer :: id, jd, kd, ld                                               ! counters
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: ind_id                                                       ! current size of ind_tot
-        integer :: ld_shift                                                     ! shift in table indices
         integer :: mod_X_range                                                  ! total mode range
-        integer :: delta_ld                                                     ! change in total mode numbers
+        integer, allocatable :: w_eq(:)                                         ! lowest mode of the window at the equilibrium points
+        integer, allocatable :: w(:)                                            ! lowest mode of the window at the grid points
+        integer, allocatable :: p_eq(:)                                         ! number of moves of the window up to an equilibrium point
+        integer, allocatable :: p(:)                                            ! number of moves of the window up to a grid point
         integer, allocatable :: ind_cur(:)                                      ! current indices
         integer, allocatable :: ind_tot(:,:)                                    ! total index information, will be later cut to sec
         character(len=max_str_ln), allocatable :: plot_titles(:)                ! title for plots
@@ -1098,127 +1111,110 @@ contains
         call writo('Setting up general modes variables')
         call lvl_ud(1)
         
-        ! set up normal tabulation values
-        allocate(ind_tot(-grid%n(3)*n_mod_X:grid%n(3)*n_mod_X,4))               ! not quite absolute maximum but should never be reached
-        allocate(ind_cur(n_mod_X))                                              ! indices of total modes currently being treated
-        
         ! calculate n and m
         allocate(mds%n(grid%n(3),n_mod_X))
         allocate(mds%m(grid%n(3),n_mod_X))
         
-        ! auxiliary variable
+        ! auxiliary variables
         allocate(min_nm_X(grid%n(3)))
+        allocate(w(grid%n(3)))
+        allocate(p(grid%n(3)))
+        allocate(p_eq(grid_eq%n(3)))
+        allocate(ind_cur(n_mod_X))
         
         ! iterate over n (id=1) and m (id=2)
         do id = 1,2
-            ! point  nm_X, and  interpolate  mode minimum  (linear, to  preserve
-            ! form)
+            ! point nm_X, set the window on the equilibrium points and
+            ! interpolate it linearly to the grid points
             if (id.eq.1) then
                 nm_X => mds%n
                 mod_X_range = max_n_X(1)-min_n_X(1)                             ! assumes that this is true for all normal points
-                ierr = spline(grid_eq%r_F,min_n_X*1._dp,grid%r_F,min_nm_X,ord=1)
-                CHCKERR('')
+                w_eq = min_n_X
             else
                 nm_X => mds%m
                 mod_X_range = max_m_X(1)-min_m_X(1)                             ! assumes that this is true for all normal points
-                ierr = spline(grid_eq%r_F,min_m_X*1._dp,grid%r_F,min_nm_X,ord=1)
-                CHCKERR('')
+                w_eq = min_m_X
             end if
+            ierr = spline(grid_eq%r_F,w_eq*1._dp,grid%r_F,min_nm_X,ord=1)
+            CHCKERR('')
+            w = nint(min_nm_X)
             
-            !!! For non-monotonous tests:
-            !!!if (id .eq. 2) then
-                !!!min_nm_X(nint(grid%n(3)*0.7):grid%n(3)) = &
-                    !!!&2*min_nm_X(nint(grid%n(3)*0.7)) - &
-                    !!!&min_nm_X(nint(grid%n(3)*0.7):grid%n(3))
-            !!!end if
-            
-            ! initialize variables for first normal grid point
-            ld_shift = 0
-            ind_id = 0
-            do ld = 1,n_mod_X
-                nm_X(1,ld) = nint(min_nm_X(1)) + mod_X_range*(ld-1)/(n_mod_X-1)
-                ind_tot(ld,:) = [nm_X(1,ld),1,0,ld]
-                ind_id = ind_id + 1
-#if ldebug
-                if (debug_setup_modes) write(*,*) 'starting with', ld, ':', &
-                    &ind_tot(ld,:)
-#endif
-            end do
-            ind_cur = [(ld, ld=1,n_mod_X)]
-            
-            ! iterate over all next normal grid points
+            ! the window may not move over its full width between two points
             do kd = 2,grid%n(3)
-                ! update ld delta and shift
-                delta_ld = nint(min_nm_X(kd)) - nint(min_nm_X(kd-1))
-                ld_shift = ld_shift + delta_ld
-                
-                ! set n or m
-                do ld = 1,n_mod_X
-                    ! shift ld and wrap back to [1..n_mod_X]
-                    ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
-                    nm_X(kd,ld_loc) = nint(min_nm_X(kd)) + &
-                        &mod_X_range*(ld-1)/(n_mod_X-1)
-                end do
-                
-                ! if there was a shift, set new total index information
-                if (abs(delta_ld).gt.0) then
-#if ldebug
-                    if (debug_setup_modes) write(*,*) 'kd', kd, 'delta', &
-                        &delta_ld
-#endif
-                    do ld = 1,abs(delta_ld)
-                        if (delta_ld.gt.0) then                                 ! mode number has increased
-                            ind_tot(ind_cur(1),3) = kd - 1                      ! upper limit in normal range
-                            ind_tot(ind_id+ld,:) = [ &
-                                &ind_tot(ind_cur(n_mod_X),1) + 1, &             ! total mode number
-                                &kd, &                                          ! lower limit in normal range
-                                &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_cur(n_mod_X),1)+1-nm_X(1,1),&
-                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
-#if ldebug
-                            if (debug_setup_modes) then
-                                write(*,*) '    FINISHES', ind_cur(1), &
-                                    &':', ind_tot(ind_cur(1),:)
-                                write(*,*) '    STARTS', ind_id+ld, ':', &
-                                    &ind_tot(ind_id+ld,:) 
-                            end if
-#endif
-                            ind_cur = [ind_cur(2:n_mod_X),ind_id+ld]            ! add ind_id+ld at top
-                        else                                                    ! mode number has decreased
-                            ind_tot(ind_cur(n_mod_X),3) = kd - 1                ! upper limit normal range
-                            ind_tot(ind_id+ld,:) = [ &
-                                &ind_tot(ind_cur(1),1) - 1, &                   ! total mode number
-                                &kd, &                                          ! lower limit in normal range
-                                &0, &                                           ! initalize upper limit normal range
-                                &modulo(ind_tot(ind_cur(1),1)-1-nm_X(1,1),&
-                                &n_mod_X) + 1]                                  ! slot from the mode number, as nm_X does
-#if ldebug
-                            if (debug_setup_modes) then
-                                write(*,*) '    FINISHES', ind_cur(n_mod_X), &
-                                    &':', ind_tot(ind_cur(n_mod_X),:)
-                                write(*,*) '    STARTS', ind_id+ld, ':', &
-                                    &ind_tot(ind_id+ld,:) 
-                            end if
-#endif
-                            ind_cur = [ind_id+ld,ind_cur(1:n_mod_X-1)]          ! add ind_id+ld at bottom
-                        end if
-                    end do
-                    ind_id = ind_id+abs(delta_ld)
-#if ldebug
-                    if (debug_setup_modes) write(*,*) '    current indices:', &
-                        &ind_cur
-#endif
+                if (abs(w(kd)-w(kd-1)).gt.n_mod_X) then
+                    ierr = 1
+                    err_msg = 'No mode is kept between normal points '//&
+                        &trim(i2str(kd-1))//' and '//trim(i2str(kd))//&
+                        &': increase n_mod_X or refine the grid'
+                    CHCKERR(err_msg)
                 end if
             end do
             
-            ! close last total modes
-            do ld = 1,size(ind_cur)
-                ind_tot(ind_cur(ld),3) = grid%n(3)
+            ! set n or m: a mode keeps its slot as long as it is in the window
+            do kd = 1,grid%n(3)
+                do ld = 1,n_mod_X
+                    nm_X(kd,modulo(ld+w(kd)-w(1)-1,n_mod_X)+1) = &
+                        &w(kd) + mod_X_range*(ld-1)/(n_mod_X-1)
+                end do
+            end do
+            
+            ! number of moves of the window up to every equilibrium point and
+            ! up to every grid point
+            p_eq(1) = 0
+            do jd = 2,grid_eq%n(3)
+                p_eq(jd) = p_eq(jd-1) + abs(w_eq(jd)-w_eq(jd-1))
+            end do
+            jd = 1
+            do kd = 1,grid%n(3)
+                do while (jd.lt.grid_eq%n(3)-1)
+                    if (grid%r_F(kd).le.grid_eq%r_F(jd+1)) exit
+                    jd = jd + 1
+                end do
+                p(kd) = p_eq(jd) + abs(w(kd)-w_eq(jd))
+            end do
+            
+            ! rows of sec from the moves of the window on the equilibrium
+            ! points: when the window moves by one, the mode that leaves it
+            ! ends after the previous move and the mode that enters starts
+            n_mod_tot = n_mod_X + p_eq(grid_eq%n(3))
+            allocate(ind_tot(n_mod_tot,4))
+            do ld = 1,n_mod_X
+                ind_tot(ld,1:2) = [w_eq(1)+mod_X_range*(ld-1)/(n_mod_X-1),0]
+            end do
+            ind_cur = [(ld, ld=1,n_mod_X)]                                      ! rows in the window, from low to high mode
+            ind_id = n_mod_X
+            do jd = 2,grid_eq%n(3)
+                do ld = 1,abs(w_eq(jd)-w_eq(jd-1))
+                    ind_id = ind_id + 1                                         ! move ind_id - n_mod_X of the window
+                    if (w_eq(jd).gt.w_eq(jd-1)) then                            ! window moves up
+                        ind_tot(ind_cur(1),3) = ind_id - n_mod_X - 1
+                        ind_tot(ind_id,1:2) = &
+                            &[ind_tot(ind_cur(n_mod_X),1)+1,ind_id-n_mod_X]
+                        ind_cur = [ind_cur(2:n_mod_X),ind_id]
+                    else                                                        ! window moves down
+                        ind_tot(ind_cur(n_mod_X),3) = ind_id - n_mod_X - 1
+                        ind_tot(ind_id,1:2) = &
+                            &[ind_tot(ind_cur(1),1)-1,ind_id-n_mod_X]
+                        ind_cur = [ind_id,ind_cur(1:n_mod_X-1)]
+                    end if
+                end do
+            end do
+            ind_tot(ind_cur,3) = p_eq(grid_eq%n(3))
+            
+            ! convert the moves to the first and last grid point of every row
+            ! and set the slot from the mode number, as nm_X does
+            do ld = 1,n_mod_tot
+                ind_tot(ld,2:3) = [count(p.lt.ind_tot(ld,2))+1,&
+                    &count(p.le.ind_tot(ld,3))]
+                ind_tot(ld,4) = modulo(ind_tot(ld,1)-nm_X(1,1),n_mod_X) + 1
+#if ldebug
+                if (debug_setup_modes) write(*,*) 'row', ld, ':', ind_tot(ld,:)
+#endif
             end do
             
             ! check that both tables agree: over its normal range, every mode
             ! of ind_tot must find its own number in its slot of nm_X
-            do ld = 1,ind_id
+            do ld = 1,n_mod_tot
                 do kd = ind_tot(ld,2),ind_tot(ld,3)
                     if (nm_X(kd,ind_tot(ld,4)).ne.ind_tot(ld,1)) then
                         ierr = 1
@@ -1234,9 +1230,10 @@ contains
             ! save in index information
             if ((use_pol_flux_F .and. id.eq.2) .or. &
                 &(.not.use_pol_flux_F .and. id.eq.1)) then
-                allocate(mds%sec(ind_id,4))
-                mds%sec = ind_tot(1:ind_id,:)
+                allocate(mds%sec(n_mod_tot,4))
+                mds%sec = ind_tot
             end if
+            deallocate(ind_tot)
         end do
         
         ! master plots output if requested
@@ -1296,8 +1293,8 @@ contains
             call draw_ex(plot_titles,plot_name_tot,n_mod_tot+2,1,.false.)
             plot_name_tot = 'modes_sec_flux_'//trim(plot_name)
             do ld = 1,n_mod_tot
-                y_plot(:,ld) = grid%r_F(mds%sec(ld,2))*2*pi/max_flux_F          ! lower boundary
-                y_plot(n_mod_tot,ld) = grid%r_F(mds%sec(ld,3))*2*pi/max_flux_F  ! upper boundary
+                y_plot(:,ld) = grid%r_F(min(mds%sec(ld,2),grid%n(3)))*2*pi/max_flux_F ! lower boundary
+                y_plot(n_mod_tot,ld) = grid%r_F(max(mds%sec(ld,3),1))*2*pi/max_flux_F ! upper boundary
             end do
             call print_ex_2D(plot_titles(1:n_mod_tot),plot_name_tot,&
                 &y_plot(:,1:n_mod_tot),x=x_plot(:,1:n_mod_tot),draw=.false.)
@@ -1309,16 +1306,6 @@ contains
 #endif
             
             call lvl_ud(-1)
-        end if
-        
-        ! test whether all modes have at least one normal position
-        if (minval(mds%sec(:,3)-mds%sec(:,2)+1).lt.1) then
-            ierr = 1
-            call writo('Mode '//&
-                &trim(i2str(minloc(mds%sec(:,3)-mds%sec(:,2),1)))//&
-                &' is not present in any flux surface')
-            err_msg = 'Aument number of modes or choose finer equilibrium'
-            CHCKERR(err_msg)
         end if
         
         ! clean up

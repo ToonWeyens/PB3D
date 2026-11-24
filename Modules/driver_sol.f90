@@ -271,15 +271,16 @@ contains
     !! slightly differ from the input ranges, in which case extrapolation can be
     !! done if the method allows for it.
     !!
-    !! \note If the input grid is too  coarse, but the interpolated grid is not,
-    !! it is in  theory possible that there are mode  numbers and therefore mode
-    !! number pairs  that exist  in the  input grid,  though they  do so  in the
-    !! interpolated  grid.  In  this  case,  they  can  not  be  calculated  and
-    !! are  currently  set  to  zero. However,  the  current  implementation  of
-    !! setup_modes()  produces an  error if  less than  the full  range of  mode
-    !! numbers is accurately present.
+    !! Row \c k of \c sec  of the input grid and row \c k of  the output grid
+    !! belong to the same mode, because setup_modes() builds the rows of every
+    !! grid from the window on the equilibrium points.
+    !!
+    !! \note A mode pair  can have output points but no input  points, when the
+    !! window moves by two  or more between two points of the  input grid. It
+    !! is then set to zero.  setup_modes() stops when the window moves by more
+    !! than \c n_mod_X between two points of a grid.
     integer function interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o) result(ierr)
-        use X_utilities, only: is_necessary_X, trim_modes
+        use X_utilities, only: is_necessary_X, check_same_modes
         use X_vars, only: n_mod_X
         use num_utilities, only: c
         use sol_utilities, only: interp_V_spline
@@ -305,7 +306,6 @@ contains
         integer :: c_loc_o(2)                                                   ! local output c for symmetric and asymmetric variables
         integer :: n_mod_tot                                                    ! total amount of modes
         integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
-        integer :: id_lim_i(2), id_lim_o(2)                                     ! limits on total modes
         integer, pointer :: sec_i_loc(:,:), sec_o_loc(:,:)                      ! pointers to secondary mode variables
         real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
@@ -340,12 +340,11 @@ contains
         X_o%KV_1 = 0._dp
         X_o%KV_2 = 0._dp
         
-        ! limit input modes to output modes
-        ! (X grid should comprise sol grid)
-        ierr = trim_modes(mds_i,mds_o,id_lim_i,id_lim_o)
+        ! the input and output grid have the same rows of modes
+        ierr = check_same_modes(mds_i,mds_o)
         CHCKERR('')
-        sec_i_loc => mds_i%sec(id_lim_i(1):id_lim_i(2),:)
-        sec_o_loc => mds_o%sec(id_lim_o(1):id_lim_o(2),:)
+        sec_i_loc => mds_i%sec
+        sec_o_loc => mds_o%sec
         
         ! select all mode number combinations of interpolated grid
         n_mod_tot = size(sec_o_loc,1)
@@ -358,17 +357,6 @@ contains
 #endif
         do m = 1,n_mod_tot
             do k = 1,n_mod_tot
-#if ldebug
-                ! test whether input and output mode numbers are consistent
-                if (sec_i_loc(k,1).ne.sec_o_loc(k,1) .or. &
-                    &sec_i_loc(m,1).ne.sec_o_loc(m,1)) then
-                    ierr = 1
-                    err_msg = 'For ('//trim(i2str(k))//','//trim(i2str(m))//&
-                        &'), no consistency for modes in grid_i and grid_o'
-                    CHCKERR(err_msg)
-                end if
-#endif
-                
                 ! set input and output grid normal limits for mode pair (k,m)
                 kdl_i(1) = max(sec_i_loc(k,2),sec_i_loc(m,2))
                 kdl_i(2) = min(sec_i_loc(k,3),sec_i_loc(m,3))

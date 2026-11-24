@@ -68,7 +68,7 @@ contains
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
         use num_utilities, only: con2dis
         use spline_utilities, only: spline
-        use X_utilities, only: trim_modes
+        use X_utilities, only: check_same_modes
 #if ldebug
         use eq_vars, only: max_flux_F
         use num_utilities, only: calc_int
@@ -103,7 +103,6 @@ contains
         integer :: id, jd, kd                                                   ! counters
         integer :: XUQ_dims(4)                                                  ! dimensions of XUQ
         integer :: kdl_X(2), kdl_sol(2)                                         ! limits on normal index for a mode in X and sol grids
-        integer :: id_lim_X(2), id_lim_sol(2)                                   ! limits on total modes
         integer, pointer :: sec_X_loc(:,:), sec_sol_loc(:,:)                    ! pointers to secondary mode variables
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent in solution grid
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
@@ -150,20 +149,13 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! limit input modes to output modes
-        ! (X grid should comprise sol grid)
-        ierr = trim_modes(mds_X,mds_sol,id_lim_X,id_lim_sol)
+        ! the perturbation and solution grid have the same rows of modes
+        ierr = check_same_modes(mds_X,mds_sol)
         CHCKERR('')
-        sec_X_loc => mds_X%sec(id_lim_X(1):id_lim_X(2),:)
-        sec_sol_loc => mds_sol%sec(id_lim_sol(1):id_lim_sol(2),:)
+        sec_X_loc => mds_X%sec
+        sec_sol_loc => mds_sol%sec
         
         n_mod_tot = size(sec_X_loc,1)
-        
-        if (size(sec_X_loc,1).ne.size(sec_sol_loc,1)) then
-            ierr = 1
-            err_msg = 'modes X and sol have inconsistent sizes'
-            CHCKERR(err_msg)
-        end if
         
         ! set up normalized sqrt(sol_val)
         sqrt_sol_val_norm = sqrt(sol%val(X_id))
@@ -285,14 +277,6 @@ contains
         
         ! iterate over all secondary modes
         do m = 1,n_mod_tot
-            ! test
-            if (sec_X_loc(m,1).ne.sec_sol_loc(m,1)) then
-                ierr = 1
-                err_msg = 'For mode '//trim(i2str(m))//&
-                    &', no consistency for modes in grid_X and grid_sol'
-                CHCKERR(err_msg)
-            end if
-            
             ! set up and normal limits
             kdl_X = sec_X_loc(m,2:3)
             kdl_sol = sec_sol_loc(m,2:3)
