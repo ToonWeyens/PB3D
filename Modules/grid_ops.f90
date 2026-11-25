@@ -681,9 +681,10 @@ contains
                 ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
                 CHCKERR('')
                 
-                ! set Flux variables
+                ! set Flux variables, inside the range of the equilibrium grid
                 grid_X%r_F = r_F_X
-                grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
+                call round_to_eq_range(grid_X%r_F,grid_eq%r_F)
+                grid_X%loc_r_F = grid_X%r_F(X_limits(1):X_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_X%r_F,grid_X%r_E,&
@@ -752,9 +753,10 @@ contains
                     &divided=n_procs.gt.1)
                 CHCKERR('')
                 
-                ! set Flux variables
+                ! set Flux variables, inside the range of the equilibrium grid
                 grid_sol%r_F = r_F_sol
-                grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
+                call round_to_eq_range(grid_sol%r_F,grid_eq%r_F)
+                grid_sol%loc_r_F = grid_sol%r_F(sol_limits(1):sol_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_sol%r_F,grid_sol%r_E,&
@@ -775,6 +777,33 @@ contains
                 grid_sol%loc_r_E = grid_X%r_E(sol_limits(1):sol_limits(2))
         end select
     end function setup_grid_sol
+    
+    !> Puts every point of a normal grid that lies outside the range of the
+    !! equilibrium grid by less than \c tol_con2dis times the absolute value of
+    !! the nearest end point of that range on that end point.
+    !!
+    !! calc_norm_range() selects the equilibrium points of a run with
+    !! con2dis(), which takes a limit within this tolerance of an equilibrium
+    !! point for that point. The first or last point of the solution grid can
+    !! then lie outside the equilibrium grid by rounding, and coord_F2E()
+    !! refuses a point outside it by any amount. Points farther outside are
+    !! left as they are. \c r_F_eq can increase or decrease.
+    subroutine round_to_eq_range(r_F,r_F_eq)
+        use num_utilities, only: tol_con2dis
+        
+        ! input / output
+        real(dp), intent(inout) :: r_F(:)                                       !< points of the normal grid
+        real(dp), intent(in) :: r_F_eq(:)                                       !< points of the equilibrium grid
+        
+        ! local variables
+        real(dp) :: lim(2)                                                      ! lower and upper end of r_F_eq
+        
+        lim = [minval(r_F_eq),maxval(r_F_eq)]
+        where (r_F.lt.lim(1) .and. r_F.ge.lim(1)-tol_con2dis*abs(lim(1))) &
+            &r_F = lim(1)
+        where (r_F.gt.lim(2) .and. r_F.le.lim(2)+tol_con2dis*abs(lim(2))) &
+            &r_F = lim(2)
+    end subroutine round_to_eq_range
     
     !> Calculate equilibrium grid that follows magnetic field lines.
     !!

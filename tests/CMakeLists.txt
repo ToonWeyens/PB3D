@@ -225,6 +225,7 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_splines.f90
         fullstack/test_calc_int_vol.f90
         fullstack/test_read_HEL.f90
+        fullstack/test_norm_range.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -324,15 +325,18 @@ if(NOT PB3D_FIXTURE_DIR AND
     endif()
 endif()
 
-# the read_HEL golden-file suite needs the fixture, so it is registered
-# here rather than with the other fullstack suites above
+# the read_HEL golden-file suite and the norm_range suite (end points of the
+# solution grid, issue #88) need the fixture, so they are registered here
+# rather than with the other fullstack suites above
 if(TARGET pb3d_fullstack_tests AND PB3D_FIXTURE_DIR)
     if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
-        add_test(NAME fullstack_read_HEL
-            COMMAND pb3d_fullstack_tests read_HEL)
-        set_tests_properties(fullstack_read_HEL PROPERTIES
-            ENVIRONMENT "${PB3D_TEST_MPI_ENV};PB3D_FIXTURE_DIR=${PB3D_FIXTURE_DIR}"
-            LABELS "fullstack")
+        foreach(suite IN ITEMS read_HEL norm_range)
+            add_test(NAME fullstack_${suite}
+                COMMAND pb3d_fullstack_tests ${suite})
+            set_tests_properties(fullstack_${suite} PROPERTIES
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV};PB3D_FIXTURE_DIR=${PB3D_FIXTURE_DIR}"
+                LABELS "fullstack")
+        endforeach()
     endif()
 endif()
 

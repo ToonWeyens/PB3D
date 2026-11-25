@@ -14,12 +14,13 @@ module num_utilities
         &check_deriv, calc_inv, calc_mult, calc_aux_utilities, derivs, &
         &con2dis, dis2con, round_with_tol, conv_mat, is_sym, con, &
         &calc_coeff_fin_diff, calc_end_weights, fac, d, m, f, bubble_sort, &
-        &GCD, LCM, order_per_fun, shift_F, solve_vand
+        &GCD, LCM, order_per_fun, shift_F, solve_vand, tol_con2dis
 #if ldebug
     public debug_con2dis_reg, debug_calc_coeff_fin_diff, calc_D2_smooth
 #endif
     
     ! global variables
+    real(dp), parameter :: tol_con2dis = 1.E-8_dp                               !< relative tolerance of con2dis() for a grid point
     integer, allocatable :: d(:,:,:)                                            !< 1-D array indices of derivatives
     integer, allocatable :: m(:,:)                                              !< 1-D array indices of metric indices
     integer, allocatable :: f(:,:)                                              !< 1-D array indices of Fourier mode combination indices
@@ -1230,7 +1231,6 @@ contains
         integer :: id                                                           ! counter
         real(dp) :: pt_c_loc                                                    ! local pt_c
         character(len=max_str_ln) :: err_msg                                    ! error message
-        real(dp), parameter :: tol = 1.E-8_dp                                   ! tolerance for comparisons
         
         ! initialize ierr
         ierr = 0
@@ -1265,23 +1265,25 @@ contains
         ind_lo = 0
         ind_hi = size_c+1
         do id = 1,size_c
-            if (pt_c_loc+tol*abs(pt_c_loc) .ge. var_c_loc(id)) then
+            if (pt_c_loc+tol_con2dis*abs(pt_c_loc) .ge. var_c_loc(id)) then
                 ind_lo = id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
                     &trim(i2str(id))//'/'//trim(i2str(size_c))//', '//&
-                    &trim(r2strt(pt_c_loc))//' + '//trim(r2strt(tol))//&
+                    &trim(r2strt(pt_c_loc))//' + '//&
+                    &trim(r2strt(tol_con2dis))//&
                     &'*abs('//trim(r2strt(pt_c_loc))//') >= '//&
                     &trim(r2strt(var_c_loc(id)))//' => ['//&
                     &trim(i2str(ind_lo))//','//trim(i2str(ind_hi))//']')
 #endif
             end if
-            if (pt_c_loc-tol*abs(pt_c_loc) .le. var_c_inv(id)) then
+            if (pt_c_loc-tol_con2dis*abs(pt_c_loc) .le. var_c_inv(id)) then
                 ind_hi = size_c+1-id
 #if ldebug 
                 if (debug_con2dis_reg) call writo('for iteration '//&
                     &trim(i2str(id))//'/'//trim(i2str(size_c))//', '//&
-                    &trim(r2strt(pt_c_loc))//' - '//trim(r2strt(tol))//&
+                    &trim(r2strt(pt_c_loc))//' - '//&
+                    &trim(r2strt(tol_con2dis))//&
                     &'*abs('//trim(r2strt(pt_c_loc))//') < '//&
                     &trim(r2strt(var_c_inv(id)))//' => ['//&
                     &trim(i2str(ind_lo))//','//trim(i2str(ind_hi))//']')

@@ -141,6 +141,20 @@ combined over all ranks.
   pinned; exact-by-construction relations (\(\iota = 1/q\),
   \(\Phi' = q\,\Psi'\), \(\Psi' = 2\pi\)) and a trapezoidal cross-check of
   \(\Phi = \int q \,\text{d}\Psi\) as implementation-independent guards.
+- **`norm_range` (full-stack, needs the fixture, issue #88)** — the end
+  points of the solution grid. `min_r_sol` on each point of the cbm18a
+  fixture with \(0.60 \le s \le 0.80\), and `max_r_sol` on each point with
+  \(0.80 \le s \le 0.90\), \(s\) being the square root of the normalized
+  poloidal flux, through `calc_norm_range`, `setup_grid_X` and
+  `setup_grid_sol` for `X_grid_style` 1, 2 and 3, with the flux of the file
+  and with the flux negated (a decreasing normal coordinate): an end point
+  of the solution grid that lies outside the equilibrium grid by rounding
+  (25 of the 161 and 29 of the 81 cases on the Mac) is put on the end point
+  of the equilibrium grid, and no other point changes. On a synthetic grid,
+  increasing and decreasing, an end point outside by one unit in the last
+  place or by half of `tol_con2dis` is put on the end point, and one
+  outside by twice `tol_con2dis` or by 1e-6 of its value makes the set-up
+  return an error. All three tests fail without the change of issue #88.
 - **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
   analytical circular torus covered by field lines \(\zeta = \alpha +
   q\theta\):
