@@ -332,7 +332,7 @@ contains
     !!
     !! \return ierr
     integer function start_SLEPC(n_r_sol) result(ierr)
-        use num_vars, only: n_procs, sol_n_procs
+        use num_vars, only: n_procs
         use files_ops, only: opt_args
         
         character(*), parameter :: rout_name = 'start_SLEPC'
@@ -366,8 +366,6 @@ contains
         ! output
         call writo('slepc started with '//trim(i2str(n_procs))&
             &//' processes')
-        if (sol_n_procs.lt.n_procs) call writo('(but only '//&
-            &trim(i2str(sol_n_procs))//' processes will be used)')
         
         call lvl_ud(-1)
         
@@ -401,15 +399,13 @@ contains
     !! \f$\overline{\text{B}}\f$  in  the  EV  problem  \f$  \overline{\text{A}}
     !! \vec{X} = \lambda \overline{\text{B}} \vec{X}. \f$
     !!
-    !! The matrices are set up in the solution grid, so some processes might not
-    !! have any  part in the storage  thereof (if \c sol_n_procs  < \c n_procs),
-    !! but each process sets  up the part of the grid  that corresponds to their
-    !! own normal range in the solution grid.
+    !! The matrices are set up in the solution grid: each process sets up the
+    !! part that corresponds to its own normal range in the solution grid.
     !!
     !! \return ierr
     integer function setup_mats(mds,grid_sol,X,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, matrix_SLEPC_style, &
-            &rank, sol_n_procs, BC_style
+            &BC_style
         use grid_utilities, only: trim_grid
         use SLEPC_utilities, only: insert_block_mat
         use X_vars, only: n_mod_X
@@ -485,11 +481,7 @@ contains
         CHCKERR('')
         
         ! set up loc_n_r and n_r
-        if (rank.lt.sol_n_procs) then
-            loc_n_r = grid_sol_trim%loc_n_r
-        else
-            loc_n_r = 0
-        end if
+        loc_n_r = grid_sol_trim%loc_n_r
         n_r = grid_sol_trim%n(3)
         
         ! set up bulk matrix absolute limits
@@ -641,19 +633,17 @@ contains
             CHCKERR(err_msg)
             r_sol_start = r_sol_start/n_mod_X                                   ! count per block
             r_sol_end = r_sol_end/n_mod_X                                       ! count per block
-            if (rank.lt.sol_n_procs) then
-                if (grid_sol_trim%i_min.ne.r_sol_start+1) then
-                    ierr = 1
-                    err_msg = 'start of matrix in this process does not &
-                        &coincide with tabulated value'
-                    CHCKERR(err_msg)
-                end if
-                if (grid_sol_trim%i_max.ne.r_sol_end) then
-                    ierr = 1
-                    err_msg = 'end of matrix in this process does not &
-                        &coincide with tabulated value'
-                    CHCKERR(err_msg)
-                end if
+            if (grid_sol_trim%i_min.ne.r_sol_start+1) then
+                ierr = 1
+                err_msg = 'start of matrix in this process does not &
+                    &coincide with tabulated value'
+                CHCKERR(err_msg)
+            end if
+            if (grid_sol_trim%i_max.ne.r_sol_end) then
+                ierr = 1
+                err_msg = 'end of matrix in this process does not &
+                    &coincide with tabulated value'
+                CHCKERR(err_msg)
             end if
             
             ! allocate local block
@@ -878,43 +868,38 @@ contains
             ! initialize helper variable
             allocate(col_lims(loc_n_r,2)); col_lims = 0
             
-            if (rank.lt.sol_n_procs) then
-                ! set (half) stencil size: ndps points to the left, none to the
-                ! right
-                st_size = [ndps,0]
-                
-                ! Set column limits of nonzero columns per row
-                !   At row  i the largest nonzero  column is the one  due to the
-                !   row  at i+st_size(1),  as this  one will  work back  at most
-                !   st_size(1)  places.  The  last  column that  this  row  will
-                !   contribute to  is st_size(2)  further, which  makes for  i +
-                !   sum(st_size). For the lower bound  a similar argument can be
-                !   constructed.
-                do kd = 1,loc_n_r
-                    col_lims(kd,1) = max(kd+i_lims(1)-1-sum(st_size),1)
-                    col_lims(kd,2) =  min(kd+i_lims(1)-1+sum(st_size),n_r)
-                end do
-                
-                ! calculate number of total nonzero entries:
-                !   Number of nonzeros columns.
-                tot_nz = col_lims(:,2) - col_lims(:,1) + 1
-                
-                ! calculate number of nonzero off-diagonal entries
-                !   For row  i, this  is equal  to the  number of  elements with
-                !   column index greater than  the maximum row index (i_lims(2))
-                !   plus the number of elements with column index lower than the
-                !   minimum row index (i_lims(1)).
-                do kd = 1,loc_n_r
-                    o_nz(kd) = max(0,i_lims(1)-col_lims(kd,1)) + &
-                        &max(0,col_lims(kd,2)-i_lims(2))
-                end do
-                
-                ! calculate number of nonzero diagonal entries
-                d_nz = tot_nz-o_nz
-            else
-                d_nz = 0
-                o_nz = 0
-            end if
+            ! set (half) stencil size: ndps points to the left, none to the
+            ! right
+            st_size = [ndps,0]
+            
+            ! Set column limits of nonzero columns per row
+            !   At row  i the largest nonzero  column is the one  due to the
+            !   row  at i+st_size(1),  as this  one will  work back  at most
+            !   st_size(1)  places.  The  last  column that  this  row  will
+            !   contribute to  is st_size(2)  further, which  makes for  i +
+            !   sum(st_size). For the lower bound  a similar argument can be
+            !   constructed.
+            do kd = 1,loc_n_r
+                col_lims(kd,1) = max(kd+i_lims(1)-1-sum(st_size),1)
+                col_lims(kd,2) =  min(kd+i_lims(1)-1+sum(st_size),n_r)
+            end do
+            
+            ! calculate number of total nonzero entries:
+            !   Number of nonzeros columns.
+            tot_nz = col_lims(:,2) - col_lims(:,1) + 1
+            
+            ! calculate number of nonzero off-diagonal entries
+            !   For row  i, this  is equal  to the  number of  elements with
+            !   column index greater than  the maximum row index (i_lims(2))
+            !   plus the number of elements with column index lower than the
+            !   minimum row index (i_lims(1)).
+            do kd = 1,loc_n_r
+                o_nz(kd) = max(0,i_lims(1)-col_lims(kd,1)) + &
+                    &max(0,col_lims(kd,2)-i_lims(2))
+            end do
+            
+            ! calculate number of nonzero diagonal entries
+            d_nz = tot_nz-o_nz
             
             ! clean up
             deallocate(tot_nz)
@@ -1773,8 +1758,7 @@ contains
                 if (BC_style(2).eq.2) then
                     ! X_edge* vac%res X_edge, by the process with the edge point
                     E_vac = 0._dp
-                    if (loc_n_r.gt.0 .and. grid_sol_trim%i_max.eq.n_r .and. &
-                        &allocated(vac%res)) &
+                    if (grid_sol_trim%i_max.eq.n_r .and. allocated(vac%res)) &
                         &E_vac = dot_product(sol_vec_loc(:,loc_n_r),&
                         &matmul(vac%res,sol_vec_loc(:,loc_n_r)))
                     ierr = get_ser_var([E_vac],E_vac_tot,scatter=.true.)

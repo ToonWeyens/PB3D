@@ -98,8 +98,7 @@ contains
     !! so that the processes  have to communicate to treat the whole grid. It has
     !! to be the same on every process and can therefore not be derived from the
     !! local limits: a process  whose part, with its ghost regions,  is the whole
-    !! grid is  part of a  divided grid as well, and  so is every process  of the
-    !! solution grid when only a subset of the processes is used in SLEPC.
+    !! grid is part of a divided grid as well.
     !!
     !! \return ierr
     integer function init_grid(grid,n,i_lim,divided) result(ierr)

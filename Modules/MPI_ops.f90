@@ -292,7 +292,7 @@ contains
         use num_vars, only: max_str_ln, ltest, check_vac, vac_diag_style, &
             &max_it_zero, rank, &
             &max_it_rich, tol_zero, n_procs, n_sol_requested, tol_rich, &
-            &max_nr_backtracks_HH, sol_n_procs, &
+            &max_nr_backtracks_HH, &
             &retain_all_sol, plot_flux_q, plot_magn_grid, plot_B, plot_J, &
             &plot_kappa, plot_sol_xi, plot_sol_Q, plot_E_rec, no_plots, &
             &plot_grid_style, n_sol_plotted, n_theta_plot, n_zeta_plot, &
@@ -376,8 +376,6 @@ contains
             CHCKERR(err_msg)
             call MPI_Bcast(max_tot_mem,1,MPI_DOUBLE_PRECISION,0,&
                 &MPI_Comm_world,ierr)
-            CHCKERR(err_msg)
-            call MPI_Bcast(sol_n_procs,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)
             call MPI_Bcast(n_theta_plot,1,MPI_INTEGER,0,MPI_Comm_world,ierr)
             CHCKERR(err_msg)

@@ -1622,10 +1622,6 @@ contains
     !! is not possible, as with fewer points than processes, an error is
     !! returned.
     !!
-    !! Processes at the end that  hold only the last point of the process before
-    !! them take no part in the division and keep that point. This is the case
-    !! for the solution grid when fewer processes solve than run.
-    !!
     !! A grid that is not divided is not cut: the trimmed grid is the part that
     !! this process holds.
     !!
@@ -1666,7 +1662,6 @@ contains
         integer :: i_lim_tot(2)                                                 ! limits of the whole output grid in the input grid
         integer :: n_out(3)                                                     ! n of output grid
         integer :: id                                                           ! counter
-        integer :: n_div                                                        ! nr. of processes between which the grid is divided
         character(len=max_str_ln) :: err_msg                                    ! error message
 
         ! initialize ierr
@@ -1683,46 +1678,33 @@ contains
             ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
             CHCKERR('')
 
-            ! processes at the end that hold only the last point of the
-            ! process before them take no part in the division
-            n_div = n_procs
-            do id = n_procs,2,-1
-                if (tot_i_min(id).ne.tot_i_max(id) .or. &
-                    &tot_i_min(id).ne.tot_i_max(id-1)) exit
-                n_div = id-1
-            end do
-
             ! set first index of trimmed output grid of every process (not yet
             ! shifted by first proc min): middle of the overlap with the
             ! previous process, then made increasing and inside the ranges
-            allocate(i_start(n_div+1))
+            allocate(i_start(n_procs+1))
             i_start(1) = tot_i_min(1)
-            i_start(n_div+1) = tot_i_max(n_div)+1
-            do id = 2,n_div
+            i_start(n_procs+1) = tot_i_max(n_procs)+1
+            do id = 2,n_procs
                 i_start(id) = max(tot_i_min(id)+&
                     &ceiling((tot_i_max(id-1)-tot_i_min(id)+1._dp)/2),&
                     &i_start(id-1)+1)
             end do
-            do id = n_div,2,-1
+            do id = n_procs,2,-1
                 i_start(id) = min(i_start(id),i_start(id+1)-1,tot_i_max(id-1)+1)
             end do
-            do id = 1,n_div
+            do id = 1,n_procs
                 if (i_start(id).lt.tot_i_min(id) .or. &
                     &i_start(id+1).le.i_start(id) .or. &
                     &i_start(id+1)-1.gt.tot_i_max(id)) then
                     ierr = 1
-                    err_msg = 'The '//trim(i2str(i_start(n_div+1)-&
+                    err_msg = 'The '//trim(i2str(i_start(n_procs+1)-&
                         &i_start(1)))//' normal points cannot be divided &
-                        &between '//trim(i2str(n_div))//' processes'
+                        &between '//trim(i2str(n_procs))//' processes'
                     CHCKERR(err_msg)
                 end if
             end do
-            if (rank.lt.n_div) then
-                i_lim_out = [i_start(rank+1),i_start(rank+2)-1]
-            else
-                i_lim_out = [grid_in%i_min,grid_in%i_max]
-            end if
-            i_lim_tot = [tot_i_min(1),tot_i_max(n_div)]
+            i_lim_out = [i_start(rank+1),i_start(rank+2)-1]
+            i_lim_tot = [tot_i_min(1),tot_i_max(n_procs)]
         else
             i_lim_out = [grid_in%i_min,grid_in%i_max]
             i_lim_tot = i_lim_out

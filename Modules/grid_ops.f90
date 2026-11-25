@@ -381,12 +381,9 @@ contains
         !!
         !! The normal range is determined by simply dividing the solution range,
         !! a ghost range is required.
-        !!
-        !! By default, this routine uses  \c sol_n_procs processes, but this can
-        !! be overruled.
-        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol,n_procs) &
+        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
-            use num_vars, only: sol_n_procs, rank, norm_disc_prec_sol
+            use num_vars, only: n_procs, rank, norm_disc_prec_sol
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
             use num_utilities, only: round_with_tol
@@ -397,38 +394,27 @@ contains
             ! input / output
             integer, intent(inout) :: sol_limits(2)                             !< min. and max. index of sol grid for this process
             real(dp), intent(inout) :: r_F_sol(:)                               !< solution r_F
-            integer, intent(in), optional :: n_procs                            !< how many processes used
             
             ! local variables
             integer :: id                                                       ! counter
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
-            integer :: n_procs_loc                                              ! local n_procs
             
             ! initialize ierr
             ierr = 0
             
-            ! set local n_procs
-            n_procs_loc = sol_n_procs
-            if (present(n_procs)) n_procs_loc = n_procs
-            
             ! set loc_n_r_sol
-            allocate(loc_n_r_sol(n_procs_loc))
-            loc_n_r_sol = n_r_sol/n_procs_loc                                   ! number of radial points on this processor
-            loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) = &
-                &loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) + 1                    ! add a mode to if there is a remainder
+            allocate(loc_n_r_sol(n_procs))
+            loc_n_r_sol = n_r_sol/n_procs                                       ! number of radial points on this processor
+            loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
+                &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
             
             ! set sol_limits
-            if (rank.lt.n_procs_loc) then
-                sol_limits = &
-                    &[sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
-                
-                ! ghost regions of width 2*norm_disc_prec_sol
-                sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
-                sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
-            else
-                sol_limits(1) = n_r_sol
-                sol_limits(2) = n_r_sol
-            end if
+            sol_limits = &
+                &[sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
+            
+            ! ghost regions of width 2*norm_disc_prec_sol
+            sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
+            sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
             
             ! calculate r_F_sol in range from min_r_sol to max_r_sol
             r_F_sol = [(min_r_sol + (id-1.0_dp)/(n_r_sol-1.0_dp)*&
