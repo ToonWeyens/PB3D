@@ -1681,7 +1681,7 @@ contains
             do id = 2,n_procs
                 i_start(id) = max(tot_i_min(id)+&
                     &ceiling((tot_i_max(id-1)-tot_i_min(id)+1._dp)/2),&
-                    &i_start(id-1)+1,tot_i_min(id))
+                    &i_start(id-1)+1)
             end do
             do id = n_procs,2,-1
                 i_start(id) = min(i_start(id),i_start(id+1)-1,tot_i_max(id-1)+1)
