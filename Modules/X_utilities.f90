@@ -12,8 +12,8 @@ module X_utilities
     implicit none
     
     private
-    public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, calc_memory_X, &
-        &do_X, check_same_modes
+    public sec_ind_loc2tot, is_necessary_X, is_conj_X, conj_sym_X, &
+        &get_sec_X_range, calc_memory_X, do_X, check_same_modes
     
     ! interfaces
     
@@ -217,6 +217,52 @@ contains
                 &lim_sec_X_loc(1,2)+sec_X_id(2)) res = .false.
         end if
     end function is_necessary_X
+    
+    !> Whether the  entry of a symmetric  tensorial quantity (\c PV_0, \c PV_2,
+    !! \c KV_0 or \c KV_2) is the complex conjugate of the element with a given
+    !! row and column.
+    !!
+    !! A symmetric quantity has one entry  for the two elements of a pair of
+    !! modes, which  are each  other's complex conjugate.  The entry  holds the
+    !! element whose  row has the higher  mode number, on every  grid and at
+    !! every normal point.
+    !!
+    !! The row and the column have the same \c n (poloidal flux as normal
+    !! coordinate) or the same \c m (toroidal flux), so at most one of the two
+    !! comparisons holds.
+    !!
+    !! \note c() returns the entry of a pair from the indices that the two
+    !! modes have in  the tables of their grid. These  indices depend on the
+    !! grid and on the normal point, and they play no role here.
+    elemental logical function is_conj_X(n_row,m_row,n_col,m_col) result(res)
+        ! input / output
+        integer, intent(in) :: n_row                                            !< \c n of the row
+        integer, intent(in) :: m_row                                            !< \c m of the row
+        integer, intent(in) :: n_col                                            !< \c n of the column
+        integer, intent(in) :: m_col                                            !< \c m of the column
+        
+        res = n_row.lt.n_col .or. m_row.lt.m_col
+    end function is_conj_X
+    
+    !> Turns a quantity calculated for a row and a column into the entry of a
+    !! symmetric tensorial quantity:  the complex conjugate at the normal points
+    !! where the row has the lower mode number (see is_conj_x()).
+    subroutine conj_sym_X(V,n_row,m_row,n_col,m_col)
+        ! input / output
+        complex(dp), intent(inout) :: V(:,:,:)                                  !< quantity as function of the two angles and the normal coordinate
+        integer, intent(in) :: n_row(:)                                         !< \c n of the row at the normal points
+        integer, intent(in) :: m_row(:)                                         !< \c m of the row at the normal points
+        integer, intent(in) :: n_col(:)                                         !< \c n of the column at the normal points
+        integer, intent(in) :: m_col(:)                                         !< \c m of the column at the normal points
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        
+        do kd = 1,size(V,3)
+            if (is_conj_X(n_row(kd),m_row(kd),n_col(kd),m_col(kd))) &
+                &V(:,:,kd) = conjg(V(:,:,kd))
+        end do
+    end subroutine conj_sym_X
     
     !> Calculate memory in MB necessary for X variables.
     !!

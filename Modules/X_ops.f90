@@ -128,6 +128,9 @@ contains
     !> \private tensorial version
     integer function calc_X_2(mds,grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,&
         &lim_sec_X) result(ierr)
+        use num_utilities, only: c
+        use X_utilities, only: is_necessary_X, conj_sym_X
+        use X_vars, only: n_mod_X
         
         character(*), parameter :: rout_name = 'calc_X_2'
         
@@ -141,6 +144,10 @@ contains
         type(X_1_type), intent(inout) :: X_b                                    !< vectorial perturbation variables (dimension 2)
         type(X_2_type), intent(inout) :: X                                      !< tensorial perturbation variables
         integer, intent(in), optional :: lim_sec_X(2,2)                         !< limits of \c m_X (pol flux) or \c n_X (tor flux) for both dimensions
+        
+        ! local variables
+        integer :: k, m                                                         ! counters
+        integer :: c_loc                                                        ! local c for symmetric variables
         
         ! initialize ierr
         ierr = 0
@@ -167,6 +174,24 @@ contains
         ierr = calc_KV(grid_eq,grid_X,eq_1,eq_2,X_a,X_b,X,lim_sec_X)
         CHCKERR('')
         call lvl_ud(-1)
+        
+        ! calc_PV and calc_KV calculate the  symmetric PV_0, PV_2, KV_0 and KV_2
+        ! for row k and column m. Their entry holds the element whose row has
+        ! the higher mode number.
+        do m = 1,X%n_mod(2)
+            do k = 1,X%n_mod(1)
+                if (.not.is_necessary_X(.true.,[k,m],lim_sec_X)) cycle
+                c_loc = c([k,m],.true.,n_mod_X,lim_sec_X)
+                call conj_sym_X(X%PV_0(:,:,:,c_loc),X%n_1(:,k),X%m_1(:,k),&
+                    &X%n_2(:,m),X%m_2(:,m))
+                call conj_sym_X(X%PV_2(:,:,:,c_loc),X%n_1(:,k),X%m_1(:,k),&
+                    &X%n_2(:,m),X%m_2(:,m))
+                call conj_sym_X(X%KV_0(:,:,:,c_loc),X%n_1(:,k),X%m_1(:,k),&
+                    &X%n_2(:,m),X%m_2(:,m))
+                call conj_sym_X(X%KV_2(:,:,:,c_loc),X%n_1(:,k),X%m_1(:,k),&
+                    &X%n_2(:,m),X%m_2(:,m))
+            end do
+        end do
         
         ! user output
         call lvl_ud(-1)
@@ -3091,7 +3116,7 @@ contains
         &lim_sec_X) result(ierr)
         use num_vars, only: use_pol_flux_F, norm_disc_prec_X, magn_int_style, &
             &alpha_style, X_grid_style
-        use X_utilities, only: is_necessary_X
+        use X_utilities, only: is_necessary_X, is_conj_X
         use X_vars, only: n_mod_X
         use num_utilities, only: c
         use spline_utilities, only: spline
@@ -3275,18 +3300,6 @@ contains
                     end if
                 end do
                 
-                ! integrate PV_0 and KV_0
-                if (calc_this(1)) then
-                    X_int%PV_0(1,:,:,c_tot(1)) = &
-                        &prev_mult_fac*X_int%PV_0(1,:,:,c_tot(1))
-                    X_int%KV_0(1,:,:,c_tot(1)) = &
-                        &prev_mult_fac*X_int%KV_0(1,:,:,c_tot(1))
-                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1))*alpha_fac,&
-                        &X_int%PV_0(1,:,:,c_tot(1)),V_int_work,step_size)
-                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1))*alpha_fac,&
-                        &X_int%KV_0(1,:,:,c_tot(1)),V_int_work,step_size)
-                end if
-                
                 ! integrate PV_1 and KV_1
                 if (calc_this(2)) then
                     X_int%PV_1(1,:,:,c_tot(2)) = &
@@ -3299,8 +3312,25 @@ contains
                         &X_int%KV_1(1,:,:,c_tot(2)),V_int_work,step_size)
                 end if
                 
-                ! integrate PV_2 and KV_2
+                ! integrate the symmetric PV_0, KV_0, PV_2 and KV_2
+                ! They hold the element whose row has the higher mode
+                ! number, so the exponential is that of this row and column.
                 if (calc_this(1)) then
+                    do kd = 1,grid_X%loc_n_r
+                        if (is_conj_X(X%n_1(kd,k),X%m_1(kd,k),&
+                            &X%n_2(kd,m),X%m_2(kd,m))) J_exp_ang(:,:,kd) = &
+                            &conjg(J_exp_ang(:,:,kd))
+                    end do
+                    
+                    X_int%PV_0(1,:,:,c_tot(1)) = &
+                        &prev_mult_fac*X_int%PV_0(1,:,:,c_tot(1))
+                    X_int%KV_0(1,:,:,c_tot(1)) = &
+                        &prev_mult_fac*X_int%KV_0(1,:,:,c_tot(1))
+                    call calc_magn_int_loc(X%PV_0(:,:,:,c_loc(1))*alpha_fac,&
+                        &X_int%PV_0(1,:,:,c_tot(1)),V_int_work,step_size)
+                    call calc_magn_int_loc(X%KV_0(:,:,:,c_loc(1))*alpha_fac,&
+                        &X_int%KV_0(1,:,:,c_tot(1)),V_int_work,step_size)
+                    
                     X_int%PV_2(1,:,:,c_tot(1)) = &
                         &prev_mult_fac*X_int%PV_2(1,:,:,c_tot(1))
                     X_int%KV_2(1,:,:,c_tot(1)) = &
@@ -3642,7 +3672,8 @@ contains
     
     !> Prints debug information for X_2 driver
     integer function print_debug_X_2(mds,grid_X,X_2_int) result(ierr)
-        use num_utilities, only: c, con
+        use num_utilities, only: c
+        use X_utilities, only: is_conj_X
         use X_vars, only: n_mod_X
         use grid_vars, only: alpha, n_alpha
         use grid_utilities, only: trim_grid
@@ -3740,19 +3771,23 @@ contains
                     kd_loc = kd - grid_X%i_min + 1
                     kd_loc_trim = kd - grid_trim%i_min + 1
                     
-                    ! symmetric quantities
+                    ! symmetric quantities: the entry holds the element
+                    ! whose row has the higher mode number
                     PV_int(rd,cd,kd_loc_trim,:,0) = &
-                        &con(X_2_int%PV_0(1,:,kd_loc,c_loc(1)),&
-                        &[rdl,cdl],.true.,[n_alpha])
+                        &X_2_int%PV_0(1,:,kd_loc,c_loc(1))
                     PV_int(rd,cd,kd_loc_trim,:,2) = &
-                        &con(X_2_int%PV_2(1,:,kd_loc,c_loc(1)),&
-                        &[rdl,cdl],.true.,[n_alpha])
+                        &X_2_int%PV_2(1,:,kd_loc,c_loc(1))
                     KV_int(rd,cd,kd_loc_trim,:,0) = &
-                        &con(X_2_int%KV_0(1,:,kd_loc,c_loc(1)),&
-                        &[rdl,cdl],.true.,[n_alpha])
+                        &X_2_int%KV_0(1,:,kd_loc,c_loc(1))
                     KV_int(rd,cd,kd_loc_trim,:,2) = &
-                        &con(X_2_int%KV_2(1,:,kd_loc,c_loc(1)),&
-                        &[rdl,cdl],.true.,[n_alpha])
+                        &X_2_int%KV_2(1,:,kd_loc,c_loc(1))
+                    if (is_conj_X(mds%n(kd,rdl),mds%m(kd,rdl),&
+                        &mds%n(kd,cdl),mds%m(kd,cdl))) then
+                        PV_int(rd,cd,kd_loc_trim,:,[0,2]) = &
+                            &conjg(PV_int(rd,cd,kd_loc_trim,:,[0,2]))
+                        KV_int(rd,cd,kd_loc_trim,:,[0,2]) = &
+                            &conjg(KV_int(rd,cd,kd_loc_trim,:,[0,2]))
+                    end if
                     
                     ! asymmetric quantities
                     PV_int(rd,cd,kd_loc_trim,:,1) = &

@@ -310,7 +310,6 @@ contains
         real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
         complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
         logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
-        logical :: conj_sym                                                     ! whether the output holds the conjugate of the input
         logical :: extrap = .true.                                              ! whether extrapolation is used
         character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
@@ -416,14 +415,6 @@ contains
                 c_loc_o(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
                 c_loc_o(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
                 
-                ! A symmetric quantity is stored once for a pair of slots, for
-                ! the first slot not below the second. The slot of a mode
-                ! depends on the first point of its grid, so the two modes can
-                ! be ordered differently in the input and the output grid, and
-                ! the output then holds the conjugate.
-                conj_sym = (sec_i_loc(k,4).lt.sec_i_loc(m,4)) .neqv. &
-                    &(sec_o_loc(k,4).lt.sec_o_loc(m,4))
-                
                 if (calc_this(1)) then
                     V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
                     V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
@@ -444,16 +435,6 @@ contains
                     V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
                     ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
                     CHCKERR('')
-                    if (conj_sym) then
-                        V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
-                        V_o = conjg(V_o)
-                        V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
-                        V_o = conjg(V_o)
-                        V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
-                        V_o = conjg(V_o)
-                        V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
-                        V_o = conjg(V_o)
-                    end if
                     
 #if ldebug
                     if (debug_interp_V) then

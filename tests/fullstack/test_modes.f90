@@ -24,8 +24,10 @@
 !!
 !!  - interp_V (driver_sol) between two grids that start in different
 !!    windows, so that a mode sits in another slot in the output grid than in
-!!    the input grid: every element of the interpolated matrices must be the
-!!    one of its two modes, also where the two slots are in the other order;
+!!    the input grid: every entry of the interpolated matrices must be the
+!!    one of its two modes, and for a symmetric quantity the element whose
+!!    row has the higher mode number, also where the two slots are in the
+!!    other order;
 !!  - calc_tot_sol_vec and calc_loc_sol_vec (sol_utilities) on a grid with
 !!    rows that are empty before its first point, between two points and
 !!    after its last point: an empty row may not touch any point.
@@ -293,7 +295,8 @@ contains
     !! matrices hold a known function of the two mode numbers, Hermitian for
     !! the symmetric quantities and without symmetry for the others, and do
     !! not depend on the normal coordinate, so that the interpolation itself
-    !! is exact.
+    !! is exact. The entry of a symmetric quantity holds the element whose
+    !! row has the higher mode number, in both grids.
     !!
     !! \note In the Debug build interp_V also plots the normal ranges. Without
     !! a folder Data this prints an error of HDF5, which does not affect the
@@ -336,13 +339,13 @@ contains
                 do a = 1,n_mod
                     if (a.ge.b) then
                         X_i%PV_0(1,1,kd,c([a,b],.true.,n_mod)) = &
-                            &herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                            &stored(mds_i%m(kd,a),mds_i%m(kd,b))
                         X_i%PV_2(1,1,kd,c([a,b],.true.,n_mod)) = &
-                            &2*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                            &2*stored(mds_i%m(kd,a),mds_i%m(kd,b))
                         X_i%KV_0(1,1,kd,c([a,b],.true.,n_mod)) = &
-                            &3*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                            &3*stored(mds_i%m(kd,a),mds_i%m(kd,b))
                         X_i%KV_2(1,1,kd,c([a,b],.true.,n_mod)) = &
-                            &4*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                            &4*stored(mds_i%m(kd,a),mds_i%m(kd,b))
                     end if
                     X_i%PV_1(1,1,kd,c([a,b],.false.,n_mod)) = &
                         &asym(mds_i%m(kd,a),mds_i%m(kd,b))
@@ -363,13 +366,13 @@ contains
                     if (a.ge.b) then
                         call check(error, &
                             &abs(X_o%PV_0(1,1,kd,c([a,b],.true.,n_mod))-&
-                            &herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &stored(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
                             &abs(X_o%PV_2(1,1,kd,c([a,b],.true.,n_mod))-&
-                            &2*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &2*stored(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
                             &abs(X_o%KV_0(1,1,kd,c([a,b],.true.,n_mod))-&
-                            &3*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &3*stored(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
                             &abs(X_o%KV_2(1,1,kd,c([a,b],.true.,n_mod))-&
-                            &4*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol, &
+                            &4*stored(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol, &
                             &'symmetric quantity at point '//trim(i2str(kd))//&
                             &' for modes '//trim(i2str(mds_o%m(kd,a)))//&
                             &' and '//trim(i2str(mds_o%m(kd,b))))
@@ -388,8 +391,8 @@ contains
             end do
         end do
 
-        ! the case is only a test if some pair of modes has its slots in
-        ! the other order in the two grids
+        ! the case is only a test if some pair of modes has its indices in
+        ! the other order in the tables of the two grids
         n_flip = 0
         do a = 1,size(mds_i%sec,1)
             do b = 1,size(mds_i%sec,1)
@@ -407,11 +410,17 @@ contains
         call grid_i%dealloc()
         call grid_o%dealloc()
     contains
-        ! Hermitian in the two mode numbers
+        ! element with row m1 and column m2, Hermitian in the two
         complex(dp) function herm(m1,m2)
             integer, intent(in) :: m1, m2
             herm = cmplx(m1+m2,m1-m2,dp)
         end function herm
+        ! entry of a symmetric quantity for the modes m1 and m2: the element
+        ! whose row has the higher mode number
+        complex(dp) function stored(m1,m2)
+            integer, intent(in) :: m1, m2
+            stored = herm(max(m1,m2),min(m1,m2))
+        end function stored
         ! without symmetry
         complex(dp) function asym(m1,m2)
             integer, intent(in) :: m1, m2

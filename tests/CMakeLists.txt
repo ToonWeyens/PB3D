@@ -362,6 +362,17 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        add_test(NAME regression_cbm18a_X_grid_styles
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_X_grid_styles.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_cbm18a_X_grid_styles PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
         add_test(NAME regression_cbm18a_free_bnd
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_free_bnd.sh
                 $<TARGET_FILE:PB3D>
