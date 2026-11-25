@@ -20,15 +20,19 @@
 !! toroidal flux have opposite signs. A grid on which the window moves over
 !! its full width between two points is refused.
 !!
-!! One more test is about interp_V (driver_sol), which uses the tables,
-!! between two grids that start in different windows, so that a mode sits in
-!! another slot in the output grid than in the input grid: every element of
-!! the interpolated matrices must be the one of its two modes, also where the
-!! two slots are in the other order.
+!! Two more tests are about the routines that use the tables:
+!!
+!!  - interp_V (driver_sol) between two grids that start in different
+!!    windows, so that a mode sits in another slot in the output grid than in
+!!    the input grid: every element of the interpolated matrices must be the
+!!    one of its two modes, also where the two slots are in the other order;
+!!  - calc_tot_sol_vec and calc_loc_sol_vec (sol_utilities) on a grid with
+!!    rows that are empty before its first point, between two points and
+!!    after its last point: an empty row may not touch any point.
 !------------------------------------------------------------------------------!
 module test_modes
     use testdrive, only: new_unittest, unittest_type, error_type, check
-    use num_vars, only: dp, pi, use_pol_flux_F
+    use num_vars, only: dp, pi, use_pol_flux_F, X_style, norm_disc_prec_sol
     use eq_vars, only: max_flux_F
     use num_utilities, only: c
     use str_utilities, only: i2str
@@ -37,6 +41,7 @@ module test_modes
         &max_n_X, min_m_X, max_m_X
     use X_ops, only: setup_modes
     use driver_sol, only: interp_V
+    use sol_utilities, only: calc_tot_sol_vec, calc_loc_sol_vec
 
     implicit none
     private
@@ -55,7 +60,8 @@ contains
             &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
             &new_unittest("move_over_full_width_refused", test_refused), &
-            &new_unittest("interp_V_other_slots", test_interp_V) &
+            &new_unittest("interp_V_other_slots", test_interp_V), &
+            &new_unittest("sol_vec_empty_rows", test_sol_vec) &
             &]
     end subroutine collect_modes
 
@@ -412,4 +418,85 @@ contains
             asym = cmplx(m1,10*m2,dp)
         end function asym
     end subroutine test_interp_V
+
+    !> The solution vector per slot and per mode on a grid with rows that are
+    !! empty: the mode of the first equilibrium window has left before the
+    !! first point, an excursion of the window falls between two points, and
+    !! a mode enters after the last point. Every slot holds its mode times
+    !! 1 + r, so that the value and the derivative with respect to r are
+    !! known.
+    subroutine test_sol_vec(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        type(grid_type) :: grid_eq, grid                                        ! equilibrium and solution grid
+        type(modes_type) :: mds                                                 ! modes of the solution grid
+        complex(dp), allocatable :: vec_loc(:,:), vec_tot(:,:), vec_back(:,:)   ! solution vector per slot, per mode, and back
+        integer :: ierr, kd, ld, id                                             ! error status, counters
+        integer :: md                                                           ! mode number
+        integer :: min_mode                                                     ! lowest mode number of the table
+        integer, parameter :: n_mod = 3                                         ! width of the window
+        integer, parameter :: w_eq(10) = [3,4,4,4,5,4,4,4,4,5]                  ! window at the equilibrium points
+        real(dp), parameter :: r(5) = [0.15_dp,0.3_dp,0.6_dp,0.75_dp,0.85_dp]   ! solution grid
+        real(dp), parameter :: tol = 1.E-12_dp                                  ! tolerance
+        complex(dp) :: ref                                                      ! reference value
+
+        X_style = 2
+        norm_disc_prec_sol = 1
+        call set_window(w_eq,n_mod)
+        ierr = make_grid(grid_eq,eqd(10,0._dp,1._dp))
+        call check(error, ierr, 0, 'equilibrium grid')
+        if (allocated(error)) return
+        ierr = make_grid(grid,r)
+        call check(error, ierr, 0, 'solution grid')
+        if (allocated(error)) return
+        ierr = setup_modes(mds,grid_eq,grid)
+        call check(error, ierr, 0, 'setup_modes')
+        if (allocated(error)) return
+        call check(error, count(mds%sec(:,3).lt.1).gt.0 .and. &
+            &count(mds%sec(:,2).gt.size(r)).gt.0 .and. &
+            &count(mds%sec(:,3).lt.mds%sec(:,2)).gt.2, &
+            &'no empty rows before, between and after the points')
+        if (allocated(error)) return
+        min_mode = minval(mds%sec(:,1))
+
+        ! derivative id = 0 and 1
+        allocate(vec_loc(n_mod,size(r)))
+        do id = 0,1
+            do kd = 1,size(r)
+                vec_loc(:,kd) = mds%m(kd,:)*(1._dp+r(kd))
+            end do
+            ierr = calc_tot_sol_vec(mds,grid,vec_loc,vec_tot,deriv=id)
+            call check(error, ierr, 0, 'calc_tot_sol_vec')
+            if (allocated(error)) return
+            do kd = 1,size(r)
+                do ld = 1,size(vec_tot,1)
+                    md = min_mode+ld-1
+                    ref = 0._dp
+                    if (any(mds%m(kd,:).eq.md)) ref = md*(1-id)*(1._dp+r(kd)) + &
+                        &md*id
+                    call check(error, abs(vec_tot(ld,kd)-ref).lt.tol, &
+                        &'derivative '//trim(i2str(id))//': mode '//&
+                        &trim(i2str(md))//' at point '//trim(i2str(kd)))
+                    if (allocated(error)) return
+                end do
+            end do
+            ierr = calc_loc_sol_vec(mds,grid%i_min,vec_tot,vec_back)
+            call check(error, ierr, 0, 'calc_loc_sol_vec')
+            if (allocated(error)) return
+            do kd = 1,size(r)
+                do ld = 1,n_mod
+                    ref = mds%m(kd,ld)*(1-id)*(1._dp+r(kd)) + mds%m(kd,ld)*id
+                    call check(error, abs(vec_back(ld,kd)-ref).lt.tol, &
+                        &'derivative '//trim(i2str(id))//': slot '//&
+                        &trim(i2str(ld))//' at point '//trim(i2str(kd)))
+                    if (allocated(error)) return
+                end do
+            end do
+            deallocate(vec_tot,vec_back)
+        end do
+
+        call mds%dealloc()
+        call grid%dealloc()
+        call grid_eq%dealloc()
+    end subroutine test_sol_vec
 end module test_modes

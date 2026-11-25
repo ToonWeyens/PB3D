@@ -672,8 +672,9 @@ contains
                 sol_vec_tot = 0._dp
                 do ld = 1,size(mds%sec,1)
                     ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-grid_sol%i_min+1        ! normal range in solution vector
-                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    kdl(1) = max(mds%sec(ld,2)-grid_sol%i_min+1,1)              ! normal range in solution vector
+                    kdl(2) = min(mds%sec(ld,3)-grid_sol%i_min+1,n_r)
+                    if (kdl(1).gt.kdl(2)) cycle                                 ! no point of this range in sol_vec_loc
                     if (deriv_loc.eq.0) then
                         sol_vec_tot(ld_loc,kdl(1):kdl(2)) = &
                             &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2))
@@ -768,8 +769,9 @@ contains
                 sol_vec_loc = 0._dp
                 do ld = 1,size(mds%sec,1)
                     ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-i_min+1                 ! range in sol_vec_loc
-                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    kdl(1) = max(mds%sec(ld,2)-i_min+1,1)                       ! range in sol_vec_loc
+                    kdl(2) = min(mds%sec(ld,3)-i_min+1,n_r)
+                    if (kdl(1).gt.kdl(2)) cycle                                 ! no point of this range in sol_vec_loc
                     sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2)) = &
                         &sol_vec_tot(ld_loc,kdl(1):kdl(2))
                 end do
