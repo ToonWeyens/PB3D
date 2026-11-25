@@ -1091,6 +1091,7 @@ contains
         integer :: n_mod_tot                                                    ! total number of modes
         integer :: ind_id                                                       ! current size of ind_tot
         integer :: mod_X_range                                                  ! total mode range
+        real(dp) :: r_dir                                                       ! 1 if the normal coordinate increases, -1 if it decreases
         integer, allocatable :: w_eq(:)                                         ! lowest mode of the window at the equilibrium points
         integer, allocatable :: w(:)                                            ! lowest mode of the window at the grid points
         integer, allocatable :: p_eq(:)                                         ! number of moves of the window up to an equilibrium point
@@ -1159,15 +1160,17 @@ contains
             end do
             
             ! number of moves of the window up to every equilibrium point and
-            ! up to every grid point
+            ! up to every grid point, found in the equilibrium interval of the
+            ! point; the normal coordinate can increase or decrease
             p_eq(1) = 0
             do jd = 2,grid_eq%n(3)
                 p_eq(jd) = p_eq(jd-1) + abs(w_eq(jd)-w_eq(jd-1))
             end do
+            r_dir = sign(1._dp,grid_eq%r_F(grid_eq%n(3))-grid_eq%r_F(1))
             jd = 1
             do kd = 1,grid%n(3)
                 do while (jd.lt.grid_eq%n(3)-1)
-                    if (grid%r_F(kd).le.grid_eq%r_F(jd+1)) exit
+                    if (r_dir*grid%r_F(kd).le.r_dir*grid_eq%r_F(jd+1)) exit
                     jd = jd + 1
                 end do
                 p(kd) = p_eq(jd) + abs(w(kd)-w_eq(jd))

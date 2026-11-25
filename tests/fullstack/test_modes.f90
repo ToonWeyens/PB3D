@@ -15,8 +15,10 @@
 !!
 !! The windows move up, down, up and then down (a minimum of the safety
 !! factor), down and then up, and once up and back down at one equilibrium
-!! point only, which a coarse grid does not see. A grid on which the window
-!! moves over its full width between two points is refused.
+!! point only, which a coarse grid does not see. One case has a normal
+!! coordinate that decreases, as for a VMEC file in which iota and the
+!! toroidal flux have opposite signs. A grid on which the window moves over
+!! its full width between two points is refused.
 !------------------------------------------------------------------------------!
 module test_modes
     use testdrive, only: new_unittest, unittest_type, error_type, check
@@ -41,6 +43,7 @@ contains
             &new_unittest("window_down", test_down), &
             &new_unittest("window_up_then_down", test_up_down), &
             &new_unittest("window_down_then_up", test_down_up), &
+            &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
             &new_unittest("move_over_full_width_refused", test_refused) &
             &]
@@ -153,11 +156,13 @@ contains
         integer :: w                                                            ! lowest mode of the window at a point
         integer :: n_in                                                         ! number of rows that contain a mode at a point
         real(dp) :: v                                                           ! interpolated window
+        real(dp) :: r_dir                                                       ! 1 if the normal coordinate increases, -1 if it decreases
 
+        r_dir = sign(1._dp,r_eq(size(r_eq))-r_eq(1))
         do kd = 1,grid%n(3)
             ! window at this point: linear interpolation of w_eq, rounded
             do ld = 1,size(r_eq)-2
-                if (grid%r_F(kd).le.r_eq(ld+1)) exit
+                if (r_dir*grid%r_F(kd).le.r_dir*r_eq(ld+1)) exit
             end do
             v = w_eq(ld) + (w_eq(ld+1)-w_eq(ld))*(grid%r_F(kd)-r_eq(ld))/&
                 &(r_eq(ld+1)-r_eq(ld))
@@ -225,6 +230,19 @@ contains
         call check_tables(error,[7,6,5,4,4,5,6,7],5,eqd(8,0._dp,1._dp),&
             &reshape([eqd(5,0._dp,1._dp),eqd(33,0._dp,1._dp)],[5,2]))
     end subroutine test_down_up
+
+    !> A normal coordinate that decreases from the first to the last point,
+    !! as the poloidal flux of a VMEC file in which iota and the toroidal flux
+    !! have opposite signs, with a window that moves up and then down.
+    subroutine test_decreasing(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        call check_tables(error,[3,4,5,5,4,3,3],3,-eqd(7,0._dp,1._dp),&
+            &reshape([-eqd(4,0._dp,1._dp),-eqd(4,0.1_dp,0.95_dp)],[4,2]))
+        if (allocated(error)) return
+        call check_tables(error,[3,4,5,5,4,3,3],3,-eqd(7,0._dp,1._dp),&
+            &reshape([-eqd(61,0._dp,1._dp)],[61,1]))
+    end subroutine test_decreasing
 
     !> The window moves up and back down at one equilibrium point. A grid
     !! without a point near it has empty rows for that excursion and still
