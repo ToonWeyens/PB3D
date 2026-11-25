@@ -432,7 +432,8 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         # PB3D refuses incomplete or conflicting mode inputs (max_sec_X without
         # min_sec_X, max_sec_X with n_mod_X), and POST on a fixed-boundary run
         # with three solutions writes the energy decomposition of all three to
-        # one file and treats PB3D_rich_lvl = 0 and 5 as documented
+        # one file, treats PB3D_rich_lvl = 0 and 5 as documented, and runs on a
+        # part of the normal range (min_r_plot)
         if(TARGET POST)
             add_test(NAME regression_post_checks
                 COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/post_checks.sh

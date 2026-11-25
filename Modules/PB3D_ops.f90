@@ -527,9 +527,13 @@ contains
             where (lim_pos(1,:).ge.0) par_lim = lim_pos(1,:)
         end if
         
-        ! create grid, divided on every process alike if limits are given
-        ierr = grid%init(n,i_lim=grid_limits,&
-            &divided=present(grid_limits).and.n_procs.gt.1)
+        ! create grid: with limits and more than one process it is divided on
+        ! every process alike; otherwise init_grid decides from the limits
+        if (present(grid_limits) .and. n_procs.gt.1) then
+            ierr = grid%init(n,i_lim=grid_limits,divided=.true.)
+        else
+            ierr = grid%init(n,i_lim=grid_limits)
+        end if
         CHCKERR('')
 
         ! restore looping over richardson levels
