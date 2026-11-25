@@ -451,16 +451,19 @@ contains
         !! perturbation range.
         !!
         !! POST interpolates the equilibrium and perturbation quantities to the
-        !! solution grid with radial splines over the range of each process. As
-        !! in redistribute_output_grid(), the bounding equilibrium and
-        !! perturbation ranges are therefore widened by \c size_ghost_interp_V
-        !! points on each side, so that the end effect of these splines is below
-        !! the rounding error at the solution points of the process.
+        !! solution grid, and takes the radial derivative of the solution
+        !! vector, with radial splines over the range of each process. As in
+        !! redistribute_output_grid(), the solution range of a process
+        !! therefore has a ghost region of \c size_ghost_interp_V points on each
+        !! side, and the bounding equilibrium and perturbation ranges are
+        !! widened by as many points, so that the end effect of these splines is
+        !! below the rounding error at the solution points that the process
+        !! keeps after trim_grid().
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_X,r_F_sol)                                                     ! POST version
-            
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &min_r_plot, max_r_plot, X_grid_style, size_ghost_interp_V
+
+            use num_vars, only: n_procs, rank, min_r_plot, max_r_plot, &
+                &X_grid_style, size_ghost_interp_V
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
@@ -497,12 +500,14 @@ contains
             loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
                 &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
             
-            ! set sol_limits
+            ! set sol_limits, with the ghost region of the radial derivative of
+            ! the solution vector, a spline over the range of this process
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
             sol_limits = sol_limits + sol_limits_tot(1) - 1
-            if (rank.gt.0) sol_limits(1) = sol_limits(1)-norm_disc_prec_sol     ! ghost region for num. deriv.
-            if (rank.lt.n_procs-1) sol_limits(2) = &
-                &sol_limits(2)+norm_disc_prec_sol+1                             ! ghost region for num. deriv. and overlap for int_vol
+            sol_limits(1) = max(sol_limits(1)-size_ghost_interp_V,&
+                &sol_limits_tot(1))
+            sol_limits(2) = min(sol_limits(2)+size_ghost_interp_V,&
+                &sol_limits_tot(2))
             min_sol = minval(r_F_sol(sol_limits(1):sol_limits(2)))
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
