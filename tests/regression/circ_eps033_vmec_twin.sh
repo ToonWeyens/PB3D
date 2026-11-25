@@ -22,6 +22,17 @@
 # read_VMEC places the half mesh elsewhere or leaves B_s unset. It needs h5py
 # and scipy, and is skipped with a note when they are missing.
 #
+# Then the same equilibrium with the magnetic field reversed (issue #19): in a
+# copy of the wout file, reverse_field.py changes the sign of the fluxes and of
+# the components of B and J, which changes neither the equilibrium nor its
+# stability. The twin has a negative toroidal flux and a negative rotational
+# transform; in the copy the two have opposite signs, so that the poloidal flux
+# decreases outwards and the Jacobian of PB3D's flux coordinates is negative.
+# With the poloidal and with the toroidal flux as normal coordinate, the copy
+# must give the twin's fixed-boundary eigenvalue to the last digit, and
+# check_vmec_read.py must find the copy stored as it is. These runs need the
+# same python as the check and are skipped with it.
+#
 # The twin is then run free-boundary through the 3-D vacuum (style 1:
 # alpha_style 2, 64 field lines, the deck's 100 parallel points). With the
 # kernels integrated along the field lines in the near field and the G
@@ -53,6 +64,7 @@ HEL_FILE=$3
 WOUT_FILE=$4
 PYTHON=${5:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vmec_read.py
+REVERSE=$(cd "$(dirname "$0")" && pwd)/reverse_field.py
 
 ANCHOR_VMEC=7.8431e-2
 RTOL=1e-3
@@ -94,13 +106,31 @@ EV_HEL=$EV
 run_deck input_fixed wout_eq.nc
 EV_VMEC=$EV
 
-# what PB3D stored from the wout file, before the free run overwrites it
+same_ev() {   # same_ev <label> <eigenvalue> <eigenvalue>
+    if [ "$2" != "$3" ]; then
+        echo "FAIL: $1: eigenvalues differ: $2 and $3"
+        exit 1
+    fi
+}
+
+# what PB3D stored from the wout file, before the free run overwrites it, and
+# the same equilibrium with the field reversed
 if [ -z "$PYTHON" ]; then
-    echo "NOTE: check_vmec_read.py skipped: no python3 with h5py"
+    echo "NOTE: check_vmec_read.py and the reversed field skipped: no python3 with h5py"
 elif ! "$PYTHON" -c 'import scipy' > /dev/null 2>&1; then
-    echo "NOTE: check_vmec_read.py skipped: $PYTHON has no scipy"
+    echo "NOTE: check_vmec_read.py and the reversed field skipped: $PYTHON has no scipy"
 else
     "$PYTHON" "$CHECK" PB3D_out.h5 wout_eq.nc || exit 1
+    "$PYTHON" "$REVERSE" wout_eq.nc wout_rev.nc > /dev/null || exit 1
+    run_deck input_fixed wout_rev.nc
+    "$PYTHON" "$CHECK" PB3D_out.h5 wout_rev.nc > check_rev.log || { cat check_rev.log; exit 1; }
+    same_ev "twin and the copy with the field reversed" "$EV_VMEC" "$EV"
+    sed 's/use_pol_flux_F          = .true./use_pol_flux_F          = .false./' input_fixed > input_tor
+    run_deck input_tor wout_eq.nc
+    EV_TOR=$EV
+    run_deck input_tor wout_rev.nc
+    same_ev "toroidal flux as normal coordinate, twin and the copy with the field reversed" "$EV_TOR" "$EV"
+    echo "reversed field: the copy gives the twin's eigenvalue $EV_VMEC, and with the toroidal flux $EV_TOR, to the last digit"
 fi
 
 # free boundary through the 3-D vacuum: the deck with the field lines added

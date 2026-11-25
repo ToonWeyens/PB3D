@@ -299,7 +299,15 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   away from the two surfaces at each end. With the half-mesh positions that
   `read_VMEC` used before 17 November 2026 it fails by 5.4e-6 in λ and 1.1e-6
   in the Jacobian. It needs scipy as well as h5py, and is skipped with a note
-  without it.
+  without it. With the same python, the test then runs a copy of the twin
+  with the magnetic field reversed (issue #19; `reverse_field.py` changes the
+  sign of the fluxes and of the components of B and J). In the copy the
+  rotational transform and the toroidal flux have opposite signs, so that
+  the poloidal flux decreases outwards and the Jacobian of the flux
+  coordinates is negative. The copy must give the twin's fixed-boundary
+  eigenvalue to the last digit, with the poloidal and with the toroidal flux
+  as normal coordinate, and `check_vmec_read.py` must find it stored as it
+  is. The build of 2.55 stops on the copy with exit status 3.
 - `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
   `BC_style = 1 4`, a value that the input check refuses (issue #40). The
   test requires an exit status that is not zero, the message of the input

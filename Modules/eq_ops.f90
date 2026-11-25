@@ -320,19 +320,6 @@ contains
         err_msg = 'Check out the FAQ at &
             &https://pb3d.github.io/Doxygen/html/page_faq.html'
         
-        ! check whether the coordinate is increasing
-        if (grid_eq%r_F(grid_eq%n(3)) .le. grid_eq%r_F(1)) then
-            file_name = 'r_F'
-            plot_title = 'Flux normal coordinate'
-            call print_ex_2D(plot_title,file_name,grid_eq%r_F,draw=.false.)
-            call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 3
-            call writo('The code has not been tested satisfactorily for &
-                &decreasing normal coordinate. See plot '// trim(file_name),&
-                &alert=.true.)
-            CHCKERR(err_msg)
-        end if
-        
         ! check whether there are reversed shear regions
         if (maxval(eq%q_saf_E(:,1))*minval(eq%q_saf_E(:,1)) .lt. 0._dp) then
             file_name = 'Dq_saf'
@@ -7406,7 +7393,7 @@ contains
             else
                 call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
                     &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))&
-                    &/eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &/abs(eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0)),file_name,&
                     &tot_dim,loc_offset,description,output_message=.true.)
             end if
             
