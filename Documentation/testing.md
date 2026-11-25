@@ -143,7 +143,13 @@ combined over all ranks.
   every grid the rows of `sec` hold the window once, each mode in its own
   slot of `m`; every grid has the rows of the equilibrium grid, in the same
   order; and a grid on which the window moves over its full width between
-  two points is refused.
+  two points is refused. Two cases are about the routines that use the
+  tables: `driver_sol::interp_V` between two grids that start in different
+  windows, where every element of the interpolated matrices must belong to
+  its two modes, also where their slots are in the other order (the stored
+  element is then the conjugate); and `calc_tot_sol_vec` with
+  `calc_loc_sol_vec` on a grid with rows that are empty before its first
+  point, between two points and after its last point.
 - **`read_HEL` (full-stack, needs the fixture)** — golden-file test of the
   HELENA equilibrium parser on the committed cbm18a fixture: grid sizes,
   profile values, MISHKA-normalization factors and flux-surface geometry
