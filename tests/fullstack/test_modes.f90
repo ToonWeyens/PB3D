@@ -19,15 +19,24 @@
 !! coordinate that decreases, as for a VMEC file in which iota and the
 !! toroidal flux have opposite signs. A grid on which the window moves over
 !! its full width between two points is refused.
+!!
+!! One more test is about interp_V (driver_sol), which uses the tables,
+!! between two grids that start in different windows, so that a mode sits in
+!! another slot in the output grid than in the input grid: every element of
+!! the interpolated matrices must be the one of its two modes, also where the
+!! two slots are in the other order.
 !------------------------------------------------------------------------------!
 module test_modes
     use testdrive, only: new_unittest, unittest_type, error_type, check
-    use num_vars, only: dp, use_pol_flux_F
+    use num_vars, only: dp, pi, use_pol_flux_F
+    use eq_vars, only: max_flux_F
+    use num_utilities, only: c
     use str_utilities, only: i2str
     use grid_vars, only: grid_type
-    use X_vars, only: modes_type, n_mod_X, prim_X, min_n_X, max_n_X, &
-        &min_m_X, max_m_X
+    use X_vars, only: modes_type, X_2_type, n_mod_X, prim_X, min_n_X, &
+        &max_n_X, min_m_X, max_m_X
     use X_ops, only: setup_modes
+    use driver_sol, only: interp_V
 
     implicit none
     private
@@ -45,7 +54,8 @@ contains
             &new_unittest("window_down_then_up", test_down_up), &
             &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
-            &new_unittest("move_over_full_width_refused", test_refused) &
+            &new_unittest("move_over_full_width_refused", test_refused), &
+            &new_unittest("interp_V_other_slots", test_interp_V) &
             &]
     end subroutine collect_modes
 
@@ -271,4 +281,135 @@ contains
         call check(error, ierr.ne.0, 'a move by 4 with 3 modes was accepted')
         call grid_eq%dealloc()
     end subroutine test_refused
+
+    !> interp_V between an input grid and an output grid that starts one
+    !! window further, with a window that moves up and then down. The input
+    !! matrices hold a known function of the two mode numbers, Hermitian for
+    !! the symmetric quantities and without symmetry for the others, and do
+    !! not depend on the normal coordinate, so that the interpolation itself
+    !! is exact.
+    !!
+    !! \note In the Debug build interp_V also plots the normal ranges. Without
+    !! a folder Data this prints an error of HDF5, which does not affect the
+    !! result.
+    subroutine test_interp_V(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        type(grid_type) :: grid_i, grid_o                                       ! input (equilibrium) and output grid
+        type(modes_type) :: mds_i, mds_o                                        ! their modes
+        type(X_2_type) :: X_i, X_o                                              ! matrices on the two grids
+        integer :: ierr, kd, a, b                                               ! error status, counters
+        integer :: n_flip                                                       ! pairs of modes with their slots in the other order
+        integer, parameter :: n_mod = 4                                         ! width of the window
+        integer, parameter :: w_eq(9) = [3,3,4,4,5,5,4,4,3]                     ! window at the input points
+        real(dp), parameter :: tol = 1.E-12_dp                                  ! tolerance
+
+        max_flux_F = 2*pi                                                       ! the Debug build of interp_V plots normal ranges divided by it
+        call set_window(w_eq,n_mod)
+        ierr = make_grid(grid_i,eqd(9,0._dp,1._dp))
+        call check(error, ierr, 0, 'input grid')
+        if (allocated(error)) return
+        ierr = make_grid(grid_o,eqd(12,0.2_dp,0.9_dp))
+        call check(error, ierr, 0, 'output grid')
+        if (allocated(error)) return
+        ierr = setup_modes(mds_i,grid_i,grid_i)
+        call check(error, ierr, 0, 'setup_modes on the input grid')
+        if (allocated(error)) return
+        ierr = setup_modes(mds_o,grid_i,grid_o)
+        call check(error, ierr, 0, 'setup_modes on the output grid')
+        if (allocated(error)) return
+        call check(error, mds_o%m(1,1).ne.mds_i%m(1,1), &
+            &'the two grids start in the same window')
+        if (allocated(error)) return
+
+        ! input matrices
+        call X_i%init(mds_i,grid_i,is_field_averaged=.true.)
+        call X_o%init(mds_o,grid_o,is_field_averaged=.true.)
+        do kd = 1,grid_i%n(3)
+            do b = 1,n_mod
+                do a = 1,n_mod
+                    if (a.ge.b) then
+                        X_i%PV_0(1,1,kd,c([a,b],.true.,n_mod)) = &
+                            &herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                        X_i%PV_2(1,1,kd,c([a,b],.true.,n_mod)) = &
+                            &2*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                        X_i%KV_0(1,1,kd,c([a,b],.true.,n_mod)) = &
+                            &3*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                        X_i%KV_2(1,1,kd,c([a,b],.true.,n_mod)) = &
+                            &4*herm(mds_i%m(kd,a),mds_i%m(kd,b))
+                    end if
+                    X_i%PV_1(1,1,kd,c([a,b],.false.,n_mod)) = &
+                        &asym(mds_i%m(kd,a),mds_i%m(kd,b))
+                    X_i%KV_1(1,1,kd,c([a,b],.false.,n_mod)) = &
+                        &2*asym(mds_i%m(kd,a),mds_i%m(kd,b))
+                end do
+            end do
+        end do
+
+        ierr = interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o)
+        call check(error, ierr, 0, 'interp_V')
+        if (allocated(error)) return
+
+        ! every element in the output grid belongs to its two modes
+        do kd = 1,grid_o%n(3)
+            do b = 1,n_mod
+                do a = 1,n_mod
+                    if (a.ge.b) then
+                        call check(error, &
+                            &abs(X_o%PV_0(1,1,kd,c([a,b],.true.,n_mod))-&
+                            &herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &abs(X_o%PV_2(1,1,kd,c([a,b],.true.,n_mod))-&
+                            &2*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &abs(X_o%KV_0(1,1,kd,c([a,b],.true.,n_mod))-&
+                            &3*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                            &abs(X_o%KV_2(1,1,kd,c([a,b],.true.,n_mod))-&
+                            &4*herm(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol, &
+                            &'symmetric quantity at point '//trim(i2str(kd))//&
+                            &' for modes '//trim(i2str(mds_o%m(kd,a)))//&
+                            &' and '//trim(i2str(mds_o%m(kd,b))))
+                        if (allocated(error)) return
+                    end if
+                    call check(error, &
+                        &abs(X_o%PV_1(1,1,kd,c([a,b],.false.,n_mod))-&
+                        &asym(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol .and. &
+                        &abs(X_o%KV_1(1,1,kd,c([a,b],.false.,n_mod))-&
+                        &2*asym(mds_o%m(kd,a),mds_o%m(kd,b))).lt.tol, &
+                        &'asymmetric quantity at point '//trim(i2str(kd))//&
+                        &' for modes '//trim(i2str(mds_o%m(kd,a)))//&
+                        &' and '//trim(i2str(mds_o%m(kd,b))))
+                    if (allocated(error)) return
+                end do
+            end do
+        end do
+
+        ! the case is only a test if some pair of modes has its slots in
+        ! the other order in the two grids
+        n_flip = 0
+        do a = 1,size(mds_i%sec,1)
+            do b = 1,size(mds_i%sec,1)
+                if ((mds_i%sec(a,4).lt.mds_i%sec(b,4)) .neqv. &
+                    &(mds_o%sec(a,4).lt.mds_o%sec(b,4))) n_flip = n_flip + 1
+            end do
+        end do
+        call check(error, n_flip.gt.0, 'no pair of modes with its slots in &
+            &the other order')
+
+        call X_i%dealloc()
+        call X_o%dealloc()
+        call mds_i%dealloc()
+        call mds_o%dealloc()
+        call grid_i%dealloc()
+        call grid_o%dealloc()
+    contains
+        ! Hermitian in the two mode numbers
+        complex(dp) function herm(m1,m2)
+            integer, intent(in) :: m1, m2
+            herm = cmplx(m1+m2,m1-m2,dp)
+        end function herm
+        ! without symmetry
+        complex(dp) function asym(m1,m2)
+            integer, intent(in) :: m1, m2
+            asym = cmplx(m1,10*m2,dp)
+        end function asym
+    end subroutine test_interp_V
 end module test_modes
