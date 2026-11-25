@@ -446,14 +446,21 @@ contains
         !> \public POST version
         !!
         !! The normal range  is determined by simply dividing  a possible subset
-        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_sol,
+        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_plot,
         !! including  a  ghost range  and  getting  a bounding  equilibrium  and
         !! perturbation range.
+        !!
+        !! POST interpolates the equilibrium and perturbation quantities to the
+        !! solution grid with radial splines over the range of each process. As
+        !! in redistribute_output_grid(), the bounding equilibrium and
+        !! perturbation ranges are therefore widened by \c size_ghost_interp_V
+        !! points on each side, so that the end effect of these splines is below
+        !! the rounding error at the solution points of the process.
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_X,r_F_sol)                                                     ! POST version
             
             use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &min_r_plot, max_r_plot, X_grid_style
+                &min_r_plot, max_r_plot, X_grid_style, size_ghost_interp_V
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
@@ -499,11 +506,18 @@ contains
             min_sol = minval(r_F_sol(sol_limits(1):sol_limits(2)))
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
-            ! determine eq_limits: smallest eq and X range comprising sol range
+            ! determine eq_limits and X_limits: smallest eq and X range
+            ! comprising sol range, widened by the ghost region of the
+            ! interpolation to the solution grid
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
+            eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,1)
+            eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,size(r_F_eq))
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
                     call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
+                    X_limits(1) = max(X_limits(1)-size_ghost_interp_V,1)
+                    X_limits(2) = min(X_limits(2)+size_ghost_interp_V,&
+                        &size(r_F_X))
                 case (2)                                                        ! solution
                     X_limits = sol_limits
             end select
