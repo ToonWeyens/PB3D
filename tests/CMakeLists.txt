@@ -383,6 +383,19 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        # n = -10 against n = 10: at fixed boundary with points added to the
+        # perturbation grid, and at free boundary (issue #22)
+        add_test(NAME regression_negative_n
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/negative_n.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_free_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_negative_n PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
         # the shear check reads PB3D_out.h5 with h5py
         if(PB3D_TEST_PYTHON)
             add_test(NAME regression_cbm18a_shear_HEL
