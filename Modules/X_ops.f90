@@ -1136,7 +1136,8 @@ contains
             ld_shift = 0
             ind_id = 0
             do ld = 1,n_mod_X
-                nm_X(1,ld) = nint(min_nm_X(1)) + mod_X_range*(ld-1)/(n_mod_X-1)
+                nm_X(1,ld) = nint(min_nm_X(1)) + &
+                    &mod_X_range*(ld-1)/max(1,n_mod_X-1)                         ! one mode: the divisor would be zero
                 ind_tot(ld,:) = [nm_X(1,ld),1,0,ld]
                 ind_id = ind_id + 1
 #if ldebug
@@ -1157,7 +1158,7 @@ contains
                     ! shift ld and wrap back to [1..n_mod_X]
                     ld_loc = modulo(ld+ld_shift-1,n_mod_X)+1
                     nm_X(kd,ld_loc) = nint(min_nm_X(kd)) + &
-                        &mod_X_range*(ld-1)/(n_mod_X-1)
+                        &mod_X_range*(ld-1)/max(1,n_mod_X-1)
                 end do
                 
                 ! if there was a shift, set new total index information
