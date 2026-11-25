@@ -8,7 +8,7 @@ module num_vars
     private
     public dp, dpi, max_str_ln, max_name_ln, max_deriv, prog_name, &
         &output_name, prog_version, prog_style, min_PB3D_version, &
-        &min_PB3D_version_restart, debug_version, &
+        &debug_version, &
         &shell_commands_name, mem_usage_name, &
         &mem_usage_count, weight_dp, rank, n_procs, time_start, &
         &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
@@ -58,8 +58,7 @@ module num_vars
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
     real(dp), parameter :: prog_version = 2.56_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.50_dp                           !< minimum version of the PB3D output that POST reads
-    real(dp), parameter :: min_PB3D_version_restart = 2.56_dp                   !< minimum version of the PB3D output that a PB3D restart reads
+    real(dp), parameter :: min_PB3D_version = 2.56_dp                           !< minimum version of the PB3D output that POST and a PB3D restart read
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else

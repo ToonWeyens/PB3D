@@ -10,8 +10,7 @@ module PB3D_ops
     use str_utilities
     use messages
     use output_ops
-    use num_vars, only: dp, pi, max_str_ln, max_name_ln, iu, min_PB3D_version, &
-        &min_PB3D_version_restart
+    use num_vars, only: dp, pi, max_str_ln, max_name_ln, iu, min_PB3D_version
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
     use X_vars, only: X_1_type, X_2_type, modes_type
@@ -75,7 +74,6 @@ contains
         type(var_flat_type) :: var_flat                                         ! 1D variable
         real(dp), parameter :: tol_version = 1.E-4_dp                           ! tolerance for version control
         real(dp) :: PB3D_version                                                ! version of PB3D variable read
-        real(dp) :: min_version                                                 ! minimum version that this program reads
         logical :: debug_version_PB3D                                           ! debug version of in
         character(len=max_str_ln) :: use_debug_str(2)                           ! using debug or not
         
@@ -116,17 +114,13 @@ contains
         if (dum_1D(20).gt.0) debug_version_PB3D = .true.
         call dealloc_var_flat(var_flat)
         
-        ! The output differs between versions. This matters to POST, and to
-        ! PB3D when it continues from the output of an earlier run. PB3D then
-        ! also reads the integrated tensorial perturbation variables, which
-        ! POST does not, so it has its own minimum version.
-        min_version = min_PB3D_version
-        if (prog_style.eq.1) min_version = min_PB3D_version_restart
-        if (PB3D_version.lt.min_version*(1-tol_version)) then
+        ! The layout of the output differs between versions. This matters to
+        ! POST, and to PB3D when it continues from the output of an earlier run.
+        if (PB3D_version.lt.min_PB3D_version*(1-tol_version)) then
             ierr = 1
             err_msg = 'The output is from PB3D version '//&
                 &trim(r2strt(PB3D_version))//': need at least version '//&
-                &trim(r2strt(min_version))
+                &trim(r2strt(min_PB3D_version))
             CHCKERR(err_msg)
         end if
         
