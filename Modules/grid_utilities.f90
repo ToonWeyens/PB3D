@@ -1138,7 +1138,7 @@ contains
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in F coordinates
         ierr = grid_ext%init([n_theta_plot_loc,n_zeta_plot_loc,grid_in%n(3)],&
-            &[grid_in%i_min,grid_in%i_max])
+            &[grid_in%i_min,grid_in%i_max],grid_in%divided)
         CHCKERR('')
         grid_ext%r_F = grid_in%r_F
         grid_ext%loc_r_F = grid_in%loc_r_F

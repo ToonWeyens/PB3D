@@ -1278,7 +1278,7 @@ contains
                 call writo('Extend perturbation grid')
                 call lvl_ud(1)
                 ierr = grids_out(2)%init([n_theta,n_out(2:3,2)],&
-                    &i_lim=[grid_X%i_min,grid_X%i_max])
+                    &i_lim=[grid_X%i_min,grid_X%i_max],divided=grid_X%divided)
                 CHCKERR('')
                 grids_out(2)%r_F = grid_X%r_F
                 grids_out(2)%r_E = grid_X%r_E
