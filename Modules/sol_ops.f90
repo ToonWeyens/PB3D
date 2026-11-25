@@ -264,8 +264,6 @@ contains
         CHCKERR('')
         grid_out%r_F = grid_sol%r_F
         grid_out%r_E = grid_sol%r_E
-        grid_out%loc_r_F = grid_sol%loc_r_F
-        grid_out%loc_r_E = grid_sol%loc_r_E
         if (eq_style.eq.1) allocate(grid_out%trigon_factors(&
             &size(grid_X%trigon_factors,1),size(grid_X%trigon_factors,2),&
             &grid_out%loc_n_r,size(grid_X%trigon_factors,4),&

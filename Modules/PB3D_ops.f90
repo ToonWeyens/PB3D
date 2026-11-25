@@ -527,13 +527,9 @@ contains
             where (lim_pos(1,:).ge.0) par_lim = lim_pos(1,:)
         end if
         
-        ! create grid: with limits and more than one process it is divided on
-        ! every process alike; otherwise init_grid decides from the limits
-        if (present(grid_limits) .and. n_procs.gt.1) then
-            ierr = grid%init(n,i_lim=grid_limits,divided=.true.)
-        else
-            ierr = grid%init(n,i_lim=grid_limits)
-        end if
+        ! create grid, divided if limits are given to more than one process
+        ierr = grid%init(n,i_lim=grid_limits,&
+            &divided=present(grid_limits).and.n_procs.gt.1)
         CHCKERR('')
 
         ! restore looping over richardson levels
@@ -566,12 +562,6 @@ contains
             call conv_flat2ND(var_flat,dum_1D)
             grid%r_E = dum_1D
             call dealloc_var_flat(var_flat)
-            
-            ! loc_r_F
-            grid%loc_r_F = grid%r_F(grid%i_min:grid%i_max)
-            
-            ! loc_r_E
-            grid%loc_r_E = grid%r_E(grid%i_min:grid%i_max)
             
             ! overwrite local limits for HDF5 reconstruction of divided vars
             lim_mem(1,:) = par_id_mem

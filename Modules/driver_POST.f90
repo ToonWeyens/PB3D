@@ -1282,8 +1282,6 @@ contains
                 CHCKERR('')
                 grids_out(2)%r_F = grid_X%r_F
                 grids_out(2)%r_E = grid_X%r_E
-                grids_out(2)%loc_r_F = grid_X%loc_r_F
-                grids_out(2)%loc_r_E = grid_X%loc_r_E
                 select case (X_grid_style)
                     case (1)                                                    ! equilibrium
                         ! copy angular variables

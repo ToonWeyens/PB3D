@@ -582,7 +582,7 @@ contains
                     grid_lims(2,id-1) = get_real(lim_lo=grid_lims(1,id-1)/pi)*pi
                 end do
                 
-                ierr = grid%init(dims)
+                ierr = grid%init(dims,divided=.false.)
                 CHCKERR('')
                 
                 ! create grid

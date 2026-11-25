@@ -61,11 +61,11 @@ module grid_vars
         integer :: loc_n_r                                                      !< local nr. of normal points
         integer :: i_min                                                        !< min. normal index of this process in full arrays
         integer :: i_max                                                        !< max. normal index of this process in full arrays
-        logical :: divided                                                      !< whether the grid is split up among the processes
+        logical :: divided                                                      !< whether several processes each hold a part of the grid
         real(dp), pointer :: r_E(:) => null()                                   !< E(quilibrium) coord. values at n points 
         real(dp), pointer :: r_F(:) => null()                                   !< F(lux) coord. values at n points 
-        real(dp), pointer :: loc_r_E(:) => null()                               !< E(quilibrium) coord. values at n points 
-        real(dp), pointer :: loc_r_F(:) => null()                               !< F(lux) coord. values at n points 
+        real(dp), pointer :: loc_r_E(:) => null()                               !< E(quilibrium) coord. values of this process: r_E(i_min:i_max)
+        real(dp), pointer :: loc_r_F(:) => null()                               !< F(lux) coord. values of this process: r_F(i_min:i_max)
         real(dp), pointer :: theta_E(:,:,:) => null()                           !< E(quilibrium) coord. values of first angle at n points in 3-D
         real(dp), pointer :: theta_F(:,:,:) => null()                           !< F(lux) coord. values of first angle at n points in 3-D
         real(dp), pointer :: zeta_E(:,:,:) => null()                            !< E(quilibrium) coord. values of second angle at n points in 3-D
@@ -86,16 +86,20 @@ module grid_vars
 contains
     !> \public Initializes a new grid.
     !!
-    !! Optionally, the local limits can be provided for a divided grid.
-    !! 
-    !! Optionally, it can be set whether the grid is divided or not. A situation
-    !! where this is  useful is when only  a subset of MPI processes  is used to
-    !! calculate the solution  in SLEPC. In this case, the  extra ranks all only
-    !! contain the last grid point, and the last used process has as upper limit
-    !! this same grid  point. This way, all the procedures  are reusable, but in
-    !! this case  if only one process  is used, this procedure  becomes confused
-    !! and sets  this process  to undivided. In  most cases,  this functionality
-    !! probably does not need to be used.
+    !! Optionally, the local limits can be provided, if this process holds only
+    !! a part of the grid.
+    !!
+    !! The normal coordinates \c r_E and \c r_F of the whole grid are allocated
+    !! on every process. \c loc_r_E  and \c loc_r_F are pointers to their part
+    !! between the  local limits,  so that  setting the  coordinates of the whole
+    !! grid sets the local ones as well.
+    !!
+    !! \c divided states whether several processes each hold a part of the grid,
+    !! so that the processes  have to communicate to treat the whole grid. It has
+    !! to be the same on every process and can therefore not be derived from the
+    !! local limits: a process  whose part, with its ghost regions,  is the whole
+    !! grid is  part of a  divided grid as well, and  so is every process  of the
+    !! solution grid when only a subset of the processes is used in SLEPC.
     !!
     !! \return ierr
     integer function init_grid(grid,n,i_lim,divided) result(ierr)
@@ -108,11 +112,10 @@ contains
         class(grid_type), intent(inout) :: grid                                 !< grid to be initialized
         integer, intent(in) :: n(3)                                             !< tot. nr. of points (par,r,alpha)
         integer, intent(in), optional :: i_lim(2)                               !< min. and max. local normal index
-        logical, intent(in), optional :: divided                                !< divided grid or not
+        logical, intent(in) :: divided                                          !< whether several processes each hold a part of the grid
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        logical :: divided_loc                                                  ! local divided
         
         ! initialize ierr
         ierr = 0
@@ -125,6 +128,13 @@ contains
                     &than the total nr. of normal points'
                 CHCKERR(err_msg)
             end if
+            if (i_lim(1).lt.1 .or. i_lim(2).gt.n(3)) then
+                ierr = 1
+                err_msg = 'The local normal limits '//trim(i2str(i_lim(1)))//&
+                    &'..'//trim(i2str(i_lim(2)))//' do not lie in the grid &
+                    &of '//trim(i2str(n(3)))//' normal points'
+                CHCKERR(err_msg)
+            end if
         end if
         
 #if ldebug
@@ -132,9 +142,8 @@ contains
         if (print_mem_usage) grid%estim_mem_usage = 0._dp
 #endif
         
-        ! set local divided and loc_n_r
-        divided_loc = .false.
-        if (present(i_lim)) then                                                ! might be divided grid
+        ! set local limits and loc_n_r
+        if (present(i_lim)) then                                                ! part of the grid
             if (i_lim(2).lt.i_lim(1)) then
                 ierr = 1
                 write(*,*) 'i_lim = ', i_lim
@@ -144,27 +153,19 @@ contains
             grid%i_min = i_lim(1)
             grid%i_max = i_lim(2)
             grid%loc_n_r = i_lim(2)-i_lim(1)+1
-            if (i_lim(2)-i_lim(1)+1.lt.n(3)) divided_loc = .true.               ! only divided if difference between local and total
-        else                                                                    ! certainly not divided grid
+        else                                                                    ! whole grid
             grid%i_min = 1
             grid%i_max = n(3)
             grid%loc_n_r = n(3)
         end if
-        if (present(divided)) divided_loc = divided
+        grid%divided = divided
         
-        grid%divided = divided_loc
-        
-        ! allocate normal variables
+        ! allocate normal variables, the local ones point at the local part
         grid%n = n
         allocate(grid%r_E(n(3)))
         allocate(grid%r_F(n(3)))
-        if (divided_loc) then
-            allocate(grid%loc_r_E(grid%loc_n_r))
-            allocate(grid%loc_r_F(grid%loc_n_r))
-        else
-            grid%loc_r_E => grid%r_E
-            grid%loc_r_F => grid%r_F
-        end if
+        grid%loc_r_E => grid%r_E(grid%i_min:grid%i_max)
+        grid%loc_r_F => grid%r_F(grid%i_min:grid%i_max)
         
 #if ldebug
         ! set estimated memory usage
@@ -224,7 +225,6 @@ contains
             deallocate(grid%theta_E,grid%zeta_E)
             deallocate(grid%theta_F,grid%zeta_F)
         end if
-        if (grid%divided) deallocate(grid%loc_r_E,grid%loc_r_F)
         
         ! nullify pointers
         nullify(grid%r_E,grid%r_F)
@@ -278,8 +278,6 @@ contains
         CHCKERR('')
         grid_o%r_E = grid_i%r_E
         grid_o%r_F = grid_i%r_F
-        grid_o%loc_r_E = grid_i%loc_r_E
-        grid_o%loc_r_F = grid_i%loc_r_F
         if (associated(grid_i%theta_E)) grid_o%theta_E = grid_i%theta_E
         if (associated(grid_i%theta_F)) grid_o%theta_F = grid_i%theta_F
         if (associated(grid_i%zeta_E)) grid_o%zeta_E = grid_i%zeta_E

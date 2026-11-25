@@ -176,8 +176,6 @@ contains
         CHCKERR('')
         grid_X_sol%r_F = grid_sol%r_F
         grid_X_sol%r_E = grid_sol%r_E
-        grid_X_sol%loc_r_F = grid_sol%loc_r_F
-        grid_X_sol%loc_r_E = grid_sol%loc_r_E
         
         
         select case (X_grid_style)

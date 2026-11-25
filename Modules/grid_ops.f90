@@ -636,8 +636,6 @@ contains
                 CHCKERR('')
                 
                 ! copy the normal coords.
-                grid_eq_B%loc_r_E = grid_eq%loc_r_E
-                grid_eq_B%loc_r_F = grid_eq%loc_r_F
                 grid_eq_B%r_E = grid_eq%r_E
                 grid_eq_B%r_F = grid_eq%r_F
                 
@@ -687,13 +685,9 @@ contains
                 
                 ! set Flux variables
                 grid_X%r_F = r_F_X
-                grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_X%r_F,grid_X%r_E,&
-                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-                CHCKERR('')
-                ierr = coord_F2E(grid_eq,grid_X%loc_r_F,grid_X%loc_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 
@@ -758,13 +752,9 @@ contains
                 
                 ! set Flux variables
                 grid_sol%r_F = r_F_sol
-                grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_sol%r_F,grid_sol%r_E,&
-                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-                CHCKERR('')
-                ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
             case (2)                                                            ! solution
@@ -774,9 +764,7 @@ contains
                     &[grid_X%i_min,grid_X%i_max],grid_X%divided)
                 CHCKERR('')
                 grid_sol%r_F = grid_X%r_F
-                grid_sol%loc_r_F = grid_X%r_F(sol_limits(1):sol_limits(2))
                 grid_sol%r_E = grid_X%r_E
-                grid_sol%loc_r_E = grid_X%r_E(sol_limits(1):sol_limits(2))
         end select
     end function setup_grid_sol
     
@@ -1097,11 +1085,6 @@ contains
             &temp_var,lims,lims_dis)
         CHCKERR('')
         grid_out%zeta_E = reshape(temp_var,shape(grid_out%zeta_E))
-        ! loc_r_F and loc_R_E
-        if (grid_out%divided) then
-            grid_out%loc_r_F = grid_out%r_F(grid_out%i_min:grid_out%i_max)
-            grid_out%loc_r_E = grid_out%r_E(grid_out%i_min:grid_out%i_max)
-        end if
     end function redistribute_output_grid
     
     !> Plots the grid in real 3-D space.

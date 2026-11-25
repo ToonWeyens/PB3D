@@ -332,10 +332,6 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! take local variables
-        grid_eq%loc_r_E = grid_eq%r_E(grid_eq%i_min:grid_eq%i_max)
-        grid_eq%loc_r_F = grid_eq%r_F(grid_eq%i_min:grid_eq%i_max)
-        
         ! Transform flux equilibrium E into F derivatives
         ierr = calc_F_derivs(grid_eq,eq)
         CHCKERR('')
