@@ -322,6 +322,19 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   is. The build of 2.55 stops on the copy with exit status 3. Last, the twin
   at fixed boundary with n = -10 must give the eigenvalue of n = 10 to 1e-6
   (issue #22; measured 9e-8 with the deck's `tol_SLEPC` of 1e-6).
+- `circ_eps033_flux_labels` (needs `POST`): one Fourier mode, (m,n) =
+  (11,10), on the circular VMEC twin at fixed boundary, with the poloidal
+  flux as normal coordinate (`prim_X` = n = 10, secondary mode number 11) and
+  with the toroidal flux (`prim_X` = m = 11, secondary mode number 10), each
+  followed by POST's energy decomposition (issue #22). An axisymmetric
+  equilibrium does not couple different n, so one mode is the largest set
+  that the two labels have in common. The eigenvalues must agree to 1e-3
+  (measured 1.8e-4) and each term of the decomposition, divided by the
+  kinetic energy, to 1e-2 (measured 3.3e-3 or less): the two labels differ in
+  their field-aligned grid and in the expansion of the geodesic displacement
+  U, in 1/n or in 1/m. The normal and the geodesic ballooning term hold the
+  normal and the geodesic curvature. In the build of 2.55 the toroidal flux
+  gave -1.03 and -2.0 times the terms of the poloidal flux.
 - `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
   `BC_style = 1 4`, a value that the input check refuses (issue #40). The
   test requires an exit status that is not zero, the message of the input
