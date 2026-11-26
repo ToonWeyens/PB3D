@@ -1138,10 +1138,9 @@ contains
         ! creating  equilibrium  grid  for  the output  that  covers  the  whole
         ! geometry angularly in F coordinates
         ierr = grid_ext%init([n_theta_plot_loc,n_zeta_plot_loc,grid_in%n(3)],&
-            &[grid_in%i_min,grid_in%i_max])
+            &[grid_in%i_min,grid_in%i_max],grid_in%divided)
         CHCKERR('')
         grid_ext%r_F = grid_in%r_F
-        grid_ext%loc_r_F = grid_in%loc_r_F
         ierr = calc_eqd_grid(grid_ext%theta_F,lim_theta_plot_loc(1)*pi,&
             &lim_theta_plot_loc(2)*pi,1)
         CHCKERR('')
@@ -1177,16 +1176,20 @@ contains
     !> Copy a grid A to a new grid B, that was not yet initialized.
     !!
     !! This  new grid  can contain  a  subsection of  the previous  grid in  all
-    !! dimensions. It can also be a divided grid, by providing the limits
+    !! dimensions. By providing  the limits, this process can hold  a part of
+    !! it. \c divided states whether several  processes each hold a part of the
+    !! new grid, as in init_grid().
     !!
     !! \note
-    !!  -# The normal  limits for the divided  grid should be given  in terms of
-    !!  the normal dimension of \c grid B.
+    !!  -# The normal  limits of this process should  be given in terms  of the
+    !!  normal dimension of \c grid B.
     !!  -# if the grids are not  purely normal, the procedure can currently only
-    !!  handle the copying of a \c grid_A that is not divided.
+    !!  handle the copying of a \c grid_A of which this process holds the whole
+    !!  normal range.
     !!
     !! \return ierr
-    integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
+    integer function copy_grid(grid_A,grid_B,lims_B,i_lim,divided) &
+        &result(ierr)
         character(*), parameter :: rout_name = 'copy_grid'
         
         ! input / output
@@ -1194,6 +1197,7 @@ contains
         class(grid_type), intent(inout) :: grid_B                               !< grid to be initialized
         integer, intent(in), optional :: lims_B(3,2)                            !< ranges for subset of grid
         integer, intent(in), optional :: i_lim(2)                               !< min. and max. local normal index
+        logical, intent(in) :: divided                                          !< whether several processes each hold a part of grid B
         
         ! local variables
         integer :: n_B(3)                                                       ! n of grid B
@@ -1227,18 +1231,16 @@ contains
         end if
         
         ! allocate the new grid
-        ierr = grid_B%init(n_B,i_lim)
+        ierr = grid_B%init(n_B,i_lim,divided=divided)
         CHCKERR('')
         
         ! copy arrays, possibly subset
         grid_B%r_F = grid_A%r_F(lims_B_loc(3,1):lims_B_loc(3,2))
         grid_B%r_E = grid_A%r_E(lims_B_loc(3,1):lims_B_loc(3,2))
-        grid_B%loc_r_F = grid_A%r_F(i_lim_loc(1):i_lim_loc(2))
-        grid_B%loc_r_E = grid_A%r_E(i_lim_loc(1):i_lim_loc(2))
         if (n_B(1).ne.0 .and. n_B(2).ne.0) then
-            if (grid_A%divided) then
+            if (grid_A%loc_n_r.lt.grid_A%n(3)) then
                 ierr = 1
-                CHCKERR('grid_A cannot be divided')
+                CHCKERR('this process has to hold the whole grid_A')
             end if
             grid_B%theta_F = grid_A%theta_F(lims_B_loc(1,1):lims_B_loc(1,2),&
                 &lims_B_loc(2,1):lims_B_loc(2,2),i_lim_loc(1):i_lim_loc(2))
@@ -1615,6 +1617,15 @@ contains
     !! the next  process, but if the  number of overlapping grid  points is odd,
     !! the next process looses one more point.
     !!
+    !! Where the ghost regions of several processes reach an end of the grid,
+    !! these cuts can cross. They are then moved so that the trimmed parts
+    !! follow each other and every process keeps at least one point. If that
+    !! is not possible, as with fewer points than processes, an error is
+    !! returned.
+    !!
+    !! A grid that is not divided is not cut: the trimmed grid is the part that
+    !! this process holds.
+    !!
     !! optionally, the trimmed  indices in the normal direction  can be provided
     !! in  \c  norm_id,  i.e.  the  indices in  the  old,  untrimmed  grid  that
     !! correspond to the start and end indices of the trimmed grid. E.g. if
@@ -1647,76 +1658,70 @@ contains
         ! local variables
         integer, allocatable :: tot_i_min(:)                                    ! i_min of grid of all processes
         integer, allocatable :: tot_i_max(:)                                    ! i_max of grid of all processes
+        integer, allocatable :: i_start(:)                                      ! first index of trimmed grid of all processes, and last index + 1
         integer :: i_lim_out(2)                                                 ! i_lim of output grid
+        integer :: i_lim_tot(2)                                                 ! limits of the whole output grid in the input grid
         integer :: n_out(3)                                                     ! n of output grid
-        
+        integer :: id                                                           ! counter
+        character(len=max_str_ln) :: err_msg                                    ! error message
+
         ! initialize ierr
         ierr = 0
-        
-        ! detect whether grid divided
+
+        ! set the limits of this process and of the whole output grid, in the
+        ! normal indices of the input grid
         if (grid_in%divided) then
             ! get min_i's of the grid_in
             ierr = get_ser_var([grid_in%i_min],tot_i_min,scatter=.true.)
             CHCKERR('')
-            
+
             ! get max_i's of the grid_in
             ierr = get_ser_var([grid_in%i_max],tot_i_max,scatter=.true.)
             CHCKERR('')
-            
-            ! set  i_lim of trimmed output  grid (not yet shifted  by first proc
-            ! min)
-            if (rank.gt.0) then
-                i_lim_out(1) = max(tot_i_min(1),tot_i_min(rank+1)+&
-                    &ceiling((tot_i_max(rank)-tot_i_min(rank+1)+1._dp)/2))
-            else
-                i_lim_out(1) = tot_i_min(1)
-            end if
-            if (rank.lt.n_procs-1) then
-                i_lim_out(2) = min(tot_i_max(n_procs),tot_i_max(rank+1)-&
-                    &floor((tot_i_max(rank+1)-tot_i_min(rank+2)+1._dp)/2))
-            else
-                i_lim_out(2) = tot_i_max(n_procs)
-            end if
-            
-            ! limit to input limits (necessary if a process has only one point)
-            i_lim_out(1) = max(min(i_lim_out(1),grid_in%i_max),grid_in%i_min)
-            i_lim_out(2) = max(min(i_lim_out(2),grid_in%i_max),grid_in%i_min)
-            
-            ! get  min_i's and max_i's  of the grid_out,  not shifted by  min of
-            ! first process
-            ierr = get_ser_var([i_lim_out(1)],tot_i_min,scatter=.true.)
-            CHCKERR('')
-            ierr = get_ser_var([i_lim_out(2)],tot_i_max,scatter=.true.)
-            CHCKERR('')
-            
-            ! set n of output grid
-            n_out(1) = grid_in%n(1)
-            n_out(2) = grid_in%n(2)
-            n_out(3) = tot_i_max(n_procs)-tot_i_min(1)+1
-            
-            ! create new grid
-            ierr = grid_out%init(n_out,i_lim_out-tot_i_min(1)+1,divided=.true.) ! limits shifted by min of first process
-            CHCKERR('')
-            
-            ! recycle  i_lim_out  for  shifted  array  indices, set  norm_id  if
-            ! requested
-            i_lim_out = i_lim_out - grid_in%i_min + 1
-            if (present(norm_id)) norm_id = i_lim_out
+
+            ! set first index of trimmed output grid of every process (not yet
+            ! shifted by first proc min): middle of the overlap with the
+            ! previous process, then made increasing and inside the ranges
+            allocate(i_start(n_procs+1))
+            i_start(1) = tot_i_min(1)
+            i_start(n_procs+1) = tot_i_max(n_procs)+1
+            do id = 2,n_procs
+                i_start(id) = max(tot_i_min(id)+&
+                    &ceiling((tot_i_max(id-1)-tot_i_min(id)+1._dp)/2),&
+                    &i_start(id-1)+1)
+            end do
+            do id = n_procs,2,-1
+                i_start(id) = min(i_start(id),i_start(id+1)-1,tot_i_max(id-1)+1)
+            end do
+            do id = 1,n_procs
+                if (i_start(id).lt.tot_i_min(id) .or. &
+                    &i_start(id+1).le.i_start(id) .or. &
+                    &i_start(id+1)-1.gt.tot_i_max(id)) then
+                    ierr = 1
+                    err_msg = 'The '//trim(i2str(i_start(n_procs+1)-&
+                        &i_start(1)))//' normal points cannot be divided &
+                        &between '//trim(i2str(n_procs))//' processes'
+                    CHCKERR(err_msg)
+                end if
+            end do
+            i_lim_out = [i_start(rank+1),i_start(rank+2)-1]
+            i_lim_tot = [tot_i_min(1),tot_i_max(n_procs)]
         else
-            ! set n of output grid
-            n_out = grid_in%n
-            
-            ! set unshifted i_lim_out and norm_id if requested
             i_lim_out = [grid_in%i_min,grid_in%i_max]
-            if (present(norm_id)) norm_id = i_lim_out
-            
-            ! shift i_lim_out by min.
-            i_lim_out = i_lim_out-i_lim_out(1)+1
-            
-            ! create new grid
-            ierr = grid_out%init(n_out,i_lim_out)                               ! grid not divided
-            CHCKERR('')
+            i_lim_tot = i_lim_out
         end if
+        
+        ! create new grid, with the limits shifted by the first index of the
+        ! whole output grid
+        n_out = [grid_in%n(1),grid_in%n(2),i_lim_tot(2)-i_lim_tot(1)+1]
+        ierr = grid_out%init(n_out,i_lim_out-i_lim_tot(1)+1,&
+            &divided=grid_in%divided)
+        CHCKERR('')
+        
+        ! recycle i_lim_out for the indices in the local arrays of the input
+        ! grid, set norm_id if requested
+        i_lim_out = i_lim_out - grid_in%i_min + 1
+        if (present(norm_id)) norm_id = i_lim_out
         
         ! copy local arrays
         if (grid_in%n(1).ne.0 .and. grid_in%n(2).ne.0) then                     ! only if 3D grid
@@ -1725,19 +1730,10 @@ contains
             grid_out%theta_F = grid_in%theta_F(:,:,i_lim_out(1):i_lim_out(2))
             grid_out%zeta_F = grid_in%zeta_F(:,:,i_lim_out(1):i_lim_out(2))
         end if
-        if (grid_in%divided) then                                               ! but if input grid divided, loc_r gets priority
-            grid_out%loc_r_E = grid_in%loc_r_E(i_lim_out(1):i_lim_out(2))
-            grid_out%loc_r_F = grid_in%loc_r_F(i_lim_out(1):i_lim_out(2))
-        end if
         
-        ! if divided, set total arrays
-        if (grid_in%divided) then
-            grid_out%r_E = grid_in%r_E(tot_i_min(1):tot_i_max(n_procs))
-            grid_out%r_F = grid_in%r_F(tot_i_min(1):tot_i_max(n_procs))
-        else
-            grid_out%r_E = grid_in%r_E
-            grid_out%r_F = grid_in%r_F
-        end if
+        ! copy the normal coordinates of the whole output grid
+        grid_out%r_E = grid_in%r_E(i_lim_tot(1):i_lim_tot(2))
+        grid_out%r_F = grid_in%r_F(i_lim_tot(1):i_lim_tot(2))
         
         ! if allocated, copy trigonometric factors
         if (allocated(grid_in%trigon_factors)) then

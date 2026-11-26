@@ -461,6 +461,11 @@ contains
     !! to the  position dimensions  only. If  provided, the  normal limits  of a
     !! divided grid refer to the subset, as in copy_grid().
     !!
+    !! With \c grid_limits  this process  reads the angular  variables only for
+    !! its part of  the grid. \c divided states whether several  processes each
+    !! read a part of the grid, as in init_grid(). The file holds the whole grid
+    !! and does not know how the reading run divides it, so the caller says so.
+    !!
     !! \note
     !!  -# <tt>grid_</tt> is added in front the data_name.
     !!  -# By  providing \c lim_pos  equal to 0  in the angular  dimensions, the
@@ -468,8 +473,8 @@ contains
     !!
     !! \return ierr
     integer function reconstruct_PB3D_grid(grid,data_name,rich_lvl,tot_rich,&
-        &lim_pos,grid_limits) result(ierr)
-        
+        &lim_pos,grid_limits,divided) result(ierr)
+
         use num_vars, only: PB3D_name
         use HDF5_ops, only: read_HDF5_arr
         use PB3D_utilities, only: conv_flat2ND
@@ -483,6 +488,7 @@ contains
         logical, intent(in), optional :: tot_rich                               !< whether to combine with previous Richardson levels
         integer, intent(in), optional :: lim_pos(3,2)                           !< position limits of subset of data
         integer, intent(in), optional :: grid_limits(2)                         !< i_limit of grid
+        logical, intent(in) :: divided                                          !< whether several processes each hold a part of the grid
         
         ! local variables
         type(var_flat_type) :: var_flat                                         ! 1D variable
@@ -528,9 +534,9 @@ contains
         end if
         
         ! create grid
-        ierr = grid%init(n,i_lim=grid_limits)
+        ierr = grid%init(n,i_lim=grid_limits,divided=divided)
         CHCKERR('')
-        
+
         ! restore looping over richardson levels
         do id = rich_id(2),rich_id(1),-1
             ! setup par_id 
@@ -561,12 +567,6 @@ contains
             call conv_flat2ND(var_flat,dum_1D)
             grid%r_E = dum_1D
             call dealloc_var_flat(var_flat)
-            
-            ! loc_r_F
-            grid%loc_r_F = grid%r_F(grid%i_min:grid%i_max)
-            
-            ! loc_r_E
-            grid%loc_r_E = grid%r_E(grid%i_min:grid%i_max)
             
             ! overwrite local limits for HDF5 reconstruction of divided vars
             lim_mem(1,:) = par_id_mem

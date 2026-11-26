@@ -29,7 +29,9 @@ module X_vars
     !!      * 4: index in tables
     !!      where the number of modes can be bigger than the range if the safety
     !!      factor or  rotational transform is  non-monotonous so that  the same
-    !!      mode number can have multiple ranges.
+    !!      mode number can have multiple ranges. Every grid has the same rows,
+    !!      and a row is empty on a grid that has no point in its range (upper
+    !!      limit below lower limit).
     !!  - Flux normal coordinate: \c r_F.
     !!
     !! These are set up in setup_nm_x().
@@ -75,6 +77,13 @@ module X_vars
     !!  - \c PV_i and KV_i: <tt>(1:angle_1,1:angle_2,1;n_mod^2)</tt>
     !!
     !! \see See grid_vars.grid_type for a discussion on \c ang_1 and \c ang_2.
+    !!
+    !! \c PV_0, \c PV_2, \c KV_0 and \c KV_2 are symmetric: the element with
+    !! row \c k and column \c m is the complex conjugate of the element with
+    !! row \c m and column \c k. They have one entry for the two, which c()
+    !! returns, and it holds the element whose row has the higher mode number
+    !! (see is_conj_x()). \c PV_1 and \c KV_1 have an entry for every row and
+    !! column.
     !!
     !! \note This  type is also  used for field-averaged  tensorial perturbation
     !! variables, with \c angle_1 of size 1.
