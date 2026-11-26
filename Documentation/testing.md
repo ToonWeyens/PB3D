@@ -318,6 +318,18 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   half a weight at the last point instead, style 4 went to \(-0.469\) on the
   circular case, 7 % off. The code of style 4 was removed in pull request #38
   (issue #36).
+- `negative_n`: the cbm18a free-boundary deck with n = 10 and n = -10 (issue
+  #22), both with `tol_SLEPC` = 1e-12. With `prim_X` = -n every Fourier mode
+  is the complex conjugate of the mode with `prim_X` = n and the opposite
+  secondary mode number, so the eigenvalue must be the same. The first pair
+  of runs is at fixed boundary with `max_njq_change` = 0.05: the perturbation
+  grid (`X_grid_style` 3) then gets
+  floor(|`prim_X` Δq| / `max_njq_change`) points more than the equilibrium
+  grid in every interval of the equilibrium grid, 368 in all (none with the
+  default 0.49), and the test asks for the same number, larger than zero, in
+  both runs. The second pair is at free boundary with the deck as it is.
+  The eigenvalues must agree to 1e-9 (measured 3.0e-12 and 4e-13). The build
+  of 2.55 stops on every run with a negative `prim_X`.
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition
@@ -365,7 +377,9 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   coordinates is negative. The copy must give the twin's fixed-boundary
   eigenvalue to the last digit, with the poloidal and with the toroidal flux
   as normal coordinate, and `check_vmec_read.py` must find it stored as it
-  is. The build of 2.55 stops on the copy with exit status 3.
+  is. The build of 2.55 stops on the copy with exit status 3. Last, the twin
+  at fixed boundary with n = -10 must give the eigenvalue of n = 10 to 1e-6
+  (issue #22; measured 9e-8 with the deck's `tol_SLEPC` of 1e-6).
 - `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
   `BC_style = 1 4`, a value that the input check refuses (issue #40). The
   test requires an exit status that is not zero, the message of the input
