@@ -176,7 +176,7 @@ contains
                     end if
                     ! set up E flux
                     if (use_pol_flux_E) then
-                        flux_F = flux_p_V(:,0)
+                        flux_E = flux_p_V(:,0)
                     else
                         flux_E = flux_t_V(:,0)
                     end if
@@ -381,12 +381,9 @@ contains
         !!
         !! The normal range is determined by simply dividing the solution range,
         !! a ghost range is required.
-        !!
-        !! By default, this routine uses  \c sol_n_procs processes, but this can
-        !! be overruled.
-        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol,n_procs) &
+        integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
-            use num_vars, only: sol_n_procs, rank, norm_disc_prec_sol
+            use num_vars, only: n_procs, rank, norm_disc_prec_sol
             use eq_vars, only: max_flux_F
             use X_vars, only: min_r_sol, max_r_sol
             use num_utilities, only: round_with_tol
@@ -397,38 +394,27 @@ contains
             ! input / output
             integer, intent(inout) :: sol_limits(2)                             !< min. and max. index of sol grid for this process
             real(dp), intent(inout) :: r_F_sol(:)                               !< solution r_F
-            integer, intent(in), optional :: n_procs                            !< how many processes used
             
             ! local variables
             integer :: id                                                       ! counter
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
-            integer :: n_procs_loc                                              ! local n_procs
             
             ! initialize ierr
             ierr = 0
             
-            ! set local n_procs
-            n_procs_loc = sol_n_procs
-            if (present(n_procs)) n_procs_loc = n_procs
-            
             ! set loc_n_r_sol
-            allocate(loc_n_r_sol(n_procs_loc))
-            loc_n_r_sol = n_r_sol/n_procs_loc                                   ! number of radial points on this processor
-            loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) = &
-                &loc_n_r_sol(1:mod(n_r_sol,n_procs_loc)) + 1                    ! add a mode to if there is a remainder
+            allocate(loc_n_r_sol(n_procs))
+            loc_n_r_sol = n_r_sol/n_procs                                       ! number of radial points on this processor
+            loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
+                &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
             
             ! set sol_limits
-            if (rank.lt.n_procs_loc) then
-                sol_limits = &
-                    &[sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
-                
-                ! ghost regions of width 2*norm_disc_prec_sol
-                sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
-                sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
-            else
-                sol_limits(1) = n_r_sol
-                sol_limits(2) = n_r_sol
-            end if
+            sol_limits = &
+                &[sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
+            
+            ! ghost regions of width 2*norm_disc_prec_sol
+            sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
+            sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
             
             ! calculate r_F_sol in range from min_r_sol to max_r_sol
             r_F_sol = [(min_r_sol + (id-1.0_dp)/(n_r_sol-1.0_dp)*&
@@ -446,14 +432,28 @@ contains
         !> \public POST version
         !!
         !! The normal range  is determined by simply dividing  a possible subset
-        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_sol,
+        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_plot,
         !! including  a  ghost range  and  getting  a bounding  equilibrium  and
         !! perturbation range.
+        !!
+        !! POST interpolates the equilibrium and perturbation quantities to the
+        !! solution grid, and takes the radial derivative of the solution
+        !! vector, with radial splines over the range of each process. As in
+        !! redistribute_output_grid(), the solution range of a process
+        !! therefore has a ghost region of \c size_ghost_interp_V points on each
+        !! side, and the bounding equilibrium and perturbation ranges are
+        !! widened by as many points, so that the end effect of these splines is
+        !! below the rounding error at the solution points that the process
+        !! keeps after trim_grid(). None of these ranges reaches beyond the
+        !! subset of the solution range and the smallest equilibrium and
+        !! perturbation ranges that comprise it, so that the processes together
+        !! cover what one process covers, and their splines end where its
+        !! splines end.
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_X,r_F_sol)                                                     ! POST version
-            
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &min_r_plot, max_r_plot, X_grid_style
+
+            use num_vars, only: n_procs, rank, min_r_plot, max_r_plot, &
+                &X_grid_style, size_ghost_interp_V
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
@@ -467,6 +467,8 @@ contains
             
             ! local variables
             integer :: sol_limits_tot(2)                                        ! total solution limits
+            integer :: eq_limits_tot(2)                                         ! total equilibrium limits
+            integer :: X_limits_tot(2)                                          ! total perturbation limits
             integer :: n_r_sol                                                  ! total nr. of normal points in solution grid
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
@@ -481,6 +483,14 @@ contains
             ! find the solution index that comprises this range
             call find_compr_range(r_F_sol,[min_sol,max_sol],sol_limits_tot)
             
+            ! find the equilibrium and perturbation indices that comprise the
+            ! solution range
+            min_sol = minval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            max_sol = maxval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits_tot)
+            if (X_grid_style.ne.2) &
+                &call find_compr_range(r_F_X,[min_sol,max_sol],X_limits_tot)
+            
             ! initialize n_r_sol
             n_r_sol = sol_limits_tot(2)-sol_limits_tot(1)+1
             allocate(loc_n_r_sol(n_procs))
@@ -490,20 +500,32 @@ contains
             loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
                 &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
             
-            ! set sol_limits
+            ! set sol_limits, with the ghost region of the radial derivative of
+            ! the solution vector, a spline over the range of this process
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
             sol_limits = sol_limits + sol_limits_tot(1) - 1
-            if (rank.gt.0) sol_limits(1) = sol_limits(1)-norm_disc_prec_sol     ! ghost region for num. deriv.
-            if (rank.lt.n_procs-1) sol_limits(2) = &
-                &sol_limits(2)+norm_disc_prec_sol+1                             ! ghost region for num. deriv. and overlap for int_vol
+            sol_limits(1) = max(sol_limits(1)-size_ghost_interp_V,&
+                &sol_limits_tot(1))
+            sol_limits(2) = min(sol_limits(2)+size_ghost_interp_V,&
+                &sol_limits_tot(2))
             min_sol = minval(r_F_sol(sol_limits(1):sol_limits(2)))
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
-            ! determine eq_limits: smallest eq and X range comprising sol range
+            ! determine eq_limits and X_limits: smallest eq and X range
+            ! comprising sol range, widened by the ghost region of the
+            ! interpolation to the solution grid
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
+            eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,&
+                &eq_limits_tot(1))
+            eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,&
+                &eq_limits_tot(2))
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
                     call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
+                    X_limits(1) = max(X_limits(1)-size_ghost_interp_V,&
+                        &X_limits_tot(1))
+                    X_limits(2) = min(X_limits(2)+size_ghost_interp_V,&
+                        &X_limits_tot(2))
                 case (2)                                                        ! solution
                     X_limits = sol_limits
             end select
@@ -527,7 +549,7 @@ contains
     !!
     !! \return ierr
     integer function setup_grid_eq(grid_eq,eq_limits) result(ierr)
-        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr
+        use num_vars, only: eq_style, eq_jobs_lims, eq_job_nr, n_procs
         use grid_vars, only: n_r_eq, n_alpha
         use HELENA_vars, only: nchi, chi_H
         use rich_vars, only: n_par_X
@@ -554,9 +576,11 @@ contains
                 call writo('Field-aligned with '//trim(i2str(n_r_eq))//&
                     &' normal and '//trim(i2str(n_par_X))//' parallel points')
                 
-                ! create grid with eq_jobs_lims
+                ! create grid with eq_jobs_lims, divided on every process alike,
+                ! also where the ghost regions make eq_limits the whole grid
                 ierr = grid_eq%init([eq_jobs_lims(2,eq_job_nr)-&
-                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,n_r_eq],eq_limits)
+                    &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,n_r_eq],eq_limits,&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! user output
@@ -568,8 +592,9 @@ contains
                 call writo('Will be interpolated to a field-aligned grid &
                     &later')
                 
-                ! create grid
-                ierr = grid_eq%init([nchi,1,n_r_eq],eq_limits)                  ! axisymmetric equilibrium
+                ! create grid, divided on every process alike
+                ierr = grid_eq%init([nchi,1,n_r_eq],eq_limits,&
+                    &divided=n_procs.gt.1)                                      ! axisymmetric equilibrium
                 CHCKERR('')
                 
                 ! copy angular grid from HELENA
@@ -629,12 +654,10 @@ contains
                 ! create grid with eq_jobs_lims
                 ierr = grid_eq_B%init([eq_jobs_lims(2,eq_job_nr)-&
                     &eq_jobs_lims(1,eq_job_nr)+1,n_alpha,grid_eq%n(3)],&
-                    &[grid_eq%i_min,grid_eq%i_max])                             ! only one field line
+                    &[grid_eq%i_min,grid_eq%i_max],grid_eq%divided)             ! only one field line
                 CHCKERR('')
                 
                 ! copy the normal coords.
-                grid_eq_B%loc_r_E = grid_eq%loc_r_E
-                grid_eq_B%loc_r_F = grid_eq%loc_r_F
                 grid_eq_B%r_E = grid_eq%r_E
                 grid_eq_B%r_F = grid_eq%r_F
                 
@@ -653,7 +676,7 @@ contains
     !!
     !! \return ierr
     integer function setup_grid_X(grid_eq,grid_X,r_F_X,X_limits) result(ierr)
-        use num_vars, only: norm_disc_prec_X, X_grid_style
+        use num_vars, only: norm_disc_prec_X, X_grid_style, n_procs
         use grid_utilities, only: coord_F2E
         use spline_utilities, only: spline
         
@@ -677,19 +700,16 @@ contains
                 ierr = grid_eq%copy(grid_X)
                 CHCKERR('')
             case (2,3)                                                          ! solution and enriched
-                ! create grid
-                ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits)
+                ! create grid, divided on every process alike
+                ierr = grid_X%init([grid_eq%n(1:2),size(r_F_X)],X_limits,&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 
                 ! set Flux variables
                 grid_X%r_F = r_F_X
-                grid_X%loc_r_F = r_F_X(X_limits(1):X_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_X%r_F,grid_X%r_E,&
-                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-                CHCKERR('')
-                ierr = coord_F2E(grid_eq,grid_X%loc_r_F,grid_X%loc_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
                 
@@ -754,13 +774,9 @@ contains
                 
                 ! set Flux variables
                 grid_sol%r_F = r_F_sol
-                grid_sol%loc_r_F = r_F_sol(sol_limits(1):sol_limits(2))
                 
                 ! convert to Equilibrium variables
                 ierr = coord_F2E(grid_eq,grid_sol%r_F,grid_sol%r_E,&
-                    &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
-                CHCKERR('')
-                ierr = coord_F2E(grid_eq,grid_sol%loc_r_F,grid_sol%loc_r_E,&
                     &r_F_array=grid_eq%r_F,r_E_array=grid_eq%r_E)
                 CHCKERR('')
             case (2)                                                            ! solution
@@ -770,9 +786,7 @@ contains
                     &[grid_X%i_min,grid_X%i_max],grid_X%divided)
                 CHCKERR('')
                 grid_sol%r_F = grid_X%r_F
-                grid_sol%loc_r_F = grid_X%r_F(sol_limits(1):sol_limits(2))
                 grid_sol%r_E = grid_X%r_E
-                grid_sol%loc_r_E = grid_X%r_E(sol_limits(1):sol_limits(2))
         end select
     end function setup_grid_sol
     
@@ -1056,9 +1070,9 @@ contains
             i_lim_tot = [eq_limits_tot(1,1),eq_limits_tot(2,n_procs)]
             i_lim_out = eq_limits-eq_limits_tot(1,1)+1
         end if
-        ierr = grid_out%init(n_out,i_lim_out)
+        ierr = grid_out%init(n_out,i_lim_out,divided=n_procs.gt.1)             ! divided on every process alike
         CHCKERR('')
-        
+
         ! set up limits taking into account angular extent and temporary var
         lims(1) = product(grid%n(1:2))*(grid%i_min-1)+1
         lims(2) = product(grid%n(1:2))*grid%i_max
@@ -1093,11 +1107,6 @@ contains
             &temp_var,lims,lims_dis)
         CHCKERR('')
         grid_out%zeta_E = reshape(temp_var,shape(grid_out%zeta_E))
-        ! loc_r_F and loc_R_E
-        if (grid_out%divided) then
-            grid_out%loc_r_F = grid_out%r_F(grid_out%i_min:grid_out%i_max)
-            grid_out%loc_r_E = grid_out%r_E(grid_out%i_min:grid_out%i_max)
-        end if
     end function redistribute_output_grid
     
     !> Plots the grid in real 3-D space.

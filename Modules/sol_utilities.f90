@@ -10,20 +10,21 @@ module sol_utilities
     use num_vars, only: dp, iu, max_str_ln, pi
     use grid_vars, only: grid_type
     use eq_vars, only: eq_1_type, eq_2_type
-    use X_vars, only: X_1_type, modes_type
+    use X_vars, only: X_1_type, X_2_type, modes_type
     use sol_vars, only: sol_type
 
     implicit none
     private
-    public calc_XUQ, calc_tot_sol_vec, calc_loc_sol_vec, interp_V_spline, &
-        &calc_memory_sol
+    public calc_XUQ, calc_tot_sol_vec, calc_loc_sol_vec, interp_V, &
+        &interp_V_spline, calc_memory_sol
 #if ldebug
-    public debug_calc_XUQ_arr, debug_interp_V_spline
+    public debug_calc_XUQ_arr, debug_interp_V, debug_interp_V_spline
 #endif
     
     ! global variables
 #if ldebug
     logical :: debug_calc_XUQ_arr = .false.                                     !< plot debug information for calc_XUQ_arr \ldebug
+    logical :: debug_interp_V = .false.                                         !< debug information for interp_v \ldebug
     logical :: debug_interp_V_spline = .false.                                  !< debug information for interp_v_spline \ldebug
 #endif
     
@@ -69,7 +70,7 @@ contains
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
         use num_utilities, only: con2dis
         use spline_utilities, only: spline
-        use X_utilities, only: trim_modes
+        use X_utilities, only: check_same_modes, get_n_mod_tot
 #if ldebug
         use eq_vars, only: max_flux_F
         use num_utilities, only: calc_int
@@ -98,13 +99,12 @@ contains
         integer :: kd_tot                                                       ! kd in total grid
         integer :: ind_X                                                        ! index of mode in X tables
         integer :: ind_sol                                                      ! index of mode in sol tables
-        integer :: n_mod_tot                                                    ! total number of modes
+        integer :: n_sec                                                        ! number of rows of sec
         integer :: n_t                                                          ! number of time points
         integer :: n_loc, m_loc                                                 ! local mode numbers
         integer :: id, jd, kd                                                   ! counters
         integer :: XUQ_dims(4)                                                  ! dimensions of XUQ
         integer :: kdl_X(2), kdl_sol(2)                                         ! limits on normal index for a mode in X and sol grids
-        integer :: id_lim_X(2), id_lim_sol(2)                                   ! limits on total modes
         integer, pointer :: sec_X_loc(:,:), sec_sol_loc(:,:)                    ! pointers to secondary mode variables
         real(dp), allocatable :: expon(:,:,:)                                   ! exponent in solution grid
         real(dp), allocatable :: par_fac(:)                                     ! multiplicative factor due to parallel derivative, without iu, in perturbation grid
@@ -124,6 +124,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         
 #if ldebug
+        integer :: m_tot                                                        ! index of the mode of a row of sec in sol_vec_tot
         real(dp), allocatable :: sol_vec_ALT(:)                                 ! sol_vec calculated from Dsol_vec in solution grid
 #endif
         
@@ -151,20 +152,13 @@ contains
             CHCKERR(err_msg)
         end if
         
-        ! limit input modes to output modes
-        ! (X grid should comprise sol grid)
-        ierr = trim_modes(mds_X,mds_sol,id_lim_X,id_lim_sol)
+        ! the perturbation and solution grid have the same rows of modes
+        ierr = check_same_modes(mds_X,mds_sol)
         CHCKERR('')
-        sec_X_loc => mds_X%sec(id_lim_X(1):id_lim_X(2),:)
-        sec_sol_loc => mds_sol%sec(id_lim_sol(1):id_lim_sol(2),:)
+        sec_X_loc => mds_X%sec
+        sec_sol_loc => mds_sol%sec
         
-        n_mod_tot = size(sec_X_loc,1)
-        
-        if (size(sec_X_loc,1).ne.size(sec_sol_loc,1)) then
-            ierr = 1
-            err_msg = 'modes X and sol have inconsistent sizes'
-            CHCKERR(err_msg)
-        end if
+        n_sec = size(sec_X_loc,1)
         
         ! set up normalized sqrt(sol_val)
         sqrt_sol_val_norm = sqrt(sol%val(X_id))
@@ -212,7 +206,7 @@ contains
         ! variable 'sec'.
         if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
             ! set up variables
-            allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r,0:1))
+            allocate(sol_vec_tot(get_n_mod_tot(mds_sol),grid_sol%loc_n_r,0:1))
             sol_vec_tot = 0._dp
             
             ! convert to total solution vector and derivate
@@ -225,26 +219,27 @@ contains
             
 #if ldebug
             if (debug_calc_XUQ_arr) then
-                do m = 1,n_mod_tot
-                    call writo('For mode '//trim(i2str(m))//', testing &
+                do m = 1,n_sec
+                    m_tot = sec_sol_loc(m,1)-minval(sec_sol_loc(:,1))+1
+                    call writo('For mode '//trim(i2str(sec_sol_loc(m,1)))//', testing &
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
                     kdl_sol = sec_sol_loc(m,2:3)
                     allocate(sol_vec_ALT(1:kdl_sol(2)-kdl_sol(1)+1))
                     sol_vec_ALT = 0._dp
-                    ierr = calc_int(rp(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),1)),&
+                    ierr = calc_int(rp(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),1)),&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
-                        &[rp(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),0)),&
+                        &[rp(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),0)),&
                         &sol_vec_ALT],[kdl_sol(2)-kdl_sol(1)+1,2]),x=reshape(&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),&
                         &[kdl_sol(2)-kdl_sol(1)+1,1])/max_flux_F*2*pi)
-                    ierr = calc_int(ip(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),1)),&
+                    ierr = calc_int(ip(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),1)),&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
-                        &[ip(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),0)),&
+                        &[ip(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),0)),&
                         &sol_vec_ALT],[kdl_sol(2)-kdl_sol(1)+1,2]),x=reshape(&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),&
                         &[kdl_sol(2)-kdl_sol(1)+1,1])/max_flux_F*2*pi)
@@ -285,15 +280,7 @@ contains
         end select
         
         ! iterate over all secondary modes
-        do m = 1,n_mod_tot
-            ! test
-            if (sec_X_loc(m,1).ne.sec_sol_loc(m,1)) then
-                ierr = 1
-                err_msg = 'For mode '//trim(i2str(m))//&
-                    &', no consistency for modes in grid_X and grid_sol'
-                CHCKERR(err_msg)
-            end if
-            
+        do m = 1,n_sec
             ! set up and normal limits
             kdl_X = sec_X_loc(m,2:3)
             kdl_sol = sec_sol_loc(m,2:3)
@@ -582,6 +569,7 @@ contains
         &deriv) result(ierr)
         use num_vars, only: X_style, norm_disc_prec_sol
         use X_vars, only: n_mod_X
+        use X_utilities, only: get_n_mod_tot
         use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
@@ -670,7 +658,7 @@ contains
             case (2)                                                            ! fast
                 ! set local and total nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec,1)
+                n_mod_tot = get_n_mod_tot(mds)
                 
                 ! test allocation
                 if (allocated(sol_vec_tot)) then
@@ -689,8 +677,9 @@ contains
                 sol_vec_tot = 0._dp
                 do ld = 1,size(mds%sec,1)
                     ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-grid_sol%i_min+1        ! normal range in solution vector
-                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    kdl(1) = max(mds%sec(ld,2)-grid_sol%i_min+1,1)              ! normal range in solution vector
+                    kdl(2) = min(mds%sec(ld,3)-grid_sol%i_min+1,n_r)
+                    if (kdl(1).gt.kdl(2)) cycle                                 ! no point of this range in sol_vec_loc
                     if (deriv_loc.eq.0) then
                         sol_vec_tot(ld_loc,kdl(1):kdl(2)) = &
                             &sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2))
@@ -735,7 +724,6 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
-        integer :: n_mod_tot                                                    ! total number of modes
         integer :: ld                                                           ! counter
         integer :: kdl(2)                                                       ! kd limits
         integer :: ld_loc                                                       ! local ld
@@ -764,9 +752,8 @@ contains
                 end if
                 sol_vec_loc = sol_vec_tot
             case (2)                                                            ! fast
-                ! set local and total nr. of modes
+                ! set local nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec,1)
                 
                 ! test allocation
                 if (allocated(sol_vec_loc)) then
@@ -785,8 +772,9 @@ contains
                 sol_vec_loc = 0._dp
                 do ld = 1,size(mds%sec,1)
                     ld_loc = mds%sec(ld,1)-minval(mds%sec(:,1),1)+1
-                    kdl = [mds%sec(ld,2),mds%sec(ld,3)]-i_min+1                 ! range in sol_vec_loc
-                    kdl = max(1,min(kdl,n_r))                                   ! limit to sol_vec_loc range
+                    kdl(1) = max(mds%sec(ld,2)-i_min+1,1)                       ! range in sol_vec_loc
+                    kdl(2) = min(mds%sec(ld,3)-i_min+1,n_r)
+                    if (kdl(1).gt.kdl(2)) cycle                                 ! no point of this range in sol_vec_loc
                     sol_vec_loc(mds%sec(ld,4),kdl(1):kdl(2)) = &
                         &sol_vec_tot(ld_loc,kdl(1):kdl(2))
                 end do
@@ -881,6 +869,267 @@ contains
         end subroutine plot_comp
 #endif
     end function interp_V_spline
+    
+    !> Interpolate  tensorial  perturbation  quantities  in  the  third
+    !! dimension.
+    !!
+    !! The input grid should not be divided, though the output grid can be.
+    !!
+    !! The procedure  considers all  possible mode  number combinations.  For \c
+    !! X_style 2  (fast), each  secondary mode  only lives  in a  certain normal
+    !! range  of the  plasma. Therefore,  each secondary  mode pair  also has  a
+    !! limited normal range, given by the overlap of the ranges of the members.
+    !!
+    !! The interpolated mode number combinations  have a normal range that might
+    !! slightly differ from the input ranges, in which case extrapolation can be
+    !! done if the method allows for it.
+    !!
+    !! Row \c k of \c sec  of the input grid and row \c k of  the output grid
+    !! belong to the same mode, because setup_modes() builds the rows of every
+    !! grid from the window on the equilibrium points.
+    !!
+    !! \note A mode pair  can have output points but no input  points, when the
+    !! window moves by two  or more between two points of the  input grid. It
+    !! is then set to zero.  setup_modes() stops when the window moves by more
+    !! than \c n_mod_X between two points of a grid.
+    integer function interp_V(mds_i,grid_i,X_i,mds_o,grid_o,X_o) result(ierr)
+        use X_utilities, only: is_necessary_X, check_same_modes
+        use X_vars, only: n_mod_X
+        use num_utilities, only: c
+#if ldebug
+        use num_vars, only: rank
+        use eq_vars, only: max_flux_F
+#endif
+        
+        character(*), parameter :: rout_name = 'interp_V'
+        
+        ! input / output
+        type(modes_type), intent(in), target :: mds_i                           !< general modes variables for input
+        type(grid_type), intent(in) :: grid_i                                   !< grid at which \c X_i is tabulated
+        type(X_2_type), intent(in), target :: X_i                               !< tensorial perturbation variable on input grid
+        type(modes_type), intent(in), target :: mds_o                           !< general modes variables for output
+        type(grid_type), intent(in) :: grid_o                                   !< grid at which \c X_o is interpolated
+        type(X_2_type), intent(inout), target :: X_o                            !< interpolated tensorial perturbation variable
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        integer :: k, m                                                         ! counters for mode numbers
+        integer :: c_loc_i(2)                                                   ! local input c for symmetric and asymmetric variables
+        integer :: c_loc_o(2)                                                   ! local output c for symmetric and asymmetric variables
+        integer :: n_mod_tot                                                    ! total amount of modes
+        integer :: kdl_i(2), kdl_o(2)                                           ! limits on normal index for a mode combination
+        integer, pointer :: sec_i_loc(:,:), sec_o_loc(:,:)                      ! pointers to secondary mode variables
+        real(dp), pointer :: r_i_loc(:), r_o_loc(:)                             ! local r_i and r_o for a mode combination
+        complex(dp), pointer :: V_i(:,:,:), V_o(:,:,:)                          ! pointers to input and output PV_i and KV_i
+        logical :: calc_this(2)                                                 ! whether this combination needs to be calculated
+        logical :: extrap = .true.                                              ! whether extrapolation is used
+        character(len=max_str_ln) :: err_msg                                    ! error message
+#if ldebug
+        integer :: km_id
+        integer, allocatable :: norm_ext_i(:,:)                                 ! normal extent for input quantity mode combinations
+        real(dp), allocatable :: r_loc_tot(:,:,:)                               ! r_i_loc and r_o_loc for all combinations
+        integer :: n_copy                                                       ! mode pairs with one input point (copied)
+        !complex(dp), allocatable :: V_plot(:,:)                                 ! for debug plotting of interpolated V
+#endif
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! test
+        if (grid_i%n(2).ne.grid_o%n(2)) then
+            ierr = 1
+            err_msg = 'input and output grid are not compatible in the &
+                &geodesic coordinate: '//trim(i2str(grid_i%n(2)))//' vs. '//&
+                &trim(i2str(grid_o%n(2)))
+            CHCKERR(err_msg)
+        end if
+        
+        ! initialize to zero
+        X_o%PV_0 = 0._dp
+        X_o%PV_1 = 0._dp
+        X_o%PV_2 = 0._dp
+        X_o%KV_0 = 0._dp
+        X_o%KV_1 = 0._dp
+        X_o%KV_2 = 0._dp
+        
+        ! the input and output grid have the same rows of modes
+        ierr = check_same_modes(mds_i,mds_o)
+        CHCKERR('')
+        sec_i_loc => mds_i%sec
+        sec_o_loc => mds_o%sec
+        
+        ! select all mode number combinations of interpolated grid
+        n_mod_tot = size(sec_o_loc,1)
+#if ldebug
+        allocate(r_loc_tot(2,n_mod_tot**2,3))
+        allocate(norm_ext_i(n_mod_tot,n_mod_tot))
+        km_id = 0
+        norm_ext_i = 0
+        n_copy = 0
+#endif
+        do m = 1,n_mod_tot
+            do k = 1,n_mod_tot
+                ! set input and output grid normal limits for mode pair (k,m)
+                kdl_i(1) = max(sec_i_loc(k,2),sec_i_loc(m,2))
+                kdl_i(2) = min(sec_i_loc(k,3),sec_i_loc(m,3))
+                kdl_o(1) = max(sec_o_loc(k,2),sec_o_loc(m,2))
+                kdl_o(2) = min(sec_o_loc(k,3),sec_o_loc(m,3))
+                
+                ! limit to grid ranges
+                kdl_i(1) = max(kdl_i(1),grid_i%i_min)
+                kdl_i(2) = min(kdl_i(2),grid_i%i_max)
+                kdl_o(1) = max(kdl_o(1),grid_o%i_min)
+                kdl_o(2) = min(kdl_o(2),grid_o%i_max)
+                
+                ! limit output range to input range if not extrapolating
+                if (.not.extrap) then
+                    do kd = kdl_o(1),kdl_o(2)
+                        if (grid_o%r_F(kd).ge.grid_i%r_F(kdl_i(1))) exit
+                    end do
+                    kdl_o(1) = kd
+                    
+                    do kd = kdl_o(2),kdl_o(1),-1
+                        if (grid_o%r_F(kd).le.grid_i%r_F(kdl_i(2))) exit
+                    end do
+                    kdl_o(2) = kd
+                end if
+                
+                ! cycle if mode combination does not exist anywhere
+                if (kdl_i(1).gt.kdl_i(2) .or. kdl_o(1).gt.kdl_o(2)) cycle
+                
+                ! convert limits to local
+                kdl_i = kdl_i - grid_i%i_min + 1
+                kdl_o = kdl_o - grid_o%i_min + 1
+                
+                ! get input ranges for this mode number
+                r_i_loc => grid_i%loc_r_F(kdl_i(1):kdl_i(2))
+                r_o_loc => grid_o%loc_r_F(kdl_o(1):kdl_o(2))
+                
+                ! check whether mode combination needs to be calculated
+                calc_this(1) = is_necessary_X(.true.,&
+                    &[sec_o_loc(k,1),sec_o_loc(m,1)])
+                calc_this(2) = is_necessary_X(.false.,&
+                    &[sec_o_loc(k,1),sec_o_loc(m,1)])
+                
+#if ldebug
+                km_id = km_id + 1
+                r_loc_tot(:,km_id,1) = [r_i_loc(1),r_i_loc(size(r_i_loc))]
+                r_loc_tot(:,km_id,2) = [r_o_loc(1),r_o_loc(size(r_o_loc))]
+                r_loc_tot(:,km_id,3) = km_id
+                norm_ext_i(k,m) = size(r_i_loc)
+                if (debug_interp_V) write(*,*) 'k, m', k, m, 'of', n_mod_tot, &
+                        &'with calc_this = ', calc_this
+#endif
+                
+                ! set up c_loc for input and output
+                c_loc_i(1) = c([sec_i_loc(k,4),sec_i_loc(m,4)],.true.,n_mod_X)
+                c_loc_i(2) = c([sec_i_loc(k,4),sec_i_loc(m,4)],.false.,n_mod_X)
+                c_loc_o(1) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.true.,n_mod_X)
+                c_loc_o(2) = c([sec_o_loc(k,4),sec_o_loc(m,4)],.false.,n_mod_X)
+                
+                if (calc_this(1)) then
+                    V_i => X_i%PV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%PV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                    
+                    V_i => X_i%PV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%PV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                    
+                    V_i => X_i%KV_0(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%KV_0(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                    
+                    V_i => X_i%KV_2(:,:,kdl_i(1):kdl_i(2),c_loc_i(1))
+                    V_o => X_o%KV_2(:,:,kdl_o(1):kdl_o(2),c_loc_o(1))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                    
+#if ldebug
+                    if (debug_interp_V) then
+                        !call writo('For [k,m] = ['//&
+                            !&trim(i2str(sec_o_loc(k,1)))//','//&
+                            !&trim(i2str(sec_o_loc(m,1)))//']:')
+                        !call lvl_ud(1)
+                        !call writo('input normal range: '//&
+                            !&trim(i2str(kdl_i(1)))//'..'//trim(i2str(kdl_i(2))))
+                        !call writo('output normal range: '//&
+                            !&trim(i2str(kdl_o(1)))//'..'//trim(i2str(kdl_o(2))))
+                        !allocate(V_plot(max(size(V_i,3),size(V_o,3)),4))
+                        !V_plot(1:size(V_i,3),1) = V_i(1,1,:)
+                        !V_plot(1:size(V_o,3),2) = V_o(1,1,:)
+                        !V_plot(1:size(V_i,3),3) = r_i_loc/max_flux_F*2*pi
+                        !V_plot(1:size(V_o,3),4) = r_o_loc/max_flux_F*2*pi
+                        !V_plot(size(V_i,3)+1:size(V_plot,1),1) = &
+                            !&V_plot(size(V_i,3),1)
+                        !V_plot(size(V_o,3)+1:size(V_plot,1),2) = &
+                            !&V_plot(size(V_o,3),2)
+                        !V_plot(size(V_i,3)+1:size(V_plot,1),3) = &
+                            !&V_plot(size(V_i,3),3)
+                        !V_plot(size(V_o,3)+1:size(V_plot,1),4) = &
+                            !&V_plot(size(V_o,3),4)
+                        !call print_ex_2D(['V_i','V_o'],'RE_V',&
+                            !&rp(V_plot(:,1:2)),x=rp(V_plot(:,3:4)))
+                        !!call print_ex_2D(['V_i','V_o'],'IM_V',&
+                            !!&ip(V_plot(:,1:2)),x=rp(V_plot(:,3:4)))
+                        !deallocate(V_plot)
+                        !if (ex_plot_style.eq.2) read(*,*)
+                        !call lvl_ud(-1)
+                    end if
+#endif
+                end if
+                
+                if (calc_this(2)) then
+                    V_i => X_i%PV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
+                    V_o => X_o%PV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                    
+                    V_i => X_i%KV_1(:,:,kdl_i(1):kdl_i(2),c_loc_i(2))
+                    V_o => X_o%KV_1(:,:,kdl_o(1):kdl_o(2),c_loc_o(2))
+                    ierr = interp_V_spline(V_i,V_o,r_i_loc,r_o_loc,extrap)
+                    CHCKERR('')
+                end if
+#if ldebug
+                if (size(r_i_loc).eq.1) n_copy = n_copy + 1
+#endif
+            end do
+        end do
+        
+#if ldebug
+        call writo('interp_V_spline statistics:')
+        call lvl_ud(1)
+        call writo(trim(i2str(n_copy))//' of '//trim(i2str(km_id))//&
+            &' mode pairs have one input point, which is copied')
+        if (n_copy.gt.0) then
+            call writo('It is possible that more secondary modes and/or a &
+                &lower max_njq_change are needed.',warning=.true.)
+            call writo('If unphysical modes appear, consider changing these &
+                &variables.',warning=.true.)
+        end if
+        call lvl_ud(-1)
+        call print_ex_2D([''],'r_i_loc_'//trim(i2str(rank)),&
+            &r_loc_tot(:,1:km_id,1)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
+            &draw=.false.)
+        call draw_ex([''],'r_i_loc_'//trim(i2str(rank)),km_id,1,.false.,&
+            &ex_plot_style=1)
+        call print_ex_2D([''],'r_o_loc_'//trim(i2str(rank)),&
+            &r_loc_tot(:,1:km_id,2)/max_flux_F*2*pi,x=r_loc_tot(:,1:km_id,3),&
+            &draw=.false.)
+        call draw_ex([''],'r_o_loc_'//trim(i2str(rank)),km_id,1,.false.,&
+            &ex_plot_style=1)
+        call plot_HDF5('normal extent','norm_ext_i_'//trim(i2str(rank)),1._dp*&
+            &reshape(norm_ext_i*1._dp,[n_mod_tot,n_mod_tot,1]))
+#endif
+        
+        ! clean up
+        nullify(r_i_loc,r_o_loc)
+        nullify(sec_i_loc,sec_o_loc)
+        nullify(V_i,V_o)
+    end function interp_V
     
     !> Calculate the memory that the solution driver needs.
     !!

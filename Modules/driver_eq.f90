@@ -49,7 +49,7 @@ contains
     integer function run_driver_eq(grid_eq_out,grid_eq_B_out,eq_1_out,&
         &eq_2_out,vac) result(ierr)
         
-        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, &
+        use num_vars, only: use_pol_flux_F, eq_style, plot_flux_q, n_procs, &
             &plot_magn_grid, plot_B, plot_J, plot_kappa, eq_job_nr, &
             &eq_jobs_lims, jump_to_sol, rich_restart_lvl, alpha_style, &
             &X_grid_style, BC_style
@@ -121,13 +121,15 @@ contains
                     ! perturbation  quantities  are  calculated  on  equilibrium
                     ! normal grid or optimized variant
                     ierr = reconstruct_PB3D_grid(grid_eq_out,'eq',&
-                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
+                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits,&
+                        &divided=n_procs.gt.1)
                     CHCKERR('')
                 case (2)                                                        ! solution
                     ! start from equilibrium grid in equilibrium limits and then
                     ! redistribute it
                     ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
-                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits)
+                        &rich_lvl=rich_lvl_name,grid_limits=eq_limits,&
+                        &divided=n_procs.gt.1)
                     CHCKERR('')
                     ierr = redistribute_output_grid(grid_eq,grid_eq_out)
                     CHCKERR('')
@@ -454,7 +456,8 @@ contains
                 
                 ! reconstruct the full field-aligned grid
                 ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_B_name),&
-                    &rich_lvl=rich_lvl,tot_rich=.true.,grid_limits=eq_limits)
+                    &rich_lvl=rich_lvl,tot_rich=.true.,grid_limits=eq_limits,&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 
                 ! wait for all processes (sometimes necessary to finish lock)

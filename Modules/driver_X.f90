@@ -57,7 +57,8 @@ contains
     integer function run_driver_X(grid_eq,grid_eq_B,grid_X,grid_X_B,eq_1,eq_2,&
         &X_1,X_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
-            &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr, X_grid_style
+            &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr, X_grid_style, &
+            &n_procs
         use rich_vars, only: n_par_X, rich_lvl
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_X_1, &
             &reconstruct_PB3D_X_2
@@ -140,7 +141,7 @@ contains
             
             ! grid_X
             ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-                &grid_limits=X_limits)
+                &grid_limits=X_limits,divided=n_procs.gt.1)
             CHCKERR('')
             
             ! initialize modes and set up

@@ -297,6 +297,9 @@ contains
             end if
         end if
         
+        ! with the x axis flipped, the odd derivatives are with respect to -x
+        if (flip_x .and. mod(deriv_loc,2).eq.1) ynew = -ynew
+        
         ! free
         call EZspline_free(f_spl,ierr)
         CHCKERR('')

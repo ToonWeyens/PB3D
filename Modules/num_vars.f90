@@ -10,7 +10,7 @@ module num_vars
         &output_name, prog_version, prog_style, min_PB3D_version, &
         &debug_version, &
         &shell_commands_name, mem_usage_name, &
-        &mem_usage_count, weight_dp, rank, n_procs, sol_n_procs, time_start, &
+        &mem_usage_count, weight_dp, rank, n_procs, time_start, &
         &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
         &eq_jobs_lims, eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
@@ -57,8 +57,8 @@ module num_vars
     character(len=14), parameter :: shell_commands_name = 'shell_commands'      !< name of shell commands file
     character(len=9), parameter :: mem_usage_name = 'mem_usage'                 !< name of memory usage file
     integer :: mem_usage_count                                                  !< counter for memory usage output
-    real(dp), parameter :: prog_version = 2.56_dp                               !< version number
-    real(dp), parameter :: min_PB3D_version = 2.50_dp                           !< minimum version of the PB3D output that POST and a PB3D restart read
+    real(dp), parameter :: prog_version = 2.57_dp                               !< version number
+    real(dp), parameter :: min_PB3D_version = 2.56_dp                           !< minimum version of the PB3D output that POST and a PB3D restart read
 #if ldebug
     logical :: debug_version = .true.                                           !< debug version used
 #else
@@ -68,7 +68,6 @@ module num_vars
     ! MPI variables
     integer :: rank                                                             !< MPI rank
     integer :: n_procs                                                          !< nr. of MPI processes
-    integer :: sol_n_procs                                                      !< nr. of MPI processes for solution with SLEPC
     integer(kind=8) :: time_start                                               !< start time of simulation
     
     ! job variables
@@ -127,7 +126,10 @@ module num_vars
     ! Radial interpolation of interp_V_spline(): its order and the number of
     ! points redistribute_output_grid() adds on each side of a process' range,
     ! so that the end effect of the interpolation is below the rounding error
-    ! eps = epsilon(1._dp) where interp_V() reads it. A linear piece depends
+    ! eps = epsilon(1._dp) where interp_V() reads it. POST's version of
+    ! calc_norm_range() adds the same number of points for its interpolation
+    ! to the solution grid and for the radial derivative of the solution
+    ! vector. A linear piece depends
     ! only on its own two points: 0 points. An Akima slope depends on the two
     ! intervals on either side: 2 points. The end condition of a cubic spline
     ! decays by 2-sqrt(3) per equal interval (the decaying root of

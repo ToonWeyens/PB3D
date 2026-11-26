@@ -9,11 +9,12 @@
 # peak), but the boundary is free and the vacuum response is computed by the
 # boundary element method of vac_ops. The vacuum can only add energy, so the
 # free-boundary eigenvalue must lie between the no-vacuum value (-4.6041e-2)
-# and the fixed-boundary one (-4.3573e-2, cbm18a_fixed_bnd.sh); the test
+# and the fixed-boundary one (-4.3570e-2, cbm18a_fixed_bnd.sh); the test
 # asserts the upper bound.
 #
 # Anchor (MISHKA normalization, single process, asserted to 1e-3 relative):
-# -4.5051e-2. On the circular external-kink fixtures the same free-boundary
+# -4.5049e-2 with the 16-digit fixture (23 November 2026, issue #65;
+# -4.5051e-2 with the 8-digit one). On the circular external-kink fixtures the same free-boundary
 # treatment agrees with MISHKA to 1.2 % or better (circ_eps005_free_bnd.sh).
 # The 200-point value is 0.5 % from the radially converged -4.5263e-2. That
 # error falls as 1/n_r_sol and does not come from the outer edge: the fixed
@@ -30,9 +31,9 @@ EQ_FILE=$3
 PYTHON=${4:-}
 CHECK=$(cd "$(dirname "$0")" && pwd)/check_vac_res.py
 
-ANCHOR=-4.5051e-2
+ANCHOR=-4.5049e-2
 RTOL=1e-3
-FIXED=-4.3573e-2
+FIXED=-4.3570e-2
 
 # fresh scratch dir, as PB3D writes several output files
 WORKDIR=$(mktemp -d)

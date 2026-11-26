@@ -292,8 +292,6 @@ contains
         
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
-        character(len=max_str_ln) :: file_name                                  ! file name
-        character(len=max_str_ln) :: plot_title                                 ! plot title
         
         ! initialize ierr
         ierr = 0
@@ -315,39 +313,6 @@ contains
             case (2)                                                            ! HELENA
                 call calc_flux_q_HEL()
         end select
-        
-        ! tests
-        err_msg = 'Check out the FAQ at &
-            &https://pb3d.github.io/Doxygen/html/page_faq.html'
-        
-        ! check whether the coordinate is increasing
-        if (grid_eq%r_F(grid_eq%n(3)) .le. grid_eq%r_F(1)) then
-            file_name = 'r_F'
-            plot_title = 'Flux normal coordinate'
-            call print_ex_2D(plot_title,file_name,grid_eq%r_F,draw=.false.)
-            call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 3
-            call writo('The code has not been tested satisfactorily for &
-                &decreasing normal coordinate. See plot '// trim(file_name),&
-                &alert=.true.)
-            CHCKERR(err_msg)
-        end if
-        
-        ! check whether there are reversed shear regions
-        if (maxval(eq%q_saf_E(:,1))*minval(eq%q_saf_E(:,1)) .lt. 0._dp) then
-            file_name = 'Dq_saf'
-            plot_title = 'derivative of safety factor'
-            call print_ex_2D(plot_title,file_name,eq%q_saf_E(:,1),draw=.false.)
-            call draw_ex([plot_title],file_name,1,1,.false.)
-            ierr = 3
-            call writo('The code has to be adapted for reversed-shear regions &
-                &still. See plot ' // trim(file_name),alert=.true.)
-            CHCKERR(err_msg)
-        end if
-        
-        ! take local variables
-        grid_eq%loc_r_E = grid_eq%r_E(grid_eq%i_min:grid_eq%i_max)
-        grid_eq%loc_r_F = grid_eq%r_F(grid_eq%i_min:grid_eq%i_max)
         
         ! Transform flux equilibrium E into F derivatives
         ierr = calc_F_derivs(grid_eq,eq)
@@ -7441,7 +7406,7 @@ contains
             else
                 call plot_diff_HDF5(res2(:,:,:,id),sqrt(&
                     &eq_2%g_F(:,:,norm_id(1):norm_id(2),c([3,3],.true.),0,0,0))&
-                    &/eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0),file_name,&
+                    &/abs(eq_2%jac_F(:,:,norm_id(1):norm_id(2),0,0,0)),file_name,&
                     &tot_dim,loc_offset,description,output_message=.true.)
             end if
             
