@@ -51,6 +51,8 @@ contains
         real(dp), allocatable :: jac_c_H(:,:,:)                                 ! temporary HM variable
         real(dp), allocatable :: jac_s_H(:,:,:)                                 ! temporary HM variable
         character(len=max_str_ln) :: err_msg                                    ! error message
+        real(dp) :: lin_dev                                                     ! max. relative deviation of poloidal flux from linear (lrfp)
+        real(dp), parameter :: lin_tol = 1.E-6_dp                               ! tolerance for lin_dev
         character(len=8) :: flux_name                                           ! either poloidal or toroidal
         real(dp), allocatable :: B_V_sub_c_M(:,:,:), B_V_sub_s_M(:,:,:)         ! Coeff. of B_i in (co)sine series (r,theta,phi) (FM, HM, HM)
 #if ldebug
@@ -84,6 +86,20 @@ contains
         flux_p_V(:,1) = iotaf*phipf
         ierr = calc_int(flux_p_V(:,1),1.0_dp/(n_r_in-1.0_dp),flux_p_V(:,0))
         CHCKERR('')
+        ! with lrfp, VMEC's normal coordinate is the normalized poloidal flux,
+        ! so the poloidal flux is linear in it; a deviation larger than lin_tol
+        ! means that the profiles of the file do not match its flag lrfp
+        if (lrfp) then
+            lin_dev = maxval(abs(flux_p_V(:,0) - flux_p_V(n_r_in,0)*&
+                &[((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]))/&
+                &abs(flux_p_V(n_r_in,0))
+            if (lin_dev.gt.lin_tol) then
+                ierr = 1
+                err_msg = 'lrfp is set, but the poloidal flux deviates from &
+                    &linear in s by '//trim(r2str(lin_dev))//' (relative)'
+                CHCKERR(err_msg)
+            end if
+        end if
         pres_V(:,0) = presf
         rot_t_V(:,0) = iotaf
         q_saf_V(:,0) = 1._dp/iotaf
