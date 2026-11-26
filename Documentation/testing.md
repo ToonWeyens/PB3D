@@ -145,14 +145,18 @@ combined over all ranks.
   every grid the rows of `sec` hold the window once, each mode in its own
   slot of `m`; every grid has the rows of the equilibrium grid, in the same
   order; and a grid on which the window moves over its full width between
-  two points is refused. Two cases are about the routines that use the
+  two points is refused. One case has prescribed modes given from high to
+  low (`X_style` 1 with negative mode numbers), where the mode numbers fall
+  with the slot. Two cases are about the routines that use the
   tables: `sol_utilities::interp_V` between two grids that start in different
   windows, where every entry of the interpolated matrices must belong to
   its two modes and, for a symmetric quantity, hold the element whose row
   has the higher mode number, also where the two modes have their slots in
   the other order in the two grids; and `calc_tot_sol_vec` with
   `calc_loc_sol_vec` on a grid with rows that are empty before its first
-  point, between two points and after its last point.
+  point, between two points and after its last point, where the solution
+  vector per mode must have one entry per mode although two modes have two
+  rows each.
 - **`read_HEL` (full-stack, needs the fixture)** — golden-file test of the
   HELENA equilibrium parser on the committed cbm18a fixture: grid sizes,
   profile values, MISHKA-normalization factors and flux-surface geometry
