@@ -87,8 +87,8 @@ contains
         ierr = calc_int(flux_p_V(:,1),1.0_dp/(n_r_in-1.0_dp),flux_p_V(:,0))
         CHCKERR('')
         ! with lrfp, VMEC's normal coordinate is the normalized poloidal flux,
-        ! so the poloidal flux is linear in it, as the toroidal flux is without;
-        ! the integral must be that line to within lin_tol before it is replaced
+        ! so the poloidal flux is linear in it; a deviation larger than lin_tol
+        ! means that the profiles of the file do not match its flag lrfp
         if (lrfp) then
             lin_dev = maxval(abs(flux_p_V(:,0) - flux_p_V(n_r_in,0)*&
                 &[((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]))/&
@@ -99,8 +99,6 @@ contains
                     &linear in s by '//trim(r2str(lin_dev))//' (relative)'
                 CHCKERR(err_msg)
             end if
-            flux_p_V(:,0) = flux_p_V(n_r_in,0)*&
-                &[((kd-1._dp)/(n_r_in-1),kd=1,n_r_in)]
         end if
         pres_V(:,0) = presf
         rot_t_V(:,0) = iotaf

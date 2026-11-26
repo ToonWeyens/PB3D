@@ -15,6 +15,8 @@
 !!    (1: linear, 2: Akima Hermite, 3: cubic);
 !!  - knots in decreasing order: the same values and derivatives with
 !!    respect to x as knots in increasing order;
+!!  - knots that PSPLINE treats as evenly spaced without being so: linear
+!!    data reproduced at the knots and between them, in 1-D and 2-D;
 !!  - periodic boundary conditions on a full sin period;
 !!  - two and three points: a straight line and a parabola for order 3,
 !!    inside the range and extrapolated, a straight line for order 1, and
@@ -45,6 +47,7 @@ contains
             &new_unittest("cubic_exact_on_cubic", test_cubic_exact), &
             &new_unittest("cubic_extrapolation", test_cubic_extrap), &
             &new_unittest("decreasing_abscissae", test_decreasing), &
+            &new_unittest("nearly_even_abscissae", test_nearly_even), &
             &new_unittest("sin_convergence", test_sin_convergence), &
             &new_unittest("periodic_bc_sin", test_periodic_sin), &
             &new_unittest("few_points", test_few_points), &
@@ -269,6 +272,65 @@ contains
             &trim(r2str(err)))
         if (allocated(error)) return
     end subroutine test_decreasing
+
+    !> Knots whose spacings lie within 5e-7 max|x| of the mean spacing, so
+    !! that PSPLINE treats them as evenly spaced, without being evenly spaced,
+    !! as the poloidal flux of VMEC surfaces where the rotational transform
+    !! hardly changes (issue #95): every order and the 2-D spline on a grid
+    !! reproduce data that are linear in x, at the knots and between them.
+    subroutine test_nearly_even(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: nx = 21, n2 = 5                                   ! knots in x and in the second variable
+        real(dp), parameter :: dev = 2.e-6_dp                                   ! amplitude of the deviation from an even grid
+        integer :: ierr, kd, jd, ord                                            ! error status, counters
+        real(dp) :: t(nx), x(nx), y(nx), x2(n2), y2(nx,n2)                      ! knots and data
+        real(dp) :: x_int(2*nx-1), y_int(2*nx-1), y2_int(2*nx-1,n2)             ! knots and midpoints, and values there
+        real(dp) :: h(nx-1), ratio, err                                         ! spacings, PSPLINE's evenness ratio, maximum error
+
+        do kd = 1,nx
+            t(kd) = (kd-1._dp)/(nx-1._dp)
+            x(kd) = 0.5_dp + 0.06_dp*t(kd) + dev*t(kd)*(t(kd)-1._dp)            ! 0.5..0.56, knots up to dev/4 off the even grid
+            y(kd) = 2._dp*x(kd) + 1._dp
+        end do
+        x_int(1:2*nx-1:2) = x
+        x_int(2:2*nx-2:2) = (x(1:nx-1)+x(2:nx))/2
+        do jd = 1,n2
+            x2(jd) = (jd-1._dp)/(n2-1._dp)
+            y2(:,jd) = y + x2(jd)
+        end do
+
+        ! PSPLINE's test in genxpkg: even when no spacing deviates from the mean
+        ! by more than 5e-7 max|x|
+        h = x(2:nx) - x(1:nx-1)
+        ratio = maxval(abs(h-(x(nx)-x(1))/(nx-1)))/(5.e-7_dp*maxval(abs(x)))
+        call check(error, ratio.lt.1._dp, 'the knots do not pass PSPLINE''s &
+            &test of an even grid: '//trim(r2str(ratio)))
+        if (allocated(error)) return
+
+        do ord = 1,3
+            ierr = spline(x,y,x_int,y_int,ord=ord)
+            call check(error, ierr, 0, 'spline failed for order '//&
+                &trim(i2str(ord)))
+            if (allocated(error)) return
+            err = maxval(abs(y_int-(2._dp*x_int+1._dp)))
+            call check(error, err.lt.1.e-13_dp, 'nearly even knots: linear &
+                &data not reproduced by order '//trim(i2str(ord))//': '//&
+                &trim(r2str(err)))
+            if (allocated(error)) return
+        end do
+
+        ierr = spline_2D(x,x2,y2,x_int,x2,y2_int)
+        call check(error, ierr, 0, 'spline_2D on a grid failed')
+        if (allocated(error)) return
+        err = 0._dp
+        do jd = 1,n2
+            err = max(err,maxval(abs(y2_int(:,jd)-(2._dp*x_int+1._dp+x2(jd)))))
+        end do
+        call check(error, err.lt.1.e-13_dp, 'nearly even knots: linear data &
+            &not reproduced by spline_2D: '//trim(r2str(err)))
+        if (allocated(error)) return
+    end subroutine test_nearly_even
 
     !> Convergence on sin(2 pi x) when doubling the number of knots, for all
     !! three orders: the error has to drop at least by the conservative
