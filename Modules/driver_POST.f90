@@ -106,6 +106,7 @@ contains
         integer :: id, jd                                                       ! counters
         integer :: var_size_without_par(2)                                      ! size without parallel dimension for eq_2 and X_1 variables
         integer :: lim_loc(3,2)                                                 ! grid ranges for local equilibrium job
+        integer, allocatable :: lims_norm_ser(:)                                ! normal limits of all processes
         integer :: n_div_max                                                    ! maximum divisions of equilibrium jobs
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
@@ -218,22 +219,25 @@ contains
             &r_F_eq=grid_eq%r_F,r_F_X=r_F_X,r_F_sol=grid_sol%r_F)
         CHCKERR('')
         deallocate(r_F_X)
+        ! the limits of all processes, printed by rank 0
         call writo('normal grid limits:')
         call lvl_ud(1)
-        call writo('proc '//trim(i2str(rank))//' - equilibrium:  '//&
-            &trim(i2str(lims_norm(1,1)))//' .. '//trim(i2str(lims_norm(2,1))),&
-            &persistent=.true.)
-        call writo('proc '//trim(i2str(rank))//' - perturbation: '//&
-            &trim(i2str(lims_norm(1,2)))//' .. '//trim(i2str(lims_norm(2,2))),&
-            &persistent=.true.)
-        call writo('proc '//trim(i2str(rank))//' - solution:     '//&
-            &trim(i2str(lims_norm(1,3)))//' .. '//trim(i2str(lims_norm(2,3))),&
-            &persistent=.true.)
-        call lvl_ud(-1)
-        
-        ! synchronize outputs
-        ierr = wait_MPI()
+        ierr = get_ser_var(reshape(lims_norm,[6]),lims_norm_ser)
         CHCKERR('')
+        if (rank.eq.0) then
+            do id = 1,n_procs
+                call writo('proc '//trim(i2str(id-1))//' - equilibrium:  '//&
+                    &trim(i2str(lims_norm_ser(6*id-5)))//' .. '//&
+                    &trim(i2str(lims_norm_ser(6*id-4))))
+                call writo('proc '//trim(i2str(id-1))//' - perturbation: '//&
+                    &trim(i2str(lims_norm_ser(6*id-3)))//' .. '//&
+                    &trim(i2str(lims_norm_ser(6*id-2))))
+                call writo('proc '//trim(i2str(id-1))//' - solution:     '//&
+                    &trim(i2str(lims_norm_ser(6*id-1)))//' .. '//&
+                    &trim(i2str(lims_norm_ser(6*id))))
+            end do
+        end if
+        call lvl_ud(-1)
         
         ! user output
         call lvl_ud(-1)

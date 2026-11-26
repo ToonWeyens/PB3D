@@ -939,7 +939,7 @@ contains
     integer function set_BC(mds,grid_sol,X,vac,A,B) result(ierr)
         use num_vars, only: ndps => norm_disc_prec_sol, BC_style, EV_BC
         use X_vars, only: n_mod_X
-        use MPI_utilities, only: get_ser_var, wait_MPI
+        use MPI_utilities, only: get_ser_var
         use SLEPC_utilities, only: insert_block_mat
         
         character(*), parameter :: rout_name = 'set_BC'
@@ -994,6 +994,8 @@ contains
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
+            call writo('Boundary style at row '//trim(i2str(kd))//&
+                &': Eigenvector set to zero')
             if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(1))
                     case (1)
@@ -1025,15 +1027,19 @@ contains
         
         call lvl_ud(-1)
         
-        ! wait to get messages consistent
-        ierr = wait_MPI()
-        CHCKERR('')
-        
         call writo('Setting BC at plasma edge')
         call lvl_ud(1)
         
         ! the right BC is set at the last point only
         kd = grid_sol%n(3)
+        select case (BC_style(2))
+            case (1)
+                call writo('Boundary style at row '//trim(i2str(kd))//&
+                    &': Eigenvector set to zero')
+            case (2)
+                call writo('Boundary style at row '//trim(i2str(kd))//&
+                    &': Free boundary, vacuum energy added to the edge block')
+        end select
         if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then               ! decide which process does the setting
             select case (BC_style(2))
                 case (1)
@@ -1083,10 +1089,6 @@ contains
             
             ! initialize ierr
             ierr = 0
-            
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
             allocate(loc_block(n_mod_X,n_mod_X))
@@ -1149,11 +1151,6 @@ contains
 
             ! initialize ierr
             ierr = 0
-
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Free boundary, vacuum energy added to the edge block',&
-                &persistent=.true.)
 
             ! -------------!
             ! BLOCKS ~ vac !
