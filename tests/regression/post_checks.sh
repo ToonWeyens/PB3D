@@ -18,6 +18,9 @@
 #     returns exit status 0.
 #  5. POST with PB3D_rich_lvl = 5 stops, with an exit status that is not
 #     zero, and names 1 as the highest Richardson level in the file.
+#  6. POST with min_r_plot = 0.6, so on a part of the normal range of the
+#     solution (0.45 to 0.75), plots the solutions and writes the energy
+#     decomposition of all three, with exit status 0.
 set -u
 
 PB3D_EXE=$1
@@ -144,7 +147,21 @@ elif ! grep -qF 'PB3D_rich_lvl cannot be higher than 1' post_lvl_5/post.log; the
     tail -10 post_lvl_5/post.log
 fi
 
+# 6. a part of the normal range: POST then reads only a part of every grid
+# of the PB3D output, also on one process
+run_post post_part "    min_r_plot = 0.6
+    plot_sol_xi = .true."
+if [ "$POST_STATUS" -ne 0 ]; then
+    fail "POST with min_r_plot = 0.6 exited with status $POST_STATUS; log tail:"
+    tail -20 post_part/post.log
+else
+    N_EN=$(grep -c '^# Eigenvalue' post_part/POST_out_EN_R1.txt 2>/dev/null)
+    if [ "$N_EN" != 3 ]; then
+        fail "POST with min_r_plot = 0.6: POST_out_EN_R1.txt holds ${N_EN:-no} solutions, not 3"
+    fi
+fi
+
 if [ "$OK" -ne 1 ]; then
     exit 1
 fi
-echo "PASS: mode input checks, POST energy file with 3 solutions, PB3D_rich_lvl 0 and 5"
+echo "PASS: mode input checks, POST energy file with 3 solutions, PB3D_rich_lvl 0 and 5, POST on a part of the normal range"
