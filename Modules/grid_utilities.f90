@@ -1176,8 +1176,9 @@ contains
     !> Copy a grid A to a new grid B, that was not yet initialized.
     !!
     !! This  new grid  can contain  a  subsection of  the previous  grid in  all
-    !! dimensions. By  providing the limits, this  process can hold a  part of
-    !! it; with more than one process the new grid is then divided.
+    !! dimensions. By providing  the limits, this process can hold  a part of
+    !! it. \c divided states whether several  processes each hold a part of the
+    !! new grid, as in init_grid().
     !!
     !! \note
     !!  -# The normal  limits of this process should  be given in terms  of the
@@ -1187,9 +1188,8 @@ contains
     !!  normal range.
     !!
     !! \return ierr
-    integer function copy_grid(grid_A,grid_B,lims_B,i_lim) result(ierr)
-        use num_vars, only: n_procs
-        
+    integer function copy_grid(grid_A,grid_B,lims_B,i_lim,divided) &
+        &result(ierr)
         character(*), parameter :: rout_name = 'copy_grid'
         
         ! input / output
@@ -1197,6 +1197,7 @@ contains
         class(grid_type), intent(inout) :: grid_B                               !< grid to be initialized
         integer, intent(in), optional :: lims_B(3,2)                            !< ranges for subset of grid
         integer, intent(in), optional :: i_lim(2)                               !< min. and max. local normal index
+        logical, intent(in) :: divided                                          !< whether several processes each hold a part of grid B
         
         ! local variables
         integer :: n_B(3)                                                       ! n of grid B
@@ -1230,7 +1231,7 @@ contains
         end if
         
         ! allocate the new grid
-        ierr = grid_B%init(n_B,i_lim,divided=present(i_lim).and.n_procs.gt.1)
+        ierr = grid_B%init(n_B,i_lim,divided=divided)
         CHCKERR('')
         
         ! copy arrays, possibly subset

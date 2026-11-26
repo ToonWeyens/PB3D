@@ -106,11 +106,11 @@ contains
             
             ! reconstruct field-aligned equilibrium grid (for level 1)
             ierr = reconstruct_PB3D_grid(grid_eq_B,trim(grid_eq_name),&
-                &rich_lvl=1)
+                &rich_lvl=1,divided=.false.)
             CHCKERR('')
             
             ! reconstruct solution grid
-            ierr = reconstruct_PB3D_grid(grid_sol,'sol')
+            ierr = reconstruct_PB3D_grid(grid_sol,'sol',divided=.false.)
             CHCKERR('')
             
             ! reconstruct flux equilibrium variables
@@ -128,7 +128,7 @@ contains
                 
                 ! reconstruct field-aligned perturbation grid
                 ierr = reconstruct_PB3D_grid(grid_X_B,trim(grid_X_name),&
-                    &rich_lvl=rich_lvl)
+                    &rich_lvl=rich_lvl,divided=.false.)
                 CHCKERR('')
                 
                 if (rich_lvl.eq.1) then

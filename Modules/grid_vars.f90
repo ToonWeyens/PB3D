@@ -97,8 +97,15 @@ contains
     !! \c divided states whether several processes each hold a part of the grid,
     !! so that the processes  have to communicate to treat the whole grid. It has
     !! to be the same on every process and can therefore not be derived from the
-    !! local limits: a process  whose part, with its ghost regions,  is the whole
-    !! grid is part of a divided grid as well.
+    !! local limits. The limits and \c divided are independent:
+    !!  - whole grid, not divided: an ordinary grid of one process, or a grid
+    !!  that every process holds completely for itself.
+    !!  - part of the grid, divided: the usual case on several processes.
+    !!  - whole grid, divided: a process whose part, with its ghost regions, is
+    !!  the whole grid. It takes part in the communication as the others do.
+    !!  - part of the grid, not divided: a grid restricted to a part of which
+    !!  no other process holds the rest, as POST on one process with a reduced
+    !!  normal range. trim_grid() returns that part.
     !!
     !! \return ierr
     integer function init_grid(grid,n,i_lim,divided) result(ierr)
