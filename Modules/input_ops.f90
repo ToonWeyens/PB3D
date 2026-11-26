@@ -243,6 +243,10 @@ contains
             call writo('Close input file')
             close(input_i)
             
+#if lmacos
+            call check_macos_malloc()
+#endif
+            
             call lvl_ud(-1)
             call writo('Input values set')
         end if
@@ -1110,6 +1114,39 @@ contains
             end if
         end function adapt_normalization
     end function read_input_opts
+    
+#if lmacos
+    !> Warn when the macOS allocator keeps freed memory.
+    !!
+    !! From macOS 26 on, the allocator keeps up to 64 freed blocks of 2 MiB to
+    !! 4 GiB each in the memory of the program, and the system takes them back
+    !! only once it is already paging memory out. Then \c max_tot_mem does not limit the
+    !! memory that the program takes: on the free-boundary tutorial case at
+    !! 4000 MB, PB3D took 10.6 GB instead of 5.05 GB. The environment variable
+    !! \c MallocLargeCache=0 (or \c MallocSpaceEfficient=1) makes the
+    !! allocator return freed blocks at once. It has to be set when the
+    !! program starts.
+    subroutine check_macos_malloc()
+        use num_vars, only: prog_name
+        
+        ! local variables
+        character(len=8) :: large_cache                                         ! value of MallocLargeCache
+        character(len=8) :: space_efficient                                     ! value of MallocSpaceEfficient
+        
+        call get_environment_variable('MallocLargeCache',large_cache)
+        call get_environment_variable('MallocSpaceEfficient',space_efficient)
+        if (trim(large_cache).ne.'0' .and. trim(space_efficient).ne.'1') then
+            call writo('On macOS, run '//trim(prog_name)//' with &
+                &MallocLargeCache=0 in the environment, for example',&
+                &warning=.true.)
+            call lvl_ud(1)
+            call writo('MallocLargeCache=0 ./'//trim(prog_name)//' ...')
+            call writo('Otherwise macOS keeps memory that '//trim(prog_name)//&
+                &' has freed, and it can take about twice max_tot_mem')
+            call lvl_ud(-1)
+        end if
+    end subroutine check_macos_malloc
+#endif
     
     !> Reads the equilibrium input file if no Richardson restart.
     !!

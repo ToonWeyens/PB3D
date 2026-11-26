@@ -109,6 +109,11 @@ if(PB3D_ENABLE_INFINIBAND)
     message(STATUS "InfiniBand support enabled (lIB)")
 endif()
 
+# macOS: PB3D warns when the allocator keeps freed memory (input_ops.f90)
+if(APPLE)
+    add_compile_definitions(lmacos)
+endif()
+
 # Compiler-specific preprocessor defines
 if(PB3D_COMPILER_INTEL)
     add_compile_definitions(lwith_intel)

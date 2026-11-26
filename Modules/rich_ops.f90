@@ -329,7 +329,7 @@ contains
         use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
         use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl, &
-            &X_grid_style, BC_style, max_tot_mem
+            &X_grid_style, BC_style, max_tot_mem, enrich_mem_fac
         use MPI_utilities, only: get_ser_var
         use sol_utilities, only: calc_memory_sol
         
@@ -371,13 +371,16 @@ contains
         ! subroutine 'calc_memory_eq' and 'calc_memory_X'),  while it  is the
         ! number of  normal points of  the perturbation grid for  the X_1 and
         ! X_2_int variables. For  X_grid_style 3, the points  that enrich the
-        ! equilibrium grid are not known yet and not counted.
+        ! equilibrium grid are known only after the first equilibrium job, so
+        ! that a margin enrich_mem_fac is used.
         var_size_without_par(1) = n_r_eq
         select case (X_grid_style)
-            case (1,3)                                                          ! equilibrium or enriched
+            case (1)                                                            ! equilibrium
                 var_size_without_par(2) = n_r_eq
             case (2)                                                            ! solution
                 var_size_without_par(2) = n_r_sol
+            case (3)                                                            ! enriched
+                var_size_without_par(2) = ceiling(n_r_eq*enrich_mem_fac)
         end select
         var_size_without_par = var_size_without_par * n_alpha
         

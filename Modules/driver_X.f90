@@ -58,14 +58,14 @@ contains
         &X_1,X_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
             &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr, X_grid_style, &
-            &n_procs
+            &n_procs, enrich_mem_fac
         use rich_vars, only: n_par_X, rich_lvl
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_X_1, &
             &reconstruct_PB3D_X_2
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
             &n_mod_X
         use grid_ops, only: calc_norm_range
-        use grid_vars, only: min_par_X, max_par_X, n_r_sol
+        use grid_vars, only: min_par_X, max_par_X, n_r_sol, n_r_eq
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &init_modes, setup_modes
         use files_utilities, only: delete_file
@@ -128,6 +128,15 @@ contains
                 &X_limits=X_limits,r_F_eq=r_F_eq,r_F_X=r_F_X,jq=jq_ser)
             CHCKERR('')
             nullify(r_F_eq)
+            
+            ! the memory estimate counted the enriched grid with a margin
+            if (X_grid_style.eq.3 .and. &
+                &size(r_F_X).gt.ceiling(n_r_eq*enrich_mem_fac)) then
+                call writo('The memory estimate counted '//&
+                    &trim(i2str(ceiling(n_r_eq*enrich_mem_fac)))//' normal &
+                    &points, so PB3D can need more than max_tot_mem',&
+                    &warning=.true.)
+            end if
             call lvl_ud(-1)
             
             ! clean up

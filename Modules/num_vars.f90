@@ -12,7 +12,8 @@ module num_vars
         &shell_commands_name, mem_usage_name, &
         &mem_usage_count, weight_dp, rank, n_procs, time_start, &
         &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
-        &eq_jobs_lims, eq_job_nr, mem_scale_fac, pi, mu_0_original, iu, &
+        &eq_jobs_lims, eq_job_nr, mem_scale_fac, enrich_mem_fac, pi, &
+        &mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
         &X_style, X_grid_style, matrix_SLEPC_style, plot_resonance, &
         &plot_magn_grid, plot_B, plot_J, plot_flux_q, plot_kappa, plot_sol_xi, &
@@ -78,6 +79,7 @@ module num_vars
     integer :: X_job_nr                                                         !< nr. of X job
     integer :: eq_job_nr                                                        !< nr. of eq job
     real(dp), parameter :: mem_scale_fac = 6.0                                  !< empirical scale factor of memory to calculate eq compared to just storing it 
+    real(dp), parameter :: enrich_mem_fac = 1.5_dp                              !< margin on the normal points of the perturbation grid in the memory estimate when \c X_grid_style 3 enriches the equilibrium grid
 
     ! physical and mathematical variables
     real(dp), parameter :: pi=4_dp*atan(1.0_dp)                                 !< \f$\pi\f$
