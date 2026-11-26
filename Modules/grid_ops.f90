@@ -444,7 +444,11 @@ contains
         !! side, and the bounding equilibrium and perturbation ranges are
         !! widened by as many points, so that the end effect of these splines is
         !! below the rounding error at the solution points that the process
-        !! keeps after trim_grid().
+        !! keeps after trim_grid(). None of these ranges reaches beyond the
+        !! subset of the solution range and the smallest equilibrium and
+        !! perturbation ranges that comprise it, so that the processes together
+        !! cover what one process covers, and their splines end where its
+        !! splines end.
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_X,r_F_sol)                                                     ! POST version
 
@@ -463,6 +467,8 @@ contains
             
             ! local variables
             integer :: sol_limits_tot(2)                                        ! total solution limits
+            integer :: eq_limits_tot(2)                                         ! total equilibrium limits
+            integer :: X_limits_tot(2)                                          ! total perturbation limits
             integer :: n_r_sol                                                  ! total nr. of normal points in solution grid
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
@@ -476,6 +482,14 @@ contains
             
             ! find the solution index that comprises this range
             call find_compr_range(r_F_sol,[min_sol,max_sol],sol_limits_tot)
+            
+            ! find the equilibrium and perturbation indices that comprise the
+            ! solution range
+            min_sol = minval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            max_sol = maxval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits_tot)
+            if (X_grid_style.ne.2) &
+                &call find_compr_range(r_F_X,[min_sol,max_sol],X_limits_tot)
             
             ! initialize n_r_sol
             n_r_sol = sol_limits_tot(2)-sol_limits_tot(1)+1
@@ -501,14 +515,17 @@ contains
             ! comprising sol range, widened by the ghost region of the
             ! interpolation to the solution grid
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
-            eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,1)
-            eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,size(r_F_eq))
+            eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,&
+                &eq_limits_tot(1))
+            eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,&
+                &eq_limits_tot(2))
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
                     call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
-                    X_limits(1) = max(X_limits(1)-size_ghost_interp_V,1)
+                    X_limits(1) = max(X_limits(1)-size_ghost_interp_V,&
+                        &X_limits_tot(1))
                     X_limits(2) = min(X_limits(2)+size_ghost_interp_V,&
-                        &size(r_F_X))
+                        &X_limits_tot(2))
                 case (2)                                                        ! solution
                     X_limits = sol_limits
             end select
