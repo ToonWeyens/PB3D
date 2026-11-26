@@ -413,7 +413,7 @@ contains
                     ! deallocate local variable
                     deallocate(temp_output_loc)
                 else                                                            ! normal output to file output_i
-                    if (output_i.ne.0) then
+                    if (rank.eq.0) then                                         ! only the master has opened the file
                         if (lvl.eq.1) write(output_i,"(1X,A)",IOSTAT=istat) &
                             &trim(header_str)                                   ! first level gets extra lines
                         write(output_i,"(1X,A)",IOSTAT=istat) &
