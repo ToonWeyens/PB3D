@@ -11,7 +11,7 @@ module num_vars
         &debug_version, &
         &shell_commands_name, mem_usage_name, &
         &mem_usage_count, weight_dp, rank, n_procs, time_start, &
-        &max_tot_mem, max_X_mem, X_jobs_lims, X_job_nr, &
+        &max_tot_mem, max_X_mem, mem_procs, X_jobs_lims, X_job_nr, &
         &eq_jobs_lims, eq_job_nr, mem_scale_fac, enrich_mem_fac, pi, &
         &mu_0_original, iu, &
         &EV_style, eq_style, rho_style, U_style, norm_style, BC_style, &
@@ -74,6 +74,7 @@ module num_vars
     ! job variables
     real(dp) :: max_tot_mem                                                     !< maximum total memory for all processes [MB]
     real(dp) :: max_X_mem                                                       !< maximum memory for perturbation calculations for all processes [MB]
+    real(dp) :: mem_procs = 0._dp                                               !< memory that all processes together hold before the work starts [MB] (see MPI_utilities.calc_mem_procs())
     integer, allocatable :: X_jobs_lims(:,:)                                    !< data about X jobs: [\f$\min_k\f$, \f$\max_k\f$, \f$\min_m\f$, \f$\max_m\f$] for all jobs
     integer, allocatable :: eq_jobs_lims(:,:)                                   !< data about eq jobs: [\f$\min_\theta\f$, \f$\max_\theta\f$] for all jobs
     integer :: X_job_nr                                                         !< nr. of X job

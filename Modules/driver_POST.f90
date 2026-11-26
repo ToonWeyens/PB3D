@@ -80,7 +80,7 @@ contains
             &n_theta_plot, n_zeta_plot, POST_output_full, POST_output_sol, &
             &compare_tor_pos, min_r_plot, max_r_plot, min_theta_plot, &
             &max_theta_plot, min_zeta_plot, max_zeta_plot, plot_vac_pot, &
-            &X_grid_style, n_procs, BC_style
+            &X_grid_style, n_procs, BC_style, mem_procs
         use eq_ops, only: flux_q_plot, divide_eq_jobs, calc_eq_jobs_lims
         use PB3D_ops, only: reconstruct_PB3D_in, reconstruct_PB3D_grid, &
             &reconstruct_PB3D_eq_1, reconstruct_PB3D_eq_2, &
@@ -92,7 +92,7 @@ contains
         use grid_utilities, only: calc_eqd_grid
         use HELENA_vars, only: nchi
         use sol_ops, only: plot_sol_vals, plot_harmonics
-        use MPI_utilities, only: wait_MPI, get_ser_var
+        use MPI_utilities, only: wait_MPI, get_ser_var, calc_mem_procs
         
         character(*), parameter :: rout_name = 'init_POST'
         
@@ -439,6 +439,11 @@ contains
             
             n_div_max = n_out(1,1)-1
             if (compare_tor_pos) n_div_max = 1
+            
+            ! memory of the processes themselves, before the work starts
+            ierr = calc_mem_procs(mem_procs)
+            CHCKERR('')
+            
             select case (eq_style)
                 case (1)                                                        ! VMEC
                     ! divide equilibrium jobs

@@ -6471,7 +6471,7 @@ contains
         &n_par_X_base,range_name) result(ierr)
         
         use num_vars, only: max_tot_mem, max_X_mem, magn_int_style, &
-            &mem_scale_fac, prog_style
+            &mem_scale_fac, prog_style, mem_procs
         use rich_vars, only: rich_lvl
         use eq_utilities, only: calc_memory_eq
         use X_utilities, only: calc_memory_X
@@ -6540,7 +6540,7 @@ contains
         n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
         
         ! calculate largest possible range of parallel points fitting in memory
-        do while (max_tot_mem.lt.sum(mem_size))                                 ! combined mem_size has to be smaller than total memory
+        do while (max_tot_mem.lt.sum(mem_size)+mem_procs)                       ! combined mem_size has to be smaller than total memory
             n_div = n_div + 1
             n_par_range = ceiling(n_par_X*1._dp/n_div + n_par_X_base_loc)
             if (n_div.gt.1) n_par_range = n_par_range + eq_jobs_ol_width() + &
@@ -6556,7 +6556,7 @@ contains
                     &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
-            max_mem_req = ceiling(sum(mem_size))
+            max_mem_req = ceiling(sum(mem_size)+mem_procs)
         end do
         if (n_div.gt.1) then
             range_message = 'The '//trim(i2str(n_par_X))//' '//&
@@ -6569,9 +6569,11 @@ contains
         end if
         call writo(range_message)
         call writo('The total memory for all processes together is estimated &
-            &to be about '//trim(i2str(ceiling(sum(mem_size))))//'MB')
+            &to be about '//trim(i2str(ceiling(sum(mem_size)+mem_procs)))//'MB')
         call lvl_ud(1)
-        if (prog_style.eq.1) call writo('(of which '//&
+        call writo('(of which '//trim(i2str(ceiling(mem_procs)))//'MB for the &
+            &processes themselves)')
+        if (prog_style.eq.1) call writo('(and '//&
             &trim(i2str(ceiling(mem_size(3))))//'MB for the integrated &
             &tensorial perturbation variables)')
         call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem)))//'&
@@ -6581,7 +6583,7 @@ contains
         if (prog_style.eq.1) then
             ! calculate max memory available for perturbation calculations
             mem_size(1) = mem_size(1)/mem_scale_fac                             ! rescale by mem_scale_fac as eq is now just stored
-            max_X_mem = max_tot_mem - sum(mem_size)
+            max_X_mem = max_tot_mem - sum(mem_size) - mem_procs
             call writo('In the perturbation phase, the equilibrium variables &
                 &are not being operated on:')
             call lvl_ud(1)

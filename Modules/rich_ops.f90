@@ -329,8 +329,8 @@ contains
         use eq_ops, only: divide_eq_jobs, calc_eq_jobs_lims
         use HELENA_vars, only: nchi
         use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl, &
-            &X_grid_style, BC_style, max_tot_mem, enrich_mem_fac
-        use MPI_utilities, only: get_ser_var
+            &X_grid_style, BC_style, max_tot_mem, enrich_mem_fac, mem_procs
+        use MPI_utilities, only: get_ser_var, calc_mem_procs
         use sol_utilities, only: calc_memory_sol
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
@@ -384,6 +384,15 @@ contains
         end select
         var_size_without_par = var_size_without_par * n_alpha
         
+        ! memory of the processes themselves, before the work starts
+        if (rich_lvl.eq.rich_restart_lvl) then
+            ierr = calc_mem_procs(mem_procs)
+            CHCKERR('')
+            call writo('The processes hold about '//&
+                &trim(i2str(ceiling(mem_procs)))//'MB together before the &
+                &work starts')
+        end if
+        
         ! check whether the solution driver fits in memory
         n_bnd = 0
         if (BC_style(2).ne.1) then
@@ -398,11 +407,12 @@ contains
             &mem_sol)
         CHCKERR('')
         call writo('The solution driver is estimated to need about '//&
-            &trim(i2str(ceiling(mem_sol)))//'MB')
-        if (mem_sol.gt.max_tot_mem) then
+            &trim(i2str(ceiling(mem_sol+mem_procs)))//'MB, with the &
+            &processes themselves')
+        if (mem_sol+mem_procs.gt.max_tot_mem) then
             ierr = 1
             err_msg = 'The memory limit is too low, the solution driver needs &
-                &more than '//trim(i2str(ceiling(mem_sol)))//'MB'
+                &more than '//trim(i2str(ceiling(mem_sol+mem_procs)))//'MB'
             CHCKERR(err_msg)
         end if
         
