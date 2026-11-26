@@ -145,9 +145,11 @@ combined over all ranks.
   every grid the rows of `sec` hold the window once, each mode in its own
   slot of `m`; every grid has the rows of the equilibrium grid, in the same
   order; and a grid on which the window moves over its full width between
-  two points is refused. One case has prescribed modes given from high to
-  low (`X_style` 1 with negative mode numbers), where the mode numbers fall
-  with the slot. Two cases are about the routines that use the
+  two points is refused, and so is a window that is tabulated on another
+  number of points than the equilibrium grid has (an equilibrium grid
+  restricted to a part of the normal range). One case has prescribed modes
+  given from high to low (`X_style` 1 with negative mode numbers), where the
+  mode numbers fall with the slot. Two cases are about the routines that use the
   tables: `sol_utilities::interp_V` between two grids that start in different
   windows, where every entry of the interpolated matrices must belong to
   its two modes and, for a symmetric quantity, hold the element whose row
