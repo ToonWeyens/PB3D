@@ -128,21 +128,25 @@ contains
         !! input variables encompassing the entire solution range. Additionally,
         !! the global max_flux variables are set as well..
         !!
+        !! The range runs from the last equilibrium point at or below the first
+        !! point of the solution grid to the first equilibrium point at or above
+        !! its last point. The equilibrium points are compared as the normal
+        !! coordinate flux_F/2pi that calc_eq_1() gives the equilibrium grid,
+        !! and the solution grid as calc_r_F_sol() sets it up, so that no point
+        !! of the solution grid lies outside the equilibrium grid, not even by
+        !! rounding.
+        !!
         !! \note This is  the global, undivided range.  The division information
         !! is calculated  in 'eq_limits'. Furthermore, the  input variables have
         !! to be tabulated on the full  grid provided by the equilibrium code to
         !! be able to be used in PB3D and POST.
         integer function calc_norm_range_PB3D_in(in_limits) &
             &result(ierr)                                                       ! PB3D version for equilibrium grid
-            use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style, &
-                &norm_disc_prec_eq
-            use num_utilities, only: con2dis, dis2con, round_with_tol
-            use spline_utilities, only: spline
+            use num_vars, only: use_pol_flux_E, use_pol_flux_F, eq_style
             use VMEC_vars, only: flux_p_V, flux_t_V
             use HELENA_vars, only: flux_p_H, flux_t_H
-            use X_vars, only: min_r_sol, max_r_sol
             use eq_vars, only: max_flux_E, max_flux_F
-            use grid_vars, only: n_r_in
+            use grid_vars, only: n_r_in, n_r_sol
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_in'
             
@@ -151,12 +155,9 @@ contains
             
             ! local variables
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
-            real(dp) :: tot_min_r_in_F_con                                      ! tot_min_r_in in continuous F coords.
-            real(dp) :: tot_max_r_in_F_con                                      ! tot_max_r_in in continuous F coords.
-            real(dp) :: tot_min_r_in_E_con(1)                                   ! tot_min_r_in in continuous E coords.
-            real(dp) :: tot_max_r_in_E_con(1)                                   ! tot_max_r_in in continuous E coords.
-            real(dp) :: tot_min_r_in_E_dis                                      ! tot_min_r_in in discrete E coords., unrounded
-            real(dp) :: tot_max_r_in_E_dis                                      ! tot_max_r_in in discrete E coords., unrounded
+            real(dp), allocatable :: r_F_eq(:)                                  ! sign of the flux times flux_F/2pi
+            real(dp), allocatable :: r_F_sol(:)                                 ! solution grid
+            real(dp) :: pm                                                      ! sign of the flux
             
             ! initialize ierr
             ierr = 0
@@ -199,39 +200,18 @@ contains
             max_flux_E = flux_E(n_r_in)
             max_flux_F = flux_F(n_r_in)
             
-            ! normalize flux_F and flux_E to (0..1) using max_flux
-            flux_E = flux_E/max_flux_E
-            flux_F = flux_F/max_flux_F
+            ! solution grid
+            allocate(r_F_sol(n_r_sol))
+            ierr = calc_r_F_sol(r_F_sol)
+            CHCKERR('')
             
-            ! get lower and upper bound of total solution range
-            ! 1. start
-            tot_min_r_in_F_con = min_r_sol
-            tot_max_r_in_F_con = max_r_sol
-            ! 2. round with tolerance
-            ierr = round_with_tol(tot_min_r_in_F_con,0._dp,1._dp)
-            CHCKERR('')
-            ierr = round_with_tol(tot_max_r_in_F_con,0._dp,1._dp)
-            CHCKERR('')
-            ! 3. continuous E coords
-            ierr = spline(flux_F,flux_E,[tot_min_r_in_F_con],&
-                &tot_min_r_in_E_con,ord=norm_disc_prec_eq)
-            ierr = spline(flux_F,flux_E,[tot_max_r_in_F_con],&
-                &tot_max_r_in_E_con,ord=norm_disc_prec_eq)
-            ! 4. round with tolerance
-            ierr = round_with_tol(tot_min_r_in_E_con,minval(flux_E),&
-                &maxval(flux_E))
-            CHCKERR('')
-            ierr = round_with_tol(tot_max_r_in_E_con,minval(flux_E),&
-                &maxval(flux_E))
-            CHCKERR('')
-            ! 5. discrete E index, unrounded
-            ierr = con2dis(tot_min_r_in_E_con(1),tot_min_r_in_E_dis,flux_E)
-            CHCKERR('')
-            ierr = con2dis(tot_max_r_in_E_con(1),tot_max_r_in_E_dis,flux_E)
-            CHCKERR('')
-            ! 6. discrete E index, rounded
-            in_limits(1) = floor(tot_min_r_in_E_dis)
-            in_limits(2) = ceiling(tot_max_r_in_E_dis)
+            ! with  the sign of the flux,  the normal coordinate increases from
+            ! the first to the last point, as does the solution grid
+            pm = sign(1._dp,max_flux_F)
+            r_F_eq = pm*(flux_F/(2*pi))
+            in_limits(1) = max(count(r_F_eq.le.pm*r_F_sol(1)),1)
+            in_limits(2) = &
+                &min(n_r_in+1-count(r_F_eq.ge.pm*r_F_sol(n_r_sol)),n_r_in)
         end function calc_norm_range_PB3D_in
         
         !> \public PB3D equilibrium version
@@ -384,9 +364,6 @@ contains
         integer function calc_norm_range_PB3D_sol(sol_limits,r_F_sol) &
             &result(ierr)                                                       ! PB3D version for solution grid
             use num_vars, only: n_procs, rank, norm_disc_prec_sol
-            use eq_vars, only: max_flux_F
-            use X_vars, only: min_r_sol, max_r_sol
-            use num_utilities, only: round_with_tol
             use grid_vars, only: n_r_sol
             
             character(*), parameter :: rout_name = 'calc_norm_range_PB3D_sol'
@@ -396,7 +373,6 @@ contains
             real(dp), intent(inout) :: r_F_sol(:)                               !< solution r_F
             
             ! local variables
-            integer :: id                                                       ! counter
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             
             ! initialize ierr
@@ -416,6 +392,33 @@ contains
             sol_limits(1) = max(sol_limits(1)-norm_disc_prec_sol,1)
             sol_limits(2) = min(sol_limits(2)+norm_disc_prec_sol,n_r_sol)
             
+            ! calculate r_F_sol
+            ierr = calc_r_F_sol(r_F_sol)
+            CHCKERR('')
+        end function calc_norm_range_PB3D_sol
+        
+        !> \private points of the solution grid
+        !!
+        !! \c n_r_sol points  from \c min_r_sol to \c max_r_sol, equidistant in
+        !! the normalized flux and translated  to the normal coordinate of the
+        !! Flux coordinates, 0..flux/2pi.
+        integer function calc_r_F_sol(r_F_sol) result(ierr)
+            use eq_vars, only: max_flux_F
+            use X_vars, only: min_r_sol, max_r_sol
+            use num_utilities, only: round_with_tol
+            use grid_vars, only: n_r_sol
+            
+            character(*), parameter :: rout_name = 'calc_r_F_sol'
+            
+            ! input / output
+            real(dp), intent(inout) :: r_F_sol(:)                               !< solution r_F
+            
+            ! local variables
+            integer :: id                                                       ! counter
+            
+            ! initialize ierr
+            ierr = 0
+            
             ! calculate r_F_sol in range from min_r_sol to max_r_sol
             r_F_sol = [(min_r_sol + (id-1.0_dp)/(n_r_sol-1.0_dp)*&
                 &(max_r_sol-min_r_sol),id=1,n_r_sol)]
@@ -427,7 +430,7 @@ contains
             ! translate  to   the  real   normal  variable  in   range  from
             ! 0..flux/2pi
             r_F_sol = r_F_sol*max_flux_F/(2*pi)
-        end function calc_norm_range_PB3D_sol
+        end function calc_r_F_sol
         
         !> \public POST version
         !!

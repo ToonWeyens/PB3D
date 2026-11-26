@@ -250,6 +250,9 @@ contains
         call EZspline_setup(f_spl,y,ierr,exact_dim=.true.)                      ! match exact dimensions
         call EZspline_error(ierr)
         CHCKERR('')
+        ierr = keep_knots(f_spl%x1,f_spl%x1pkg,f_spl%klookup1)
+        CHCKERR('')
+        
         ! interpolated part
         if (il(1).le.il(2)) then
             allocate(xnew_EZ(nnew_interp))
@@ -576,5 +579,53 @@ contains
         call EZspline_setup(f_spl,y,ierr,exact_dim=.true.)                      ! match exact dimensions
         call EZspline_error(ierr)
         CHCKERR('')
+        ierr = keep_knots(f_spl%x1,f_spl%x1pkg,f_spl%klookup1)
+        CHCKERR('')
+        ierr = keep_knots(f_spl%x2,f_spl%x2pkg,f_spl%klookup2)
+        CHCKERR('')
     end function setup_spline_2D
+    
+    !> \private make PSPLINE look up the points of an evaluation on the knots
+    !!
+    !! \c EZspline_setup lets PSPLINE's \c genxpkg treat the grid x as evenly
+    !! spaced when every spacing lies within 5e-7 max|x| of the mean spacing.
+    !! The evaluation at an array of points then finds the cell and the
+    !! position in it on the evenly spaced grid, while the coefficients of
+    !! the spline belong to the knots x, so that at a knot the spline misses
+    !! its value by its slope times the distance between the knot and the
+    !! point of the evenly spaced grid. On a short range of the poloidal flux
+    !! where the rotational transform hardly changes, this is 1e-6 and more
+    !! (issue #95).
+    !!
+    !! This routine sets up the lookup table \c xpkg again with a tolerance
+    !! of 1e-13 max|x|, so that only a grid that is even to rounding is still
+    !! treated as evenly spaced.
+    !!
+    !! \return ierr
+    integer function keep_knots(x,xpkg,klookup) result(ierr)
+        character(*), parameter :: rout_name = 'keep_knots'
+        
+        ! input / output
+        real(dp), intent(in) :: x(:)                                            !< knots
+        real(dp), intent(inout) :: xpkg(size(x),4)                              !< lookup table of PSPLINE for x
+        integer, intent(in) :: klookup                                          !< lookup method of PSPLINE for an uneven grid
+        
+        ! local variables
+        real(dp), parameter :: tol_even = 1.E-13_dp                             ! tolerance of an even grid, relative to max|x|
+        
+        interface
+            subroutine genxpkg(nx,x,xpkg,iper,imsg,itol,ztol,ialg,ier)
+                import dp
+                integer :: nx, iper, imsg, itol, ialg, ier
+                real(dp) :: x(nx), xpkg(nx,4), ztol
+            end subroutine genxpkg
+        end interface
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! xpkg(2,4) is 1 for a periodic grid, as the first call of genxpkg set it
+        call genxpkg(size(x),x,xpkg,nint(xpkg(2,4)),0,1,tol_even,klookup,ierr)
+        CHCKERR('')
+    end function keep_knots
 end module spline_utilities
