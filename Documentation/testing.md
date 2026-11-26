@@ -77,10 +77,12 @@ combined over all ranks.
 - **`num_ops`** — the Householder (orders 1-3) and Zhang zero finders on
   functions with known roots.
 - **`X_utilities`** — the pure mode-index logic: local-to-total secondary-
-  index translation, the symmetric-storage necessity criterion, the
+  index translation, the symmetric-storage necessity criterion, which of
+  the two elements of a pair of modes the entry of a symmetric quantity
+  holds (`is_conj_X`), the
   contiguous HDF5 ranges of tensorial perturbation variables (pinning the
-  worked example from the `get_sec_X_range` documentation) and the mode-
-  range trimming.
+  worked example from the `get_sec_X_range` documentation) and the check
+  that two grids have the same rows of modes.
 - **`PB3D_utilities`** — the Richardson/parallel index arithmetic:
   `setup_par_id` checked against its docstring formulas, including the
   partition property (the per-level index sets of an interlaced parallel
@@ -135,6 +137,30 @@ combined over all ranks.
   \(f = 1 - r^2 + i\cos\theta\), its second-order convergence, and the
   singleton-dimension convention (a missing angular dimension contributes
   a full turn \(2\pi\)).
+- **`modes` (full-stack)** — the mode tables of `X_style` 2
+  (`X_ops::setup_modes`) for windows on the equilibrium points that move
+  up, down, up and then down (a minimum of the safety factor), down and
+  then up, up, down, up and down again (three extrema, where a mode leaves
+  the window and enters it again more than once), up and back down at one
+  equilibrium point, and up and then down
+  on a normal coordinate that decreases: at every point of
+  every grid the rows of `sec` hold the window once, each mode in its own
+  slot of `m`; every grid has the rows of the equilibrium grid, in the same
+  order; and a grid on which the window moves over its full width between
+  two points is refused, and so is a window that is tabulated on another
+  number of points than the equilibrium grid has (an equilibrium grid
+  restricted to a part of the normal range). One case has prescribed modes
+  given from high to low (`X_style` 1 with negative mode numbers), where the
+  mode numbers fall with the slot. Two cases are about the routines that use the
+  tables: `sol_utilities::interp_V` between two grids that start in different
+  windows, where every entry of the interpolated matrices must belong to
+  its two modes and, for a symmetric quantity, hold the element whose row
+  has the higher mode number, also where the two modes have their slots in
+  the other order in the two grids; and `calc_tot_sol_vec` with
+  `calc_loc_sol_vec` on a grid with rows that are empty before its first
+  point, between two points and after its last point, where the solution
+  vector per mode must have one entry per mode although two modes have two
+  rows each.
 - **`read_HEL` (full-stack, needs the fixture)** — golden-file test of the
   HELENA equilibrium parser on the committed cbm18a fixture: grid sizes,
   profile values, MISHKA-normalization factors and flux-surface geometry
@@ -236,6 +262,21 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   required to agree to 1e-6. Needs a distributed LU in PETSc (MUMPS or
   SuperLU_DIST), which the Snellius build has and the CI and macOS builds do
   not; the 1e-3 anchor rows cannot see a decomposition-dependent shift.
+- `cbm18a_X_grid_styles`: the symmetric matrices `PV_0`, `PV_2`, `KV_0`
+  and `KV_2` have one entry for the two complex conjugate elements of a pair
+  of Fourier modes, and every routine has to take it to be the same one of
+  the two: the element whose row has the higher mode number
+  (`X_utilities::is_conj_X`). The regression decks cannot see a mistake in
+  this, because their matrices are real. This row runs the fixed-boundary
+  deck with a parallel range of 0.2π to 1.5π, which makes the matrices
+  complex, from `min_r_sol = 0.4552`, where the first equilibrium point and
+  the first solution point lie in different windows of Fourier modes, on 100
+  normal points. It requires `X_grid_style` 2 (the perturbation grid is the
+  solution grid) and `X_grid_style` 3 (the matrices are interpolated between
+  the two grids) to agree to 1e-5; they agree to 2e-7, and before version
+  2.56 they differed by 1.2e-3. Anchor for `X_grid_style` 2:
+  \(-8.8610\times10^{-2}\). The case is a numerical check, not a physical
+  one, because the parallel range is not a whole turn.
 - `cbm18a_free_bnd`: the same deck **free-boundary** with the vacuum
   response, exercising the whole vacuum chain `store_vac_HEL` → `calc_GH` →
   `calc_vac_res` (exterior BEM solve) → `set_BC`. The free boundary is

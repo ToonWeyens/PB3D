@@ -582,7 +582,7 @@ contains
                     grid_lims(2,id-1) = get_real(lim_lo=grid_lims(1,id-1)/pi)*pi
                 end do
                 
-                ierr = grid%init(dims)
+                ierr = grid%init(dims,divided=.false.)
                 CHCKERR('')
                 
                 ! create grid
@@ -914,7 +914,7 @@ contains
         
         ! reconstruct full grid
         ierr = reconstruct_PB3D_grid(grid,trim(grid_name),&
-            &rich_lvl=rich_lvl_name,tot_rich=.true.)
+            &rich_lvl=rich_lvl_name,tot_rich=.true.,divided=.false.)
         CHCKERR('')
         n_tot = grid%n
         
@@ -949,7 +949,7 @@ contains
         lims(2,:,1) = [0,0]
         lims(3,:,1) = [-1,-1]
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name_eq,&
-            &tot_rich=.true.,lim_pos=lims(:,:,1))
+            &tot_rich=.true.,lim_pos=lims(:,:,1),divided=.false.)
         CHCKERR('')
         call print_ex_2D('r_E','r_E_'//trim(i2str(rank)),grid_eq%r_E,&
             &draw=.false.)
@@ -1079,11 +1079,13 @@ contains
                 ! check whether it coincides with a direct read using subsets
                 ierr = reconstruct_PB3D_grid(grid_sub,trim(grid_name),&
                     &rich_lvl=rich_lvl_name,tot_rich=.true.,&
-                    &lim_pos=lims_loc(:,:,i_sub),grid_limits=i_lim)
+                    &lim_pos=lims_loc(:,:,i_sub),grid_limits=i_lim,&
+                    &divided=divide_over_procs)
                 CHCKERR('')
             else
                 ierr = copy_grid(grid,grid_sub,&
-                    &lims_B=lims_loc(:,:,i_sub),i_lim=i_lim)
+                    &lims_B=lims_loc(:,:,i_sub),i_lim=i_lim,&
+                    &divided=divide_over_procs)
                 CHCKERR('')
             end if
             

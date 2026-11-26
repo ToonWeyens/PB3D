@@ -74,17 +74,6 @@ if(NOT Python3_EXECUTABLE AND EXISTS ${PROJECT_SOURCE_DIR}/.venv/bin/python)
     set(Python3_EXECUTABLE ${PROJECT_SOURCE_DIR}/.venv/bin/python)
 endif()
 
-# index logic of setup_modes (X_ops) replayed in python on the mode-window
-# sequences that broke the slot bookkeeping (issue #4, step 5)
-find_package(Python3 COMPONENTS Interpreter QUIET)
-if(Python3_Interpreter_FOUND)
-    add_test(NAME unit_setup_modes_sim
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reference/setup_modes_sim.py)
-    set_tests_properties(unit_setup_modes_sim PROPERTIES
-        PASS_REGULAR_EXPRESSION "PASS"
-        LABELS "unit")
-endif()
-
 #------------------------------------------------------------------------------
 # Smoke tests of the executables
 #------------------------------------------------------------------------------
@@ -225,6 +214,7 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_splines.f90
         fullstack/test_calc_int_vol.f90
         fullstack/test_read_HEL.f90
+        fullstack/test_modes.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -243,6 +233,7 @@ if(PB3D_BUILD_EXECUTABLES)
         vac_3d
         splines
         calc_int_vol
+        modes
     )
     foreach(suite IN LISTS PB3D_FULLSTACK_SUITES)
         add_test(NAME fullstack_${suite} COMMAND pb3d_fullstack_tests ${suite})
@@ -371,6 +362,17 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        add_test(NAME regression_cbm18a_X_grid_styles
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_X_grid_styles.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_fixed_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_cbm18a_X_grid_styles PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
         add_test(NAME regression_cbm18a_free_bnd
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/cbm18a_free_bnd.sh
                 $<TARGET_FILE:PB3D>
@@ -446,7 +448,8 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
         # PB3D refuses incomplete or conflicting mode inputs (max_sec_X without
         # min_sec_X, max_sec_X with n_mod_X), and POST on a fixed-boundary run
         # with three solutions writes the energy decomposition of all three to
-        # one file and treats PB3D_rich_lvl = 0 and 5 as documented
+        # one file, treats PB3D_rich_lvl = 0 and 5 as documented, and runs on a
+        # part of the normal range (min_r_plot)
         if(TARGET POST)
             add_test(NAME regression_post_checks
                 COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/post_checks.sh

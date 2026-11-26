@@ -34,7 +34,7 @@ contains
             &max_theta_plot, min_zeta_plot, max_zeta_plot, min_r_plot, &
             &max_r_plot, max_nr_backtracks_HH, POST_style, plot_grid_style, &
             &magn_int_style, K_style, ex_plot_style, pert_mult_factor_POST, &
-            &sol_n_procs, n_procs, POST_output_full, POST_output_sol, &
+            &POST_output_full, POST_output_sol, &
             &EV_guess, solver_SLEPC_style, plot_vac_pot, check_vac, vac_diag_style, min_Rvac_plot, &
             &max_Rvac_plot, min_Zvac_plot, max_Zvac_plot, n_vac_plot, &
             &alpha_style, X_grid_style, max_njq_change
@@ -64,7 +64,7 @@ contains
             &prim_X, min_sec_X, max_sec_X, n_mod_X, use_normalization, &
             &n_theta_plot, n_zeta_plot, norm_disc_prec_eq, tol_norm, &
             &max_tot_mem, n_r_sol, max_it_rich, tol_rich, EV_style, EV_guess, &
-            &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, sol_n_procs, &
+            &plot_resonance, n_sol_requested, EV_BC, tol_SLEPC, &
             &retain_all_sol, pres_0, R_0, psi_0, B_0, T_0, norm_disc_prec_X, &
             &BC_style, max_it_slepc, norm_disc_prec_sol, &
             &plot_size, U_style, norm_style, K_style, matrix_SLEPC_style, &
@@ -95,7 +95,6 @@ contains
             call lvl_ud(1)
             
             ! common variables for all program styles
-            sol_n_procs = n_procs                                               ! use equal amount of processes for solution as for rest of program
             max_tot_mem = 6000_dp                                               ! count with 6GB total
             plot_size = [10,5]                                                  ! size of plot in inch
             min_r_plot = 0._dp                                                  ! minimal plot normal range
@@ -146,9 +145,6 @@ contains
                         call writo('Checking user-provided file')
                         
                         call lvl_ud(1)
-                        
-                        ! adapt MPI variables if needed
-                        call adapt_MPI()
                         
                         ! adapt run-time variables if needed
                         ierr = adapt_run_PB3D()
@@ -366,25 +362,6 @@ contains
             ! variables concerning output
             n_sol_plotted = -1                                                  ! plot all solutions
         end subroutine default_input_POST
-        
-        ! Checks  whether the  variables  concerning MPI  are chosen  correctly:
-        !   sol_n_procs cannot be greater than n_procs. If it is lower than 1,
-        !   the maximum amount of n_procs is used.
-        !> \private
-        subroutine adapt_MPI()
-            use num_vars, only: n_procs
-            
-            if (sol_n_procs.lt.1) then
-                call writo('Using the maximum number of MPI processes '//&
-                    &trim(i2str(n_procs))//' for SLEPC')
-                sol_n_procs = n_procs
-            end if
-            if (sol_n_procs.gt.n_procs) then
-                call writo('Cannot use more than '//trim(i2str(n_procs))//&
-                    &' MPI processes for SLEPC',warning=.true.)
-                sol_n_procs = n_procs
-            end if
-        end subroutine adapt_MPI
         
         ! Checks whether the variables concerning run-time are chosen correctly:
         !   rho_style has  to be 1  (constant rho = rho_0),

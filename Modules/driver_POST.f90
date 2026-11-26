@@ -181,12 +181,12 @@ contains
         ! reconstruct normal part of full equilibrium, perturbation and solution
         ! grids
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.,lim_pos=lim_loc)
+            &tot_rich=.true.,lim_pos=lim_loc,divided=.false.)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.,lim_pos=lim_loc)
+            &tot_rich=.true.,lim_pos=lim_loc,divided=.false.)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol')
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol',divided=.false.)
         CHCKERR('')
         
         ! set up modes variables in full grids
@@ -251,12 +251,13 @@ contains
         
         ! reconstruct variables
         ierr = reconstruct_PB3D_grid(grid_eq,'eq',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.,grid_limits=lims_norm(:,1))
+            &tot_rich=.true.,grid_limits=lims_norm(:,1),divided=n_procs.gt.1)
         CHCKERR('')
         ierr = reconstruct_PB3D_grid(grid_X,'X',rich_lvl=rich_lvl_name,&
-            &tot_rich=.true.,grid_limits=lims_norm(:,2))
+            &tot_rich=.true.,grid_limits=lims_norm(:,2),divided=n_procs.gt.1)
         CHCKERR('')
-        ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=lims_norm(:,3))
+        ierr = reconstruct_PB3D_grid(grid_sol,'sol',grid_limits=lims_norm(:,3),&
+            &divided=n_procs.gt.1)
         CHCKERR('')
         ierr = reconstruct_PB3D_eq_1(grid_eq,eq_1,'eq_1')
         CHCKERR('')
@@ -300,7 +301,7 @@ contains
                     allocate(grid_eq_B)
                     ierr = reconstruct_PB3D_grid(grid_eq_B,'eq_B',&
                         &rich_lvl=rich_lvl,tot_rich=.true.,&
-                        &grid_limits=lims_norm(:,1))
+                        &grid_limits=lims_norm(:,1),divided=n_procs.gt.1)
                     CHCKERR('')
             end select
             ierr = magn_grid_plot(grid_eq_B)
@@ -470,10 +471,10 @@ contains
             call lvl_ud(1)
             
             ierr = reconstruct_PB3D_grid(grid_eq_HEL,'eq',&
-                &grid_limits=lims_norm(:,1))
+                &grid_limits=lims_norm(:,1),divided=n_procs.gt.1)
             CHCKERR('')
             ierr = reconstruct_PB3D_grid(grid_X_HEL,'X',&
-                &grid_limits=lims_norm(:,2))
+                &grid_limits=lims_norm(:,2),divided=n_procs.gt.1)
             CHCKERR('')
             ierr = reconstruct_PB3D_eq_2(grid_eq_HEL,eq_2_HEL,'eq_2')
             CHCKERR('')
@@ -493,7 +494,8 @@ contains
             call lvl_ud(1)
             
             ierr = reconstruct_PB3D_grid(grid_eq_XYZ,'eq',&
-                &rich_lvl=rich_lvl_name,tot_rich=.true.,lim_pos=lim_loc)
+                &rich_lvl=rich_lvl_name,tot_rich=.true.,lim_pos=lim_loc,&
+                &divided=.false.)
             CHCKERR('')
             
             ! user output
@@ -1189,12 +1191,12 @@ contains
     !! \return ierr
     integer function setup_out_grids(grids_out,XYZ_eq,XYZ_sol) result(ierr)
         use num_vars, only: min_theta_plot, max_theta_plot, POST_style, &
-            &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style
+            &eq_job_nr, eq_jobs_lims, norm_disc_prec_X, X_grid_style, n_procs
         use spline_utilities, only: spline
         use grid_utilities, only: extend_grid_F
         use PB3D_ops, only: reconstruct_PB3D_grid
 #if ldebug
-        use num_vars, only: rank, n_procs
+        use num_vars, only: rank
         use grid_utilities, only: nufft
 #endif
         
@@ -1247,14 +1249,15 @@ contains
                 call writo('Reconstruct PB3D variables')
                 ierr = reconstruct_PB3D_grid(grid_eq,'eq',&
                     &rich_lvl=rich_lvl_name,lim_pos=lim_loc(:,:,1),&
-                    &grid_limits=lims_norm(:,1))
+                    &grid_limits=lims_norm(:,1),divided=n_procs.gt.1)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grid_X,'X',&
                     &rich_lvl=rich_lvl_name,lim_pos=lim_loc(:,:,2),&
-                    &grid_limits=lims_norm(:,2))
+                    &grid_limits=lims_norm(:,2),divided=n_procs.gt.1)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grids_out(3),'sol',&
-                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
+                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3),&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 
                 ! theta limits
@@ -1278,12 +1281,10 @@ contains
                 call writo('Extend perturbation grid')
                 call lvl_ud(1)
                 ierr = grids_out(2)%init([n_theta,n_out(2:3,2)],&
-                    &i_lim=[grid_X%i_min,grid_X%i_max])
+                    &i_lim=[grid_X%i_min,grid_X%i_max],divided=grid_X%divided)
                 CHCKERR('')
                 grids_out(2)%r_F = grid_X%r_F
                 grids_out(2)%r_E = grid_X%r_E
-                grids_out(2)%loc_r_F = grid_X%loc_r_F
-                grids_out(2)%loc_r_E = grid_X%loc_r_E
                 select case (X_grid_style)
                     case (1)                                                    ! equilibrium
                         ! copy angular variables
@@ -1347,14 +1348,17 @@ contains
                 call writo('Reconstruct PB3D variables')
                 ierr = reconstruct_PB3D_grid(grids_out(1),trim(grid_name(1)),&
                     &rich_lvl=rich_lvl,tot_rich=.true.,&
-                    &lim_pos=lim_loc(:,:,1),grid_limits=lims_norm(:,1))
+                    &lim_pos=lim_loc(:,:,1),grid_limits=lims_norm(:,1),&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grids_out(2),trim(grid_name(2)),&
                     &rich_lvl=rich_lvl,tot_rich=.true.,&
-                    &lim_pos=lim_loc(:,:,2),grid_limits=lims_norm(:,2))
+                    &lim_pos=lim_loc(:,:,2),grid_limits=lims_norm(:,2),&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
                 ierr = reconstruct_PB3D_grid(grids_out(3),trim(grid_name(3)),&
-                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3))
+                    &lim_pos=lim_loc(:,:,3),grid_limits=lims_norm(:,3),&
+                    &divided=n_procs.gt.1)
                 CHCKERR('')
         end select
         
