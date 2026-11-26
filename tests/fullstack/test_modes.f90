@@ -18,7 +18,9 @@
 !! point only, which a coarse grid does not see. One case has a normal
 !! coordinate that decreases, as for a VMEC file in which iota and the
 !! toroidal flux have opposite signs. A grid on which the window moves over
-!! its full width between two points is refused.
+!! its full width between two points is refused. One case has prescribed
+!! modes given from high to low, as X_style 1 has them for negative mode
+!! numbers.
 !!
 !! Two more tests are about the routines that use the tables:
 !!
@@ -61,6 +63,7 @@ contains
             &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
             &new_unittest("move_over_full_width_refused", test_refused), &
+            &new_unittest("prescribed_falling", test_falling), &
             &new_unittest("interp_V_other_slots", test_interp_V), &
             &new_unittest("sol_vec_empty_rows", test_sol_vec) &
             &]
@@ -288,6 +291,56 @@ contains
         call check(error, ierr.ne.0, 'a move by 4 with 3 modes was accepted')
         call grid_eq%dealloc()
     end subroutine test_refused
+
+    !> Prescribed modes given from high to low (X_style 1 with negative mode
+    !! numbers: min_sec_X = -11, max_sec_X = -13). The window does not move,
+    !! the mode numbers fall with the slot, and every mode has one row of sec
+    !! over the whole grid.
+    subroutine test_falling(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        type(grid_type) :: grid_eq, grid                                        ! equilibrium and other grid
+        type(modes_type) :: mds                                                 ! modes of the other grid
+        integer :: ierr, kd, ld                                                 ! error status, counters
+        integer, parameter :: modes(3) = [-11,-12,-13]                          ! prescribed modes, by slot
+        integer, parameter :: n_eq = 6, n_grid = 9                              ! number of points of the two grids
+
+        use_pol_flux_F = .true.
+        n_mod_X = size(modes)
+        prim_X = 10
+        if (allocated(min_n_X)) deallocate(min_n_X,max_n_X,min_m_X,max_m_X)
+        allocate(min_n_X(n_eq),max_n_X(n_eq),min_m_X(n_eq),max_m_X(n_eq))
+        min_n_X = prim_X
+        max_n_X = prim_X
+        min_m_X = modes(1)
+        max_m_X = modes(size(modes))
+        ierr = make_grid(grid_eq,eqd(n_eq,0._dp,1._dp))
+        call check(error, ierr, 0, 'equilibrium grid')
+        if (allocated(error)) return
+        ierr = make_grid(grid,eqd(n_grid,0.1_dp,0.9_dp))
+        call check(error, ierr, 0, 'other grid')
+        if (allocated(error)) return
+        ierr = setup_modes(mds,grid_eq,grid)
+        call check(error, ierr, 0, 'setup_modes')
+        if (allocated(error)) return
+
+        call check(error, size(mds%sec,1), size(modes), 'number of rows of sec')
+        if (allocated(error)) return
+        do kd = 1,n_grid
+            call check(error, all(mds%m(kd,:).eq.modes), &
+                &'modes at point '//trim(i2str(kd)))
+            if (allocated(error)) return
+        end do
+        do ld = 1,size(modes)
+            call check(error, all(mds%sec(ld,:).eq.[modes(ld),1,n_grid,ld]), &
+                &'row '//trim(i2str(ld))//' of sec')
+            if (allocated(error)) return
+        end do
+
+        call mds%dealloc()
+        call grid%dealloc()
+        call grid_eq%dealloc()
+    end subroutine test_falling
 
     !> interp_V between an input grid and an output grid that starts one
     !! window further, with a window that moves up and then down. The input

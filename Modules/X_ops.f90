@@ -1230,11 +1230,14 @@ contains
             ind_tot(ind_cur,3) = p_eq(grid_eq%n(3))
             
             ! convert the moves to the first and last grid point of every row
-            ! and set the slot from the mode number, as nm_X does
+            ! and set the slot from the mode number, as nm_X does: the mode
+            ! numbers rise with the slot, or fall for prescribed modes that
+            ! are given from high to low
             do ld = 1,n_mod_tot
                 ind_tot(ld,2:3) = [count(p.lt.ind_tot(ld,2))+1,&
                     &count(p.le.ind_tot(ld,3))]
-                ind_tot(ld,4) = modulo(ind_tot(ld,1)-nm_X(1,1),n_mod_X) + 1
+                ind_tot(ld,4) = modulo(sign(1,mod_X_range)*&
+                    &(ind_tot(ld,1)-nm_X(1,1)),n_mod_X) + 1
 #if ldebug
                 if (debug_setup_modes) write(*,*) 'row', ld, ':', ind_tot(ld,:)
 #endif
