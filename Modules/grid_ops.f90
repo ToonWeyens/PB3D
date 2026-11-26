@@ -432,14 +432,28 @@ contains
         !> \public POST version
         !!
         !! The normal range  is determined by simply dividing  a possible subset
-        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_sol,
+        !! of the solution  range, indicated by \c min_r_plot  and \c max_r_plot,
         !! including  a  ghost range  and  getting  a bounding  equilibrium  and
         !! perturbation range.
+        !!
+        !! POST interpolates the equilibrium and perturbation quantities to the
+        !! solution grid, and takes the radial derivative of the solution
+        !! vector, with radial splines over the range of each process. As in
+        !! redistribute_output_grid(), the solution range of a process
+        !! therefore has a ghost region of \c size_ghost_interp_V points on each
+        !! side, and the bounding equilibrium and perturbation ranges are
+        !! widened by as many points, so that the end effect of these splines is
+        !! below the rounding error at the solution points that the process
+        !! keeps after trim_grid(). None of these ranges reaches beyond the
+        !! subset of the solution range and the smallest equilibrium and
+        !! perturbation ranges that comprise it, so that the processes together
+        !! cover what one process covers, and their splines end where its
+        !! splines end.
         subroutine calc_norm_range_POST(eq_limits,X_limits,sol_limits,r_F_eq,&
             &r_F_X,r_F_sol)                                                     ! POST version
-            
-            use num_vars, only: n_procs, rank, norm_disc_prec_sol, &
-                &min_r_plot, max_r_plot, X_grid_style
+
+            use num_vars, only: n_procs, rank, min_r_plot, max_r_plot, &
+                &X_grid_style, size_ghost_interp_V
             use eq_vars, only: max_flux_F
             use grid_utilities, only: find_compr_range
             
@@ -453,6 +467,8 @@ contains
             
             ! local variables
             integer :: sol_limits_tot(2)                                        ! total solution limits
+            integer :: eq_limits_tot(2)                                         ! total equilibrium limits
+            integer :: X_limits_tot(2)                                          ! total perturbation limits
             integer :: n_r_sol                                                  ! total nr. of normal points in solution grid
             integer, allocatable :: loc_n_r_sol(:)                              ! local nr. of normal points in solution grid
             real(dp) :: min_sol, max_sol                                        ! min. and max. of r_F_sol in range of this process
@@ -467,6 +483,14 @@ contains
             ! find the solution index that comprises this range
             call find_compr_range(r_F_sol,[min_sol,max_sol],sol_limits_tot)
             
+            ! find the equilibrium and perturbation indices that comprise the
+            ! solution range
+            min_sol = minval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            max_sol = maxval(r_F_sol(sol_limits_tot(1):sol_limits_tot(2)))
+            call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits_tot)
+            if (X_grid_style.ne.2) &
+                &call find_compr_range(r_F_X,[min_sol,max_sol],X_limits_tot)
+            
             ! initialize n_r_sol
             n_r_sol = sol_limits_tot(2)-sol_limits_tot(1)+1
             allocate(loc_n_r_sol(n_procs))
@@ -476,20 +500,32 @@ contains
             loc_n_r_sol(1:mod(n_r_sol,n_procs)) = &
                 &loc_n_r_sol(1:mod(n_r_sol,n_procs)) + 1                        ! add a mode to if there is a remainder
             
-            ! set sol_limits
+            ! set sol_limits, with the ghost region of the radial derivative of
+            ! the solution vector, a spline over the range of this process
             sol_limits = [sum(loc_n_r_sol(1:rank))+1,sum(loc_n_r_sol(1:rank+1))]
             sol_limits = sol_limits + sol_limits_tot(1) - 1
-            if (rank.gt.0) sol_limits(1) = sol_limits(1)-norm_disc_prec_sol     ! ghost region for num. deriv.
-            if (rank.lt.n_procs-1) sol_limits(2) = &
-                &sol_limits(2)+norm_disc_prec_sol+1                             ! ghost region for num. deriv. and overlap for int_vol
+            sol_limits(1) = max(sol_limits(1)-size_ghost_interp_V,&
+                &sol_limits_tot(1))
+            sol_limits(2) = min(sol_limits(2)+size_ghost_interp_V,&
+                &sol_limits_tot(2))
             min_sol = minval(r_F_sol(sol_limits(1):sol_limits(2)))
             max_sol = maxval(r_F_sol(sol_limits(1):sol_limits(2)))
             
-            ! determine eq_limits: smallest eq and X range comprising sol range
+            ! determine eq_limits and X_limits: smallest eq and X range
+            ! comprising sol range, widened by the ghost region of the
+            ! interpolation to the solution grid
             call find_compr_range(r_F_eq,[min_sol,max_sol],eq_limits)
+            eq_limits(1) = max(eq_limits(1)-size_ghost_interp_V,&
+                &eq_limits_tot(1))
+            eq_limits(2) = min(eq_limits(2)+size_ghost_interp_V,&
+                &eq_limits_tot(2))
             select case (X_grid_style)
                 case (1,3)                                                      ! equilibrium or enriched
                     call find_compr_range(r_F_X,[min_sol,max_sol],X_limits)
+                    X_limits(1) = max(X_limits(1)-size_ghost_interp_V,&
+                        &X_limits_tot(1))
+                    X_limits(2) = min(X_limits(2)+size_ghost_interp_V,&
+                        &X_limits_tot(2))
                 case (2)                                                        ! solution
                     X_limits = sol_limits
             end select

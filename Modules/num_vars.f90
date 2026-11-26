@@ -126,7 +126,10 @@ module num_vars
     ! Radial interpolation of interp_V_spline(): its order and the number of
     ! points redistribute_output_grid() adds on each side of a process' range,
     ! so that the end effect of the interpolation is below the rounding error
-    ! eps = epsilon(1._dp) where interp_V() reads it. A linear piece depends
+    ! eps = epsilon(1._dp) where interp_V() reads it. POST's version of
+    ! calc_norm_range() adds the same number of points for its interpolation
+    ! to the solution grid and for the radial derivative of the solution
+    ! vector. A linear piece depends
     ! only on its own two points: 0 points. An Akima slope depends on the two
     ! intervals on either side: 2 points. The end condition of a cubic spline
     ! decays by 2-sqrt(3) per equal interval (the decaying root of
