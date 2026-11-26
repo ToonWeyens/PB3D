@@ -1137,6 +1137,18 @@ contains
         call writo('Setting up general modes variables')
         call lvl_ud(1)
         
+        ! init_modes tabulates the window on the normal points of the trimmed
+        ! equilibrium grid. These are all the points of grid_eq when it is the
+        ! whole grid or divided between the processes, but not when it is
+        ! restricted to a part of the normal range.
+        if (size(min_n_X).ne.grid_eq%n(3)) then
+            ierr = 1
+            err_msg = 'The window of modes is tabulated on '//&
+                &trim(i2str(size(min_n_X)))//' normal points, and the &
+                &equilibrium grid has '//trim(i2str(grid_eq%n(3)))
+            CHCKERR(err_msg)
+        end if
+        
         ! calculate n and m
         allocate(mds%n(grid%n(3),n_mod_X))
         allocate(mds%m(grid%n(3),n_mod_X))

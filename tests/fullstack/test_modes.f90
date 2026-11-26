@@ -18,9 +18,10 @@
 !! point only, which a coarse grid does not see. One case has a normal
 !! coordinate that decreases, as for a VMEC file in which iota and the
 !! toroidal flux have opposite signs. A grid on which the window moves over
-!! its full width between two points is refused. One case has prescribed
-!! modes given from high to low, as X_style 1 has them for negative mode
-!! numbers.
+!! its full width between two points is refused, and so is a window that is
+!! tabulated on other points than those of the equilibrium grid. One case has
+!! prescribed modes given from high to low, as X_style 1 has them for negative
+!! mode numbers.
 !!
 !! Two more tests are about the routines that use the tables:
 !!
@@ -63,6 +64,7 @@ contains
             &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
             &new_unittest("move_over_full_width_refused", test_refused), &
+            &new_unittest("window_on_other_points_refused", test_other_points), &
             &new_unittest("prescribed_falling", test_falling), &
             &new_unittest("interp_V_other_slots", test_interp_V), &
             &new_unittest("sol_vec_empty_rows", test_sol_vec) &
@@ -291,6 +293,29 @@ contains
         call check(error, ierr.ne.0, 'a move by 4 with 3 modes was accepted')
         call grid_eq%dealloc()
     end subroutine test_refused
+
+    !> The window is tabulated on fewer points than the equilibrium grid has,
+    !! as for an equilibrium grid that is restricted to a part of the normal
+    !! range: setup_modes has to refuse it.
+    subroutine test_other_points(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        type(grid_type) :: grid_eq                                              ! equilibrium grid
+        type(modes_type) :: mds                                                 ! its modes
+        integer :: ierr                                                         ! error status
+
+        call set_window([3,3,4,4,5],4)
+        ierr = make_grid(grid_eq,eqd(8,0._dp,1._dp))
+        call check(error, ierr, 0, 'equilibrium grid')
+        if (allocated(error)) return
+        ierr = setup_modes(mds,grid_eq,grid_eq)
+        call check(error, ierr.ne.0, 'setup_modes accepts a window on 5 &
+            &points for an equilibrium grid of 8')
+        if (allocated(error)) return
+
+        call mds%dealloc()
+        call grid_eq%dealloc()
+    end subroutine test_other_points
 
     !> Prescribed modes given from high to low (X_style 1 with negative mode
     !! numbers: min_sec_X = -11, max_sec_X = -13). The window does not move,
