@@ -110,6 +110,7 @@ contains
         integer :: n_div_max                                                    ! maximum divisions of equilibrium jobs
         real(dp), allocatable :: res_surf(:,:)                                  ! resonant surfaces
         real(dp), allocatable :: r_F_X(:)                                       ! normal points in perturbation grid
+        real(dp) :: mem_meas                                                    ! measured memory of the processes themselves [MB]
         logical, allocatable :: plot_mode(:)                                    ! eigenmodes in one of the three ranges
         character(len=max_str_ln) :: err_msg                                    ! error message
 
@@ -444,7 +445,7 @@ contains
             if (compare_tor_pos) n_div_max = 1
             
             ! memory of the processes themselves, before the work starts
-            ierr = calc_mem_procs(mem_procs)
+            ierr = calc_mem_procs(mem_procs,mem_meas)
             CHCKERR('')
             
             select case (eq_style)

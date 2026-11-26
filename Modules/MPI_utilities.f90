@@ -93,16 +93,23 @@ contains
     !! 200 MB without input and 275 to 330 MB after reading an equilibrium
     !! (Snellius, foss/2025a), of which shared library pages are about 5 %.
     !!
+    !! The result is this sum times the same 50% safety factor as in
+    !! calc_memory_eq(), calc_memory_x() and calc_memory_sol(). The factor
+    !! also covers the memory that PETSc, SLEPc and MPI take later in the run:
+    !! on Snellius a process grows from about 300 MB at the start to about 380
+    !! MB in a W7-X run on four processes. \c mem_meas returns the sum itself.
+    !!
     !! \note \c ru_maxrss is given in kB on Linux and in bytes on macOS.
     !!
     !! \return ierr
-    integer function calc_mem_procs(mem_procs) result(ierr)
+    integer function calc_mem_procs(mem_procs,mem_meas) result(ierr)
         use ISO_C_BINDING, only: c_int, c_long
         
         character(*), parameter :: rout_name = 'calc_mem_procs'
         
         ! input / output
-        real(dp), intent(inout) :: mem_procs                                    !< memory of all processes together [MB]
+        real(dp), intent(inout) :: mem_procs                                    !< memory of all processes together, times 1.5 [MB]
+        real(dp), intent(inout) :: mem_meas                                     !< memory of all processes together, as measured [MB]
         
         ! local variables
         integer(c_long) :: usage(18)                                            ! struct rusage: two struct timeval of 16 bytes, then ru_maxrss and 13 other longs
@@ -133,9 +140,12 @@ contains
 #endif
         
         ! add the values of all processes
-        call MPI_Allreduce(mem_loc,mem_procs,1,MPI_DOUBLE_PRECISION,MPI_SUM,&
+        call MPI_Allreduce(mem_loc,mem_meas,1,MPI_DOUBLE_PRECISION,MPI_SUM,&
             &MPI_Comm_world,ierr)
         CHCKERR('MPI_Allreduce failed')
+        
+        ! apply 50% safety factor
+        mem_procs = mem_meas*1.5_dp
     end function calc_mem_procs
     
     !> \private complex version

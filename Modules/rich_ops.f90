@@ -342,6 +342,7 @@ contains
         integer :: var_size_without_par(2)                                      !< size without parallel dimension for eq_2 and X_1 variables
         integer :: n_bnd                                                        !< number of points on the plasma boundary for the vacuum
         real(dp) :: mem_sol                                                     !< memory needed by the solution driver [MB]
+        real(dp) :: mem_meas                                                    !< measured memory of the processes themselves [MB]
         character(len=max_str_ln) :: err_msg                                    !< error message
         
         ! initialize ierr
@@ -386,10 +387,10 @@ contains
         
         ! memory of the processes themselves, before the work starts
         if (rich_lvl.eq.rich_restart_lvl) then
-            ierr = calc_mem_procs(mem_procs)
+            ierr = calc_mem_procs(mem_procs,mem_meas)
             CHCKERR('')
             call writo('The processes hold about '//&
-                &trim(i2str(ceiling(mem_procs)))//'MB together before the &
+                &trim(i2str(ceiling(mem_meas)))//'MB together before the &
                 &work starts')
         end if
         
