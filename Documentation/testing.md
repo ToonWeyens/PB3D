@@ -146,7 +146,7 @@ combined over all ranks.
   slot of `m`; every grid has the rows of the equilibrium grid, in the same
   order; and a grid on which the window moves over its full width between
   two points is refused. Two cases are about the routines that use the
-  tables: `driver_sol::interp_V` between two grids that start in different
+  tables: `sol_utilities::interp_V` between two grids that start in different
   windows, where every entry of the interpolated matrices must belong to
   its two modes and, for a symmetric quantity, hold the element whose row
   has the higher mode number, also where the two modes have their slots in

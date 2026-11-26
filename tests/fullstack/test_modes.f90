@@ -22,7 +22,7 @@
 !!
 !! Two more tests are about the routines that use the tables:
 !!
-!!  - interp_V (driver_sol) between two grids that start in different
+!!  - interp_V (sol_utilities) between two grids that start in different
 !!    windows, so that a mode sits in another slot in the output grid than in
 !!    the input grid: every entry of the interpolated matrices must be the
 !!    one of its two modes, and for a symmetric quantity the element whose
@@ -42,8 +42,7 @@ module test_modes
     use X_vars, only: modes_type, X_2_type, n_mod_X, prim_X, min_n_X, &
         &max_n_X, min_m_X, max_m_X
     use X_ops, only: setup_modes
-    use driver_sol, only: interp_V
-    use sol_utilities, only: calc_tot_sol_vec, calc_loc_sol_vec
+    use sol_utilities, only: calc_tot_sol_vec, calc_loc_sol_vec, interp_V
 
     implicit none
     private
