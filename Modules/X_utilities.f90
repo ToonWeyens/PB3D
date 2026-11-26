@@ -12,8 +12,8 @@ module X_utilities
     implicit none
     
     private
-    public sec_ind_loc2tot, is_necessary_X, get_sec_X_range, calc_memory_X, &
-        &do_X, trim_modes
+    public sec_ind_loc2tot, is_necessary_X, is_conj_X, conj_sym_X, &
+        &get_sec_X_range, get_n_mod_tot, calc_memory_X, do_X, check_same_modes
     
     ! interfaces
     
@@ -188,6 +188,20 @@ contains
         end if
     end function do_X
     
+    !> Number of modes in the tables of a grid: the modes from the lowest to
+    !! the highest mode number of \c sec.
+    !!
+    !! \note This is not  the number of rows of \c sec: with  \c X_style 2 a
+    !! mode that leaves the window and enters it again has two rows.
+    integer function get_n_mod_tot(mds) result(n_mod_tot)
+        use X_vars, only: modes_type
+        
+        ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
+        
+        n_mod_tot = maxval(mds%sec(:,1)) - minval(mds%sec(:,1)) + 1
+    end function get_n_mod_tot
+    
     !> Determines whether a variable needs to be  considered:
     !! 
     !! This depends on whether the quantity is symmetric or not:
@@ -217,6 +231,52 @@ contains
                 &lim_sec_X_loc(1,2)+sec_X_id(2)) res = .false.
         end if
     end function is_necessary_X
+    
+    !> Whether the  entry of a symmetric  tensorial quantity (\c PV_0, \c PV_2,
+    !! \c KV_0 or \c KV_2) is the complex conjugate of the element with a given
+    !! row and column.
+    !!
+    !! A symmetric quantity has one entry  for the two elements of a pair of
+    !! modes, which  are each  other's complex conjugate.  The entry  holds the
+    !! element whose  row has the higher  mode number, on every  grid and at
+    !! every normal point.
+    !!
+    !! The row and the column have the same \c n (poloidal flux as normal
+    !! coordinate) or the same \c m (toroidal flux), so at most one of the two
+    !! comparisons holds.
+    !!
+    !! \note c() returns the entry of a pair from the indices that the two
+    !! modes have in  the tables of their grid. These  indices depend on the
+    !! grid and on the normal point, and they play no role here.
+    elemental logical function is_conj_X(n_row,m_row,n_col,m_col) result(res)
+        ! input / output
+        integer, intent(in) :: n_row                                            !< \c n of the row
+        integer, intent(in) :: m_row                                            !< \c m of the row
+        integer, intent(in) :: n_col                                            !< \c n of the column
+        integer, intent(in) :: m_col                                            !< \c m of the column
+        
+        res = n_row.lt.n_col .or. m_row.lt.m_col
+    end function is_conj_X
+    
+    !> Turns a quantity calculated for a row and a column into the entry of a
+    !! symmetric tensorial quantity:  the complex conjugate at the normal points
+    !! where the row has the lower mode number (see is_conj_x()).
+    subroutine conj_sym_X(V,n_row,m_row,n_col,m_col)
+        ! input / output
+        complex(dp), intent(inout) :: V(:,:,:)                                  !< quantity as function of the two angles and the normal coordinate
+        integer, intent(in) :: n_row(:)                                         !< \c n of the row at the normal points
+        integer, intent(in) :: m_row(:)                                         !< \c m of the row at the normal points
+        integer, intent(in) :: n_col(:)                                         !< \c n of the column at the normal points
+        integer, intent(in) :: m_col(:)                                         !< \c m of the column at the normal points
+        
+        ! local variables
+        integer :: kd                                                           ! counter
+        
+        do kd = 1,size(V,3)
+            if (is_conj_X(n_row(kd),m_row(kd),n_col(kd),m_col(kd))) &
+                &V(:,:,kd) = conjg(V(:,:,kd))
+        end do
+    end subroutine conj_sym_X
     
     !> Calculate memory in MB necessary for X variables.
     !!
@@ -288,47 +348,30 @@ contains
         call lvl_ud(-1)
     end function calc_memory_X
 
-    !> Limit input mode range to output mode range.
-    integer function trim_modes(mds_i,mds_o,id_lim_i,id_lim_o) result(ierr)
+    !> Check that two grids have the same rows of \c sec.
+    !!
+    !! setup_modes() builds the rows of every grid from the window on the
+    !! equilibrium points, so that row \c k of one table and row \c k of the
+    !! other belong to the same mode and to the same part of the window.
+    !!
+    !! \return ierr
+    integer function check_same_modes(mds_i,mds_o) result(ierr)
         use X_vars, only: modes_type
         
-        character(*), parameter :: rout_name = 'trim_modes'
+        character(*), parameter :: rout_name = 'check_same_modes'
         
         ! input / output
         type(modes_type), intent(in) :: mds_i                                   !< general modes variables for input
         type(modes_type), intent(in) :: mds_o                                   !< general modes variables for output
-        integer, intent(inout) :: id_lim_i(2)                                   !< limits on input modes
-        integer, intent(inout) :: id_lim_o(2)                                   !< limits on output modes
-        
-        ! local variables
-        integer :: m                                                            ! counter
-        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
         
-        ! find limits point where input modes and output modes coincide
-        ! (input grid should comprise output grid)
-        id_lim_o = [1,size(mds_o%sec,1)]
-        id_lim_i = [-1,-1]
-        do m = 1,size(mds_i%sec,1)
-            if (mds_i%sec(m,1).eq.mds_o%sec(id_lim_o(1),1)) then
-                id_lim_i(1) = m
-                exit
-            end if
-        end do
-        do m = size(mds_i%sec,1),1,-1
-            if (mds_i%sec(m,1).eq.mds_o%sec(id_lim_o(2),1)) then
-                id_lim_i(2) = m
-                exit
-            end if
-        end do
-        
-        ! test
-        if (any(id_lim_o.le.0)) then
+        if (size(mds_i%sec,1).ne.size(mds_o%sec,1)) then
             ierr = 1
-            err_msg = 'Cannot find limits of input modes'
-            CHCKERR(err_msg)
+        else if (any(mds_i%sec(:,1).ne.mds_o%sec(:,1))) then
+            ierr = 1
         end if
-    end function trim_modes
+        CHCKERR('The grids have different rows of modes')
+    end function check_same_modes
 end module X_utilities
