@@ -128,8 +128,11 @@ combined over all ranks.
   interpolation space (linear/order 1, cubic/order 3 with prescribed
   endpoint derivatives, all derivatives 0-3), the quadratic-Taylor
   extrapolation convention, convergence at the expected rates on
-  \(\sin 2\pi x\) for all three orders, periodic boundary conditions, and
-  the refusal to extrapolate when not allowed.
+  \(\sin 2\pi x\) for all three orders, periodic boundary conditions, the
+  refusal to extrapolate when not allowed, and linear data on knots that
+  PSPLINE treats as evenly spaced without being so, reproduced by every
+  order and by `spline_2D` at the knots and between them
+  (`nearly_even_abscissae`, issue #95).
 - **`calc_int_vol` (full-stack)** — the volume integral
   (`grid_utilities::calc_int_vol`; converted from the interactive legacy
   check) against the analytic torus integral
@@ -167,6 +170,20 @@ combined over all ranks.
   pinned; exact-by-construction relations (\(\iota = 1/q\),
   \(\Phi' = q\,\Psi'\), \(\Psi' = 2\pi\)) and a trapezoidal cross-check of
   \(\Phi = \int q \,\text{d}\Psi\) as implementation-independent guards.
+- **`norm_range` (full-stack, needs the fixture, issue #88)** — the
+  equilibrium range of a run. `min_r_sol` on each point of the cbm18a
+  fixture with \(0.60 \le s \le 0.80\), and `max_r_sol` on each point with
+  \(0.80 \le s \le 0.90\), \(s\) being the square root of the normalized
+  poloidal flux, through `calc_norm_range`, `setup_grid_X` and
+  `setup_grid_sol` for `X_grid_style` 1, 2 and 3, with the flux of the file
+  and with the flux negated (a decreasing normal coordinate); and a
+  synthetic flux, increasing and decreasing, with the limit on each point,
+  one unit in the last place on either side of it and \(10^{-9}\) of its
+  value on either side. Each time, the equilibrium grid contains the
+  solution grid with no point to spare at either end, the grids are set up,
+  and the solution grid is not changed. 25 of the 161 and 29 of the 81
+  cases of the fixture take the point beyond the limit's point. All three
+  tests fail without the change of issue #88.
 - **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
   analytical circular torus covered by field lines \(\zeta = \alpha +
   q\theta\):
