@@ -128,8 +128,11 @@ combined over all ranks.
   interpolation space (linear/order 1, cubic/order 3 with prescribed
   endpoint derivatives, all derivatives 0-3), the quadratic-Taylor
   extrapolation convention, convergence at the expected rates on
-  \(\sin 2\pi x\) for all three orders, periodic boundary conditions, and
-  the refusal to extrapolate when not allowed.
+  \(\sin 2\pi x\) for all three orders, periodic boundary conditions, the
+  refusal to extrapolate when not allowed, and linear data on knots that
+  PSPLINE treats as evenly spaced without being so, reproduced by every
+  order and by `spline_2D` at the knots and between them
+  (`nearly_even_abscissae`, issue #95).
 - **`calc_int_vol` (full-stack)** — the volume integral
   (`grid_utilities::calc_int_vol`; converted from the interactive legacy
   check) against the analytic torus integral
@@ -167,6 +170,20 @@ combined over all ranks.
   pinned; exact-by-construction relations (\(\iota = 1/q\),
   \(\Phi' = q\,\Psi'\), \(\Psi' = 2\pi\)) and a trapezoidal cross-check of
   \(\Phi = \int q \,\text{d}\Psi\) as implementation-independent guards.
+- **`norm_range` (full-stack, needs the fixture, issue #88)** — the
+  equilibrium range of a run. `min_r_sol` on each point of the cbm18a
+  fixture with \(0.60 \le s \le 0.80\), and `max_r_sol` on each point with
+  \(0.80 \le s \le 0.90\), \(s\) being the square root of the normalized
+  poloidal flux, through `calc_norm_range`, `setup_grid_X` and
+  `setup_grid_sol` for `X_grid_style` 1, 2 and 3, with the flux of the file
+  and with the flux negated (a decreasing normal coordinate); and a
+  synthetic flux, increasing and decreasing, with the limit on each point,
+  one unit in the last place on either side of it and \(10^{-9}\) of its
+  value on either side. Each time, the equilibrium grid contains the
+  solution grid with no point to spare at either end, the grids are set up,
+  and the solution grid is not changed. 25 of the 161 and 29 of the 81
+  cases of the fixture take the point beyond the limit's point. All three
+  tests fail without the change of issue #88.
 - **`vac_3d` (full-stack)** — the field-line 3-D (style 1) vacuum on an
   analytical circular torus covered by field lines \(\zeta = \alpha +
   q\theta\):
@@ -301,6 +318,21 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   half a weight at the last point instead, style 4 went to \(-0.469\) on the
   circular case, 7 % off. The code of style 4 was removed in pull request #38
   (issue #36).
+- `negative_n`: the cbm18a free-boundary deck with n = 10 and n = -10 (issue
+  #22), both with `tol_SLEPC` = 1e-12. With `prim_X` = -n every Fourier mode
+  is the complex conjugate of the mode with `prim_X` = n and the opposite
+  secondary mode number, so the eigenvalue must be the same. The first pair
+  of runs is at fixed boundary with `max_njq_change` = 0.05: the perturbation
+  grid (`X_grid_style` 3) then gets
+  floor(|`prim_X` Δq| / `max_njq_change`) points more than the equilibrium
+  grid in every interval of the equilibrium grid, 368 in all (none with the
+  default 0.49), and the test asks for the same number, larger than zero, in
+  both runs. The second pair is at free boundary with the deck as it is.
+  The third pair is at fixed boundary with prescribed poloidal mode numbers
+  (`min_sec_X` and `max_sec_X` instead of `n_mod_X`): m = 15 to 34 with
+  n = 10, and m = -15 to -34 with n = -10, 20 Fourier modes in both runs.
+  The eigenvalues must agree to 1e-9 (measured 3.0e-12, 4e-13 and 1.4e-13).
+  The build of 2.55 stops on every run with a negative `prim_X`.
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition
@@ -348,7 +380,34 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   coordinates is negative. The copy must give the twin's fixed-boundary
   eigenvalue to the last digit, with the poloidal and with the toroidal flux
   as normal coordinate, and `check_vmec_read.py` must find it stored as it
-  is. The build of 2.55 stops on the copy with exit status 3.
+  is. The build of 2.55 stops on the copy with exit status 3. Last, the twin
+  at fixed boundary with n = -10 must give the eigenvalue of n = 10 to 1e-6
+  (issue #22; measured 9e-8 with the deck's `tol_SLEPC` of 1e-6).
+- `circ_eps033_flux_labels` (needs `POST`): one Fourier mode, (m,n) =
+  (11,10), on the circular VMEC twin at fixed boundary, with the poloidal
+  flux as normal coordinate (`prim_X` = n = 10, secondary mode number 11) and
+  with the toroidal flux (`prim_X` = m = 11, secondary mode number 10), each
+  followed by POST's energy decomposition (issue #22). An axisymmetric
+  equilibrium does not couple different n, so one mode is the largest set
+  that the two labels have in common. The eigenvalues must agree to 1e-3
+  (measured 1.8e-4) and each term of the decomposition, divided by the
+  kinetic energy, to 1e-2 (measured 3.3e-3 or less): the two labels differ in
+  their field-aligned grid and in the expansion of the geodesic displacement
+  U, in 1/n or in 1/m. The normal and the geodesic ballooning term hold the
+  normal and the geodesic curvature. In the build of 2.55 the toroidal flux
+  gave -1.03 and -2.0 times the terms of the poloidal flux. The same mode is
+  then run at free boundary through the 3-D vacuum on 32 field lines, with
+  `tol_SLEPC` = 1e-12. With the poloidal and with the toroidal flux the
+  eigenvalues must agree to 2e-2 (measured 7e-3: 32 lines are about three
+  per period of the mode in the direction that the lines resolve, toroidal
+  for the poloidal and poloidal for the toroidal flux, so the vacuum response
+  is some per cent off in both; at 64 lines the two are 1.5e-3 apart). With
+  the toroidal flux, `prim_X` = 11 and -11 with the two toroidal mode numbers
+  closest to resonance must give the same eigenvalue to 1e-9 (measured
+  2e-13), and so must the copy of the twin with the magnetic field reversed
+  (`reverse_field.py`; with a python as for `circ_eps033_vmec_twin`, skipped
+  with a note without it). The build of 2.55 stops on every free-boundary run
+  with the toroidal flux.
 - `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
   `BC_style = 1 4`, a value that the input check refuses (issue #40). The
   test requires an exit status that is not zero, the message of the input

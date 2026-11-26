@@ -215,6 +215,7 @@ if(PB3D_BUILD_EXECUTABLES)
         fullstack/test_calc_int_vol.f90
         fullstack/test_read_HEL.f90
         fullstack/test_modes.f90
+        fullstack/test_norm_range.f90
         $<TARGET_OBJECTS:pb3d_modules>
     )
     set_target_properties(pb3d_fullstack_tests PROPERTIES
@@ -315,15 +316,18 @@ if(NOT PB3D_FIXTURE_DIR AND
     endif()
 endif()
 
-# the read_HEL golden-file suite needs the fixture, so it is registered
-# here rather than with the other fullstack suites above
+# the read_HEL golden-file suite and the norm_range suite (equilibrium range
+# of a run, issue #88) need the fixture, so they are registered here rather
+# than with the other fullstack suites above
 if(TARGET pb3d_fullstack_tests AND PB3D_FIXTURE_DIR)
     if(EXISTS ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
-        add_test(NAME fullstack_read_HEL
-            COMMAND pb3d_fullstack_tests read_HEL)
-        set_tests_properties(fullstack_read_HEL PROPERTIES
-            ENVIRONMENT "${PB3D_TEST_MPI_ENV};PB3D_FIXTURE_DIR=${PB3D_FIXTURE_DIR}"
-            LABELS "fullstack")
+        foreach(suite IN ITEMS read_HEL norm_range)
+            add_test(NAME fullstack_${suite}
+                COMMAND pb3d_fullstack_tests ${suite})
+            set_tests_properties(fullstack_${suite} PROPERTIES
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV};PB3D_FIXTURE_DIR=${PB3D_FIXTURE_DIR}"
+                LABELS "fullstack")
+        endforeach()
     endif()
 endif()
 
@@ -380,6 +384,20 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
                 ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12
                 ${PB3D_TEST_PYTHON})
         set_tests_properties(regression_cbm18a_free_bnd PROPERTIES
+            LABELS "regression"
+            PASS_REGULAR_EXPRESSION "PASS"
+            FAIL_REGULAR_EXPRESSION "FAIL"
+            ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+            TIMEOUT 600)
+        # n = -10 against n = 10: at fixed boundary with points added to the
+        # perturbation grid, at free boundary, and with prescribed poloidal
+        # mode numbers (issue #22)
+        add_test(NAME regression_negative_n
+            COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/negative_n.sh
+                $<TARGET_FILE:PB3D>
+                ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_cbm18a_free_bnd
+                ${PB3D_FIXTURE_DIR}/cbm18a_extended_vac.12)
+        set_tests_properties(regression_negative_n PROPERTIES
             LABELS "regression"
             PASS_REGULAR_EXPRESSION "PASS"
             FAIL_REGULAR_EXPRESSION "FAIL"
@@ -505,5 +523,24 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        # one Fourier mode on the twin with the poloidal and with the toroidal
+        # flux as normal coordinate: the eigenvalue and the terms of POST's
+        # energy decomposition at fixed boundary, and the eigenvalue at free
+        # boundary through the 3-D vacuum (issue #22)
+        if(TARGET POST)
+            add_test(NAME regression_circ_eps033_flux_labels
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/circ_eps033_flux_labels.sh
+                    $<TARGET_FILE:PB3D>
+                    $<TARGET_FILE:POST>
+                    ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_circ_eps033
+                    ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc
+                    ${PB3D_TEST_PYTHON})
+            set_tests_properties(regression_circ_eps033_flux_labels PROPERTIES
+                LABELS "regression"
+                PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+                TIMEOUT 600)
+        endif()
     endif()
 endif()

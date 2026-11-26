@@ -1192,7 +1192,7 @@ contains
             do kd = 1,grid%n(3)
                 do ld = 1,n_mod_X
                     nm_X(kd,modulo(ld+w(kd)-w(1)-1,n_mod_X)+1) = &
-                        &w(kd) + mod_X_range*(ld-1)/(n_mod_X-1)
+                        &w(kd) + mod_X_range*(ld-1)/max(1,n_mod_X-1)                ! one mode: the divisor would be zero
                 end do
             end do
             
@@ -1219,7 +1219,8 @@ contains
             n_mod_tot = n_mod_X + p_eq(grid_eq%n(3))
             allocate(ind_tot(n_mod_tot,4))
             do ld = 1,n_mod_X
-                ind_tot(ld,1:2) = [w_eq(1)+mod_X_range*(ld-1)/(n_mod_X-1),0]
+                ind_tot(ld,1:2) = &
+                    &[w_eq(1)+mod_X_range*(ld-1)/max(1,n_mod_X-1),0]
             end do
             ind_cur = [(ld, ld=1,n_mod_X)]                                      ! rows in the window, from low to high mode
             ind_id = n_mod_X
@@ -1429,7 +1430,7 @@ contains
         ! each of the modes resonates, with a certain tolerance tol_norm.
         !> \private
         integer function check_X_modes_1(eq) result(ierr)
-            use X_vars, only: prim_X, min_sec_X, n_mod_X
+            use X_vars, only: prim_X, min_sec_X, max_sec_X, n_mod_X
             use num_vars, only: tol_norm
             
             character(*), parameter :: rout_name = 'check_X_modes_1'
@@ -1440,6 +1441,7 @@ contains
             ! local variables
             integer :: id                                                       ! counter
             integer :: pmone                                                    ! plus or minus one
+            integer :: sec_X                                                    ! secondary mode number
             real(dp) :: min_jq, max_jq                                          ! min. and max. values of q or iota
             real(dp) :: lim_lo, lim_hi                                          ! lower and upper limit on n/m (or m/n)
             real(dp), allocatable :: temp_var(:)                                ! temporary variable
@@ -1500,21 +1502,23 @@ contains
                 ! for every mode (n,m) check whether  m/n is inside the range of
                 ! q values or n/m inside the range of iota values
                 do id = 1,n_mod_X
+                    sec_X = min_sec_X + sign(id-1,max_sec_X-min_sec_X)
+                    
                     ! check if limits are met
                     if (use_pol_flux_F) then
-                        if ((min_sec_X+id-1._dp)/prim_X.lt.lim_lo .or. &
-                            &(min_sec_X+id-1._dp)/prim_X.gt.lim_hi) then
+                        if (sec_X*1._dp/prim_X.lt.lim_lo .or. &
+                            &sec_X*1._dp/prim_X.gt.lim_hi) then
                             call writo('for (n,m) = ('//trim(i2str(prim_X))//&
-                                &','//trim(i2str(min_sec_X+id-1))//&
+                                &','//trim(i2str(sec_X))//&
                                 &'), there is no range in the plasma where the &
                                 &ratio |n q - m| << |n|,|m| is met',alert=.true.)
                             all_modes_fine = .false.
                         end if
                     else
-                        if ((min_sec_X+id-1._dp)/prim_X.lt.lim_lo .or. &
-                            &(min_sec_X+id-1._dp)/prim_X.gt.lim_hi) then
+                        if (sec_X*1._dp/prim_X.lt.lim_lo .or. &
+                            &sec_X*1._dp/prim_X.gt.lim_hi) then
                             call writo('for (n,m) = ('//&
-                                &trim(i2str(min_sec_X+id-1))//','//&
+                                &trim(i2str(sec_X))//','//&
                                 &trim(i2str(prim_X))//'), there is no range in &
                                 &the plasma where the ratio |n - iota m| << &
                                 &|m|,|n| is met',alert=.true.)

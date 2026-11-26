@@ -55,6 +55,15 @@
 # was 0.27 of the axisymmetric one and the eigenvalue -0.083 (issue #4,
 # step 6e).
 #
+# Last, the fixed run of the twin with n = -10 (issue #22): the modes are
+# then the complex conjugates of those with n = 10, with m -> -m, so the
+# eigenvalue must be that of n = 10. The modes come in the opposite order
+# and SLEPc stops at another iterate, so the two agree only to the solver's
+# tolerance: with the deck's tol_SLEPC of 1e-6 the eigenvalues differ by
+# 9e-8 relative, with 1e-12 by 5e-15. The test asks for 1e-6. negative_n.sh
+# has the same comparison on the HELENA path, with points added to the
+# perturbation grid and at free boundary.
+#
 # Usage: circ_eps033_vmec_twin.sh <PB3D-executable> <input-deck> <HELENA-file> <wout-file> [python3]
 set -u
 
@@ -72,6 +81,7 @@ TWIN_RTOL=1e-4
 ANCHOR_FREE=-4.3901e-1
 HEL_FREE=-4.3679e-1
 FREE_RTOL=0.03
+NEG_RTOL=1e-6
 N_ALPHA=64
 
 WORKDIR=$(mktemp -d)
@@ -143,10 +153,17 @@ fi
 run_deck input_free wout_eq.nc
 EV_FREE=$EV
 
+# the fixed run with n = -10
+sed 's/prim_X                  = 10/prim_X                  = -10/' input_fixed > input_fixed_neg
+run_deck input_fixed_neg wout_eq.nc
+EV_NEG=$EV
+
 echo "fixed-boundary eigenvalues: HELENA: $EV_HEL, VMEC twin: $EV_VMEC (anchor: $ANCHOR_VMEC, rtol: $RTOL; twins within $TWIN_RTOL)"
 echo "free-boundary eigenvalue of the twin through the 3-D vacuum, $N_ALPHA field lines: $EV_FREE (anchor: $ANCHOR_FREE, rtol: $RTOL; HELENA style 2: $HEL_FREE, rtol: $FREE_RTOL)"
+echo "fixed-boundary eigenvalue of the twin with n = -10: $EV_NEG (equal to n = 10 within $NEG_RTOL)"
 awk -v evh="$EV_HEL" -v evv="$EV_VMEC" -v anchor="$ANCHOR_VMEC" -v rtol="$RTOL" -v trtol="$TWIN_RTOL" \
-    -v evf="$EV_FREE" -v fanchor="$ANCHOR_FREE" -v hfree="$HEL_FREE" -v frtol="$FREE_RTOL" 'BEGIN {
+    -v evf="$EV_FREE" -v fanchor="$ANCHOR_FREE" -v hfree="$HEL_FREE" -v frtol="$FREE_RTOL" \
+    -v evn="$EV_NEG" -v nrtol="$NEG_RTOL" 'BEGIN {
     ok = 1
     if (evh <= 0) { print "FAIL: HELENA fixed boundary not stable:", evh; ok = 0 }
     if (evv <= 0) { print "FAIL: VMEC fixed boundary not stable:", evv; ok = 0 }
@@ -159,6 +176,8 @@ awk -v evh="$EV_HEL" -v evv="$EV_VMEC" -v anchor="$ANCHOR_VMEC" -v rtol="$RTOL" 
     if (relf > rtol) { print "FAIL: free-boundary deviation from anchor", relf; ok = 0 }
     if (relh > frtol) { print "FAIL: 3-D vacuum result off the HELENA style-2 value by", relh; ok = 0 }
     if (evf >= evv) { print "FAIL: free boundary not below fixed:", evf, evv; ok = 0 }
-    if (ok) { print "PASS: deviations", rel, "(anchor)", relt, "(twins)", relf, "(free anchor)", relh, "(3-D vacuum vs HELENA)"; exit 0 }
+    reln = (evn - evv) / evv; if (reln < 0) reln = -reln
+    if (reln > nrtol) { print "FAIL: fixed boundary, n = -10 and n = 10 differ by", reln; ok = 0 }
+    if (ok) { print "PASS: deviations", rel, "(anchor)", relt, "(twins)", relf, "(free anchor)", relh, "(3-D vacuum vs HELENA)", reln, "(n = -10)"; exit 0 }
     exit 1
 }'

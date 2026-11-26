@@ -4147,24 +4147,27 @@ contains
     !!
     !!
     !! \note
-    !!  -# If the toroidal flux is  used instead, the actual curvature obviously
-    !!  is  unchanged,  which  implies  that  the normal  component  has  to  be
-    !!  multiplied by  the safety factor  and the  geodesic component has  to be
-    !!  divided by it.
+    !!  -# The normal and the geodesic curvature are the components of the
+    !!  curvature along \f$\nabla \psi/\left|\nabla\psi\right|^2\f$ and
+    !!  \f$\nabla \psi \times \vec{B}/B^2\f$, with \f$\psi\f$ the normal
+    !!  Flux coordinate in use, so their values depend on whether that is the
+    !!  poloidal or the toroidal flux.
     !!  -# The formulas for the normal and geodesic basis vectors for VMEC are
     !!      * \f$\frac{\nabla \psi}{\left|\nabla\psi\right|^2} = 
     !!          -\frac{\mathcal{J} \left(1 + \lambda_\theta\right)}
     !!          {Z_\theta^2 + R_\theta^2 + \left(R_\zeta Z_\theta - R_\theta Z_\zeta \right)/R^2} \frac{1}{R}
     !!          \left( -Z_\theta , R_\zeta Z_\theta - R_\theta Z_\zeta, R_\theta\right)_\text{C}\f$
     !!      * \f$\frac{\nabla \psi \times  \vec{B}}{B^2} = 
-    !!          \frac{1}{g_{\theta\theta}}
-    !!          \left(P R_\theta - Q R_\zeta, -Q R^2, P Z_\theta - Q Z_\zeta\right)_\text{C}\f$
-    !!      *\f$Q = g_{\theta\theta} - q g_{\theta\alpha}\f$ (using right-handed
-    !!      flux \f$q_\text{F}\f$, which is the  inverse of the left-handed VMEC
-    !!      \f$q_\text{V}\f$)
-    !!      *\f$P = \frac{Q \lambda_\zeta - g_{\alpha\theta}}{1+\lambda_\theta}\f$
-    !!      (where the derivatives of \f$R\f$,  \f$Z\f$ and \f$\lambda\f$ are in
-    !!      VMEC coordinates).
+    !!          \vec{e}_\alpha - \frac{g_{\alpha\theta}}{g_{\theta\theta}}
+    !!          \vec{e}_\theta\f$, with \f$\vec{e}_\alpha\f$ and
+    !!          \f$\vec{e}_\theta\f$ written in the basis vectors of the VMEC
+    !!          coordinates through the transformation matrix \c T_FE
+    !!      * In both, \f$\theta\f$ stands for the parallel coordinate
+    !!      (\f$\zeta\f$ for the toroidal flux), the derivatives of \f$R\f$,
+    !!      \f$Z\f$ and \f$\lambda\f$ are in VMEC coordinates, and
+    !!      \f$\mathcal{J}\f$, the metric and \c T_FE are those of the Flux
+    !!      coordinates in use: both formulas hold for the poloidal and for
+    !!      the toroidal flux.
     !!  -# The formulas for the normal and geodesic basis vectors for HELENA are
     !!      * \f$\frac{\nabla \psi}{\left|\nabla\psi\right|^2} = 
     !!          -\frac{1}{Z_\theta^2 + R_\theta^2} \frac{q R}{F}
@@ -4174,8 +4177,9 @@ contains
     !!          \left(-R_\theta, -\frac{R_\theta^2 + Z_\theta^2}{q}, -Z_\theta\right)_\text{C}\f$
     integer function calc_derived_q(grid_eq,eq_1,eq_2) result(ierr)
         use eq_vars, only: vac_perm
-        use num_vars, only: eq_style, use_pol_flux_F
+        use num_vars, only: eq_style
 #if ldebug
+        use num_vars, only: use_pol_flux_F
         use eq_vars, only: max_flux_F                                           ! for plot_diff_for_paper
 #endif
         use HELENA_vars, only: R_H, Z_H, chi_H, ias
@@ -4225,7 +4229,7 @@ contains
                 
                 ! Equilibrium contravariant components of angular derivatives of
                 ! covariant parallel basis vector
-                call calc_derived_DE_epar_VMEC(grid_eq,eq_2,de,D_de,b_n,b_g)
+                call calc_derived_DE_epar_VMEC(eq_2,de,D_de,b_n,b_g)
             case (2)                                                            ! HELENA
                 ! Calculate parallel current sigma
                 call calc_derived_sigma_HEL(grid_eq,eq_2,eq_2%sigma)
@@ -4279,8 +4283,7 @@ contains
         deallocate(de,D_de)
         
         ! calculate normal and geodesic curvature
-        call calc_derived_kappa_from_e(grid_eq,eq_1,eq_2,b_n,b_g,&
-            eq_2%kappa_n,eq_2%kappa_g)
+        call calc_derived_kappa_from_e(eq_2,b_n,b_g,eq_2%kappa_n,eq_2%kappa_g)
         
         select case (eq_style)
             case (1)                                                            ! VMEC
@@ -4506,12 +4509,11 @@ contains
         !! derivatives  of covariant  parallel basis  vector. Also  sets up  the
         !! covariant  Cylindrical components  of the  normal and  geodesic basis
         !! vectors.
-        subroutine calc_derived_DE_epar_VMEC(grid_eq,eq_2,de,D_de,b_n,b_g)
+        subroutine calc_derived_DE_epar_VMEC(eq_2,de,D_de,b_n,b_g)
             use num_utilities, only: c
             use num_vars, only: tol_zero
             
             ! input / output
-            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
             type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
             real(dp), intent(out) :: de(:,:,:,:,:,:)                            !< derivs of cov. unit vector in E (space,deriv.,unitvec,output)
             real(dp), intent(out) :: D_de(:,:,:,:,:)                            !< derivs of transf. matrix in E (space,deriv.,output)
@@ -4587,24 +4589,22 @@ contains
             b_n(:,:,:,3) = b_n(:,:,:,1) * eq_2%R_E(:,:,:,0,1,0)                 ! finalize b_n(3)
             b_n(:,:,:,1) = -b_n(:,:,:,1) * eq_2%Z_E(:,:,:,0,1,0)                ! finalize b_n(1)
             
-            ! b_g
-            do kd = 1,grid_eq%loc_n_r
-                b_g(:,:,kd,2) = eq_2%g_FD(:,:,kd,c([3,3],.true.),0,0,0) - &
-                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0) * &
-                    &eq_1%q_saf_FD(kd,0)                                        ! store J(B_theta + B_alpha q)
-                b_g(:,:,kd,1) = (b_g(:,:,kd,2)*eq_2%L_E(:,:,kd,0,0,1)-&
-                    &eq_2%g_FD(:,:,kd,c([1,3],.true.),0,0,0)) / &
-                    &(1+eq_2%L_E(:,:,kd,0,1,0))                                 ! store J((B_theta + B_alpha q) L_zeta - B_alpha)/(1+L_theta)
-            end do
-            b_g(:,:,:,3) = b_g(:,:,:,1)*eq_2%Z_E(:,:,:,0,1,0) - &
-                &b_g(:,:,:,2)*eq_2%Z_E(:,:,:,0,0,1)                             ! finalize b_g(3) (apart from pre-factor)
-            b_g(:,:,:,1) = b_g(:,:,:,1)*eq_2%R_E(:,:,:,0,1,0) - &
-                &b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,1)                             ! finalize b_g(1) (apart from pre-factor)
-            b_g(:,:,:,2) = -b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,0)**2               ! finalize b_g(2) (apart from pre-factor)
-            do ld = 1,3
-                b_g(:,:,:,ld) = b_g(:,:,:,ld) / &
-                    &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)                     ! prefactor 1/g_thetatheta
-            end do
+            ! b_g = e_alpha - g_alpha,par/g_par,par e_par, with the Flux basis
+            ! vectors as combinations of e_theta and e_zeta of the Equilibrium
+            ! coordinates through T_FE
+            b_g(:,:,:,1) = eq_2%T_FE(:,:,:,c([1,2],.false.),0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0) / &
+                &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0) * &
+                &eq_2%T_FE(:,:,:,c([3,2],.false.),0,0,0)                        ! store coefficient of e_theta
+            b_g(:,:,:,2) = eq_2%T_FE(:,:,:,c([1,3],.false.),0,0,0) - &
+                &eq_2%g_FD(:,:,:,c([1,3],.true.),0,0,0) / &
+                &eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0) * &
+                &eq_2%T_FE(:,:,:,c([3,3],.false.),0,0,0)                        ! store coefficient of e_zeta
+            b_g(:,:,:,3) = b_g(:,:,:,1)*eq_2%Z_E(:,:,:,0,1,0) + &
+                &b_g(:,:,:,2)*eq_2%Z_E(:,:,:,0,0,1)                             ! finalize b_g(3)
+            b_g(:,:,:,1) = b_g(:,:,:,1)*eq_2%R_E(:,:,:,0,1,0) + &
+                &b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,1)                             ! finalize b_g(1)
+            b_g(:,:,:,2) = b_g(:,:,:,2)*eq_2%R_E(:,:,:,0,0,0)**2                ! finalize b_g(2)
         end subroutine calc_derived_DE_epar_VMEC
         subroutine calc_derived_DE_epar_HEL(grid_eq,eq_1,Rchi,Zchi,&
             &de,D_de,b_n,b_g)
@@ -4689,14 +4689,10 @@ contains
         
         !> \private  Calculate normal  and geodesic  curvature components  using
         !! VMEC method.
-        subroutine calc_derived_kappa_from_e(grid_eq,eq_1,eq_2,b_n,b_g,&
-            &kappa_n,kappa_g)
-            
+        subroutine calc_derived_kappa_from_e(eq_2,b_n,b_g,kappa_n,kappa_g)
             use num_utilities, only: c
             
             ! input / output
-            type(grid_type), intent(in) :: grid_eq                              !< equilibrium grid
-            type(eq_1_type), intent(in) :: eq_1                                 !< flux equilibrium variables
             type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
             real(dp), intent(in) :: b_n(:,:,:,:)                                !< covariant Cylindrical components of normal basis vector
             real(dp), intent(in) :: b_g(:,:,:,:)                                !< covariant Cylindrical components of geodesic basis vector
@@ -4714,14 +4710,6 @@ contains
             ! divide by |e_theta|^2
             kappa_n = kappa_n / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
             kappa_g = kappa_g / eq_2%g_FD(:,:,:,c([3,3],.true.),0,0,0)
-            
-            ! possibly correct for toroidal flux
-            if (.not.use_pol_flux_F) then
-                do kd = 1,grid_eq%loc_n_r
-                    kappa_n(:,:,kd) = kappa_n(:,:,kd) * eq_1%q_saf_E(kd,0)
-                    kappa_g(:,:,kd) = kappa_g(:,:,kd) / eq_1%q_saf_E(kd,0)
-                end do
-            end if
         end subroutine calc_derived_kappa_from_e
         
         !> \private  Calculate parallel current using VMEC method.

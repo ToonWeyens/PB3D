@@ -550,6 +550,7 @@ contains
         
         ! local variables (also used in child functions)
         integer :: id                                                           ! counter
+        integer :: n_temp                                                       ! number of lines of temporary output already written
         integer :: istat                                                        ! status
         logical :: file_exists                                                  ! whether file exists
         logical :: group_exists                                                 ! whether probed group exists
@@ -593,6 +594,7 @@ contains
         do id = 1,size(temp_output)
             write(output_i,'(A)',IOSTAT=istat) trim(temp_output(id))
         end do
+        n_temp = size(temp_output)
         
         ! 2. SHELL COMMANDS
         
@@ -695,6 +697,11 @@ contains
                 &'" created')
         end if
 #endif
+        
+        ! write the temporary output added since then to the log output file
+        do id = n_temp+1,size(temp_output)
+            write(output_i,'(A)',IOSTAT=istat) trim(temp_output(id))
+        end do
         
         ! no more temporary output
         temp_output_active = .false.
