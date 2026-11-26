@@ -13,7 +13,7 @@ module X_utilities
     
     private
     public sec_ind_loc2tot, is_necessary_X, is_conj_X, conj_sym_X, &
-        &get_sec_X_range, calc_memory_X, do_X, check_same_modes
+        &get_sec_X_range, get_n_mod_tot, calc_memory_X, do_X, check_same_modes
     
     ! interfaces
     
@@ -187,6 +187,20 @@ contains
             do_X = .false.
         end if
     end function do_X
+    
+    !> Number of modes in the tables of a grid: the modes from the lowest to
+    !! the highest mode number of \c sec.
+    !!
+    !! \note This is not  the number of rows of \c sec: with  \c X_style 2 a
+    !! mode that leaves the window and enters it again has two rows.
+    integer function get_n_mod_tot(mds) result(n_mod_tot)
+        use X_vars, only: modes_type
+        
+        ! input / output
+        type(modes_type), intent(in) :: mds                                     !< general modes variables
+        
+        n_mod_tot = maxval(mds%sec(:,1)) - minval(mds%sec(:,1)) + 1
+    end function get_n_mod_tot
     
     !> Determines whether a variable needs to be  considered:
     !! 

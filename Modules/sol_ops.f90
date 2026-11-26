@@ -651,6 +651,7 @@ contains
         use num_vars, only: ex_max_size, rank, no_plots, use_pol_flux_F
         use eq_vars, only: max_flux_F
         use sol_utilities, only: calc_tot_sol_vec
+        use X_utilities, only: get_n_mod_tot
         use grid_utilities, only: trim_grid
 #if ldebug
         use num_vars, only: norm_disc_prec_sol
@@ -704,7 +705,7 @@ contains
         ! set up local and total nr.  of modes, which can be different for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = size(mds%sec,1)
+        n_mod_tot = get_n_mod_tot(mds)
         min_nm_X = minval(mds%sec(:,1),1)
         
         ! set up serial sol_vec on master

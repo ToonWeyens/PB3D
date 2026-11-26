@@ -70,7 +70,7 @@ contains
         use num_vars, only: use_pol_flux_F, norm_disc_prec_sol, X_grid_style
         use num_utilities, only: con2dis
         use spline_utilities, only: spline
-        use X_utilities, only: check_same_modes
+        use X_utilities, only: check_same_modes, get_n_mod_tot
 #if ldebug
         use eq_vars, only: max_flux_F
         use num_utilities, only: calc_int
@@ -99,7 +99,7 @@ contains
         integer :: kd_tot                                                       ! kd in total grid
         integer :: ind_X                                                        ! index of mode in X tables
         integer :: ind_sol                                                      ! index of mode in sol tables
-        integer :: n_mod_tot                                                    ! total number of modes
+        integer :: n_sec                                                        ! number of rows of sec
         integer :: n_t                                                          ! number of time points
         integer :: n_loc, m_loc                                                 ! local mode numbers
         integer :: id, jd, kd                                                   ! counters
@@ -124,6 +124,7 @@ contains
         character(len=max_str_ln) :: err_msg                                    ! error message
         
 #if ldebug
+        integer :: m_tot                                                        ! index of the mode of a row of sec in sol_vec_tot
         real(dp), allocatable :: sol_vec_ALT(:)                                 ! sol_vec calculated from Dsol_vec in solution grid
 #endif
         
@@ -157,7 +158,7 @@ contains
         sec_X_loc => mds_X%sec
         sec_sol_loc => mds_sol%sec
         
-        n_mod_tot = size(sec_X_loc,1)
+        n_sec = size(sec_X_loc,1)
         
         ! set up normalized sqrt(sol_val)
         sqrt_sol_val_norm = sqrt(sol%val(X_id))
@@ -205,7 +206,7 @@ contains
         ! variable 'sec'.
         if (XUQ_style.eq.2 .or. XUQ_style.eq.4) then
             ! set up variables
-            allocate(sol_vec_tot(n_mod_tot,grid_sol%loc_n_r,0:1))
+            allocate(sol_vec_tot(get_n_mod_tot(mds_sol),grid_sol%loc_n_r,0:1))
             sol_vec_tot = 0._dp
             
             ! convert to total solution vector and derivate
@@ -218,26 +219,27 @@ contains
             
 #if ldebug
             if (debug_calc_XUQ_arr) then
-                do m = 1,n_mod_tot
-                    call writo('For mode '//trim(i2str(m))//', testing &
+                do m = 1,n_sec
+                    m_tot = sec_sol_loc(m,1)-minval(sec_sol_loc(:,1))+1
+                    call writo('For mode '//trim(i2str(sec_sol_loc(m,1)))//', testing &
                         &whether Dsol_vec is correct by comparing its integral &
                         &with original sol_vec')
                     kdl_sol = sec_sol_loc(m,2:3)
                     allocate(sol_vec_ALT(1:kdl_sol(2)-kdl_sol(1)+1))
                     sol_vec_ALT = 0._dp
-                    ierr = calc_int(rp(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),1)),&
+                    ierr = calc_int(rp(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),1)),&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_RE_Dsol_vec'],'',reshape(&
-                        &[rp(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),0)),&
+                        &[rp(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),0)),&
                         &sol_vec_ALT],[kdl_sol(2)-kdl_sol(1)+1,2]),x=reshape(&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),&
                         &[kdl_sol(2)-kdl_sol(1)+1,1])/max_flux_F*2*pi)
-                    ierr = calc_int(ip(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),1)),&
+                    ierr = calc_int(ip(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),1)),&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),sol_vec_ALT)
                     CHCKERR('')
                     call print_ex_2D(['TEST_IM_Dsol_vec'],'',reshape(&
-                        &[ip(sol_vec_tot(m,kdl_sol(1):kdl_sol(2),0)),&
+                        &[ip(sol_vec_tot(m_tot,kdl_sol(1):kdl_sol(2),0)),&
                         &sol_vec_ALT],[kdl_sol(2)-kdl_sol(1)+1,2]),x=reshape(&
                         &grid_sol%loc_r_F(kdl_sol(1):kdl_sol(2)),&
                         &[kdl_sol(2)-kdl_sol(1)+1,1])/max_flux_F*2*pi)
@@ -278,7 +280,7 @@ contains
         end select
         
         ! iterate over all secondary modes
-        do m = 1,n_mod_tot
+        do m = 1,n_sec
             ! set up and normal limits
             kdl_X = sec_X_loc(m,2:3)
             kdl_sol = sec_sol_loc(m,2:3)
@@ -567,6 +569,7 @@ contains
         &deriv) result(ierr)
         use num_vars, only: X_style, norm_disc_prec_sol
         use X_vars, only: n_mod_X
+        use X_utilities, only: get_n_mod_tot
         use spline_utilities, only: spline
         
         character(*), parameter :: rout_name = 'calc_tot_sol_vec'
@@ -655,7 +658,7 @@ contains
             case (2)                                                            ! fast
                 ! set local and total nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec,1)
+                n_mod_tot = get_n_mod_tot(mds)
                 
                 ! test allocation
                 if (allocated(sol_vec_tot)) then
@@ -721,7 +724,6 @@ contains
         ! local variables
         character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
-        integer :: n_mod_tot                                                    ! total number of modes
         integer :: ld                                                           ! counter
         integer :: kdl(2)                                                       ! kd limits
         integer :: ld_loc                                                       ! local ld
@@ -750,9 +752,8 @@ contains
                 end if
                 sol_vec_loc = sol_vec_tot
             case (2)                                                            ! fast
-                ! set local and total nr. of modes
+                ! set local nr. of modes
                 n_mod_loc = n_mod_X
-                n_mod_tot = size(mds%sec,1)
                 
                 ! test allocation
                 if (allocated(sol_vec_loc)) then

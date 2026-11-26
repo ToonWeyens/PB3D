@@ -432,7 +432,9 @@ contains
     !! first point, an excursion of the window falls between two points, and
     !! a mode enters after the last point. Every slot holds its mode times
     !! 1 + r, so that the value and the derivative with respect to r are
-    !! known.
+    !! known. Two modes leave the window and enter it again, so that sec has
+    !! more rows than there are modes: the solution vector per mode must have
+    !! one entry per mode.
     subroutine test_sol_vec(error)
         type(error_type), allocatable, intent(out) :: error
 
@@ -466,6 +468,9 @@ contains
             &'no empty rows before, between and after the points')
         if (allocated(error)) return
         min_mode = minval(mds%sec(:,1))
+        call check(error, size(mds%sec,1).gt.maxval(mds%sec(:,1))-min_mode+1, &
+            &'no mode with two rows')
+        if (allocated(error)) return
 
         ! derivative id = 0 and 1
         allocate(vec_loc(n_mod,size(r)))
@@ -475,6 +480,10 @@ contains
             end do
             ierr = calc_tot_sol_vec(mds,grid,vec_loc,vec_tot,deriv=id)
             call check(error, ierr, 0, 'calc_tot_sol_vec')
+            if (allocated(error)) return
+            call check(error, size(vec_tot,1), &
+                &maxval(mds%sec(:,1))-min_mode+1, &
+                &'the solution vector per mode has one entry per mode')
             if (allocated(error)) return
             do kd = 1,size(r)
                 do ld = 1,size(vec_tot,1)

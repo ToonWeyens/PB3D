@@ -3529,6 +3529,7 @@ contains
 #if ldebug
     !> Prints debug information for X_1 driver
     integer function print_debug_X_1(mds,grid_X,X_1) result(ierr)
+        use X_utilities, only: get_n_mod_tot
         use num_vars, only: use_pol_flux_F
         use grid_utilities, only: trim_grid
         use grid_vars, only: alpha, n_alpha
@@ -3571,7 +3572,7 @@ contains
         
         ! set local n_mod and allocate integrated quantities
         min_nm_X = minval(mds%sec(:,1),1)
-        n_mod_tot = size(mds%sec,1)
+        n_mod_tot = get_n_mod_tot(mds)
         allocate(U(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
             &0:1))
         allocate(DU(n_mod_tot,grid_trim%n(1),grid_trim%loc_n_r,grid_trim%n(2),&
@@ -3673,7 +3674,7 @@ contains
     !> Prints debug information for X_2 driver
     integer function print_debug_X_2(mds,grid_X,X_2_int) result(ierr)
         use num_utilities, only: c
-        use X_utilities, only: is_conj_X
+        use X_utilities, only: is_conj_X, get_n_mod_tot
         use X_vars, only: n_mod_X
         use grid_vars, only: alpha, n_alpha
         use grid_utilities, only: trim_grid
@@ -3717,7 +3718,7 @@ contains
         
         ! set local n_mod and allocate integrated quantities
         min_nm_X = minval(mds%sec(:,1),1)
-        n_mod_tot = size(mds%sec,1)
+        n_mod_tot = get_n_mod_tot(mds)
         allocate(PV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
             &grid_trim%n(2),0:2))
         allocate(KV_int(n_mod_tot,n_mod_tot,grid_trim%loc_n_r,&
