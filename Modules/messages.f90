@@ -270,7 +270,8 @@ contains
     !! the output.
     !!
     !! By  default, only the  master outputs, but this  can be changed  using \c
-    !! persistent.
+    !! persistent. Only the process that opened the log file writes to it; the
+    !! others write their persistent messages to the screen only.
     !!
     !! Optionally, special formatting for error, warning or alert can be chosen.
     subroutine writo(input_str,persistent,error,warning,alert)
@@ -303,6 +304,7 @@ contains
         logical :: warning_loc                                                  ! local warning
         logical :: alert_loc                                                    ! local alert
         integer :: istat                                                        ! status
+        logical :: output_open                                                  ! whether the log file is open
 #if ldebug
         integer :: mem_usage                                                    ! memory usage
         integer(kind=8) :: clock                                                ! current clock
@@ -413,7 +415,8 @@ contains
                     ! deallocate local variable
                     deallocate(temp_output_loc)
                 else                                                            ! normal output to file output_i
-                    if (output_i.ne.0) then
+                    inquire(unit=output_i,opened=output_open)
+                    if (output_open) then
                         if (lvl.eq.1) write(output_i,"(1X,A)",IOSTAT=istat) &
                             &trim(header_str)                                   ! first level gets extra lines
                         write(output_i,"(1X,A)",IOSTAT=istat) &

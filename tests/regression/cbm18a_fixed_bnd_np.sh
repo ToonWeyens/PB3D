@@ -1,6 +1,7 @@
 #!/bin/bash
 # Multi-process consistency: the cbm18a fixed-boundary deck run with one
-# process and under an MPI launcher must give the same eigenvalue.
+# process and under an MPI launcher must give the same eigenvalue, and
+# neither run may write a file fort.<unit>.
 #
 # Usage: cbm18a_fixed_bnd_np.sh <PB3D-executable> <input-deck> <equilibrium-file> <launcher>
 #   <launcher>  the launcher with its process count, e.g. "mpirun -n 2"
@@ -44,6 +45,10 @@ run_one() {   # run_one <subdir> [launcher words...]; leaves the eigenvalue in <
     if [ "$STATUS" -ne 0 ]; then
         echo "FAIL: PB3D ($sub) exited with status $STATUS; log tail:"
         tail -20 run.log
+        exit 1
+    fi
+    if ls fort.* > /dev/null 2>&1; then
+        echo "FAIL: PB3D ($sub) wrote $(ls fort.* | tr '\n' ' ')"
         exit 1
     fi
     if [ ! -f PB3D_out_EV_R_1.txt ]; then
