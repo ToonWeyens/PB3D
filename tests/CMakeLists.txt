@@ -522,5 +522,22 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             FAIL_REGULAR_EXPRESSION "FAIL"
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
+        # one Fourier mode on the twin with the poloidal and with the toroidal
+        # flux as normal coordinate: the eigenvalue and the terms of POST's
+        # energy decomposition (issue #22)
+        if(TARGET POST)
+            add_test(NAME regression_circ_eps033_flux_labels
+                COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/circ_eps033_flux_labels.sh
+                    $<TARGET_FILE:PB3D>
+                    $<TARGET_FILE:POST>
+                    ${CMAKE_CURRENT_SOURCE_DIR}/regression/input_circ_eps033
+                    ${PB3D_FIXTURE_DIR}/wout_circ_eps033_q104.nc)
+            set_tests_properties(regression_circ_eps033_flux_labels PROPERTIES
+                LABELS "regression"
+                PASS_REGULAR_EXPRESSION "PASS"
+                FAIL_REGULAR_EXPRESSION "FAIL"
+                ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
+                TIMEOUT 600)
+        endif()
     endif()
 endif()

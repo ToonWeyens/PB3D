@@ -1192,7 +1192,7 @@ contains
             do kd = 1,grid%n(3)
                 do ld = 1,n_mod_X
                     nm_X(kd,modulo(ld+w(kd)-w(1)-1,n_mod_X)+1) = &
-                        &w(kd) + mod_X_range*(ld-1)/(n_mod_X-1)
+                        &w(kd) + mod_X_range*(ld-1)/max(1,n_mod_X-1)                ! one mode: the divisor would be zero
                 end do
             end do
             
@@ -1219,7 +1219,8 @@ contains
             n_mod_tot = n_mod_X + p_eq(grid_eq%n(3))
             allocate(ind_tot(n_mod_tot,4))
             do ld = 1,n_mod_X
-                ind_tot(ld,1:2) = [w_eq(1)+mod_X_range*(ld-1)/(n_mod_X-1),0]
+                ind_tot(ld,1:2) = &
+                    &[w_eq(1)+mod_X_range*(ld-1)/max(1,n_mod_X-1),0]
             end do
             ind_cur = [(ld, ld=1,n_mod_X)]                                      ! rows in the window, from low to high mode
             ind_id = n_mod_X
