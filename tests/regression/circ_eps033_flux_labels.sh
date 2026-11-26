@@ -2,7 +2,7 @@
 # Physics regression test: the poloidal and the toroidal flux as normal
 # coordinate must describe the same plasma (issue #22).
 #
-# Usage: circ_eps033_flux_labels.sh <PB3D-executable> <POST-executable> <input-deck> <wout-file>
+# Usage: circ_eps033_flux_labels.sh <PB3D-executable> <POST-executable> <input-deck> <wout-file> [python3]
 #
 # One Fourier mode, (m,n) = (11,10), on the circular VMEC twin
 # wout_circ_eps033_q104.nc at fixed boundary: with the poloidal flux
@@ -24,6 +24,24 @@
 # curvature built with the formula of the poloidal label: its normal
 # ballooning term was -1.03 times and its geodesic one -2.0 times that of the
 # poloidal label.
+#
+# Then the same mode at free boundary through the 3-D vacuum (alpha_style 2,
+# 32 field lines), with tol_SLEPC = 1e-12:
+#   - with the poloidal and with the toroidal flux. The eigenvalues must agree
+#     to FREE_RTOL. 32 lines are 3.2 per toroidal period of the mode for
+#     the poloidal flux and 2.9 per poloidal period for the toroidal flux, so
+#     the vacuum response is some per cent off in both runs (it is within
+#     0.5 % of the axisymmetric one at 64 lines); the test is that the vacuum
+#     of the toroidal flux has the right size and sign, at a quarter of the
+#     time of 64 lines.
+#   - with the toroidal flux and prim_X = 11 and -11, each with the two
+#     toroidal mode numbers closest to resonance (n_mod_X = 2). With -11 the
+#     modes are the complex conjugates of those with 11, so the eigenvalue
+#     must be the same to 1e-9.
+#   - with the toroidal flux on the copy of the twin with the magnetic field
+#     reversed (reverse_field.py, issue #19): the same eigenvalue to 1e-9.
+#     This run needs a python3 with numpy and netCDF4 or scipy as fifth
+#     argument, and is skipped with a note without it.
 set -u
 
 PB3D_EXE=$1
@@ -31,8 +49,14 @@ POST_EXE=$2
 INPUT=$3
 WOUT_FILE=$4
 
+PYTHON=${5:-}
+REVERSE=$(cd "$(dirname "$0")" && pwd)/reverse_field.py
+
 EV_RTOL=1e-3
 RTOL=1e-2
+FREE_RTOL=2e-2
+SAME_RTOL=1e-9
+N_ALPHA=32
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -115,4 +139,71 @@ paste terms_pol terms_tor | awk -v evrtol="$EV_RTOL" -v rtol="$RTOL" '
       if (rel > worst) worst = rel }
     END { if (n != 9) { print "FAIL: " n " terms read instead of 9"; exit 1 }
           if (bad) exit 1
-          print "PASS: largest relative difference", worst }'
+          print "fixed boundary: largest relative difference", worst }' || exit 1
+
+# free boundary through the 3-D vacuum: the decks with the field lines added
+make_free() {   # make_free <deck> <fixed-boundary deck> [sed expression]
+    {
+        echo '&inputdata_PB3D'
+        echo '    alpha_style             = 2'
+        echo "    n_alpha                 = $N_ALPHA"
+        sed -e '1d; s/BC_style                = 1 1/BC_style                = 1 2/' -e "${3:-}" "$2"
+    } > "$1"
+}
+run_free() {   # run_free <deck> <equilibrium>: the eigenvalue into EV
+    rm -f PB3D_out*
+    "$PB3D_EXE" "$1" "$2" > run.log 2>&1
+    STATUS=$?
+    EV=$(awk '$1 == 1 {print $2}' PB3D_out_EV_R_1.txt 2>/dev/null)
+    if [ "$STATUS" -ne 0 ] || [ -z "$EV" ]; then
+        echo "FAIL: PB3D exited with status $STATUS or gave no accepted eigenvalue ($1 on $2); log tail:"
+        tail -20 run.log
+        exit 1
+    fi
+}
+make_free free_pol deck_pol
+make_free free_tor deck_tor
+TWO_MODES='/max_sec_X/d; s/    min_sec_X               = 10/    n_mod_X                 = 2/'
+make_free free_tor_2 deck_tor "$TWO_MODES"
+make_free free_tor_2_neg deck_tor "$TWO_MODES; s/prim_X                  = 11/prim_X                  = -11/"
+if ! grep -q 'n_mod_X *= 2' free_tor_2 || grep -q '_sec_X' free_tor_2 || \
+    ! grep -q 'prim_X *= -11' free_tor_2_neg; then
+    echo "FAIL: the decks with two toroidal mode numbers were not made"
+    exit 1
+fi
+run_free free_pol wout_eq.nc
+EV_POL=$EV
+run_free free_tor wout_eq.nc
+EV_TOR=$EV
+run_free free_tor_2 wout_eq.nc
+EV_POS=$EV
+run_free free_tor_2_neg wout_eq.nc
+EV_NEG=$EV
+EV_REV=
+if [ -z "$PYTHON" ]; then
+    echo "NOTE: the copy with the field reversed skipped: no python3"
+elif ! "$PYTHON" "$REVERSE" wout_eq.nc wout_rev.nc > reverse.log 2>&1; then
+    echo "NOTE: the copy with the field reversed skipped: reverse_field.py failed with $PYTHON"
+else
+    run_free free_tor wout_rev.nc
+    EV_REV=$EV
+fi
+
+echo "free boundary, $N_ALPHA field lines: poloidal flux $EV_POL, toroidal flux $EV_TOR (rtol: $FREE_RTOL)"
+echo "toroidal flux: m = 11 and -11 with two n: $EV_POS and $EV_NEG, field reversed: ${EV_REV:-skipped} (rtol: $SAME_RTOL)"
+awk -v evp="$EV_POL" -v evt="$EV_TOR" -v ev2="$EV_POS" -v evn="$EV_NEG" -v evr="$EV_REV" \
+    -v frtol="$FREE_RTOL" -v srtol="$SAME_RTOL" 'BEGIN {
+    ok = 1
+    rel = (evt - evp) / evp; if (rel < 0) rel = -rel
+    reln = (evn - ev2) / ev2; if (reln < 0) reln = -reln
+    if (evp >= 0 || evt >= 0) { print "FAIL: free boundary not unstable:", evp, evt; ok = 0 }
+    if (rel > frtol) { print "FAIL: free boundary, the flux labels differ by", rel; ok = 0 }
+    if (reln > srtol) { print "FAIL: toroidal flux, m = -11 and m = 11 differ by", reln; ok = 0 }
+    relr = 0
+    if (evr != "") {
+        relr = (evr - evt) / evt; if (relr < 0) relr = -relr
+        if (relr > srtol) { print "FAIL: toroidal flux, the copy with the field reversed differs by", relr; ok = 0 }
+    }
+    if (ok) { print "PASS: free boundary:", rel, "(flux labels)", reln, "(m = -11)", relr, "(field reversed)"; exit 0 }
+    exit 1
+}'

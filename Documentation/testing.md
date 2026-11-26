@@ -328,8 +328,11 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   grid in every interval of the equilibrium grid, 368 in all (none with the
   default 0.49), and the test asks for the same number, larger than zero, in
   both runs. The second pair is at free boundary with the deck as it is.
-  The eigenvalues must agree to 1e-9 (measured 3.0e-12 and 4e-13). The build
-  of 2.55 stops on every run with a negative `prim_X`.
+  The third pair is at fixed boundary with prescribed poloidal mode numbers
+  (`min_sec_X` and `max_sec_X` instead of `n_mod_X`): m = 15 to 34 with
+  n = 10, and m = -15 to -34 with n = -10, 20 Fourier modes in both runs.
+  The eigenvalues must agree to 1e-9 (measured 3.0e-12, 4e-13 and 1.4e-13).
+  The build of 2.55 stops on every run with a negative `prim_X`.
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition
@@ -392,7 +395,19 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   their field-aligned grid and in the expansion of the geodesic displacement
   U, in 1/n or in 1/m. The normal and the geodesic ballooning term hold the
   normal and the geodesic curvature. In the build of 2.55 the toroidal flux
-  gave -1.03 and -2.0 times the terms of the poloidal flux.
+  gave -1.03 and -2.0 times the terms of the poloidal flux. The same mode is
+  then run at free boundary through the 3-D vacuum on 32 field lines, with
+  `tol_SLEPC` = 1e-12. With the poloidal and with the toroidal flux the
+  eigenvalues must agree to 2e-2 (measured 7e-3: 32 lines are about three
+  per period of the mode in the direction that the lines resolve, toroidal
+  for the poloidal and poloidal for the toroidal flux, so the vacuum response
+  is some per cent off in both; at 64 lines the two are 1.5e-3 apart). With
+  the toroidal flux, `prim_X` = 11 and -11 with the two toroidal mode numbers
+  closest to resonance must give the same eigenvalue to 1e-9 (measured
+  2e-13), and so must the copy of the twin with the magnetic field reversed
+  (`reverse_field.py`; with a python as for `circ_eps033_vmec_twin`, skipped
+  with a note without it). The build of 2.55 stops on every free-boundary run
+  with the toroidal flux.
 - `reject_BC_style`: PB3D on the cbm18a free-boundary deck with
   `BC_style = 1 4`, a value that the input check refuses (issue #40). The
   test requires an exit status that is not zero, the message of the input

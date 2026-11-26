@@ -280,7 +280,7 @@ contains
             max_sec_X = huge(1)                                                 ! nonsensible value to check for user overwriting
             n_mod_X = huge(1)                                                   ! nonsensible value to check for user overwriting
             !use_pol_flux_F = use_pol_flux_E                                     ! use same normal flux coordinate as the equilibrium
-            use_pol_flux_F = .true.                                             ! use poloidail flux as toroidal flux is untested
+            use_pol_flux_F = .true.                                             ! poloidal flux as normal coordinate
             
             ! concerning normalization
             rho_0 = 1E-7_dp                                                     ! for fusion, particle density of around 5E19 for detuerium
@@ -776,7 +776,7 @@ contains
                     end if
                     
                     ! set n_mod_X
-                    n_mod_X = abs(max_sec_X)-(min_sec_X)+1
+                    n_mod_X = abs(max_sec_X-min_sec_X)+1
                 case (2)                                                        ! fast
                     if (n_mod_X.lt.1) then
                         ierr = 1

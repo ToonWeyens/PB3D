@@ -16,10 +16,15 @@
 #     zero, in both runs.
 #   - at free boundary with the deck as it is, through the axisymmetric
 #     vacuum.
-# Measured on 25 November 2026: 3.0e-12 relative at fixed and 4e-13 at free
-# boundary; the test asks for 1e-9. The build of 2.55 stops on every run
-# with a negative prim_X, in calc_eqd_grid_3D ("The angular array has to
-# have a length of at least 1").
+#   - at fixed boundary with prescribed poloidal mode numbers (min_sec_X and
+#     max_sec_X instead of n_mod_X): m = 15 to 34 with n = 10, and m = -15
+#     to -34 with n = -10. Both runs have |max_sec_X - min_sec_X| + 1 = 20
+#     Fourier modes.
+# Measured on 25 and 26 November 2026: 3.0e-12 relative at fixed boundary,
+# 4e-13 at free boundary and 1.4e-13 with the prescribed mode numbers; the
+# test asks for 1e-9. The build of 2.55 stops on every run with a negative
+# prim_X, in calc_eqd_grid_3D ("The angular array has to have a length of at
+# least 1").
 set -u
 
 PB3D_EXE=$1
@@ -42,6 +47,16 @@ for deck in free fixed; do
         exit 1
     fi
 done
+sed -e 's/BC_style                = 1 2/BC_style                = 1 1/' \
+    -e 's/^    n_mod_X                 = 20/    min_sec_X               = 15\
+    max_sec_X               = 34/' free_pos > presc_pos
+sed -e 's/prim_X                  = 10/prim_X                  = -10/' \
+    -e 's/min_sec_X               = 15/min_sec_X               = -15/' \
+    -e 's/max_sec_X               = 34/max_sec_X               = -34/' presc_pos > presc_neg
+if ! grep -q 'min_sec_X *= -15' presc_neg || ! grep -q 'max_sec_X *= -34' presc_neg; then
+    echo "FAIL: the deck has no line n_mod_X = 20 to replace by min_sec_X and max_sec_X"
+    exit 1
+fi
 
 # run one deck: the eigenvalue into EV, the number of added points into ADDED
 run_deck() {
@@ -70,18 +85,26 @@ run_deck free_pos
 EV_FREE=$EV
 run_deck free_neg
 EV_FREE_NEG=$EV
+run_deck presc_pos
+EV_PRESC=$EV
+run_deck presc_neg
+EV_PRESC_NEG=$EV
 
 echo "fixed boundary: n = 10: $EV_FIXED ($ADDED_POS points added), n = -10: $EV_FIXED_NEG ($ADDED_NEG points added)"
-echo "free boundary: n = 10: $EV_FREE, n = -10: $EV_FREE_NEG (rtol: $RTOL)"
+echo "free boundary: n = 10: $EV_FREE, n = -10: $EV_FREE_NEG"
+echo "prescribed: n = 10, m = 15..34: $EV_PRESC, n = -10, m = -15..-34: $EV_PRESC_NEG (rtol: $RTOL)"
 awk -v ev="$EV_FIXED" -v evn="$EV_FIXED_NEG" -v evf="$EV_FREE" -v evfn="$EV_FREE_NEG" \
+    -v evp="$EV_PRESC" -v evpn="$EV_PRESC_NEG" \
     -v ap="$ADDED_POS" -v an="$ADDED_NEG" -v rtol="$RTOL" 'BEGIN {
     ok = 1
     if (ap <= 0) { print "FAIL: no points added to the perturbation grid for n = 10"; ok = 0 }
     if (an != ap) { print "FAIL: points added for n = -10 and n = 10 differ:", an, ap; ok = 0 }
     rel = (evn - ev) / ev; if (rel < 0) rel = -rel
     relf = (evfn - evf) / evf; if (relf < 0) relf = -relf
+    relp = (evpn - evp) / evp; if (relp < 0) relp = -relp
     if (rel > rtol) { print "FAIL: fixed boundary, n = -10 and n = 10 differ by", rel; ok = 0 }
     if (relf > rtol) { print "FAIL: free boundary, n = -10 and n = 10 differ by", relf; ok = 0 }
-    if (ok) { print "PASS: n = -10 and n = 10 differ by", rel, "(fixed)", relf, "(free)"; exit 0 }
+    if (relp > rtol) { print "FAIL: prescribed mode numbers, n = -10 and n = 10 differ by", relp; ok = 0 }
+    if (ok) { print "PASS: n = -10 and n = 10 differ by", rel, "(fixed)", relf, "(free)", relp, "(prescribed)"; exit 0 }
     exit 1
 }'

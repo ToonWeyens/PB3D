@@ -144,7 +144,6 @@ contains
         integer :: r_id                                                         ! normal index
         real(dp) :: jq                                                          ! iota or q
         real(dp) :: dpar_X, dalpha                                              ! steps of the field-line grid
-        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: par_id(3)                                                ! total parallel index
         real(dp), allocatable :: norm_com_C(:,:,:)                          ! Cylindrical components of norm
         real(dp), allocatable :: T_CV_loc(:,:,:,:,:,:,:)                    ! local T_CV
@@ -159,10 +158,6 @@ contains
             jq = eq_1%q_saf_FD(grid%loc_n_r,0)
         else
             jq = eq_1%rot_t_FD(grid%loc_n_r,0)
-            ierr = 1
-            err_msg = 'TOR. FLUX HAS NOT BEEN TESTED AND IS MOST PROBABLY NOT &
-                &CORRECT YET'
-            CHCKERR(err_msg)
         end if
         ierr = broadcast_var(jq,n_procs-1)
         CHCKERR('')
@@ -2152,8 +2147,10 @@ contains
     !! harmonic inside the surface, and for two potentials harmonic outside
     !! it and decaying, a point source on the magnetic axis at \f$\zeta = 0\f$
     !! and a ring of point sources along the whole magnetic axis, with unit
-    !! weights and with weights \f$\cos(n \zeta)\f$ for the primary mode number
-    !! \f$n\f$ (the toroidal structure of the modes), the residual
+    !! weights and with weights \f$\cos(N \zeta)\f$, with \f$N\f$ = \c prim_X
+    !! (for the poloidal flux the toroidal mode number, so the toroidal
+    !! structure of the modes; for the toroidal flux the poloidal mode number,
+    !! which gives a test potential as well), the residual
     !! of the Green identity \f$\overline{\text{H}} \phi -
     !! \overline{\text{G}} \partial_n \phi - c \phi\f$ is printed for
     !! \f$c = -4\pi, -2\pi, 0, 2\pi, 4\pi\f$, scaled by \f$\max |4 \pi \phi|\f$
@@ -3126,7 +3123,10 @@ character(len=max_str_ln) :: sub_str                                    ! error 
     !! the solution at the plasma edge with the basis \f$e^{i(n\alpha +
     !! (nq-m)\theta)} = e^{i(n\zeta_\text{F} - m\theta)}\f$ of the field-line
     !! style, or \f$e^{-im\theta}\f$ for the axisymmetric style, which splits
-    !! off \f$e^{in\zeta_\text{F}}\f$. These data are \f$-\mathcal{J}Q_n\f$, with
+    !! off \f$e^{in\zeta_\text{F}}\f$. With the toroidal flux as normal
+    !! coordinate the field-line style has \f$-i(n-\iota m)X\f$ and the basis
+    !! \f$e^{i(m\alpha + (n-\iota m)\zeta)}\f$, the same function of position.
+    !! These data are \f$-\mathcal{J}Q_n\f$, with
     !! \f$Q_n\f$ the normal component of the magnetic perturbation that POST
     !! plots: the normal component of the perturbed field is continuous across
     !! the boundary. The boundary potential follows from the exterior system of
@@ -3198,6 +3198,7 @@ character(len=max_str_ln) :: sub_str                                    ! error 
         real(dp) :: w_box                                                       ! widening of the default ranges
         real(dp) :: dpar_X, dalpha                                              ! steps of the field-line grid
         real(dp) :: arg_loc                                                     ! phase of a mode at a boundary point
+        real(dp), allocatable :: n_frac(:)                                      ! mode numbers along the field line
         real(dp), allocatable :: R_b(:), Z_b(:)                                 ! R and Z of the boundary points
         real(dp), allocatable :: psi_bnd(:)                                     ! interior harmonic on the boundary
         real(dp), allocatable :: grad(:,:,:)                                    ! gradient of the eigenmode columns on the boundary (field-line style)
@@ -3214,7 +3215,6 @@ logical, allocatable :: in_ext(:)                                       ! points
         complex(dp), allocatable :: sol_vec(:,:)                                ! edge solution, modes by eigenmodes
         complex(dp), allocatable :: dphi(:,:)                                   ! normal data, boundary points by eigenmodes
         complex(dp) :: phi_c                                                    ! complex potential
-        character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: rank_o                                                       ! output rank
 
         ! initialize ierr
@@ -3226,12 +3226,6 @@ logical, allocatable :: in_ext(:)                                       ! points
 
         call writo('Vacuum potential of '//trim(i2str(n_X))//' eigenmodes')
         call lvl_ud(1)
-
-        if (.not.use_pol_flux_F) then
-            ierr = 1
-            err_msg = 'The vacuum potential plot needs the poloidal flux'
-            CHCKERR(err_msg) 
-        end if
 
         ! field-line style: the grid variables that vac_steps reads, here and
         ! in calc_GH_1, from the parallel angle of the vacuum output
@@ -3251,8 +3245,17 @@ logical, allocatable :: in_ext(:)                                       ! points
             CHCKERR('')
         end do
 
+        ! mode numbers along the field line: nq-m, or n-iota m for the toroidal
+        ! flux
+        allocate(n_frac(n_mod_X))
+        if (use_pol_flux_F) then
+            n_frac = vac%prim_X*vac%jq-vac%sec_X
+        else
+            n_frac = vac%sec_X-vac%prim_X*vac%jq
+        end if
+
         ! normal data at the boundary points along the stored normal, as in
-        ! calc_vac_res: -i (nq-m) X for every mode
+        ! calc_vac_res: -i n_frac X for every mode
         allocate(dphi(vac%n_bnd,n_X))
         dphi = 0._dp
         do rd = 1,vac%n_bnd
@@ -3261,13 +3264,12 @@ logical, allocatable :: in_ext(:)                                       ! points
             do jd = 1,n_mod_X
                 if (vac%style.eq.1) then                                        ! field-line 3-D
                     arg_loc = vac%prim_X*(pi*min_alpha+(alpha_id-1)*dalpha) + &
-                        &(vac%prim_X*vac%jq-vac%sec_X(jd))*&
-                        &vac%ang(par_id,alpha_id)
+                        &n_frac(jd)*vac%ang(par_id,alpha_id)
                 else                                                            ! axisymmetric
                     arg_loc = -vac%sec_X(jd)*vac%ang(par_id,alpha_id)
                 end if
-                dphi(rd,:) = dphi(rd,:) - iu*(vac%prim_X*vac%jq-vac%sec_X(jd))*&
-                    &exp(iu*arg_loc)*sol_vec(jd,:)
+                dphi(rd,:) = dphi(rd,:) - iu*n_frac(jd)*exp(iu*arg_loc)*&
+                    &sol_vec(jd,:)
             end do
         end do
 
