@@ -118,7 +118,7 @@ contains
             else
                 ! restore solution grid and trim it
                 ierr = reconstruct_PB3D_grid(grid_sol,'sol',&
-                    &grid_limits=sol_limits)
+                    &grid_limits=sol_limits,divided=n_procs.gt.1)
                 CHCKERR('')
                 ierr = trim_grid(grid_sol,grid_sol_trim)
                 CHCKERR('')
@@ -176,8 +176,6 @@ contains
         CHCKERR('')
         grid_X_sol%r_F = grid_sol%r_F
         grid_X_sol%r_E = grid_sol%r_E
-        grid_X_sol%loc_r_F = grid_sol%loc_r_F
-        grid_X_sol%loc_r_E = grid_sol%loc_r_E
         
         
         select case (X_grid_style)

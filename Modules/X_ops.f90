@@ -1968,7 +1968,7 @@ contains
                 CHCKERR('')
                 
                 ! create plot grid for single flux surface
-                ierr = grid_plot%init(plot_dim(1:3))
+                ierr = grid_plot%init(plot_dim(1:3),divided=.false.)
                 CHCKERR('')
                 grid_plot%theta_E = theta_plot
                 grid_plot%zeta_E = zeta_plot

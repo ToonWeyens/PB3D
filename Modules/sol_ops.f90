@@ -264,8 +264,6 @@ contains
         CHCKERR('')
         grid_out%r_F = grid_sol%r_F
         grid_out%r_E = grid_sol%r_E
-        grid_out%loc_r_F = grid_sol%loc_r_F
-        grid_out%loc_r_E = grid_sol%loc_r_E
         if (eq_style.eq.1) allocate(grid_out%trigon_factors(&
             &size(grid_X%trigon_factors,1),size(grid_X%trigon_factors,2),&
             &grid_out%loc_n_r,size(grid_X%trigon_factors,4),&
@@ -1574,7 +1572,7 @@ contains
     integer function print_output_sol(grid,sol,data_name,rich_lvl,&
         &remove_previous_arrs) result(ierr)
         
-        use num_vars, only: PB3D_name, sol_n_procs, rank
+        use num_vars, only: PB3D_name
         use HDF5_ops, only: print_HDF5_arrs
         use HDF5_vars, only: dealloc_var_flat, var_flat_type, &
             &max_dim_var_flat
@@ -1662,15 +1660,10 @@ contains
             sol_1D_loc%p = reshape(ip(sol%vec),[size(sol%vec)])
             
             ! write
-            ! Note: if processes that are not used  in the solve do not have the
-            ! solution  vector and  should therefore  not be  used to  write the
-            ! output.
-            if (sol_n_procs.gt.1 .or. rank.eq.0) then
-                ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,&
-                    &trim(data_name),rich_lvl=rich_lvl,&
-                    &remove_previous_arrs=remove_previous_arrs)
-                CHCKERR('')
-            end if
+            ierr = print_HDF5_arrs(sol_1D(1:id-1),PB3D_name,&
+                &trim(data_name),rich_lvl=rich_lvl,&
+                &remove_previous_arrs=remove_previous_arrs)
+            CHCKERR('')
             
             ! clean up
             call grid_trim%dealloc()
