@@ -651,6 +651,7 @@ contains
         use num_vars, only: ex_max_size, rank, no_plots, use_pol_flux_F
         use eq_vars, only: max_flux_F
         use sol_utilities, only: calc_tot_sol_vec
+        use X_utilities, only: get_n_mod_tot
         use grid_utilities, only: trim_grid
 #if ldebug
         use num_vars, only: norm_disc_prec_sol
@@ -674,6 +675,7 @@ contains
         integer :: n_mod_tot                                                    ! total number of modes that can resonate
         integer :: n_mod_loc                                                    ! local number of modes that are used in the calculations
         integer :: min_nm_X                                                     ! minimum n or m in total modes
+        integer :: n_plot                                                       ! number of points of the plot of the maxima
         character(len=max_str_ln) :: file_name                                  ! name of file of plots of this proc.
         character(len=max_str_ln), allocatable :: plot_title(:)                 ! title for plots
         real(dp) :: norm_factor                                                 ! conversion factor max_flux/2pi from flux to normal coordinate
@@ -703,7 +705,7 @@ contains
         ! set up local and total nr.  of modes, which can be different for X
         ! style 2 (see discussion in sol_utilities)
         n_mod_loc = sol%n_mod
-        n_mod_tot = size(mds%sec,1)
+        n_mod_tot = get_n_mod_tot(mds)
         min_nm_X = minval(mds%sec(:,1),1)
         
         ! set up serial sol_vec on master
@@ -905,9 +907,10 @@ contains
                 plot_title(1) = 'mode maximum'
                 plot_title(2) = 'resonating surface'
                 
-                ! set up plot variables
-                allocate(x_plot(n_mod_tot,2))
-                allocate(y_plot(n_mod_tot,2))
+                ! set up plot variables, with room for every resonating surface
+                n_plot = max(n_mod_tot,size(res_surf,1))
+                allocate(x_plot(n_plot,2))
+                allocate(y_plot(n_plot,2))
                 
                 ! set up maximum of each mode at midplane
                 ld_loc = 0
@@ -924,15 +927,15 @@ contains
                     err_msg = 'None of the modes resonates'
                     CHCKERR(err_msg)
                 end if
-                x_plot(ld_loc+1:n_mod_tot,1) = x_plot(ld_loc,1)                 ! identical copies of last point for numerical reasons
-                y_plot(ld_loc+1:n_mod_tot,1) = y_plot(ld_loc,1)                 ! identical copies of last point for numerical reasons
+                x_plot(ld_loc+1:n_plot,1) = x_plot(ld_loc,1)                    ! identical copies of last point for numerical reasons
+                y_plot(ld_loc+1:n_plot,1) = y_plot(ld_loc,1)                    ! identical copies of last point for numerical reasons
                 
                 ! set up resonating surface for each mode
                 x_plot(1:size(res_surf,1),2) = res_surf(:,2)                    ! normal position of resonating mode
-                x_plot(size(res_surf,1)+1:n_mod_tot,2) = &
+                x_plot(size(res_surf,1)+1:n_plot,2) = &
                     &res_surf(size(res_surf,1),2)                               ! identical copies of last point for numerical reasons
                 y_plot(1:size(res_surf,1),2) = res_surf(:,1)                    ! total mode index of resonating mode
-                y_plot(size(res_surf,1)+1:n_mod_tot,2) = &
+                y_plot(size(res_surf,1)+1:n_plot,2) = &
                     &res_surf(size(res_surf,1),1)                               ! identical copies of last point for numerical reasons
                 
                 ! scale x_plot by normal factor

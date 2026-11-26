@@ -595,7 +595,8 @@ contains
         ! Makes use of mds, n_r and  grid_sol_trim
         !> \private
         integer function fill_mat(V_0,V_1,V_2,bulk_i_lim,mat) result(ierr)
-            use num_utilities, only: con, calc_coeff_fin_diff, calc_end_weights
+            use num_utilities, only: calc_coeff_fin_diff, calc_end_weights
+            use X_utilities, only: is_conj_X
             
             character(*), parameter :: rout_name = 'fill_mat'
             
@@ -710,9 +711,10 @@ contains
                 ! fill local block
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
-                        loc_block(k,m) = &
-                            &con(sum(V_0(:,kd_loc,c_tot(k,m,1))),&
-                            &[k,m],.true.)                                      ! symmetric matrices need con()
+                        loc_block(k,m) = sum(V_0(:,kd_loc,c_tot(k,m,1)))
+                        if (is_conj_X(mds%n(kd+1,k),mds%m(kd+1,k),&
+                            &mds%n(kd+1,m),mds%m(kd+1,m))) loc_block(k,m) = &
+                            &conjg(loc_block(k,m))                              ! symmetric: the entry holds the element whose row has the higher mode number
                     end do
                 end do
                 loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral
@@ -735,7 +737,7 @@ contains
                 ! fill local block
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
-                        loc_block(k,m) = sum(V_1(:,kd_loc,c_tot(k,m,2)))        ! asymetric matrices don't need con()
+                        loc_block(k,m) = sum(V_1(:,kd_loc,c_tot(k,m,2)))        ! not symmetric: every element has its own entry
                     end do
                 end do
                 loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral
@@ -754,8 +756,10 @@ contains
                 ! fill local block
                 do m = 1,n_mod_X
                     do k = 1,n_mod_X
-                        loc_block(k,m) = &
-                            &con(sum(V_2(:,kd_loc,c_tot(k,m,1))),[k,m],.true.)  ! symmetric matrices need con()
+                        loc_block(k,m) = sum(V_2(:,kd_loc,c_tot(k,m,1)))
+                        if (is_conj_X(mds%n(kd+1,k),mds%m(kd+1,k),&
+                            &mds%n(kd+1,m),mds%m(kd+1,m))) loc_block(k,m) = &
+                            &conjg(loc_block(k,m))                              ! symmetric: the entry holds the element whose row has the higher mode number
                     end do
                 end do
                 loc_block = loc_block*step_size*w_q                             ! step size and quadrature weight of normal integral

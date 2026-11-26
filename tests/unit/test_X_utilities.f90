@@ -1,7 +1,8 @@
 !------------------------------------------------------------------------------!
 !> Unit tests for the pure mode-index logic of X_utilities: the local-to-
 !! total secondary-index translation, the symmetric-storage necessity
-!! criterion, the contiguous HDF5 ranges of tensorial perturbation
+!! criterion, which element the entry of a symmetric quantity holds, the
+!! contiguous HDF5 ranges of tensorial perturbation
 !! variables (pinning the worked example in the get_sec_X_range
 !! documentation), and the input/output mode-range trimming.
 !------------------------------------------------------------------------------!
@@ -9,8 +10,8 @@ module test_X_utilities
     use testdrive, only: new_unittest, unittest_type, error_type, check
     use str_utilities, only: i2str
     use X_vars, only: n_mod_X, modes_type
-    use X_utilities, only: sec_ind_loc2tot, is_necessary_X, get_sec_X_range, &
-        &trim_modes
+    use X_utilities, only: sec_ind_loc2tot, is_necessary_X, is_conj_X, &
+        &get_sec_X_range, check_same_modes
 
     implicit none
     private
@@ -24,11 +25,39 @@ contains
         testsuite = [ &
             &new_unittest("sec_ind_loc2tot", test_sec_ind_loc2tot), &
             &new_unittest("is_necessary_X", test_is_necessary_X), &
+            &new_unittest("is_conj_X", test_is_conj_X), &
             &new_unittest("get_sec_X_range_doc_example", &
             &   test_get_sec_X_range), &
-            &new_unittest("trim_modes", test_trim_modes) &
+            &new_unittest("check_same_modes", test_check_same_modes) &
             &]
     end subroutine collect_X_utilities
+
+    !> The entry of a symmetric quantity holds the element whose row has the
+    !! higher mode number: m for the poloidal flux as normal coordinate (the
+    !! two modes have the same n), n for the toroidal flux (the same m). The
+    !! entry is the conjugate of an element whose row has the lower one.
+    subroutine test_is_conj_X(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        ! poloidal flux: n = 10 for both, m differs
+        call check(error, .not.is_conj_X(10,7,10,4), 'row m = 7, column m = 4')
+        if (allocated(error)) return
+        call check(error, is_conj_X(10,4,10,7), 'row m = 4, column m = 7')
+        if (allocated(error)) return
+        call check(error, .not.is_conj_X(10,-52,10,-53), &
+            &'row m = -52, column m = -53')
+        if (allocated(error)) return
+        call check(error, is_conj_X(10,-53,10,-52), &
+            &'row m = -53, column m = -52')
+        if (allocated(error)) return
+        call check(error, .not.is_conj_X(10,5,10,5), 'diagonal')
+        if (allocated(error)) return
+
+        ! toroidal flux: m = 52 for both, n differs
+        call check(error, .not.is_conj_X(41,52,39,52), 'row n = 41, column n = 39')
+        if (allocated(error)) return
+        call check(error, is_conj_X(39,52,41,52), 'row n = 39, column n = 41')
+    end subroutine test_is_conj_X
 
     !> Local mode indices translate to total ones by the offset of the
     !! lower limit.
@@ -148,37 +177,39 @@ contains
         end do
     end subroutine test_get_sec_X_range
 
-    !> Trimming a wider input mode table to an output subtable finds the
-    !! coinciding index window.
-    subroutine test_trim_modes(error)
+    !> Two mode tables pass only with the same mode in every row, also when
+    !! a mode has more than one row, as for a safety factor with an extremum.
+    subroutine test_check_same_modes(error)
         type(error_type), allocatable, intent(out) :: error
 
         type(modes_type) :: mds_i, mds_o                                        ! input and output modes
-        integer :: ierr, m                                                      ! error status, counter
-        integer :: id_lim_i(2), id_lim_o(2)                                     ! limits
+        integer :: ierr                                                         ! error status
+        integer, parameter :: modes(6) = [4,5,6,7,4,3]                          ! the window moves up and down
 
-        ! input modes 2..8, output modes 4..6
-        allocate(mds_i%sec(7,3),mds_o%sec(3,3))
+        allocate(mds_i%sec(6,4),mds_o%sec(6,4))
         mds_i%sec = 0
-        mds_o%sec = 0
-        do m = 1,7
-            mds_i%sec(m,1) = m+1
-        end do
-        do m = 1,3
-            mds_o%sec(m,1) = m+3
-        end do
+        mds_o%sec = 1                                                           ! ranges and slots may differ
+        mds_i%sec(:,1) = modes
+        mds_o%sec(:,1) = modes
+        ierr = check_same_modes(mds_i,mds_o)
+        call check(error, ierr, 0, 'same rows refused')
+        if (allocated(error)) return
 
-        ierr = trim_modes(mds_i,mds_o,id_lim_i,id_lim_o)
-        call check(error, ierr, 0, 'trim_modes failed')
+        ! one mode differs
+        mds_o%sec(5,1) = 8
+        ierr = check_same_modes(mds_i,mds_o)
+        call check(error, ierr.ne.0, 'a different mode was accepted')
         if (allocated(error)) return
-        call check(error, all(id_lim_o.eq.[1,3]), 'output limits')
-        if (allocated(error)) return
-        call check(error, all(id_lim_i.eq.[3,5]), &
-            &'input limits: got ['//trim(i2str(id_lim_i(1)))//','//&
-            &trim(i2str(id_lim_i(2)))//']')
+        call mds_o%dealloc()
+
+        ! one row fewer
+        allocate(mds_o%sec(5,4))
+        mds_o%sec(:,1) = modes(1:5)
+        ierr = check_same_modes(mds_i,mds_o)
+        call check(error, ierr.ne.0, 'a missing row was accepted')
         if (allocated(error)) return
 
         call mds_i%dealloc()
         call mds_o%dealloc()
-    end subroutine test_trim_modes
+    end subroutine test_check_same_modes
 end module test_X_utilities
