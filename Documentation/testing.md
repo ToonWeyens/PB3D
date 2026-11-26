@@ -140,7 +140,9 @@ combined over all ranks.
 - **`modes` (full-stack)** — the mode tables of `X_style` 2
   (`X_ops::setup_modes`) for windows on the equilibrium points that move
   up, down, up and then down (a minimum of the safety factor), down and
-  then up, up and back down at one equilibrium point, and up and then down
+  then up, up, down, up and down again (three extrema, where a mode leaves
+  the window and enters it again more than once), up and back down at one
+  equilibrium point, and up and then down
   on a normal coordinate that decreases: at every point of
   every grid the rows of `sec` hold the window once, each mode in its own
   slot of `m`; every grid has the rows of the equilibrium grid, in the same

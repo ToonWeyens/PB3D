@@ -63,6 +63,7 @@ contains
             &new_unittest("window_down_then_up", test_down_up), &
             &new_unittest("decreasing_coordinate", test_decreasing), &
             &new_unittest("excursion_between_points", test_excursion), &
+            &new_unittest("several_extrema", test_several_extrema), &
             &new_unittest("move_over_full_width_refused", test_refused), &
             &new_unittest("window_on_other_points_refused", test_other_points), &
             &new_unittest("prescribed_falling", test_falling), &
@@ -275,6 +276,27 @@ contains
         call check_tables(error,[3,3,3,4,3,3,3],3,eqd(7,0._dp,1._dp),&
             &reshape([0._dp,0.3_dp,0.7_dp,1._dp,eqd(4,0._dp,1._dp)],[4,2]))
     end subroutine test_excursion
+
+    !> The window moves up, down, up and down again, as for a safety factor
+    !! with three extrema: a mode leaves the window and enters it again more
+    !! than once. The grids are a fine one, one that starts after the first
+    !! extremum, a coarse one on which the window moves by two between points,
+    !! and one on a normal coordinate that decreases.
+    subroutine test_several_extrema(error)
+        type(error_type), allocatable, intent(out) :: error
+
+        integer, parameter :: w_eq(15) = [3,4,5,6,5,4,3,3,4,5,6,7,6,5,4]        ! three extrema: 6, 3 and 7
+
+        call check_tables(error,w_eq,3,eqd(15,0._dp,1._dp),&
+            &reshape([eqd(71,0._dp,1._dp),eqd(71,0.2_dp,0.93_dp),&
+            &eqd(71,0.33_dp,1._dp)],[71,3]))
+        if (allocated(error)) return
+        call check_tables(error,w_eq,3,eqd(15,0._dp,1._dp),&
+            &reshape([eqd(9,0._dp,1._dp),eqd(9,0.05_dp,0.97_dp)],[9,2]))
+        if (allocated(error)) return
+        call check_tables(error,w_eq,4,-eqd(15,0._dp,1._dp),&
+            &reshape([-eqd(40,0._dp,1._dp),-eqd(40,0.1_dp,0.8_dp)],[40,2]))
+    end subroutine test_several_extrema
 
     !> A grid on which the window moves by more than its width between two
     !! points is refused.
