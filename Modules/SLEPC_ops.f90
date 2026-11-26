@@ -994,6 +994,8 @@ contains
         
         ! iterate over all positions where to set left BC
         do kd = 1,n_min
+            call writo('Boundary style at row '//trim(i2str(kd))//&
+                &': Eigenvector set to zero')
             if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then           ! decide which process does the setting
                 select case (BC_style(1))
                     case (1)
@@ -1034,6 +1036,14 @@ contains
         
         ! the right BC is set at the last point only
         kd = grid_sol%n(3)
+        select case (BC_style(2))
+            case (1)
+                call writo('Boundary style at row '//trim(i2str(kd))//&
+                    &': Eigenvector set to zero')
+            case (2)
+                call writo('Boundary style at row '//trim(i2str(kd))//&
+                    &': Free boundary, vacuum energy added to the edge block')
+        end select
         if (grid_sol%i_min.le.kd .and. grid_sol%i_max.ge.kd) then               ! decide which process does the setting
             select case (BC_style(2))
                 case (1)
@@ -1083,10 +1093,6 @@ contains
             
             ! initialize ierr
             ierr = 0
-            
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Eigenvector set to zero',persistent=.true.)
             
             ! initialize local blocks
             allocate(loc_block(n_mod_X,n_mod_X))
@@ -1149,11 +1155,6 @@ contains
 
             ! initialize ierr
             ierr = 0
-
-            ! user output
-            call writo('Boundary style at row '//trim(i2str(r_id+1))//&
-                &': Free boundary, vacuum energy added to the edge block',&
-                &persistent=.true.)
 
             ! -------------!
             ! BLOCKS ~ vac !
