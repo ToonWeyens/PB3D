@@ -270,8 +270,11 @@ with the fixes of issue #4, steps 2 to 4, and are asserted to 1e-3 since):
   grid in every interval of the equilibrium grid, 368 in all (none with the
   default 0.49), and the test asks for the same number, larger than zero, in
   both runs. The second pair is at free boundary with the deck as it is.
-  The eigenvalues must agree to 1e-9 (measured 3.0e-12 and 4e-13). The build
-  of 2.55 stops on every run with a negative `prim_X`.
+  The third pair is at fixed boundary with prescribed poloidal mode numbers
+  (`min_sec_X` and `max_sec_X` instead of `n_mod_X`): m = 15 to 34 with
+  n = 10, and m = -15 to -34 with n = -10, 20 Fourier modes in both runs.
+  The eigenvalues must agree to 1e-9 (measured 3.0e-12, 4e-13 and 1.4e-13).
+  The build of 2.55 stops on every run with a negative `prim_X`.
 - `cbm18a_shear_HEL`: the HELENA shear S on the whole equilibrium grid
   against the direct formula from the metric derivatives
   (`check_shear_HEL.py`), the check that pins the spline boundary condition

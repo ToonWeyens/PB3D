@@ -384,7 +384,8 @@ if(TARGET PB3D AND PB3D_FIXTURE_DIR)
             ENVIRONMENT "${PB3D_TEST_MPI_ENV}"
             TIMEOUT 600)
         # n = -10 against n = 10: at fixed boundary with points added to the
-        # perturbation grid, and at free boundary (issue #22)
+        # perturbation grid, at free boundary, and with prescribed poloidal
+        # mode numbers (issue #22)
         add_test(NAME regression_negative_n
             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/regression/negative_n.sh
                 $<TARGET_FILE:PB3D>

@@ -799,7 +799,7 @@ contains
                     end if
                     
                     ! set n_mod_X
-                    n_mod_X = abs(max_sec_X)-(min_sec_X)+1
+                    n_mod_X = abs(max_sec_X-min_sec_X)+1
                 case (2)                                                        ! fast
                     if (n_mod_X.lt.1) then
                         ierr = 1
