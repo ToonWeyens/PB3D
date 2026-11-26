@@ -31,6 +31,7 @@ program pb3d_fullstack_tester
     use test_calc_int_vol, only: collect_calc_int_vol
     use test_read_HEL, only: collect_read_HEL
     use test_modes, only: collect_modes
+    use test_norm_range, only: collect_norm_range
     use num_vars, only: dp, rank, n_procs, prog_name, max_it_zero, tol_zero, &
         &max_nr_backtracks_HH, rich_restart_lvl
     use rich_vars, only: rich_lvl
@@ -82,7 +83,8 @@ program pb3d_fullstack_tester
         &new_testsuite("splines", collect_splines), &
         &new_testsuite("calc_int_vol", collect_calc_int_vol), &
         &new_testsuite("read_HEL", collect_read_HEL), &
-        &new_testsuite("modes", collect_modes) &
+        &new_testsuite("modes", collect_modes), &
+        &new_testsuite("norm_range", collect_norm_range) &
         &]
 
     call get_argument(1, suite_name)
