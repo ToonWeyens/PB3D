@@ -385,6 +385,10 @@ contains
 #endif
                 case (2)                                                        ! HELENA
                     ! do nothing
+                case default
+                    call print_err_msg('No equilibrium style associated &
+                        &with '//trim(i2str(eq_style)),'init_eq_2')
+                    error stop
             end select
         end if
         
@@ -514,6 +518,10 @@ contains
                     if (allocated(eq_i%l_E)) eq_o%l_E = eq_i%l_E
                 case (2)                                                        ! HELENA
                     ! do nothing
+                case default
+                    call print_err_msg('No equilibrium style associated &
+                        &with '//trim(i2str(eq_style)),'copy_eq_2')
+                    error stop
             end select
         end if
         

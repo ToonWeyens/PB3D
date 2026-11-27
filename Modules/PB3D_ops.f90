@@ -400,6 +400,11 @@ contains
                 h_H_12 = dum_3D(:,:,2)
                 h_H_33 = dum_3D(:,:,3)
                 call dealloc_var_flat(var_flat)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! misc_X

@@ -763,6 +763,7 @@ contains
         type(eq_1_type), intent(inout) :: eq                                    !< flux equilibrium variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id
         real(dp), allocatable :: T_FE_loc(:,:)                                  ! T_FE(2,1)
         
@@ -839,6 +840,11 @@ contains
                 eq%pres_FD = eq%pres_E
                 eq%q_saf_FD = eq%q_saf_E
                 eq%rot_t_FD = eq%rot_t_E
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     end function calc_F_derivs_1
     !> \private metric version
@@ -852,6 +858,7 @@ contains
         type(eq_2_type), intent(inout) :: eq                                    !< metric equilibrium variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id
         integer :: pmone                                                        ! plus or minus one
         
@@ -866,6 +873,11 @@ contains
                 pmone = -1                                                      ! conversion VMEC LH -> RH coord. system
             case (2)                                                            ! HELENA
                 pmone = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! user output

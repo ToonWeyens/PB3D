@@ -1607,6 +1607,11 @@ contains
                         write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) &
                             &'#     (MISHKA normalization)'
                         CHCKERR('Failed to write')
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
                 end select
             else
                 write(UNIT=output_EV_i,FMT='(A)',IOSTAT=ierr) '# Eigenvalues'

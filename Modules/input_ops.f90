@@ -112,6 +112,11 @@ contains
                     n_zeta_plot = 1                                             ! nr. toroidal points in plot
                     min_zeta_plot = 0                                           ! min. toroidal plot angle [pi]
                     max_zeta_plot = min_zeta_plot                               ! max. toroidal plot angle [pi]
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             plot_grid_style = 0                                                 ! normal plots on 3D geometry
             max_nr_backtracks_HH = 20                                           ! standard nr. of backtracks
@@ -273,6 +278,10 @@ contains
                     n_alpha = 10
                 case (2)                                                        ! HELENA
                     alpha_style = 1                                             ! single field-line, multiple turns
+                case default
+                    call print_err_msg('No equilibrium style associated &
+                        &with '//trim(i2str(eq_style)),'default_input_PB3D')
+                    error stop
             end select
             
             ! concerning perturbation
@@ -1165,6 +1174,8 @@ contains
         
         character(*), parameter :: rout_name = 'read_input_eq'
         
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         
         ! initialize ierr
         ierr = 0
@@ -1192,6 +1203,11 @@ contains
             case (2)                                                            ! HELENA
                 ierr = read_HEL(n_r_in,use_pol_flux_E)
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! close equilibrium file
@@ -1279,6 +1295,7 @@ contains
         logical, intent(in), optional :: remove_previous_arrs                   !< remove previous variables if present
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         type(var_flat_type), allocatable, target :: in_1D(:)                    ! 1D equivalent of input variables
         type(var_flat_type), pointer :: in_1D_loc => null()                     ! local element in in_1D
         integer :: id                                                           ! counter
@@ -1691,6 +1708,11 @@ contains
                     &h_H_12(:,in_limits(1):in_limits(2)),&
                     &h_H_33(:,in_limits(1):in_limits(2))],&
                     &[3*nchi*n_r_eq])
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! misc_X

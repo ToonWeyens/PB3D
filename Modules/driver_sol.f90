@@ -152,6 +152,11 @@ contains
                 else
                     do_vac_ops = .false.
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         if (BC_style(2).eq.1) do_vac_ops = .false.                              ! fixed-boundary BC does not use the vacuum response
         

@@ -140,6 +140,7 @@ contains
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd                                                       ! counter
         integer :: r_id                                                         ! normal index
         real(dp) :: jq                                                          ! iota or q
@@ -170,6 +171,11 @@ contains
             case (2)                                                            ! HELENA
                 ierr = store_vac_HEL()
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     contains
         ! VMEC version
@@ -1682,6 +1688,7 @@ contains
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: jd                                                           ! counter
         integer :: rd, cd                                                       ! global counter for row and col
         integer :: rdl, cdl                                                     ! local counter for row and col
@@ -1731,6 +1738,11 @@ contains
                 rich_lvl_name = rich_lvl                                        ! append richardson level
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append name
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
