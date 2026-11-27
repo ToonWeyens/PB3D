@@ -6454,9 +6454,16 @@ contains
     !! tensorial perturbation  variables \c X_2_int  are counted as  well, as
     !! they exist during all equilibrium jobs.
     !!
+    !! \note With a free edge, the vacuum matrices \c G and \c H exist during
+    !! all equilibrium jobs, and \c mem_vac(1) counts them. In the first job of
+    !! a Richardson level after the first, store_vac() copies those of the
+    !! previous level before the perturbation variables of the level exist, so
+    !! that \c mem_vac(2), the memory for that copy, takes the place of \c X_1
+    !! and \c X_2_int.
+    !!
     !! \return ierr
     integer function divide_eq_jobs(n_par_X,arr_size,n_div,n_div_max,&
-        &n_par_X_base,range_name) result(ierr)
+        &n_par_X_base,range_name,mem_vac) result(ierr)
         
         use num_vars, only: max_tot_mem, max_X_mem, magn_int_style, &
             &mem_scale_fac, prog_style, mem_procs
@@ -6474,9 +6481,12 @@ contains
         integer, intent(in), optional :: n_div_max                              !< maximum n_div
         integer, intent(in), optional :: n_par_X_base                           !< base n_par_X, undivisible
         character(len=*), intent(in), optional :: range_name                    !< name of range
+        real(dp), intent(in), optional :: mem_vac(2)                            !< vacuum matrices during all jobs, and their copy in the first job [MB]
         
         ! local variables
         real(dp) :: mem_size(3)                                                 ! approximation of memory required for eq_2, X_1 and X_2_int variables
+        real(dp) :: mem_vac_loc(2)                                              ! local mem_vac
+        real(dp) :: mem_req                                                     ! memory required for the current division
         integer :: n_par_X_base_loc                                             ! local n_par_X_base
         integer :: max_mem_req                                                  ! maximum memory required
         integer :: n_div_max_loc                                                ! maximum n_div
@@ -6510,7 +6520,9 @@ contains
         
         ! setup auxilliary variables
         n_div = 0
-        mem_size = huge(1._dp)*0.3_dp
+        mem_size = 0._dp
+        mem_vac_loc = 0._dp
+        if (present(mem_vac)) mem_vac_loc = mem_vac
         
         ! PB3D keeps  the integrated tensorial perturbation  variables during
         ! all equilibrium jobs
@@ -6528,7 +6540,8 @@ contains
         n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
         
         ! calculate largest possible range of parallel points fitting in memory
-        do while (max_tot_mem.lt.sum(mem_size)+mem_procs)                       ! combined mem_size has to be smaller than total memory
+        mem_req = huge(1._dp)
+        do while (max_tot_mem.lt.mem_req)
             n_div = n_div + 1
             n_par_range = ceiling(n_par_X*1._dp/n_div + n_par_X_base_loc)
             if (n_div.gt.1) n_par_range = n_par_range + eq_jobs_ol_width() + &
@@ -6538,13 +6551,15 @@ contains
             mem_size(1) = mem_size(1)*mem_scale_fac                             ! operations have to be done on eq, it is not just stored.
             ierr = calc_memory_X(1,arr_size(2)*n_par_range,n_mod_X,mem_size(2)) ! all modes have to be stored
             CHCKERR('')
+            mem_req = mem_size(1) + mem_vac_loc(1) + &
+                &max(mem_size(2)+mem_size(3),mem_vac_loc(2)) + mem_procs
             if (n_div.gt.n_div_max_loc) then                                    ! still not enough memory
                 ierr = 1
                 err_msg = 'The memory limit is too low, need more than '//&
                     &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
-            max_mem_req = ceiling(sum(mem_size)+mem_procs)
+            max_mem_req = ceiling(mem_req)
         end do
         if (n_div.gt.1) then
             range_message = 'The '//trim(i2str(n_par_X))//' '//&
@@ -6557,13 +6572,19 @@ contains
         end if
         call writo(range_message)
         call writo('The total memory for all processes together is estimated &
-            &to be about '//trim(i2str(ceiling(sum(mem_size)+mem_procs)))//'MB')
+            &to be about '//trim(i2str(ceiling(mem_req)))//'MB')
         call lvl_ud(1)
         call writo('(of which '//trim(i2str(ceiling(mem_procs)))//'MB for the &
             &processes themselves)')
         if (prog_style.eq.1) call writo('(and '//&
             &trim(i2str(ceiling(mem_size(3))))//'MB for the integrated &
             &tensorial perturbation variables)')
+        if (mem_vac_loc(1).gt.0._dp) call writo('(and '//&
+            &trim(i2str(ceiling(mem_vac_loc(1))))//'MB for the vacuum &
+            &matrices)')
+        if (mem_vac_loc(2).gt.0._dp) call writo('(the first job holds '//&
+            &trim(i2str(ceiling(mem_vac_loc(2))))//'MB to copy the vacuum &
+            &matrices of the previous level instead)')
         call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem)))//'&
             &MB, user specified)')
         call lvl_ud(-1)
@@ -6571,7 +6592,8 @@ contains
         if (prog_style.eq.1) then
             ! calculate max memory available for perturbation calculations
             mem_size(1) = mem_size(1)/mem_scale_fac                             ! rescale by mem_scale_fac as eq is now just stored
-            max_X_mem = max_tot_mem - sum(mem_size) - mem_procs
+            max_X_mem = max_tot_mem - sum(mem_size) - mem_procs - &
+                &mem_vac_loc(1)
             call writo('In the perturbation phase, the equilibrium variables &
                 &are not being operated on:')
             call lvl_ud(1)

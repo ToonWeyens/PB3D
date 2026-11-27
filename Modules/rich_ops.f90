@@ -331,7 +331,7 @@ contains
         use num_vars, only: eq_style, jump_to_sol, rich_restart_lvl, &
             &X_grid_style, BC_style, max_tot_mem, enrich_mem_fac, mem_procs
         use MPI_utilities, only: get_ser_var, calc_mem_procs
-        use sol_utilities, only: calc_memory_sol
+        use sol_utilities, only: calc_memory_sol, calc_memory_vac
         
         character(*), parameter :: rout_name = 'start_rich_lvl'
         
@@ -341,6 +341,8 @@ contains
         integer :: n_par_X_loc                                                  !< local n_par_X
         integer :: var_size_without_par(2)                                      !< size without parallel dimension for eq_2 and X_1 variables
         integer :: n_bnd                                                        !< number of points on the plasma boundary for the vacuum
+        integer :: n_bnd_prev                                                   !< idem, of the previous Richardson level
+        real(dp) :: mem_vac(2)                                                  !< vacuum matrices during all equilibrium jobs, and their copy in the first job [MB]
         real(dp) :: mem_sol                                                     !< memory needed by the solution driver [MB]
         real(dp) :: mem_meas                                                    !< measured memory of the processes themselves [MB]
         character(len=max_str_ln) :: err_msg                                    !< error message
@@ -417,6 +419,19 @@ contains
             CHCKERR(err_msg)
         end if
         
+        ! The vacuum matrices G and H exist from the first equilibrium job on.
+        ! For VMEC, the first job of a level after the first copies those of
+        ! the previous level, with two matrices that select its points.
+        mem_vac = 0._dp
+        if (n_bnd.gt.0) then
+            mem_vac(1) = 2*calc_memory_vac(n_bnd,n_bnd)
+            if (eq_style.eq.1 .and. rich_lvl.gt.1) then
+                n_bnd_prev = (n_par_X+1)/2*n_alpha
+                mem_vac(2) = 2*calc_memory_vac(n_bnd_prev,n_bnd_prev) + &
+                    &2*calc_memory_vac(n_bnd,n_bnd_prev)
+            end if
+        end if
+        
         if (rich_lvl.eq.rich_restart_lvl .and. jump_to_sol) then
             call writo('Jumping straight to solution, no need to divide into &
                 &equilibrium jobs')
@@ -427,7 +442,7 @@ contains
             case (1)                                                            ! VMEC
                 ! divide equilibrium jobs
                 ierr = divide_eq_jobs(n_par_X_loc,var_size_without_par,&
-                    &n_div)
+                    &n_div,mem_vac=mem_vac)
                 CHCKERR('')
             case (2)                                                            ! HELENA
                 ! divide equilibrium jobs
@@ -436,7 +451,7 @@ contains
                 ! variables are calculated that are interpolated in all levels.
                 ierr = divide_eq_jobs(nchi,var_size_without_par,n_div,&
                     &n_div_max=1,range_name='poloidal points in the &
-                    &axisymmetric HELENA cross-section')                        ! everything is tabulated on nchi poloidal points
+                    &axisymmetric HELENA cross-section',mem_vac=mem_vac)        ! everything is tabulated on nchi poloidal points
                 CHCKERR('')
         end select
         

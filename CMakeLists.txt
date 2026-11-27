@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.57
+    VERSION 2.58
     LANGUAGES Fortran C
     DESCRIPTION "Peeling Ballooning in 3D"
 )
