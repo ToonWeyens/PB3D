@@ -1,24 +1,26 @@
-! gfortran14_bounds_repro.f90 -- standalone reproducer for a gfortran 14 bug
-! that breaks PB3D's Debug build.
+! gfortran14_bounds_repro.f90 -- standalone reproducer for a gfortran bug
+! (GCC PR fortran/119273) that breaks PB3D's Debug build.
 !
-! With -fcheck=bounds (part of -fcheck=all), gfortran 14.2.0 and 14.3.0
-! miscompile the bounds check of an array section whose subscript calls a
+! With -fcheck=bounds (part of -fcheck=all), gfortran 14.1 to 14.3 and 15.1 to
+! 15.2 miscompile the bounds check of an array section whose subscript calls a
 ! function with an array-constructor argument, when that section is an actual
 ! argument:  eq_2%T_EF(:,:,:,c([1,1],.false.),deriv(1),deriv(2),deriv(3)).
-! The check evaluates the subscript to garbage ("Index '2770510' of dimension
-! 4 ... outside of expected range") or segfaults inside c, where the argument
-! arrives at a wild address. PB3D's eq_ops.f90 has this pattern at every
-! metric-tensor element; the first call, in calc_T_HF_ind, kills every Debug
-! regression deck on Snellius (foss/2025a, GCC 14.2.0).
+! The check calls c a second time without setting up the descriptor of the
+! constructor, so c reads its argument at a wild address: the check reports a
+! garbage index ("Index '2770510' of dimension 4 ... outside of expected
+! range") or the program segfaults inside c. PB3D's eq_ops.f90 has this
+! pattern at every metric-tensor element; the first call, in calc_T_HF_ind,
+! kills every Debug regression deck on Snellius (foss/2025a, GCC 14.2.0).
 !
 !   gfortran -O0 -g -fcheck=bounds gfortran14_bounds_repro.f90 && ./a.out
 !
-! 14.2.0, 14.3.0: runtime error or SIGSEGV.  13.3.0, 16.1.0: prints
+! 14.1, 14.2, 14.3, 15.1, 15.2: runtime error or SIGSEGV.  13.x, 14.4, 15.3 and
+! 16.x: prints
 !   ierr = 0  c([1,1]) = 1  sum = -126716.0
 ! Hoisting the call (id = c([1,1],.false.); ... T_EF(:,:,:,id,...)) avoids it;
 ! the generic interface, the negated section and the optional arguments of c
 ! are not needed to trigger it. CMakeLists.txt drops -fcheck=bounds from the
-! Debug flags for gfortran 14.x because of this.
+! Debug flags for the broken versions.
 module m_idx
     implicit none
     private
