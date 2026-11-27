@@ -16,7 +16,7 @@ module sol_utilities
     implicit none
     private
     public calc_XUQ, calc_tot_sol_vec, calc_loc_sol_vec, interp_V, &
-        &interp_V_spline, calc_memory_sol
+        &interp_V_spline, calc_memory_sol, calc_memory_vac
 #if ldebug
     public debug_calc_XUQ_arr, debug_interp_V, debug_interp_V_spline
 #endif
@@ -1177,8 +1177,18 @@ contains
         CHCKERR('')
         ierr = calc_memory_X(2,arr_size_sol,n_mod_X,mem_X_sol)
         CHCKERR('')
-        mem_vac = (n_bnd*1._dp)**2*storage_size(1._dp)/8*1.E-6_dp*1.5_dp
+        mem_vac = calc_memory_vac(n_bnd,n_bnd)
         
         mem_size = mem_X + 2*mem_vac + max(mem_vac,mem_X,mem_X_sol)
     end function calc_memory_sol
+    
+    !> Calculate memory in MB of a vacuum matrix of real numbers.
+    !!
+    !! With the same 50% safety factor as calc_memory_X().
+    real(dp) function calc_memory_vac(n_row,n_col) result(mem_size)
+        integer, intent(in) :: n_row                                            !< number of rows
+        integer, intent(in) :: n_col                                            !< number of columns
+        
+        mem_size = (n_row*1._dp)*n_col*storage_size(1._dp)/8*1.E-6_dp*1.5_dp
+    end function calc_memory_vac
 end module sol_utilities
