@@ -2166,6 +2166,7 @@ contains
         type(X_1_type), intent(inout) :: X                                      !< vectorial perturbation variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd, ld                                               ! counters
         integer :: T_size                                                       ! 2 for VMEC and 1 for HELENA
         
@@ -2241,6 +2242,11 @@ contains
                 T_size = 2
             case (2)                                                            ! HELENA
                 T_size = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         allocate(T1(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
         allocate(T2(grid_eq%n(1),grid_eq%n(2),grid_eq%loc_n_r,T_size))
@@ -2335,6 +2341,11 @@ contains
                 else
                     D3Theta_3 = 0._dp
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! set up U factors in eq grid
@@ -2533,6 +2544,11 @@ contains
                         end do
                     end do
                 end do
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! add second part of derivatives ~ n_frac

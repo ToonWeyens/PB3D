@@ -81,6 +81,7 @@ contains
         type(vac_type), intent(inout) :: vac                                    !< vacuum variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium variables
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium variables
         type(grid_type) :: grid_eq                                              ! equilibrium grid
@@ -103,6 +104,11 @@ contains
                 rich_lvl_name = rich_lvl                                        ! append richardson level
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append name
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! Divide equilibrium grid under  group processes, calculating the limits
@@ -207,6 +213,11 @@ contains
                 else
                     do_eq_2_ops = .false.
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! free the metric equilibrium variables of the previous job before the
@@ -265,6 +276,11 @@ contains
                 ierr = print_output_grid(grid_eq_B,'field-aligned equilibrium',&
                     &'eq_B',rich_lvl=rich_lvl,par_div=.true.)
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! only do when needed
@@ -373,6 +389,11 @@ contains
                         ierr = redistribute_output_grid(grid_eq_B,grid_eq_B_out)
                         CHCKERR('')
                 end select
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! clean up
@@ -400,6 +421,11 @@ contains
                         ierr = B_plot(grid_eq_out,eq_1_out,eq_2_out)
                         CHCKERR('')
                     end if
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
         else
             if (eq_job_nr.eq.1) call writo('Magnetic field plot not requested')
@@ -418,6 +444,11 @@ contains
                         ierr = J_plot(grid_eq_out,eq_1_out,eq_2_out)
                         CHCKERR('')
                     end if
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
         else
             if (eq_job_nr.eq.1) call writo('Current plot not requested')
@@ -436,6 +467,11 @@ contains
                         ierr = kappa_plot(grid_eq_out,eq_1_out,eq_2_out)
                         CHCKERR('')
                     end if
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
         else
             if (eq_job_nr.eq.1) call writo('Curvature plot not requested')
@@ -452,6 +488,11 @@ contains
                         grid_eq_B_name = 'eq'                                   ! already field-aligned
                     case (2)                                                    ! HELENA
                         grid_eq_B_name = 'eq_B'                                 ! not already field-aligned
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
                 end select
                 
                 ! reconstruct the full field-aligned grid
@@ -551,6 +592,11 @@ contains
                         else
                             call writo('R and Z can only be plot for d = 0')
                         end if
+                    case default
+                        call print_err_msg('No equilibrium style associated &
+                            &with '//trim(i2str(eq_style)),&
+                            &'plot_info_for_VMEC_HEL_comparision')
+                        error stop
                 end select
                 
                 ! metric fators

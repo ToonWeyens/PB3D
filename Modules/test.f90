@@ -518,6 +518,9 @@ contains
         
         character(*), parameter :: rout_name = 'test_calc_RZL'
         
+        ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
+
         ! initialize ierr
         ierr = 0
         
@@ -532,6 +535,11 @@ contains
                 CHCKERR('')
             case(2)                                                             ! HELENA
                 ! do nothing
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! clean up
@@ -821,6 +829,7 @@ contains
         character(*), parameter :: rout_name = 'test_read_HDF5_subset'
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         type(modes_type) :: mds                                                 ! general modes variables
         type(grid_type) :: grid                                                 ! equilibrium or perturbation grid
         type(grid_type) :: grid_sub                                             ! grid for subset
@@ -902,6 +911,11 @@ contains
                 rich_lvl_name = 0                                               ! do not append name
                 rich_lvl_name_eq = 0                                            ! do not append name
                 tot_rich = .false.
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         select case (test_case)
             case (1)                                                            ! eq_2

@@ -102,6 +102,11 @@ contains
                 case (2)                                                        ! HELENA
                     grid_X_name = 'X_B'                                         ! field-aligned grid is separate
                     grid_eq_name = 'eq_B'                                       ! field-aligned grid is separate
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             
             ! reconstruct field-aligned equilibrium grid (for level 1)
@@ -404,6 +409,11 @@ contains
                     n_bnd = n_par_X*n_alpha
                 case (2)                                                        ! HELENA: one poloidal cross-section
                     n_bnd = 2*nchi
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
         end if
         ierr = calc_memory_sol(var_size_without_par(2),n_r_sol*n_alpha,n_bnd,&
@@ -453,6 +463,11 @@ contains
                     &n_div_max=1,range_name='poloidal points in the &
                     &axisymmetric HELENA cross-section',mem_vac=mem_vac)        ! everything is tabulated on nchi poloidal points
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! calculate equilibrium job limits

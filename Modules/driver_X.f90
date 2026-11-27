@@ -85,6 +85,7 @@ contains
         type(X_2_type), intent(inout) :: X_2                                    !< tensorial perturbation variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         type(grid_type) :: grid_eq_trim                                         ! trimmed equilibrium grid
         type(eq_2_type), pointer :: eq_2_B                                      ! field-aligned metric equilibrium variables
         integer :: eq_limits(2)                                                 ! min. and max. index of eq. grid for this process
@@ -102,6 +103,11 @@ contains
                 rich_lvl_name = rich_lvl                                        ! append richardson level
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! Divide perturbation grid under group processes, calculating the limits
@@ -270,6 +276,11 @@ contains
                 ! X_1 is calculated once and kept, eq_2_B is interpolated
                 call eq_2_B%dealloc()
                 deallocate(eq_2_B)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         nullify(eq_2_B)
         call lvl_ud(-1)
@@ -296,6 +307,7 @@ contains
         type(eq_2_type), intent(inout), pointer :: eq_2_B                       !< field-aligned metric equilibrium variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: do_X_2_ops                                                   ! whether specific calculations for X_2 are necessary
         integer :: rich_lvl_name                                                ! either the Richardson level or zero, to append to names
         
@@ -319,6 +331,11 @@ contains
                     do_X_2_ops = .false.
                 end if
                 rich_lvl_name = 0                                               ! do not append name
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         call writo('Reconstruct equilibrium variables')
@@ -337,6 +354,11 @@ contains
                     &eq_2_out=eq_2_B,eq_1=eq_1,grid_name='field-aligned &
                     &equilibrium grid')
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         call lvl_ud(-1)
         
@@ -375,6 +397,11 @@ contains
                 ierr = print_output_grid(grid_X_B,'field-aligned &
                     &perturbation','X_B',rich_lvl=rich_lvl,par_div=.true.)
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         call lvl_ud(-1)
@@ -405,6 +432,7 @@ contains
         type(X_1_type), intent(inout) :: X_1                                    !< vectorial X variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: do_X_1_ops                                                   ! whether specific calculations for X_1 are necessary
         
         ! initialize ierr
@@ -424,6 +452,11 @@ contains
                 else
                     do_X_1_ops = .false.
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         if (do_X_1_ops) then
@@ -558,6 +591,7 @@ contains
         type(X_2_type), intent(inout) :: X_2_int                                !< tensorial X variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         logical :: no_output_loc                                                ! local copy of no_output
         type(X_1_type) :: X_1_loc(2)                                            ! local X_1
         type(X_2_type) :: X_2                                                   ! tensorial X variables
@@ -645,6 +679,11 @@ contains
                             &X_1=X_1_loc(id),grid_name=&
                             &'field-aligned perturbation grid')
                         CHCKERR('')
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
                 end select
             end do
             

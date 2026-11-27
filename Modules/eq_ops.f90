@@ -312,6 +312,11 @@ contains
                 call calc_flux_q_VMEC()
             case (2)                                                            ! HELENA
                 call calc_flux_q_HEL()
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! Transform flux equilibrium E into F derivatives
@@ -420,9 +425,9 @@ contains
         integer :: id                                                           ! counter
         integer :: pmone                                                        ! plus or minus one
         logical :: dealloc_vars_loc                                             ! local dealloc_vars
+        character(len=max_str_ln) :: err_msg                                    ! error message
 #if ldebug
         integer :: jd, kd                                                       ! counters
-        character(len=max_str_ln) :: err_msg                                    ! error message
 #endif
 
         ! initialize ierr
@@ -459,6 +464,11 @@ contains
                 end do
             case (2)                                                            ! HELENA
                 ! do nothing
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! Calcalations depending on equilibrium style being used:
@@ -625,6 +635,11 @@ contains
                 if (dealloc_vars_loc) then
                     deallocate(eq_2%h_E)
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
 #if ldebug
@@ -4193,6 +4208,7 @@ contains
         type(eq_2_type), intent(inout), target :: eq_2                          !< metric equilibrium variables
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, jd, kd, ld                                               ! counters
         integer :: kd_H                                                         ! kd in Helena tables
         integer :: bcs(2,2)                                                     ! boundary conditions (theta(even), theta(odd))
@@ -4272,6 +4288,11 @@ contains
                 ! covariant parallel basis vector
                 call calc_derived_DE_epar_HEL(grid_eq,eq_1,Rchi,Zchi,&
                     &de,D_de,b_n,b_g)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! calculate cylindrical contravariant  components of angular derivatives
@@ -4294,6 +4315,11 @@ contains
                 ierr = calc_derived_s_from_deriv_hel(grid_eq,eq_2,bcs(:,2),&
                     &bcs_val(:,2),eq_2%S)                                       ! odd: Theta^alpha is odd in theta
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! clean up
@@ -4321,6 +4347,11 @@ contains
                     CHCKERR('')
                 case (2)                                                        ! HELENA
                     call test_S_HEL(grid_eq,eq_2,Rchi,Zchi)
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             
             call lvl_ud(-1)
@@ -4788,6 +4819,7 @@ contains
             type(eq_2_type), intent(in) :: eq_2                                 !< metric equilibrium variables
             
             ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
             type(grid_type) :: grid_trim                                        ! trimmed equilibrium grid
             real(dp) :: norm_factors(4)                                         ! normalization factors
             real(dp), allocatable :: X_plot(:,:,:)                              ! x values of total plot
@@ -4838,6 +4870,11 @@ contains
                             ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,&
                                 &Y_plot,Z_plot)
                             CHCKERR('')
+                        case default
+                            err_msg = 'No equilibrium style associated with '//&
+                                &trim(i2str(eq_style))
+                            ierr = 1
+                            CHCKERR(err_msg)
                     end select
                 case (2)                                                        ! POST
                     ierr = calc_XYZ_grid(grid_eq,grid_trim,X_plot,Y_plot,Z_plot)
@@ -4856,6 +4893,11 @@ contains
                     plot_dim = grid_trim%n
                     plot_offset = [0,0,grid_trim%i_min-1]
                     cont_plot = .false.
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             
             ! set up normalization factors
@@ -5324,6 +5366,11 @@ contains
                         call calc_normalization_const_VMEC
                     case (2)                                                    ! HELENA
                         call calc_normalization_const_HEL
+                    case default
+                        err_msg = 'No equilibrium style associated with '//&
+                            &trim(i2str(eq_style))
+                        ierr = 1
+                        CHCKERR(err_msg)
                 end select
             end if
             
@@ -5551,6 +5598,10 @@ contains
                     ! other HELENA input already normalized
                     call writo('HELENA input is already normalized with MISHKA &
                         &normalization')
+                case default
+                    call print_err_msg('No equilibrium style associated &
+                        &with '//trim(i2str(eq_style)),'normalize_input')
+                    error stop
             end select
             
             ! user output
@@ -6736,6 +6787,7 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id, kd                                                       ! counter
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:,:)                                   ! calculated result
@@ -6857,6 +6909,11 @@ contains
                     ! calculate T_EF(3,3)
                     res(:,:,:,9) = 1._dp
                 end if
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! set up plot variables for calculated values
@@ -7022,6 +7079,7 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         real(dp), allocatable :: res(:,:,:)                                     ! result variable
         integer :: jd, kd                                                       ! counters
@@ -7099,6 +7157,11 @@ contains
                             &RBphi_H(kd+grid_eq%i_min-1,0))                     ! h_H_33 = 1/R^2 and RBphi_H = F are tabulated in eq. grid
                     end do
                 end do
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! set some variables
@@ -7304,6 +7367,7 @@ contains
         type(eq_2_type), intent(in) :: eq_2                                     !< metric equilibrium
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: norm_id(2)                                                   ! untrimmed normal indices for trimmed grids
         integer :: norm_id_f(2)                                                 ! norm_id transposed to full grid
         integer :: id, kd                                                       ! counters
@@ -7376,6 +7440,11 @@ contains
                             &eq_2%jac_E(:,:,kd,0,0,0)
                     end do
                 end do
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! transform them to Flux coord. system

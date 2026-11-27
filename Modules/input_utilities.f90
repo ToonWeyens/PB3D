@@ -275,6 +275,10 @@ contains
                 call dealloc_VMEC
             case (2)                                                            ! HELENA
                 call dealloc_HEL
+            case default
+                call print_err_msg('No equilibrium style associated &
+                    &with '//trim(i2str(eq_style)),'dealloc_in')
+                error stop
         end select
     end subroutine dealloc_in
 end module input_utilities

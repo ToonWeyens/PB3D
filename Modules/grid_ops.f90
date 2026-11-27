@@ -154,6 +154,7 @@ contains
             integer, intent(inout) :: in_limits(2)                              !< total min. and max. index of eq. grid for this process
             
             ! local variables
+            character(len=max_str_ln) :: err_msg                                ! error message
             real(dp), allocatable :: flux_F(:), flux_E(:)                       ! either pol. or tor. flux in F and E
             real(dp), allocatable :: r_F_eq(:)                                  ! sign of the flux times flux_F/2pi
             real(dp), allocatable :: r_F_sol(:)                                 ! solution grid
@@ -194,6 +195,11 @@ contains
                     else
                         flux_E = flux_t_H(:,0)
                     end if
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             
             ! set max_flux
@@ -564,6 +570,7 @@ contains
         integer, intent(in) :: eq_limits(2)                                     !< min. and max. index of eq grid of this process
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         integer :: id                                                           ! counter
         
         ! initialize ierr
@@ -609,6 +616,11 @@ contains
                 ! convert to Flux coordinates (trivial)
                 grid_eq%theta_F = grid_eq%theta_E
                 grid_eq%zeta_F = grid_eq%zeta_E
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     end function setup_grid_eq
     
@@ -667,6 +679,11 @@ contains
                 ! calculate the angular grid that follows the magnetic field
                 ierr = calc_ang_grid_eq_B(grid_eq_B,eq,only_half_grid)
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     end function setup_grid_eq_B
     
@@ -891,6 +908,11 @@ contains
                 flux_E => eq%flux_p_E(:,0)
                 r_E_factor = 2*pi
                 pmone = 1
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! set up flux_F

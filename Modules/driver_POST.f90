@@ -159,6 +159,11 @@ contains
                 rich_lvl_name = rich_lvl                                        ! append richardson level
             case (2)                                                            ! HELENA
                 rich_lvl_name = 0                                               ! do not append name
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! set up grid names
@@ -173,6 +178,11 @@ contains
                 grid_name(1) = 'eq_B'
                 grid_name(2) = 'X_B'
                 grid_name(3) = 'sol'
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! limits to exclude angular part
@@ -307,6 +317,11 @@ contains
                         &rich_lvl=rich_lvl,tot_rich=.true.,&
                         &grid_limits=lims_norm(:,1),divided=n_procs.gt.1)
                     CHCKERR('')
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             ierr = magn_grid_plot(grid_eq_B)
             CHCKERR('')
@@ -460,6 +475,11 @@ contains
                         &var_size_without_par,n_div,n_div_max=n_div_max,&
                         &n_par_X_base=nchi)
                     CHCKERR('')
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             
             ! calculate equilibrium job limits
@@ -573,6 +593,7 @@ contains
         character(*), parameter :: rout_name = 'run_driver_POST'
         
         ! local variables
+        character(len=max_str_ln) :: err_msg                                    ! error message
         type(grid_type) :: grids(3)                                             ! local output eq, X and sol grid, with limited parallel range and divided normal range
         type(eq_1_type) :: eq_1                                                 ! flux equilibrium
         type(eq_2_type) :: eq_2                                                 ! metric equilibrium
@@ -667,6 +688,11 @@ contains
                 ! user output
                 call lvl_ud(-1)
                 call writo('Variables interpolated angularly on output grid')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! user output

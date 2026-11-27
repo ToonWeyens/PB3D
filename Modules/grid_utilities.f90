@@ -179,6 +179,11 @@ contains
                 ! trivial HELENA uses flux coordinates
                 theta_E = theta_F
                 zeta_E = zeta_F
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     contains
         ! VMEC version
@@ -408,6 +413,11 @@ contains
                 ! trivial HELENA uses flux coordinates
                 theta_F = theta_E
                 zeta_F = zeta_E
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
     contains
         ! VMEC version
@@ -856,6 +866,11 @@ contains
             case (2)                                                            ! HELENA
                 ierr = calc_XYZ_grid_HEL(grid_eq,grid_XYZ,X,Y,Z,R=R)
                 CHCKERR('')
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         
         ! if normalized, return to physical value
@@ -2470,6 +2485,11 @@ contains
                     file_names(1) = trim(base_name)//'_H_sub'
                     file_names(2) = trim(base_name)//'_H_sup'
                     file_names(3) = trim(base_name)//'_H_mag'
+                case default
+                    err_msg = 'No equilibrium style associated with '//&
+                        &trim(i2str(eq_style))
+                    ierr = 1
+                    CHCKERR(err_msg)
             end select
             if (compare_tor_pos_loc) then
                 do id = 1,3
@@ -2587,6 +2607,11 @@ contains
                 T_AB(:,:,:,c([2,3],.false.),0,0,0) = D2Z
                 T_AB(:,:,:,c([3,2],.false.),0,0,0) = -1._dp
                 deallocate(D1R,D2R,D1Z,D2Z)
+            case default
+                err_msg = 'No equilibrium style associated with '//&
+                    &trim(i2str(eq_style))
+                ierr = 1
+                CHCKERR(err_msg)
         end select
         ierr = calc_inv_met(T_BA,T_AB,[0,0,0])
         CHCKERR('')
