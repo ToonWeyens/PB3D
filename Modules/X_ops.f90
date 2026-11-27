@@ -3140,7 +3140,7 @@ contains
         use num_utilities, only: c
         use spline_utilities, only: spline
         use grid_vars, only: min_par_X, max_par_X, n_alpha
-        use rich_vars, only: rich_lvl
+        use rich_vars, only: n_par_X
         
         character(*), parameter :: rout_name = 'calc_magn_ints'
         
@@ -3162,7 +3162,7 @@ contains
         integer :: prev_style_loc                                               ! local prev_style
         real(dp) :: alpha_fac                                                   ! factor for alpha (style 1: Weyl factor, style 2: step size)
         real(dp) :: prev_mult_fac                                               ! multiplicative factor for previous style
-        real(dp), allocatable :: step_size(:,:)                                 ! step size for every field line and normal point
+        real(dp) :: step_size                                                   ! step size of the parallel grid of this Richardson level
         real(dp), pointer :: ang_par_F(:,:,:) => null()                         ! parallel angle in flux coordinates
         complex(dp), allocatable :: V_int_work(:,:)                             ! work V_int
         
@@ -3284,9 +3284,10 @@ contains
         end select
         
         ! set up step size
-        allocate(step_size(grid_X%n(2),grid_X%loc_n_r))
-        step_size = ang_par_F(2,:,:)-ang_par_F(1,:,:)
-        if (rich_lvl.gt.1) step_size = step_size*0.5_dp                         ! only half of points present: step size is actually half
+        ! set up step size of the full parallel grid of this Richardson level,
+        ! which is the same for every field line and normal point and does
+        ! not depend on how many points this equilibrium job holds
+        step_size = (max_par_X-min_par_X)*pi/(n_par_X-1)
         
         ! initialize local V_int
         allocate(V_int_work(grid_X%n(2),grid_X%loc_n_r))
@@ -3384,7 +3385,7 @@ contains
             complex(dp), intent(in) :: V(:,:,:)                                 ! V
             complex(dp), intent(inout) :: V_int(:,:)                            ! integrated V
             complex(dp), intent(inout) :: V_int_work(:,:)                       ! workint variable
-            real(dp) :: step_size(:,:)                                          ! step size for every normal point
+            real(dp), intent(in) :: step_size                                   ! step size of the parallel grid
             
             ! local variables
             integer :: id, kd, ld                                               ! counters
@@ -3395,10 +3396,10 @@ contains
                 V_int_work = 0
                 
                 ! integrate
-                do kd = 1,size(step_size,2)
+                do kd = 1,size(V_int_work,2)
                     do id = int_dims(ld,1),int_dims(ld,2),int_dims(ld,3)
                         V_int_work(:,kd) = V_int_work(:,kd) + &
-                            &J_exp_ang(id,:,kd)*V(id,:,kd)*step_size(:,kd)
+                            &J_exp_ang(id,:,kd)*V(id,:,kd)*step_size
                     end do
                 end do
                 
