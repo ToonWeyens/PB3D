@@ -43,7 +43,7 @@ contains
     !!      * [1] \c X_1 (only for HELENA, only first Richardson level)
     !!      * [2] \c X_2 
     !!  - deallocates:
-    !!      * \c X_1 before setting up
+    !!      * \c X_1 at the end, for VMEC
     !!      * \c grid_X before setting up
     !!      * \c grid_X_B before setting up
     !!
@@ -58,14 +58,14 @@ contains
         &X_1,X_2) result(ierr)
         use num_vars, only: use_pol_flux_F, eq_style, plot_resonance, &
             &X_style, rich_restart_lvl, jump_to_sol, eq_job_nr, X_grid_style, &
-            &n_procs
+            &n_procs, enrich_mem_fac
         use rich_vars, only: n_par_X, rich_lvl
         use PB3D_ops, only: reconstruct_PB3D_grid, reconstruct_PB3D_X_1, &
             &reconstruct_PB3D_X_2
         use X_vars, only: min_sec_X, max_sec_X, prim_X, min_r_sol, max_r_sol, &
             &n_mod_X
         use grid_ops, only: calc_norm_range
-        use grid_vars, only: min_par_X, max_par_X, n_r_sol
+        use grid_vars, only: min_par_X, max_par_X, n_r_sol, n_r_eq
         use X_ops, only: calc_X, check_X_modes, resonance_plot, &
             &init_modes, setup_modes
         use files_utilities, only: delete_file
@@ -128,6 +128,15 @@ contains
                 &X_limits=X_limits,r_F_eq=r_F_eq,r_F_X=r_F_X,jq=jq_ser)
             CHCKERR('')
             nullify(r_F_eq)
+            
+            ! the memory estimate counted the enriched grid with a margin
+            if (X_grid_style.eq.3 .and. &
+                &size(r_F_X).gt.ceiling(n_r_eq*enrich_mem_fac)) then
+                call writo('The memory estimate counted '//&
+                    &trim(i2str(ceiling(n_r_eq*enrich_mem_fac)))//' normal &
+                    &points, so PB3D can need more than max_tot_mem',&
+                    &warning=.true.)
+            end if
             call lvl_ud(-1)
             
             ! clean up
@@ -253,10 +262,15 @@ contains
         ! clean up
         call writo('Clean up')
         call lvl_ud(1)
-        if (eq_style.eq.2) then
-            call eq_2_B%dealloc()
-            deallocate(eq_2_B)
-        end if
+        select case (eq_style)
+            case (1)                                                            ! VMEC
+                ! X_1 is calculated again in every equilibrium job
+                call X_1%dealloc()
+            case (2)                                                            ! HELENA
+                ! X_1 is calculated once and kept, eq_2_B is interpolated
+                call eq_2_B%dealloc()
+                deallocate(eq_2_B)
+        end select
         nullify(eq_2_B)
         call lvl_ud(-1)
     end function run_driver_X
@@ -413,9 +427,6 @@ contains
         end select
         
         if (do_X_1_ops) then
-            ! possibly deallocate
-            if (allocated(X_1%U_0)) call X_1%dealloc()
-            
             ! calc variables
             ierr = calc_X(mds_X,grid_eq,grid_X,eq_1,eq_2,X_1)
             CHCKERR('')
@@ -526,7 +537,7 @@ contains
         &X_2_int) result(ierr)
         use PB3D_ops, only: reconstruct_PB3D_X_2
         use num_vars, only: X_job_nr, X_jobs_lims, eq_style, eq_job_nr, &
-            &eq_jobs_lims, magn_int_style, no_output, rich_restart_lvl
+            &eq_jobs_lims, magn_int_style, no_output
         use rich_vars, only: rich_lvl
         use X_ops, only: calc_X, print_output_X, calc_magn_ints, divide_X_jobs
         use HELENA_ops, only: interp_HEL_on_grid
@@ -566,9 +577,11 @@ contains
         ierr = divide_X_jobs(var_size_without_par)
         CHCKERR('')
         
-        ! if first equilibrium job of  first Richardson level, set up integrated
-        ! tensorial perturbation variables
-        if (rich_lvl.eq.rich_restart_lvl .and. eq_job_nr.eq.1) then
+        ! If first  equilibrium job, set  up integrated tensorial  perturbation
+        ! variables: zero  for the first  Richardson level, and those  of the
+        ! previous level  from the output  file for  higher levels, as  the
+        ! solution driver frees them.
+        if (eq_job_nr.eq.1) then
             if (rich_lvl.eq.1) then
                 call X_2_int%init(mds_X,grid_X_B,is_field_averaged=.true.)
                 X_2_int%PV_0 = 0._dp

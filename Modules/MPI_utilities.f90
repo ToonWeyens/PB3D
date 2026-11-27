@@ -28,7 +28,7 @@ module MPI_utilities
     implicit none
     private
     public get_ser_var, redistribute_var, broadcast_var, &
-        &wait_MPI, lock_req_acc, lock_return_acc
+        &wait_MPI, lock_req_acc, lock_return_acc, calc_mem_procs
 #if ldebug
     public lock_header, lock_wl_change, &
         &debug_lock, n_waits
@@ -82,6 +82,72 @@ module MPI_utilities
     end interface
     
 contains
+    !> Memory that all processes together hold before the work starts [MB].
+    !!
+    !! Every process takes the largest resident size it has had so far from
+    !! getrusage(), and the processes add their values. Called after the
+    !! equilibrium has been read and before the equilibrium jobs start, this
+    !! is the memory of the program itself, MPI, the libraries and the input,
+    !! which calc_memory_eq(), calc_memory_x() and calc_memory_sol() do not
+    !! contain. It is private to every process: a PB3D process holds about
+    !! 200 MB without input and 275 to 330 MB after reading an equilibrium
+    !! (Snellius, foss/2025a), of which shared library pages are about 5 %.
+    !!
+    !! The result is this sum times the same 50% safety factor as in
+    !! calc_memory_eq(), calc_memory_x() and calc_memory_sol(). The factor
+    !! also covers the memory that PETSc, SLEPc and MPI take later in the run:
+    !! on Snellius a process grows from about 300 MB at the start to about 380
+    !! MB in a W7-X run on four processes. \c mem_meas returns the sum itself.
+    !!
+    !! \note \c ru_maxrss is given in kB on Linux and in bytes on macOS.
+    !!
+    !! \return ierr
+    integer function calc_mem_procs(mem_procs,mem_meas) result(ierr)
+        use ISO_C_BINDING, only: c_int, c_long
+        
+        character(*), parameter :: rout_name = 'calc_mem_procs'
+        
+        ! input / output
+        real(dp), intent(inout) :: mem_procs                                    !< memory of all processes together, times 1.5 [MB]
+        real(dp), intent(inout) :: mem_meas                                     !< memory of all processes together, as measured [MB]
+        
+        ! local variables
+        integer(c_long) :: usage(18)                                            ! struct rusage: two struct timeval of 16 bytes, then ru_maxrss and 13 other longs
+        real(dp) :: mem_loc                                                     ! memory of this process [MB]
+        character(len=max_str_ln) :: err_msg                                    ! error message
+        
+        interface
+            integer(c_int) function getrusage(who,usage) bind(C,name='getrusage')
+                import :: c_int, c_long
+                integer(c_int), value :: who
+                integer(c_long), intent(out) :: usage(18)
+            end function getrusage
+        end interface
+        
+        ! initialize ierr
+        ierr = 0
+        
+        ! largest resident size of this process so far (RUSAGE_SELF = 0)
+        if (getrusage(0_c_int,usage).ne.0) then
+            ierr = 1
+            err_msg = 'getrusage failed'
+            CHCKERR(err_msg)
+        end if
+#if lmacos
+        mem_loc = usage(5)*1.E-6_dp                                             ! bytes
+#else
+        mem_loc = usage(5)*1.024E-3_dp                                          ! kB
+#endif
+        
+        ! add the values of all processes
+        call MPI_Allreduce(mem_loc,mem_meas,1,MPI_DOUBLE_PRECISION,MPI_SUM,&
+            &MPI_Comm_world,ierr)
+        CHCKERR('MPI_Allreduce failed')
+        
+        ! apply 50% safety factor
+        mem_procs = mem_meas*1.5_dp
+    end function calc_mem_procs
+    
     !> \private complex version
     integer function get_ser_var_complex(var,ser_var,scatter) result(ierr)
         use num_vars, only: rank, n_procs

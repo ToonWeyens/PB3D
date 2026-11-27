@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
 project(PB3D
-    VERSION 2.56
+    VERSION 2.57
     LANGUAGES Fortran C
     DESCRIPTION "Peeling Ballooning in 3D"
 )
@@ -107,6 +107,11 @@ endif()
 if(PB3D_ENABLE_INFINIBAND)
     add_compile_definitions(lIB)
     message(STATUS "InfiniBand support enabled (lIB)")
+endif()
+
+# macOS: PB3D warns when the allocator keeps freed memory (input_ops.f90)
+if(APPLE)
+    add_compile_definitions(lmacos)
 endif()
 
 # Compiler-specific preprocessor defines

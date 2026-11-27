@@ -6441,19 +6441,25 @@ contains
     !! To this  end, optionally, a base  number can be provided  for \c n_par_X,
     !! that is always added to the number of points in the divided \c n_par_X.
     !!
+    !! A job is counted with the parallel point it shares with the previous job
+    !! and with the points that calc_eq_jobs_lims() can add to end it on a
+    !! fundamental integration interval.
+    !!
     !! \note For  PB3D, only the  variables \c g_FD, \c  h_FD and \c  jac_FD are
     !! counted, as the equilibrium variables and the transformation matrices are
     !! deleted after use. Also, \c S, \c sigma, \c kappa_n and \c kappa_g can be
     !! neglected  as they  do not  contain  derivatives and  are therefore  much
     !! smaller. in both routines  calc_memory_eq() and calc_memory_x(), however,
-    !! a 50% safety factor is used to account for this somewhat.
+    !! a 50% safety factor is used to account for this somewhat. The integrated
+    !! tensorial perturbation  variables \c X_2_int  are counted as  well, as
+    !! they exist during all equilibrium jobs.
     !!
     !! \return ierr
     integer function divide_eq_jobs(n_par_X,arr_size,n_div,n_div_max,&
         &n_par_X_base,range_name) result(ierr)
         
         use num_vars, only: max_tot_mem, max_X_mem, magn_int_style, &
-            &mem_scale_fac, prog_style
+            &mem_scale_fac, prog_style, mem_procs
         use rich_vars, only: rich_lvl
         use eq_utilities, only: calc_memory_eq
         use X_utilities, only: calc_memory_X
@@ -6470,7 +6476,7 @@ contains
         character(len=*), intent(in), optional :: range_name                    !< name of range
         
         ! local variables
-        real(dp) :: mem_size(2)                                                 ! approximation of memory required for eq_2 and X_1 variables
+        real(dp) :: mem_size(3)                                                 ! approximation of memory required for eq_2, X_1 and X_2_int variables
         integer :: n_par_X_base_loc                                             ! local n_par_X_base
         integer :: max_mem_req                                                  ! maximum memory required
         integer :: n_div_max_loc                                                ! maximum n_div
@@ -6504,7 +6510,15 @@ contains
         
         ! setup auxilliary variables
         n_div = 0
-        mem_size = huge(1._dp)*0.49_dp
+        mem_size = huge(1._dp)*0.3_dp
+        
+        ! PB3D keeps  the integrated tensorial perturbation  variables during
+        ! all equilibrium jobs
+        mem_size(3) = 0._dp
+        if (prog_style.eq.1) then
+            ierr = calc_memory_X(2,arr_size(2),n_mod_X,mem_size(3))
+            CHCKERR('')
+        end if
         if (rich_lvl.eq.1) then
             n_div_max_loc = (n_par_X-1)/fund_n_par
         else
@@ -6514,9 +6528,11 @@ contains
         n_div_max_loc = max(1,n_div_max_loc)                                    ! cannot have less than 1 piece
         
         ! calculate largest possible range of parallel points fitting in memory
-        do while (max_tot_mem.lt.sum(mem_size))                                 ! combined mem_size has to be smaller than total memory
+        do while (max_tot_mem.lt.sum(mem_size)+mem_procs)                       ! combined mem_size has to be smaller than total memory
             n_div = n_div + 1
             n_par_range = ceiling(n_par_X*1._dp/n_div + n_par_X_base_loc)
+            if (n_div.gt.1) n_par_range = n_par_range + eq_jobs_ol_width() + &
+                &fund_n_par - 1                                                 ! shared point and end on fundamental interval
             ierr = calc_memory_eq(arr_size(1),n_par_range,mem_size(1))
             CHCKERR('')
             mem_size(1) = mem_size(1)*mem_scale_fac                             ! operations have to be done on eq, it is not just stored.
@@ -6528,7 +6544,7 @@ contains
                     &trim(i2str(max_mem_req))//'MB'
                 CHCKERR(err_msg)
             end if
-            max_mem_req = ceiling(sum(mem_size))
+            max_mem_req = ceiling(sum(mem_size)+mem_procs)
         end do
         if (n_div.gt.1) then
             range_message = 'The '//trim(i2str(n_par_X))//' '//&
@@ -6541,8 +6557,13 @@ contains
         end if
         call writo(range_message)
         call writo('The total memory for all processes together is estimated &
-            &to be about '//trim(i2str(ceiling(sum(mem_size))))//'MB')
+            &to be about '//trim(i2str(ceiling(sum(mem_size)+mem_procs)))//'MB')
         call lvl_ud(1)
+        call writo('(of which '//trim(i2str(ceiling(mem_procs)))//'MB for the &
+            &processes themselves)')
+        if (prog_style.eq.1) call writo('(and '//&
+            &trim(i2str(ceiling(mem_size(3))))//'MB for the integrated &
+            &tensorial perturbation variables)')
         call writo('(maximum: '//trim(i2str(ceiling(max_tot_mem)))//'&
             &MB, user specified)')
         call lvl_ud(-1)
@@ -6550,7 +6571,7 @@ contains
         if (prog_style.eq.1) then
             ! calculate max memory available for perturbation calculations
             mem_size(1) = mem_size(1)/mem_scale_fac                             ! rescale by mem_scale_fac as eq is now just stored
-            max_X_mem = max_tot_mem - sum(mem_size)
+            max_X_mem = max_tot_mem - sum(mem_size) - mem_procs
             call writo('In the perturbation phase, the equilibrium variables &
                 &are not being operated on:')
             call lvl_ud(1)
@@ -6586,8 +6607,7 @@ contains
     !!
     !! \return ierr
     integer function calc_eq_jobs_lims(n_par_X,n_div) result(ierr)
-        use num_vars, only: prog_style, eq_jobs_lims, eq_job_nr
-        use rich_vars, only: rich_lvl
+        use num_vars, only: eq_jobs_lims, eq_job_nr
         
         character(*), parameter :: rout_name = 'calc_eq_jobs_lims'
         
@@ -6617,16 +6637,7 @@ contains
         allocate(eq_jobs_lims(2,n_div))
         
         ! set overlap width
-        select case (prog_style)
-            case (1)                                                            ! PB3D
-                if (rich_lvl.eq.1) then
-                    ol_width = 1
-                else
-                    ol_width = 0
-                end if
-            case (2)                                                            ! POST
-                ol_width = 1
-        end select
+        ol_width = eq_jobs_ol_width()
         
         ! loop over divisions
         do id = 1,n_div
@@ -6656,6 +6667,32 @@ contains
             CHCKERR(err_msg)
         end if
     end function calc_eq_jobs_lims
+    
+    !> Number of parallel points that an equilibrium job shares with the
+    !! previous one.
+    !!
+    !! In PB3D, the jobs of the first Richardson level share one point, and
+    !! those of higher levels share none, as they only calculate the new points
+    !! of the half grid. In POST, the jobs always share one point, so that the
+    !! composite integrals of the different jobs are correct.
+    !!
+    !! This overlap is used by calc_eq_jobs_lims() to set the limits, and by
+    !! divide_eq_jobs() to count the points of a job.
+    integer function eq_jobs_ol_width() result(ol_width)
+        use num_vars, only: prog_style
+        use rich_vars, only: rich_lvl
+        
+        select case (prog_style)
+            case (1)                                                            ! PB3D
+                if (rich_lvl.eq.1) then
+                    ol_width = 1
+                else
+                    ol_width = 0
+                end if
+            case (2)                                                            ! POST
+                ol_width = 1
+        end select
+    end function eq_jobs_ol_width
     
 #if ldebug
     !> See if \c T_EF it complies with the theory of \cite Weyens3D.
