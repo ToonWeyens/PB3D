@@ -1,8 +1,13 @@
 # Plan: GVEC equilibria in PB3D (issue #104)
 
-Status: plan, 27 November 2026. Nothing is implemented. The decisions in section 7 are Toon's.
+Status: plan, 27 November 2026. Nothing is implemented. The decisions in section 8 are Toon's.
 
-In short: a Python converter writes a GVEC equilibrium as a VMEC wout file, and PB3D reads it without changes (route A). This covers GVEC equilibria in cylindrical coordinates. All of GVEC's other toroidal coordinate maps have one common form, a closed curve with two frame vectors, and PB3D's VMEC path assumes cylindrical coordinates in six routines only; replacing the cylindrical formulas there by those of this form opens PB3D to every GVEC map, with the same converter (route C).
+In short: a Python script that uses pyGVEC writes a GVEC equilibrium to a file, and PB3D reads that file. There are two kinds of file.
+
+- Route G, Toon's preference: a file of PB3D's own design, which PB3D reads as a third equilibrium style (`eq_style` 3). The reader fills the arrays that the VMEC path already uses, so no Fortran is repeated (section 1.4). GVEC's maps other than the cylindrical one enter as formulas for style 3 only, in six routines, and the statements for VMEC files stay as they are.
+- Route A: a VMEC wout file, which PB3D reads without changes. It covers GVEC equilibria in cylindrical coordinates. Exact radial derivatives (route B) and GVEC's other maps (route C) need variables that a wout file does not have.
+
+All of GVEC's toroidal coordinate maps have one common form, a closed curve with two frame vectors, and PB3D's VMEC path assumes cylindrical coordinates in six routines only (sections 1.2 and 2.1). Both routes use this.
 
 ## 1. What PB3D needs from an equilibrium
 
@@ -30,7 +35,7 @@ Facts about these arrays that a GVEC route has to respect:
 - PB3D never reads `signgs`. It assumes VMEC's left-handed coordinates $(s, \theta, \varphi)$ with a negative Jacobian, for example in `calc_flux_q_VMEC` ("conversion VMEC LH -> PB3D RH", `eq_ops.f90:368`), in `calc_eq_2` (`pmone = -1`, line 522), in `grid_ops.f90:176` and 889, `eq_utilities.f90:786` and 866, `grid_utilities.f90:211` and 440.
 - $R_0$ = `R_V_c(1,1,0)` (`calc_normalization_const_VMEC`) assumes that the mode (0,0) comes first in the main mode list, and `read_VMEC` stops if (0,0) is not the first Nyquist mode. `read_VMEC` checks `mnmax` $= (\mathrm{ntor}+1) + (2\,\mathrm{ntor}+1)(\mathrm{mpol}-1)$, VMEC's full rectangular mode set. The Nyquist list may have any size, in VMEC's order (`VMEC_ops.f90:161-166`).
 - `PB3D_out.h5` stores the `VMEC_vars` arrays, and POST reads them back (`PB3D_ops.f90:162-309`); POST never opens the equilibrium file.
-- For every point of the equilibrium grid, `PB3D_out.h5` also holds the point's VMEC coordinates (`r_E`, `theta_E`, `zeta_E`) and the quantities that enter the energy: `g_FD`, `h_FD`, `jac_FD`, `S`, `kappa_n`, `kappa_g`, `sigma` (`print_output_grid`, `print_output_eq_2`). A script can therefore compare them with an independent evaluation at the same points (gate A3a).
+- For every point of the equilibrium grid, `PB3D_out.h5` also holds the point's VMEC coordinates (`r_E`, `theta_E`, `zeta_E`) and the quantities that enter the energy: `g_FD`, `h_FD`, `jac_FD`, `S`, `kappa_n`, `kappa_g`, `sigma` (`print_output_grid`, `print_output_eq_2`). A script can therefore compare them with an independent evaluation at the same points (gates G4c and A3a).
 
 ### 1.2 Where the VMEC path assumes cylindrical coordinates
 
@@ -60,6 +65,38 @@ Outside the release path: the debug tests `test_g_V` and `test_jac_V`, and the d
 - Integers must be NC_INT and reals NC_DOUBLE. Another type prints a message, sets no error and leaves the value unset: an int64 `ns` from numpy would be lost.
 - With `version_` of 9 or more LIBSTELL reads `currumnc`; below 9 it computes the currents from the $B$ components.
 - `nextcur` = 0.
+
+### 1.4 Where PB3D branches on the equilibrium style
+
+`files_ops.f90:249-268` sets `eq_style` from the equilibrium file: 1 (VMEC) when the name ends in `.nc`, 2 (HELENA) when the file starts with an integer. PB3D then branches on `eq_style` in 65 `select case` blocks in 17 files and in 38 `if` tests. Every one of the 65 blocks has the cases 1 and 2 and no default, so for any other value a block does nothing and reports nothing. For its other styles PB3D has a default that stops with a message ("No BC style associated with ...", `SLEPC_ops.f90:563`); stage G0 gives the 65 blocks the same.
+
+| what the block decides | blocks | code lines in the VMEC branches |
+|---|---|---|
+| how the run is organised: which grids exist, what is computed at each Richardson level, the names of variables in the output, default input values, messages | 39 | 158 |
+| the equilibrium itself: reading the file, storing the arrays of section 1.1, the fluxes, $R$, $Z$, $\lambda$, the metric, the transformation matrices, the derived quantities, positions in space, the normalization, the debug tests | 26 | 507 |
+
+Of the 507 lines, 275 write the arrays of section 1.1 to `PB3D_in.h5` (`print_output_in`, 156 lines) and read them back (`reconstruct_PB3D_in`, 119 lines). Most of the other VMEC branches are calls of routines. Of the 38 `if` tests, 16 test for HELENA and 22 for VMEC.
+
+The HELENA branches differ from the VMEC branches in nearly all 65 blocks. HELENA has its own arrays (`HELENA_vars`) and its own metric routines, and PB3D computes a HELENA equilibrium once on HELENA's grid and interpolates it to the field-aligned grid, while it computes a VMEC equilibrium on the field-aligned grid at every Richardson level.
+
+Outside `read_VMEC`, these places name the arrays of `VMEC_vars` directly:
+
+| place | code lines |
+|---|---|
+| VMEC branch of `print_output_in` (`input_ops.f90:1372`) | 156 |
+| VMEC branch of `reconstruct_PB3D_in` (`PB3D_ops.f90:162`) | 119 |
+| `calc_XYZ_grid_VMEC` (`grid_utilities.f90:871`) | 74 |
+| `calc_normalization_const_VMEC` (`eq_ops.f90:5358`) | 65 |
+| `coord_F2E_VMEC` (`grid_utilities.f90:186`) | 52 |
+| `coord_E2F_VMEC` (`grid_utilities.f90:415`) | 34 |
+| `calc_RZL_ind` (`eq_ops.f90:2713`) | 26 |
+| `calc_flux_q_VMEC` (`eq_ops.f90:345`) | 19 |
+| `normalize_VMEC` (`VMEC_ops.f90:380`) | 19 |
+| `calc_jac_V_ind` (`eq_ops.f90:3048`) | 17 |
+| VMEC branch of `calc_norm_range_PB3D_in` (`grid_ops.f90:170`) | 10 |
+| total | 591 |
+
+The debug tests `test_calc_RZL_VMEC`, `test_sigma_VMEC`, `test_B_F` and `check_vac_exact_1` name them too. The other routines of the VMEC path (`calc_g_C`, `calc_T_VC`, `calc_g_V`, `calc_T_VF`, the `calc_derived_` routines, `fourier2real`, `calc_trigon_factors`) get their data through arguments.
 
 ## 2. What GVEC provides and its conventions
 
@@ -115,7 +152,47 @@ pyGVEC (`gvec.load_state`, `state.evaluate`) evaluates at given $(\rho, \varthet
 
 GVEC does not write wout files: not in version 1.5.1 and not in the development version (1.5.2.dev88 on 27 November 2026, same list of `pygvec` subcommands). A search of GVEC's public issue list for "wout" returns nothing; the nearest entry is issue 22 (open), "Frenet → RZφ conversion", about bringing a solution in the Frenet frame to cylindrical coordinates. I found no other tool that writes a wout file from a GVEC state.
 
-## 3. Three routes
+## 3. Routes
+
+In every route a Python script loads the GVEC state with pyGVEC, evaluates it on flux surfaces and writes a file for PB3D. GVEC's own interfaces to CAS3D and GENE are pyGVEC scripts of this kind (`pygvec to-cas3d`, `pygvec to-gist`). The routes differ in the file and in what PB3D does with it. Route G writes a file of PB3D's own design; routes A, B and C write a VMEC wout file, with more and more variables that VMEC does not have.
+
+### Route G: GVEC as a third equilibrium style, `eq_style` 3 (Toon's preference)
+
+A script `gvec_to_pb3d.py` writes a netCDF file that holds what PB3D keeps of an equilibrium (section 1.1), and nothing of VMEC's file layout. PB3D recognises the file, sets `eq_style` = 3, and a new routine `read_GVEC` copies the file's arrays into the arrays of `VMEC_vars`. From there on PB3D runs the statements of the VMEC path.
+
+The file holds, in SI units, in the coordinates $(s, \theta, \varphi)$ of section 2.3 ($s = \rho^2$, $\theta = \vartheta$, $\varphi = -\zeta$), on `ns` surfaces equidistant in $s$, where `ns` is an argument of the script:
+
+- the Fourier coefficients of $X^1$, $X^2$ and $\lambda$, all three on the same surfaces, with their derivatives with respect to $s$ of order 0 to 3, taken from GVEC's B-splines. pyGVEC evaluates the orders 0 to 2 (section 2.4). The script evaluates the order 3 from the B-spline coefficients in the state file, and checks its own orders 0 to 2 against pyGVEC's;
+- the Fourier coefficients of the Jacobian with derivatives of order 0 to 2, on a mode list cut at a tolerance as in route A;
+- the toroidal flux, GVEC's poloidal flux $\chi$, $\iota$ and the pressure, with derivatives of order 0 to 2;
+- $\lvert B \rvert$ on the axis, the number of field periods, the symmetry, the mode lists and the number of GVEC's map;
+- the covariant components of $B$, which only the debug tests use;
+- from stage G6 on, the frame $X_0$, $N$, $B$ of section 2.1.
+
+Compared with a wout file there is no half mesh, no spline through the surfaces, no trapezoidal integral for the poloidal flux, and none of LIBSTELL's rules of section 1.3. netCDF is the format of GVEC's own files for other codes (the CAS3D file, the file of the G-Frame); xarray writes it, and PB3D reads it with netCDF-Fortran, which it links already. A VMEC file and this file both end in `.nc`, so PB3D tells them apart by a global attribute of the file.
+
+The coefficients of odd $m$ behave like $\sqrt s$ near the axis, so their derivatives with respect to $s$ are unbounded at $s = 0$. The script has to decide what it stores on the axis surface (GVEC's own writers start at $s = 10^{-8}$, `gvec_to_castor3d`, or avoid the axis, `cas3d.py:119`).
+
+How much Fortran a third style repeats depends on where `read_GVEC` puts the data (the counts are in section 1.4):
+
+- With arrays of its own, as HELENA has, the 11 places that name the arrays of `VMEC_vars` would exist twice with other array names: 591 code lines, plus the debug tests.
+- With the arrays of `VMEC_vars`, nothing exists twice. 64 of the 65 blocks get `case (1,3)`, and one block (`read_input_eq`) gets a case of its own that calls `read_GVEC`. The 22 `if` tests for VMEC are extended to style 3 where they concern the Fourier series.
+
+This plan takes the arrays of `VMEC_vars`. GVEC's data have the form of VMEC's (Fourier series on flux surfaces, the same flux functions), so inside PB3D a GVEC equilibrium differs from a VMEC equilibrium in three things only:
+
+- the reader and the recognition of the file (`read_GVEC` in a new module, `files_ops.f90`, `read_input_eq`). My estimate for `read_GVEC` is 100 to 150 code lines; `read_VMEC` has 263, a large part of them for the half mesh and the splines;
+- the frame, from stage G6 on: the six routines of section 1.2 get the formulas of route C below for style 3, also for a GVEC equilibrium with the cylindrical map, whose frame is then one frame among others. The statements for VMEC files stay as they are, so decision D4 does not arise. The frame is read from the file, evaluated with its first three derivatives at the grid's $\varphi$ values, and stored in `PB3D_out.h5` for POST;
+- messages and the debug tests that name VMEC.
+
+The arrays and routines keep their names with `V` in this plan. `VMEC_vars` then holds an equilibrium as Fourier series in VMEC's coordinates, whichever code computed it (decision D6).
+
+Three other ways to bring GVEC's numbers into PB3D, not taken:
+
+- PB3D reads GVEC's state file itself. The state file holds the B-spline coefficients, but the parameters of the map and the exact profiles are in the parameter file. PB3D would repeat GVEC's B-splines, its profile types and its interpolation of the G-Frame curve in Fortran, and follow file formats that are not a published interface.
+- PB3D links GVEC's library. `libgveclib` holds the module that pyGVEC is built on (`MODgvec_py_state`: `Init`, `ReadState`, `evaluate_base_tens`, `evaluate_hmap`, `evaluate_profile`). This is a compiled dependency in PB3D's build and in CI; the module stops when GVEC is compiled with MPI and runs on more than one process.
+- `eq_style` stays 1 and only the reader differs (route B below). The 64 edits of the blocks are then not needed, but PB3D's messages, input checks and output do not say that the equilibrium is GVEC's, and the frame formulas need a second switch.
+
+Effort (guess): the script 3 to 5 days; the default error of stage G0 one day; the reader, the edits of the blocks and the tests 3 to 5 days; the comparison script of gate G4c 1 to 2 days; the frame of stage G6 two to three weeks, most of it tests.
 
 ### Route A: a converter from a GVEC state to a wout file, PB3D unchanged
 
@@ -135,7 +212,7 @@ Effort (guess): 3 to 5 days for the converter and its checks, 1 to 2 days for th
 
 ### Route B: a GVEC reader in PB3D for map 1
 
-PB3D fills the same `VMEC_vars` arrays from GVEC data directly: Fourier coefficients of $R$, $Z$, $\lambda$ with radial derivatives of order 0 to 3 taken from GVEC's B-splines, all on the full mesh, without half mesh or extrapolation. `eq_style` stays 1. Only `files_ops.f90` (which file is which) and `read_input_eq` (`input_ops.f90:1175-1178`) change, and one more entry in `misc_in_V` records where the arrays came from. A new `eq_style` value would be harmful: `select case (eq_style)` blocks without a default branch, such as the one in `calc_eq_1` (`eq_ops.f90:310-315`), would skip their work without a message. Two ways to get the data:
+PB3D fills the same `VMEC_vars` arrays from GVEC data directly: Fourier coefficients of $R$, $Z$, $\lambda$ with radial derivatives of order 0 to 3 taken from GVEC's B-splines, all on the full mesh, without half mesh or extrapolation. `eq_style` stays 1. Only `files_ops.f90` (which file is which) and `read_input_eq` (`input_ops.f90:1175-1178`) change, and one more entry in `misc_in_V` records where the arrays came from. Route G differs from this route in the value of `eq_style` and in the file. Two ways to get the data:
 
 - B1: link GVEC's Fortran library into PB3D, read the state with `MODgvec_ReadState`, evaluate with GVEC's basis routines. This adds a compiled dependency to PB3D's CMake build and ties PB3D to GVEC's internal modules, which are not a published interface.
 - B2: the converter of route A writes, next to the wout variables, the same coefficients on the full mesh with their radial derivatives of order 1 to 3 as extra variables (LIBSTELL skips them, section 1.3), and `read_VMEC` uses them instead of its splines when they are present, reading them with LIBSTELL's `ezcdf` routines, which PB3D's LIBSTELL build already holds. One file then serves PB3D and the other tools. Because pyGVEC stops at radial derivatives of order 2, the script must evaluate the third derivatives from GVEC's B-spline coefficients itself. The coefficients of odd $m$ behave like $\sqrt s$ near the axis, so their $s$-derivatives are unbounded at $s = 0$: B2 has to decide what to store on the axis surface (GVEC's own writers start at $s = 10^{-8}$, `gvec_to_castor3d`, or avoid the axis, `cas3d.py:119`).
@@ -170,29 +247,107 @@ The converter of route A needs one change: it writes the frame instead of stoppi
 Two points that are specific to this route:
 
 - The toroidal mode number. PB3D keeps one toroidal mode number $n$ in its flux coordinates, whose toroidal angle is the file's $\varphi$ up to the sign. For a G-Frame, $\zeta$ is the parameter of the curve, which GVEC's documentation recommends to be a Boozer angle, not the geometric toroidal angle. The same 3-D equilibrium described with two different toroidal angles gives PB3D two different sets of displacements for the same $n$, so the eigenvalue can depend on the parametrisation. This follows from the form of PB3D's Fourier series; how large the effect is has not been computed (stage C4).
-- A reference. For shapes that cylindrical coordinates cannot describe there is no VMEC equilibrium to compare with. The check that remains valid is the pointwise comparison of PB3D's stored quantities with GVEC's own values (gate A3a), which does not depend on the map.
+- A reference. For shapes that cylindrical coordinates cannot describe there is no VMEC equilibrium to compare with. The check that remains valid is the pointwise comparison of PB3D's stored quantities with GVEC's own values (gates G4c and A3a), which does not depend on the map.
 
 Effort (guess): two to three weeks, most of it tests.
 
+### Route G against the wout file
+
+| | wout file (routes A, B2, C) | file of route G, `eq_style` 3 |
+|---|---|---|
+| what the script writes | the variables of a wout file in VMEC's layout: $\lambda$, the Jacobian and $B$ on the half mesh, LIBSTELL's types and flags (section 1.3) | the arrays of section 1.1 on one set of surfaces, with their radial derivatives |
+| new Fortran for the cylindrical map | none | `read_GVEC`, the recognition of the file, `case (1,3)` in 64 blocks, the tests for style 1 |
+| Fortran that exists twice | none | none |
+| radial derivatives | cubic splines through the surfaces, and $\lambda$ and the Jacobian through the half mesh. Exact derivatives need route B2: extra variables in the file and a second branch in `read_VMEC` | from GVEC's B-splines |
+| poloidal flux | trapezoidal integral of `iotaf` times `phipf` | GVEC's $\chi$ |
+| GVEC's other maps | the frame as extra variables in the wout file, which is then not a VMEC file for other tools; the frame formulas replace the cylindrical ones for VMEC files too, or a switch selects them (decision D4) | the frame in the file; the frame formulas for style 3 only |
+| results from VMEC files | unchanged in routes A and B2; with route C they can change at rounding level (D4) | unchanged: the statements for VMEC files are not edited |
+| use of the file outside PB3D | BOOZ_XFORM, COBRAVMEC, TERPSICHORE and other VMEC-based tools, for the cylindrical map | PB3D only |
+| first eigenvalue of a GVEC equilibrium | when the script works | when the script and the reader work |
+
+For GVEC equilibria in cylindrical coordinates alone, with spline derivatives, the wout file is cheaper: PB3D does not change. With exact radial derivatives or with other maps the wout file carries variables that VMEC does not have, `read_VMEC` gets a second branch, and the Fortran is about as large as route G's. Route G then costs the edits of the 64 blocks more, and it keeps the statements for VMEC files as they are.
+
+The two scripts share the evaluation with pyGVEC and the Fourier transform. A wout writer for other VMEC-based tools can be made later from the script of route G.
+
 ## 4. Recommendation
 
-Route A first. It changes no Fortran, it gives the checks and test cases of section 5 that any later route needs too, and it measures how large the spline, half-mesh and flux-integral errors of section 1.1 are at a given `ns` (decision D1). Route B only if D1 says so. Route C if Toon wants configurations that need a flexible frame (decision D2): it builds on the converter and the checks of route A, changes six release routines, and can be tested without GVEC (stage C2).
+Route G, with the arrays of `VMEC_vars`. It is Toon's preference, and the counts of section 1.4 support it: no Fortran exists twice, and GVEC differs from VMEC inside PB3D in the reader, the frame and the messages only. The maps other than the cylindrical one are the reason GVEC exists, and with them a wout file is no longer a VMEC file (table above).
 
-## 5. Stages of route A
+Stage G0, the error for an unknown `eq_style`, is independent of GVEC and comes first, as its own issue and pull request.
+
+Route A stays the alternative for the case that only GVEC equilibria in cylindrical coordinates matter and no Fortran is to change (decision D5).
+
+## 5. Stages of route G
 
 Each stage ends with a gate. After each stage: update this plan with what was learned, comment the gate result on #104, commit and push, never merge. Heavy runs go to Snellius as parallel Slurm jobs.
 
-### A0. GVEC installed on the Mac and on Snellius
+### G0. An error for an unknown `eq_style`
+
+Every one of the 65 `select case (eq_style)` blocks of section 1.4 gets a `case default` that stops with the message "No equilibrium style associated with ...", in the form PB3D uses for its other styles. This is independent of GVEC: its own issue and pull request. Gate: every regression and full-stack test gives its present result, and a debug build in which `eq_style` is set to 3 by hand stops at the first block with the message.
+
+### G1. GVEC installed on the Mac and on Snellius
 
 `pip install gvec==1.5.1` in PB3D's uv environment as an optional dependency group `gvec` (as `vmec = ["vmecpp"]`). The package is a source distribution: it compiles GVEC and needs a Fortran compiler, CMake, LAPACK and netCDF-Fortran (Homebrew on the Mac, modules on Snellius). Gate: GVEC's elliptic-tokamak tutorial runs and `pygvec info` prints its state on both machines.
 
-### A1. A GVEC twin of the circular fixture
+### G2. A GVEC twin of the circular fixture
 
 `pygvec convert-params --vmec` cannot be used: GVEC 1.5.1 accepts only `power_series` profiles (`util/params.py:455-485`), while `--export_HEL` writes `cubic_spline` profiles (`eq_ops.f90:1949-1985`), and the RBS and ZBC columns of these inputs make it choose a stellarator-asymmetric run. Instead, `pygvec convert-wout tests/fixtures/wout_circ_eps033_q104.nc` gives a GVEC parameter file with the twin's boundary, the profiles as `interpolation` tables, and `_cos_`/`_sin_` symmetry. The parameter file has no `whichInitEquilibrium`, so GVEC starts from its default initial state and solves its own equilibrium, in stages that raise `sgrid_nElems` and the Fourier resolution (`--param` values are written into the file).
 
 `convert-wout` writes the profile tables at 101 values of $s$ (`np.linspace(0, 1, 101)` in `convert_wout.py`). Resampling the twin's profiles there changes $q$ by $7 \cdot 10^{-7}$ but $\iota'$ by up to $2.2 \cdot 10^{-4}$ near $s = 0.59$, where the shear is only between $-0.0035$ and $-0.0018$: 6 to 12 % of the local shear. With 319 values the change in $\iota'$ is $1.9 \cdot 10^{-5}$, with 639 values $4.9 \cdot 10^{-6}$; for cbm18a cut, 101 values change $p'$ by $5 \cdot 10^{-4}$ and $\iota'$ by $1.8 \cdot 10^{-3}$ of their maxima. So the tables in the parameter file are replaced by `iotaf` and `presf` on all the twin's surfaces (a small script after `convert-wout`). How GVEC interpolates such a table is checked by evaluating $\iota$, $\iota'$, $p$, $p'$ of the solved state against the twin's.
 
 The twin's VMEC input prescribes $\iota$ (`NCURR = 0`) and the GVEC run prescribes the same table, so $q$ agrees by construction and is no check. Gate: the force residual decreases with resolution, and at equal $s$ the solved GVEC surfaces agree with the VMEC twin (axis position, $R$ and $Z$ on the surfaces $s$ = 0.25, 0.5, 1, $B_{00}$ on the axis) to within the VMEC twin's own resolution error, estimated from VMEC++ runs with 159 and 319 surfaces.
+
+### G3. The script
+
+Write `gvec_to_pb3d.py` (route G). Three gates, all on the state of G2.
+
+Gate G3a, the radial derivatives. The script's own evaluation of the B-splines gives the derivatives of order 0 to 2 of $X^1$, $X^2$ and $\lambda$ that pyGVEC gives, to rounding, and its derivative of order 3 agrees with a finite difference of pyGVEC's order 2 at the rate of that difference.
+
+Gate G3b, the file against GVEC in space, with no convention in between. At a few thousand points $(s, \theta, \varphi)$, on the file's surfaces and at random angles, a check script computes from the file's arrays the position, the Cartesian vector $B = B^\theta\, \partial_\theta x + B^\varphi\, \partial_\varphi x$ (with $B^\theta$ and $B^\varphi$ from the fluxes, $\lambda$ and the Jacobian) and the pressure. It compares them with pyGVEC's `pos`, `B` and `p` at $(\sqrt s, \theta, -\varphi)$. The positions and the pressure must agree to rounding, and $B$ to the tolerance of the Jacobian's mode list. A vector in space has no sign convention, so this catches a mirrored equilibrium, a wrong sign of a flux or of $\lambda$, and a missing $2\pi$, none of which an eigenvalue comparison is certain to show (the mirror image of an equilibrium has the same eigenvalues).
+
+Gate G3c, identities inside the file: the derivative of the poloidal flux equals $\iota$ times the derivative of the toroidal flux; the Jacobian is negative and equal to what the file's own coefficients of $X^1$ and $X^2$ and their first derivatives give, to the tolerance of its mode list; each stored derivative of order $k+1$ agrees with a finite difference of the stored order $k$ at the rate of that difference.
+
+### G4. Style 3 in PB3D, cylindrical map
+
+`read_GVEC`, the recognition of the file, the edits of the 64 blocks and of the tests for style 1 (section 1.4). Until stage G6, `read_GVEC` stops with a message when the file's map is not the cylindrical one. Five gates.
+
+Gate G4a, the existing tests. Every regression and full-stack test gives its present result, bit for bit where the test compares that way: for a VMEC or HELENA file PB3D runs the statements it ran before.
+
+Gate G4b, a VMEC equilibrium through style 3, without GVEC. A script writes the arrays that `read_VMEC` made of the circular VMEC twin into a file of route G. PB3D stores these arrays in `PB3D_in.h5`, normalized and for the radial range of the run; the script undoes the normalization, and the stage settles how the radial range is handled. PB3D with style 3 on this file must give the eigenvalues and the stored quantities of the run with style 1, to rounding. This tests the reader and every edited block with no change of the equilibrium.
+
+Gate G4c, PB3D's stored equilibrium against GVEC, point by point, on the GVEC twin of G2 with the deck of `regression_circ_eps033_vmec_twin`. A script reads from `PB3D_out.h5` the coordinates of every point of the equilibrium grid and PB3D's values there (section 1.1), and evaluates the same quantities with pyGVEC at $(\sqrt{s}, \theta, -\varphi)$: $\lvert B \rvert$ (in PB3D $\lvert B \rvert^2 = g_{\parallel\parallel}/\mathcal J^2$ from `g_FD` and `jac_FD`, because $B = e_\parallel/\mathcal J$ in its flux coordinates), the normal and the geodesic curvature from GVEC's `kappa_B` and $\nabla\rho$ in PB3D's definitions, the parallel current `sigma` from GVEC's $J \cdot B/\lvert B \rvert^2$, and the shear `S` from pyGVEC's first derivatives of the metric. This tests the whole chain from the file to the quantities in the energy (`read_GVEC`, `calc_eq_2`, `calc_derived_q`). `sigma` changes sign under a mirror reflection, so the gate also sees a mirrored reading. Gate: the differences are at the level of rounding and of the Jacobian's mode list at any `ns`, because no spline lies between GVEC and PB3D's grid points.
+
+Gate G4d, eigenvalues. The VMEC twin agrees with HELENA to $1.1 \cdot 10^{-6}$ relative (+7.84303e-2 against +7.84304e-2) at this deck and resolution. The GVEC twin's fixed-boundary eigenvalue approaches the VMEC twin's with the same deck as GVEC's resolution grows, and lies within $10^{-5}$ relative of it at the highest resolution; the difference to HELENA is reported next to it. This is tighter than the twin test's tolerance of $10^{-4}$, and reachable only with the denser profile tables of G2. The table has two values of the script's `ns` and three GVEC resolutions. The free-boundary eigenvalue lies within $10^{-4}$ relative of the VMEC twin's -0.43901.
+
+Gate G4e, from VMEC through GVEC without a solve: `wout_circ_eps033_q104.nc` $\to$ `pygvec convert-wout --param sgrid_nElems=...` $\to$ GVEC state $\to$ `gvec_to_pb3d.py` $\to$ PB3D with style 3. The fixed-boundary eigenvalue approaches that of PB3D with style 1 on the original file (n = 10, m = 11, +7.84303e-2) as `sgrid_nElems` grows: three values of `sgrid_nElems`, the difference falling, and below $10^{-5}$ relative at the largest. GVEC's fit of a wout file keeps a floor in $\lambda$ (`InitVMEC` fits $\lambda$ on the half mesh, moves it to the full mesh and fits again, `vmec.F90:365-398`) and extrapolates every mode to the axis by a parabola (`vmec.F90:335`); if the eigenvalue stops approaching, these two are the first places to look.
+
+### G5. Finite pressure and 3-D
+
+Three cases, run side by side on Snellius, each with gate G4c first and then the eigenvalues:
+
+- cbm18a cut at the pedestal foot (axisymmetric, finite pressure; PB3D on HELENA gives -0.04012 at n = 10 fixed boundary, `tests/reference/cbm18a_cut/README.md`; VMEC twin from `input.cbm18a_cut` with 639 surfaces);
+- the rippled twin, N = 5, $\delta$ = 0.02 (3-D; PB3D free boundary -0.4188 against TERPSICHORE's family -0.41903);
+- W7-X (PB3D fixed-boundary reference 6.62833e-2 on Snellius). GVEC's repository also holds a W7-X wout file with the GVEC parameters its developers use on it (`test-CI/examples/w7x_from_vmec_*`, `wout_d23p4_tm.nc`), a starting point for the GVEC resolution.
+
+For each: GVEC from `pygvec convert-wout` of the VMEC file, with the profile tables replaced as in G2, and its own solve; PB3D with style 3 on the GVEC file against PB3D with style 1 on VMEC's wout, at two resolutions of each code. `convert-wout` always prescribes $\iota$. For a VMEC run with a prescribed current (W7-X, if its input has `NCURR` = 1), GVEC prescribes VMEC's converged `iotaf`; both codes then solve the same problem up to discretisation. GVEC's current constraint would need `I_tor` and `picard_current` added by hand and is not needed for this comparison. Gate: the difference between the two eigenvalues decreases when the resolutions grow; the numbers go on #104.
+
+### G6. The frame: GVEC's other maps
+
+G6.1. The frame in the file and in PB3D: the script writes $X_0$, $N$, $B$ as Fourier series in $\varphi$ for any map (obtained as in section 2.1); PB3D reads them, evaluates them and their first three derivatives at the grid's $\varphi$ values, stores them in `PB3D_out.h5`, and uses the formulas of route C in the six routines of section 1.2 for style 3. The normalization length is the length of the magnetic axis divided by $2\pi$ (GVEC's `r_major`). Gate: the tests with VMEC and HELENA files give their present results bit for bit, and the GVEC cases of G4 and G5, now with the cylinder as their frame, give their results of G4 and G5 to rounding.
+
+G6.2. Frame invariance, without GVEC. The script of gate G4b writes the VMEC twin's arrays in another frame that keeps $\varphi$: a shifted one, $X_0 = (a_0 + a_1\cos N_\mathrm{fp}\varphi)\, e_R(\varphi)$, and a tilted one, $N$ and $B$ turned in the plane $\varphi$ = constant by an angle $\beta_1 \sin N_\mathrm{fp}\varphi$. The surfaces, the angles $(s, \theta, \varphi)$, $\lambda$ and the Jacobian are the same; only $X^1$, $X^2$ and the frame differ. Gate: on the circular twin, the rippled twin and W7-X, PB3D gives the same fixed- and free-boundary eigenvalues, the same stored quantities of G4c, and the same Cartesian positions as with the plain file, to rounding for the shifted frame and to the Fourier truncation of $X^1$, $X^2$ for the tilted one. This tests all six routines on existing cases.
+
+G6.3 and G6.4 are stages C3 and C4 of section 7, with the file of route G: the same boundary with map 1 and with a G-Frame whose $\zeta$ is the cylindrical angle, and then G-Frames whose $\zeta$ is not the cylindrical angle. The two points of route C in section 3, the toroidal mode number and the missing reference, hold for route G in the same way.
+
+### G7. Regression test, documentation
+
+- `regression_circ_eps033_gvec_twin`: the GVEC file of G4 as a compressed fixture in `tests/fixtures`, so that CI needs no GVEC; the eigenvalues anchored as in the VMEC twin test.
+- The identity check of G3c as a script in `tests/regression`, run on the fixture; the checks against GVEC (G3a, G3b, G4c) only when the `gvec` group is installed, skipped with a note otherwise, as `check_vmec_read.py` is without h5py.
+- README entry with a new version number, since the Fortran changes; a page on the site (PB3D.github.io) on how to run PB3D on a GVEC equilibrium: `pygvec run`, `gvec_to_pb3d.py`, PB3D.
+
+## 6. Stages of route A, if chosen instead
+
+Stage A0 is stage G1, and stage A1 is stage G2.
 
 ### A2. The converter
 
@@ -214,21 +369,15 @@ Gate A2d: LIBSTELL reads wout', `tests/regression/check_vmec_read.py` passes (mo
 
 ### A3. PB3D on the GVEC twin of the circular case
 
-Convert the state of A1 and run the deck of `regression_circ_eps033_vmec_twin`.
+Convert the state of G2 and run the deck of `regression_circ_eps033_vmec_twin`.
 
-Gate A3a, PB3D's stored equilibrium against GVEC, point by point. A script reads from `PB3D_out.h5` the VMEC coordinates of every point of the equilibrium grid and PB3D's values there (section 1.1), and evaluates the same quantities with pyGVEC at $(\sqrt{s}, \theta, -\varphi)$: $\lvert B \rvert$ (in PB3D $\lvert B \rvert^2 = g_{\parallel\parallel}/\mathcal J^2$ from `g_FD` and `jac_FD`, because $B = e_\parallel/\mathcal J$ in its flux coordinates), the normal and the geodesic curvature from GVEC's `kappa_B` and $\nabla\rho$ in PB3D's definitions, the parallel current `sigma` from GVEC's $J \cdot B/\lvert B \rvert^2$, and the shear `S` from pyGVEC's first derivatives of the metric. This tests the whole chain from the file to the quantities in the energy (`read_VMEC`, the splines, `calc_eq_2`, `calc_derived_q`) against values that no VMEC file can give, since VMEC has no exact evaluation between its surfaces. `sigma` changes sign under a mirror reflection, so the gate also sees a mirrored reading. Gate: the differences fall when `ns` grows, at the rate of the spline errors of section 1.1, with no difference that stays.
+Gate A3a is gate G4c on the converted wout file. Here the chain from the file to the quantities in the energy includes `read_VMEC` and its splines, which no VMEC file can test, since VMEC has no exact evaluation between its surfaces. Gate: the differences fall when `ns` grows, at the rate of the spline errors of section 1.1, with no difference that stays.
 
-Gate A3b, eigenvalues. The VMEC twin agrees with HELENA to $1.1 \cdot 10^{-6}$ relative (+7.84303e-2 against +7.84304e-2) at this deck and resolution. The GVEC twin's fixed-boundary eigenvalue approaches the VMEC twin's with the same deck as GVEC's resolution grows, and lies within $10^{-5}$ relative of it at the highest resolution; the difference to HELENA is reported next to it. This is tighter than the twin test's tolerance of $10^{-4}$, and reachable only with the denser profile tables of A1. The table has two values of the converter's `ns` and three GVEC resolutions, so that it shows which of the two limits the agreement. The free-boundary eigenvalue lies within $10^{-4}$ relative of the VMEC twin's -0.43901; this also tests the half-step extrapolation of the Jacobian to the boundary that the vacuum normal uses.
+Gate A3b, eigenvalues. The VMEC twin agrees with HELENA to $1.1 \cdot 10^{-6}$ relative (+7.84303e-2 against +7.84304e-2) at this deck and resolution. The GVEC twin's fixed-boundary eigenvalue approaches the VMEC twin's with the same deck as GVEC's resolution grows, and lies within $10^{-5}$ relative of it at the highest resolution; the difference to HELENA is reported next to it. This is tighter than the twin test's tolerance of $10^{-4}$, and reachable only with the denser profile tables of G2. The table has two values of the converter's `ns` and three GVEC resolutions, so that it shows which of the two limits the agreement. The free-boundary eigenvalue lies within $10^{-4}$ relative of the VMEC twin's -0.43901; this also tests the half-step extrapolation of the Jacobian to the boundary that the vacuum normal uses.
 
 ### A4. Finite pressure and 3-D
 
-Three cases, run side by side on Snellius, each with gate A3a first and then the eigenvalues:
-
-- cbm18a cut at the pedestal foot (axisymmetric, finite pressure; PB3D on HELENA gives -0.04012 at n = 10 fixed boundary, `tests/reference/cbm18a_cut/README.md`; VMEC twin from `input.cbm18a_cut` with 639 surfaces);
-- the rippled twin, N = 5, $\delta$ = 0.02 (3-D; PB3D free boundary -0.4188 against TERPSICHORE's family -0.41903);
-- W7-X (PB3D fixed-boundary reference 6.62833e-2 on Snellius). GVEC's repository also holds a W7-X wout file with the GVEC parameters its developers use on it (`test-CI/examples/w7x_from_vmec_*`, `wout_d23p4_tm.nc`), a starting point for the GVEC resolution.
-
-For each: GVEC from `pygvec convert-wout` of the VMEC file, with the profile tables replaced as in A1, and its own solve; PB3D on the converted wout against PB3D on VMEC's wout, at two resolutions of each code. `convert-wout` always prescribes $\iota$. For a VMEC run with a prescribed current (W7-X, if its input has `NCURR` = 1), GVEC prescribes VMEC's converged `iotaf`; both codes then solve the same problem up to discretisation. GVEC's current constraint would need `I_tor` and `picard_current` added by hand and is not needed for this comparison. Gate: the difference between the two eigenvalues decreases when the resolutions grow; the numbers go on #104.
+The three cases of stage G5, each with gate A3a first and then the eigenvalues, with GVEC set up as in G5: PB3D on the converted wout against PB3D on VMEC's wout, at two resolutions of each code. Gate: the difference between the two eigenvalues decreases when the resolutions grow; the numbers go on #104.
 
 ### Decision D1, after A3 and A4
 
@@ -245,7 +394,7 @@ If an `ns` with acceptable cost reaches the target, route A is enough. If not, r
 - The identity check of A2b as a script in `tests/regression`, run on the fixture; the checks against GVEC (A2a, A2c, A3a) only when the `gvec` group is installed, skipped with a note otherwise, as `check_vmec_read.py` is without h5py.
 - README entry; a page on the site (PB3D.github.io) on how to run PB3D on a GVEC equilibrium: `pygvec run`, `gvec_to_wout.py`, PB3D. No version change, since no Fortran changes.
 
-## 6. Stages of routes B and C, if chosen
+## 7. Stages of routes B and C, if chosen
 
 ### Route B2
 
@@ -261,17 +410,19 @@ C3. GVEC, the same boundary with map 1 and with a G-Frame whose $\zeta$ is the c
 
 C4. A G-Frame whose $\zeta$ is not the cylindrical angle: the G-Frame examples of GVEC's repository (`test-CI/examples/axisNB_*`, among them a knot and a quasi-helical case), a QUASR configuration (`pygvec load-quasr`), then the figure-8 configuration of Plunk et al. (2025). Gate: A3a. The eigenvalues are reported with a study of how they change with $n$ and with the parametrisation of the frame, the open point of route C.
 
-## 7. Decisions for Toon
+## 8. Decisions for Toon
 
-- D0: where `gvec_to_wout.py` lives: (a) in PB3D's `scripts/`, (b) in GVEC as a `pygvec` subcommand next to `to-cas3d`, which Toon would propose upstream (MPCDF GitLab or the GitHub mirror), (c) first (a), later (b).
-- D1: after A4, whether route B is needed (section 5).
-- D2: whether route C is wanted.
-- D3: whether the GVEC twin becomes a regression test (A5) or stays a separate study outside this repository.
+- D5: route G or route A (section 4). Toon's preference on 27 November 2026 is route G.
+- D0: where the script lives (`gvec_to_pb3d.py` in route G, `gvec_to_wout.py` in route A): (a) in PB3D's `scripts/`, (b) in GVEC as a `pygvec` subcommand next to `to-cas3d`, which Toon would propose upstream (MPCDF GitLab or the GitHub mirror), (c) first (a), later (b).
+- D2: whether GVEC's maps other than the cylindrical one are wanted: stage G6 in route G, route C with the wout file.
+- D3: whether the GVEC twin becomes a regression test (G7 or A5) or stays a separate study outside this repository.
+- D6, only with route G: whether the arrays and routines of the VMEC path keep their names with `V` when they also hold a GVEC equilibrium, or get other names. This plan keeps the names: other names change about 40 `use` statements and the names of the variables in `PB3D_in.h5` and `PB3D_out.h5`, for no change in what the code does.
+- D1, only with route A: after A4, whether route B is needed (section 6).
 - D4, only with route C: whether VMEC files use the general frame formulas (one code path, results may change at rounding level) or keep the cylindrical formulas.
 
-## 8. Sources
+## 9. Sources
 
 - GVEC JOSS paper, doi:10.21105/joss.09670; flexible frame, doi:10.1088/1361-6587/adba11.
 - GVEC documentation, https://gvec.readthedocs.io: parameter list, theory, coordinate conventions, quantities, pygvec CLI (also the `develop` version), QUASR and G-Frame, CAS3D and other interfaces.
-- GVEC 1.5.1 source, public mirror https://github.com/gvec-group/gvec: `src/functionals/mhd3d/mhd3d.F90`, `src/vmec/vmec.F90`, `src/vmec/vmec_readin.F90`, `src/hmap/hmap_RZ.F90`, `hmap_knot.F90`, `hmap_frenet.F90`, `hmap_axisNB.F90`, `python/gvec/quantities.py`, `python/gvec/scripts/convert_wout.py`, `python/gvec/scripts/cas3d.py`, `python/gvec/util/params.py`, pyGVEC's `_evaluate.py`; test data under `test-CI/`.
+- GVEC 1.5.1 source, public mirror https://github.com/gvec-group/gvec: `src/functionals/mhd3d/mhd3d.F90`, `src/vmec/vmec.F90`, `src/vmec/vmec_readin.F90`, `src/hmap/hmap_RZ.F90`, `hmap_knot.F90`, `hmap_frenet.F90`, `hmap_axisNB.F90`, `python/gvec/quantities.py`, `python/gvec/scripts/convert_wout.py`, `python/gvec/scripts/cas3d.py`, `python/gvec/util/params.py`, pyGVEC's `_evaluate.py`, `src/restart/restart.F90` (the state file), `src/pygvec/state.F90` (`MODgvec_py_state`), `CMakeLists.txt` (`libgveclib`); test data under `test-CI/`.
 - LIBSTELL (STELLOPT repository): `LIBSTELL/Sources/Modules/read_wout_mod.f90` (`read_wout_nc`) and `LIBSTELL/Sources/Ezcdf/ezcdf_inqvar.f90`.
