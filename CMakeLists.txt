@@ -73,15 +73,19 @@ if(PB3D_COMPILER_GNU)
     # no -pedantic: it re-promotes the argument mismatches in vendored F77
     # (Libraries/dfft.f) to hard errors despite -fallow-argument-mismatch
     set(CMAKE_Fortran_FLAGS_DEBUG "-O0 -g -Wall -Wextra -finit-real=snan -ffpe-trap=invalid -fcheck=all")
-    # gfortran 14.2 and 14.3 miscompile the bounds check of a subscript that
-    # calls a function with an array-constructor argument inside an actual
-    # argument, as in eq_2%T_EF(:,:,:,c([1,1],.false.),...) throughout eq_ops:
-    # the check reads a garbage index or segfaults inside c (issue #4; the
-    # standalone reproducer is tests/reference/gfortran14_bounds_repro.f90;
-    # gfortran 13.3 and 16.1 are fine). Those versions get a Debug build
-    # without -fcheck=bounds instead of none at all.
-    if(CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL 14 AND
-       CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 15)
+    # gfortran 14.1 to 14.3 and 15.1 to 15.2 miscompile the bounds check of a
+    # subscript that calls a function with an array-constructor argument
+    # inside an actual argument, as in eq_2%T_EF(:,:,:,c([1,1],.false.),...)
+    # throughout eq_ops: the check calls c a second time without setting up
+    # the descriptor of the constructor, so it reads a garbage index or
+    # segfaults inside c (GCC PR fortran/119273, fixed in 14.4, 15.3 and 16.1;
+    # standalone reproducer: tests/reference/gfortran14_bounds_repro.f90).
+    # Those versions get a Debug build without -fcheck=bounds instead of none
+    # at all.
+    if((CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL 14 AND
+        CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 14.4) OR
+       (CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL 15 AND
+        CMAKE_Fortran_COMPILER_VERSION VERSION_LESS 15.3))
         string(REPLACE "-fcheck=all" "-fcheck=all,no-bounds"
                CMAKE_Fortran_FLAGS_DEBUG "${CMAKE_Fortran_FLAGS_DEBUG}")
         message(STATUS "gfortran ${CMAKE_Fortran_COMPILER_VERSION}: Debug build without -fcheck=bounds (compiler bug, see CMakeLists.txt)")
